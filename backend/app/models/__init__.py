@@ -1,0 +1,15 @@
+"""
+Models Package
+===============
+
+Import all SQLAlchemy models here so that:
+  - Base.metadata knows about every table.
+  - Alembic auto-generates migrations correctly.
+  - create_all() creates all tables in one call.
+
+Example:
+  from app.models.user import User        # noqa: F401
+  from app.models.job import Job          # noqa: F401
+
+Currently empty — add imports as you create models.
+"""

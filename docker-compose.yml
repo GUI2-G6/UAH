@@ -1,0 +1,92 @@
+# ============================================================
+# UAH DEV — Docker Compose
+# ============================================================
+#
+# Services:
+#   db        — Postgres 15 (no public ports)
+#   backend   — FastAPI + Uvicorn (no public ports)
+#   frontend  — Nginx serving Vue 3 build + /api proxy
+#
+# Network:
+#   All services attach to the pre-existing "uah-infra" Docker
+#   network so they can communicate with infrastructure services
+#   (VPN, tunnels) managed outside this compose file.
+#
+# Access:
+#   dev.uahapp.com → 10.8.0.1:80 (VPN-only)
+#
+# Usage:
+#   docker compose up -d --build
+#
+# ============================================================
+
+services:
+  # ----------------------------------------------------------
+  # PostgreSQL 15
+  # ----------------------------------------------------------
+  db:
+    image: postgres:15
+    container_name: uah-dev-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./volumes/postgres:/var/lib/postgresql/data
+    networks:
+      - uah-infra
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # NO ports exposed — backend reaches db via service name "db"
+
+  # ----------------------------------------------------------
+  # FastAPI Backend
+  # ----------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: uah-dev-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+    volumes:
+      - ./backend:/app          # Hot-reload in dev
+    networks:
+      - uah-infra
+    # NO ports exposed — frontend proxies /api → backend:8000
+
+  # ----------------------------------------------------------
+  # Vue 3 Frontend (Nginx)
+  # ----------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: uah-dev-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    # Share the VPN container's network namespace so nginx
+    # listens directly on 10.8.0.1:80 (the wg0 interface).
+    # This replaces ports + networks — both are inherited from VPN.
+    network_mode: "container:uah-dev-vpn"
+
+# ============================================================
+# External network — created by infrastructure, NOT by compose
+# ============================================================
+networks:
+  uah-infra:
+    external: true
+

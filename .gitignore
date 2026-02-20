@@ -1,0 +1,24 @@
+# ============================================================
+# UAH — Root .gitignore
+# ============================================================
+
+# ----- Environment / Secrets -----
+.env
+.env.*
+!.env.example
+
+# ----- Docker volumes (database data, etc.) -----
+volumes/
+logs/
+
+# ----- OS files -----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ----- Editor / IDE -----
+.idea/
+*.swp
+*.swo
+*~
+.vscode/

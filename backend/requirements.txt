@@ -1,0 +1,17 @@
+#these may not all be utilized long term this is semi placeholder for now
+# UAH Backend — Python Dependencies
+# ===================================
+# Core
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+
+# Database
+sqlalchemy==2.0.35
+psycopg2-binary==2.9.9
+
+# Scraping (future use — pre-installed so the image is ready)
+beautifulsoup4==4.12.3
+httpx==0.27.2
+
+# Utilities
+python-dotenv==1.0.1
