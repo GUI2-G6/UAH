@@ -24,8 +24,9 @@ class Settings:
     VERSION: str = os.getenv("VERSION", "0.1.0")
 
     # Database — constructed from individual env vars for clarity.
+    # POSTGRES_PASSWORD must be set via environment variable or .env file.
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "uah")
-    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "uah_dev_pass")
+    POSTGRES_PASSWORD: str = os.environ["POSTGRES_PASSWORD"] if "POSTGRES_PASSWORD" in os.environ else ""
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "uah_dev")
     POSTGRES_HOST: str = os.getenv("POSTGRES_HOST", "db")  # Docker service name
     POSTGRES_PORT: str = os.getenv("POSTGRES_PORT", "5432")
@@ -37,6 +38,11 @@ class Settings:
         Uses the 'db' Docker service name so the backend can reach
         Postgres over the shared Docker network without exposing ports.
         """
+        if not self.POSTGRES_PASSWORD:
+            raise ValueError(
+                "POSTGRES_PASSWORD environment variable is not set. "
+                "Set it in your .env file or docker-compose environment."
+            )
         return (
             f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
