@@ -5,6 +5,53 @@
 
 ---
 
+## Connecting to the Server
+
+The app runs on an Ubuntu 24.04 VM behind a Proxmox host. To access it:
+
+### 1. SSH into the VM
+
+```bash
+ssh uahdeploy@192.168.1.230
+```
+
+You'll be prompted for the `uahdeploy` user's password. After login you'll land in the home directory (`/home/uahdeploy`).
+
+### 2. Navigate to the project
+
+```bash
+cd /srv/uah
+```
+
+The `/srv/uah` directory is the root of the deployment and contains:
+
+```
+/srv/uah/
+├── environments/
+│   ├── dev/          # Dev environment (docker-compose, app code, volumes)
+│   └── prod/         # Production environment
+├── infrastructure/   # VPN, tunnel, and network configs
+└── shared/           # Shared resources
+```
+
+To get to the dev environment specifically:
+
+```bash
+cd /srv/uah/environments/dev
+```
+
+From here you can run `docker compose` commands, view logs, sync code, etc.
+
+### 3. Verify services are running
+
+```bash
+docker ps
+```
+
+You should see containers for the frontend, backend, database, and VPN.
+
+---
+
 ## Architecture
 
 ```
@@ -75,8 +122,32 @@
 
 ```bash
 # Build and start all services
-docker compose up -d --build
 ```
+
+---
+
+## Syncing Dev from GitHub
+
+A helper script (`sync-dev.sh`) is included in the `environments/dev` directory to pull the latest code from the `dev` branch and rebuild all services automatically.
+
+### Usage
+
+```bash
+# Make sure the script is executable (only needed once)
+chmod +x /srv/uah/environments/dev/sync-dev.sh
+
+# Run the sync
+./sync-dev.sh
+```
+
+### What it does
+
+1. Changes directory to `/srv/uah/environments/dev`
+2. Fetches the latest refs from `origin`
+3. Checks out the `dev` branch and pulls the latest changes
+4. Rebuilds and restarts all Docker services with `docker compose up -d --build`
+
+> **Note:** Run this script any time you want the dev server to reflect the latest pushed changes on the `dev` branch. It must be run from the server (SSH into Proxmox first).
 
 ---
 
