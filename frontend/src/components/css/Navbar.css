@@ -1,0 +1,24 @@
+.nav {
+  margin-top: 16px;
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+}
+
+.nav-link {
+  color: #8b949e;
+  text-decoration: none;
+  font-size: 0.9rem;
+  padding: 4px 0;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.nav-link:hover {
+  color: #e1e4e8;
+}
+
+.nav-link.router-link-active {
+  color: #58a6ff;
+  border-bottom-color: #58a6ff;
+}
