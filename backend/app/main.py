@@ -16,9 +16,21 @@ To run locally (outside Docker):
   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 """
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.api.routes import router as api_router
+from app.api.auth import router as auth_router
 from app.core.config import settings
+from app.db.base import Base
+from app.db.session import engine
+import app.models  # noqa: F401 — ensure all models are registered
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Create all tables on startup
+    Base.metadata.create_all(bind=engine)
+    yield
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -27,6 +39,7 @@ app = FastAPI(
     docs_url="/docs",       # Swagger UI
     redoc_url="/redoc",     # ReDoc alternative
     openapi_url="/openapi.json",
+    lifespan=lifespan,
 )
 
 # ---------------------------------------------------------------------------
@@ -37,6 +50,7 @@ app = FastAPI(
 # include them here with appropriate prefixes and tags.
 # ---------------------------------------------------------------------------
 app.include_router(api_router)
+app.include_router(auth_router)
 
 
 # ---------------------------------------------------------------------------

@@ -30,6 +30,11 @@ class Settings:
     POSTGRES_HOST: str = os.getenv("POSTGRES_HOST", "db")  # Docker service name
     POSTGRES_PORT: str = os.getenv("POSTGRES_PORT", "5432")
 
+    # Auth / JWT
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "change-me-in-production")
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+
     @property
     def DATABASE_URL(self) -> str:
         """
