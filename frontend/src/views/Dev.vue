@@ -1,6 +1,12 @@
 <template>
   <div id="uah-app">
-    <Burger />
+    <header>
+      <h1><router-link to="/" class="logo-link">UAH</router-link></h1>
+      <p class="subtitle">Unified Application Hub</p>
+      <Navbar />
+      <Burger />
+    </header>
+    <router-view />
   </div>
 </template>
 
@@ -17,5 +23,4 @@ export default {
 }
 </script>
 
-<style src="./App.css"></style>
-
+<style src="./css/Dev.css"></style>

@@ -1,0 +1,43 @@
+/* Burger Icon */
+#burger {
+    position:relative;
+}
+
+.burger-button {
+    width:30px;
+    cursor:pointer;
+    background:none;
+    border:none;
+    padding:0;
+}
+
+.burger-bar {
+    display:block;
+    width:100%;
+    height:4px;
+    background:black;
+    margin:4px 0;
+    /*border-radius:20%;*/
+    transition:0.3s;
+}
+
+/* Animation */
+/* Top line */
+#burger.active #b-bar1 {
+  transform: rotate(45deg) translate(5px, 5px);
+}
+
+/* Middle line */
+#burger.active #b-bar2 {
+  opacity: 0;
+}
+
+/* Bottom line */
+#burger.active #b-bar3 {
+  transform: rotate(-45deg) translate(7px, -6px);
+}
+
+/*Burger items*/
+.burger-item {
+
+}
