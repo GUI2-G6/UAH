@@ -43,19 +43,31 @@
         </button>
         <br>
         <!--Resumes-Button-->
-        <button width="50px" height="50px" class="burger-item" id="Resumes-button">
+        <button width="50px" height="50px" class="burger-item" id="resumes-button">
             <img src="../images/home.png" alt="Resumes" width="30px" height="28px">
+            <!--Import-Resume-Button-->
+            <button width="50px" height="50px" class="burger-item" id="import-resumes-button">
+                <img src="../images/home.png" alt="Import Resume" width="15px" height="14px">
+            </button>
+            <!--Applicant-Info-Button-->
+            <button width="50px" height="50px" class="burger-item" id="applicant-info-button">
+                <img src="../images/home.png" alt="Applicant info" width="15px" height="14px">
+            </button>
+            <!--Job-Application-Information-Button-->
+            <button width="50px" height="50px" class="burger-item" id="job-application-info-button">
+                <img src="../images/home.png" alt="Job Application info" width="15px" height="14px">
+            </button>
         </button>
         <br>
-            <!--Import-Resume-Button-->
-            <!--Applicant-Info-Button-->
-            <!--Job-Application-Information-Button-->
         <!--Settings-Button-->
         <button width="50px" height="50px" class="burger-item" id="Settings-button">
             <img src="../images/home.png" alt="Settings" width="30px" height="28px">
+            <!--Preferences-->
+            <button width="50px" height="50px" class="burger-item" id="preferences-button">
+                <img src="../images/home.png" alt="Preferences" width="15px" height="14px">
+            </button>
         </button>
         <br>
-            <!--Preferences-->
     </div>
 </template>
 
