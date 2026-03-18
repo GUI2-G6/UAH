@@ -1,12 +1,12 @@
 <template>
     <div id="burger" :class="{
         'active': active
-    }" @click = "toggleActive">
+    }">
         <!--Logo-->
         <img src="../images/logo.png" width="75px" height="75px" alt="logo">
         <br>
         <!--Burger-Button-->
-        <button type="button" class="burger-button " title="Menu">
+        <button type="button" class="burger-button " title="Menu" @click = "toggleActive">
             <span class="burger-bar" id="b-bar1"></span>
             <span class="burger-bar" id="b-bar2"></span>
             <span class="burger-bar" id="b-bar3"></span>
@@ -19,27 +19,27 @@
         <br>
         <!--Notification-Button-->
         <button width="50px" height="50px" class="burger-item" id="notification-button">
-            <img src="../images/home.png" alt="Notifications" width="30px" height="28px">
+            <img src="../images/placeholder/REMINDERICON_LIGHT.png" alt="Notifications" width="30px" height="28px">
         </button>
         <br>
         <!--Application-Button-->
         <button width="50px" height="50px" class="burger-item" id="application-button">
-            <img src="../images/home.png" alt="Applications" width="30px" height="28px">
+            <img src="../images/placeholder/APPLICATIONS_LIGHT.png" alt="Applications" width="30px" height="28px">
         </button>
         <br>
         <!--Analytics-Button-->
         <button width="50px" height="50px" class="burger-item" id="analytics-button">
-            <img src="../images/home.png" alt="Analytics" width="30px" height="28px">
+            <img src="../images/placeholder/ANALYTICS_LIGHT.png" alt="Analytics" width="30px" height="28px">
         </button>
         <br>
         <!--Timeline-Button-->
         <button width="50px" height="50px" class="burger-item" id="timeline-button">
-            <img src="../images/home.png" alt="Timeline" width="30px" height="28px">
+            <img src="../images/placeholder/TIMELINE_LIGHT.png" alt="Timeline" width="30px" height="28px">
         </button>
         <br>
         <!--Job-Board-Button-->
         <button width="50px" height="50px" class="burger-item" id="job-board-button">
-            <img src="../images/home.png" alt="Job Board" width="30px" height="28px">
+            <img src="../images/placeholder/JOBBOARD_LIGHT.png" alt="Job Board" width="30px" height="28px">
         </button>
         <br>
         <!--Resumes-Button-->
