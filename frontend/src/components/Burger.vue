@@ -2,26 +2,26 @@
     <div id="burger" :class="{
         'active': active
     }" @click = "toggleActive">
-        <img src="../images/logo.png" width="75px" height="75px">Logo</img> <!--Logo isn't working right now-->
+        <!--Logo-->
+        <img src="../images/logo.png" width="75px" height="75px" alt="logo"></img>
+        <!--Burger-Button-->
         <button type="button" class="burger-button " title="Menu">
             <span class="burger-bar" id="b-bar1"></span>
             <span class="burger-bar" id="b-bar2"></span>
             <span class="burger-bar" id="b-bar3"></span>
         </button>
-            <!--Logo-->
-            <!--Hamburger-Button-->
-            <!--Home-Button-->
-            <!--Notification-Button-->
-            <!--Application-Button-->
-            <!--Analytics-Button-->
-            <!--Timeline-Button-->
-            <!--Job-Board-Button-->
-            <!--Resumes-Button-->
-                <!--Import-Resume-Button-->
-                <!--Applicant-Info-Button-->
-                <!--Job-Application-Information-Button-->
-            <!--Settings-Button-->
-                <!--Preferences-->
+        <!--Home-Button-->
+        <!--Notification-Button-->
+        <!--Application-Button-->
+        <!--Analytics-Button-->
+        <!--Timeline-Button-->
+        <!--Job-Board-Button-->
+        <!--Resumes-Button-->
+            <!--Import-Resume-Button-->
+            <!--Applicant-Info-Button-->
+            <!--Job-Application-Information-Button-->
+        <!--Settings-Button-->
+            <!--Preferences-->
     </div>
 </template>
 
