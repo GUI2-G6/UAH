@@ -2,7 +2,7 @@
     <div id="burger" :class="{
         'active': active
     }" @click = "toggleActive">
-        <image src="../images/logo.png"></image> <!--Logo isn't working right now-->
+        <img src="../images/logo.png" width="75px" height="75px">Logo</img> <!--Logo isn't working right now-->
         <button type="button" class="burger-button " title="Menu">
             <span class="burger-bar" id="b-bar1"></span>
             <span class="burger-bar" id="b-bar2"></span>
