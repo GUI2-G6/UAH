@@ -1,0 +1,31 @@
+# ============================================================
+# UAH DEV — Local Database for Backend Testing
+# ============================================================
+#
+# Use this file to spin up just the PostgreSQL database for 
+# local testing of the FastAPI backend. It exposes port 5432
+# to your host machine so your locally running Python code
+# can connect to it.
+#
+# Usage:
+#   docker compose -f docker-compose.local.yml up -d
+#
+# To stop:
+#   docker compose -f docker-compose.local.yml down
+#
+# ============================================================
+
+services:
+  db-local:
+    image: postgres:15
+    container_name: uah-local-db
+    restart: unless-stopped
+    environment:
+      # These match the default values in app/core/config.py
+      POSTGRES_USER: uah
+      POSTGRES_PASSWORD: uah_dev_pass
+      POSTGRES_DB: uah_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./volumes/postgres-local:/var/lib/postgresql/data

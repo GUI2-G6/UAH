@@ -89,6 +89,14 @@ You should see containers for the frontend, backend, database, and VPN.
 
 ---
 
+## Local Development
+
+If you want to run the application components on your local machine for rapid testing (without touching the remote dev server infrastructure), we have a dedicated local setup!
+
+See the **[Backend Local Development Guide](./backend/README.md)** for instructions on spinning up the local PostgreSQL database using `docker-compose.local.yml`.
+
+---
+
 ## File Structure
 
 ```

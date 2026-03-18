@@ -149,7 +149,14 @@ async def diagnostics():
     # --- Network / DNS probe (can backend resolve service names?) ---
     import socket
 
-    dns_checks = {"db": settings.POSTGRES_HOST, "backend": "backend"}
+    # On the live dev server, "backend" resolves to the Docker container IP.
+    # Locally (running on host), "backend" won't resolve, which is expected.
+    # To prevent local tests from showing "degraded", we conditionally check
+    # the hostname if we're not inside Docker or if POSTGRES_HOST is localhost.
+    dns_checks = {"db": settings.POSTGRES_HOST}
+    if settings.POSTGRES_HOST != "localhost":
+        dns_checks["backend"] = "backend"
+
     network_results = {}
     for name, host in dns_checks.items():
         try:

@@ -27,6 +27,8 @@ npm install
 
 ### Compile and Hot-Reload for Development
 
+If you are running the backend locally for testing, the local Vite server (`npm run dev`) is configured to automatically proxy requests to `http://localhost:8000` to match how Nginx works in production. 
+
 ```sh
 npm run dev
 ```

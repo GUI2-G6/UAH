@@ -22,3 +22,26 @@ desktop.ini
 *.swo
 *~
 .vscode/
+
+# ----- Python / Backend -----
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.pytest_cache/
+*.sqlite3
+
+# ----- Node / Frontend -----
+node_modules/
+dist/
+dist-ssr/
+.npm/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ----- Temporary files -----
+test.txt
+
