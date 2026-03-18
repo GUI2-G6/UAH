@@ -44,7 +44,7 @@
         <br>
         <!--Resumes-Button-->
         <button width="50px" height="50px" class="burger-item" id="resumes-button">
-            <img src="../images/home.png" alt="Resumes" width="30px" height="28px">
+            <img src="../images/placeholder/RESUME_LIGHT.png" alt="Resumes" width="30px" height="28px">
             <!--Import-Resume-Button-->
             <button width="50px" height="50px" class="burger-item" id="import-resumes-button">
                 <img src="../images/home.png" alt="Import Resume" width="15px" height="14px">
@@ -61,7 +61,7 @@
         <br>
         <!--Settings-Button-->
         <button width="50px" height="50px" class="burger-item" id="Settings-button">
-            <img src="../images/home.png" alt="Settings" width="30px" height="28px">
+            <img src="../images/placeholder/SETTING_LIGHT.png" alt="Settings" width="30px" height="28px">
             <!--Preferences-->
             <button width="50px" height="50px" class="burger-item" id="preferences-button">
                 <img src="../images/home.png" alt="Preferences" width="15px" height="14px">
