@@ -12,7 +12,7 @@
             <span class="burger-bar" id="b-bar3"></span>
         </button>
         <br>
-        <div class="menu">
+        <div class="menu" v-if="active">
             <!--Home-Button-->
             <button width="50px" height="50px" class="burger-item" id="home-button">
                 <img src="../images/placeholder/HOMEICON_LIGHT.png" alt="Home" width="30px" height="28px">
