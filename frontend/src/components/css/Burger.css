@@ -20,7 +20,7 @@
   height:4px;
   background:black;
   margin:4px 0;
-  /*border-radius:20%;*/
+  border-radius:20%;
   transition:0.3s;
 }
 

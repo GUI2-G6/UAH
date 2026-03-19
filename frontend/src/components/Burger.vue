@@ -4,21 +4,19 @@
     }">
         <!--Logo-->
         <img src="../images/logo.png" width="75px" height="75px" alt="logo">
-        <br>
         <!--Burger-Button-->
         <button type="button" class="burger-button " title="Menu" @click = "toggleActive">
             <span class="burger-bar" id="b-bar1"></span>
             <span class="burger-bar" id="b-bar2"></span>
             <span class="burger-bar" id="b-bar3"></span>
         </button>
-        <br>
         <div class="menu" v-if="active">
             <!--Home-Button-->
-            <button width="50px" height="50px" class="burger-item" id="home-button">
+            <button width="50px" height="50px" class="burger-item" @click="goTo('/')">
                 <img src="../images/placeholder/HOMEICON_LIGHT.png" alt="Home" width="30px" height="28px">
             </button>
             <!--Notification-Button-->
-            <button width="50px" height="50px" class="burger-item" id="notification-button">
+            <button width="50px" height="50px" class="burger-item" @click="goTo('/notifications')">
                 <img src="../images/placeholder/REMINDERICON_LIGHT.png" alt="Notifications" width="30px" height="28px">
             </button>
             <!--Application-Button-->
@@ -40,30 +38,32 @@
             <!--Resumes-Button-->
             <button width="50px" height="50px" class="burger-item" id="resumes-button">
                 <img src="../images/placeholder/RESUME_LIGHT.png" alt="Resumes" width="30px" height="28px">
-                <!--Import-Resume-Button-->
-                <button width="50px" height="50px" class="burger-item" id="import-resumes-button">
-                    <img src="../images/home.png" alt="Import Resume" width="15px" height="14px">
-                </button>
-                <!--Applicant-Info-Button-->
-                <button width="50px" height="50px" class="burger-item" id="applicant-info-button">
-                    <img src="../images/home.png" alt="Applicant info" width="15px" height="14px">
-                </button>
-                <!--Job-Application-Information-Button-->
-                <button width="50px" height="50px" class="burger-item" id="job-application-info-button">
-                    <img src="../images/home.png" alt="Job Application info" width="15px" height="14px">
-                </button>
             </button>
             <!--Settings-Button-->
-            <button width="50px" height="50px" class="burger-item" id="Settings-button">
+            <button width="50px" height="50px" class="burger-item" id="settings-button">
                 <img src="../images/placeholder/SETTING_LIGHT.png" alt="Settings" width="30px" height="28px">
-                <!--Preferences-->
-                <button width="50px" height="50px" class="burger-item" id="preferences-button">
-                    <img src="../images/home.png" alt="Preferences" width="15px" height="14px">
-                </button>
             </button>
         </div>
     </div>
 </template>
+
+<!--
+<button width="50px" height="50px" class="burger-item" id="import-resumes-button">
+    <img src="../images/home.png" alt="Import Resume" width="15px" height="14px">
+</button>
+
+<button width="50px" height="50px" class="burger-item" id="applicant-info-button">
+    <img src="../images/home.png" alt="Applicant info" width="15px" height="14px">
+</button>
+
+<button width="50px" height="50px" class="burger-item" id="job-application-info-button">
+    <img src="../images/home.png" alt="Job Application info" width="15px" height="14px">
+</button>
+
+<button width="50px" height="50px" class="burger-item" id="preferences-button">
+    <img src="../images/home.png" alt="Preferences" width="15px" height="14px">
+</button>
+-->
 
 <!--Exports the HBMenu so other files can see and use it-->
 <script>
@@ -77,6 +77,10 @@
         methods: {
             toggleActive() {
                 this.active = !this.active;
+            },
+            goTo(route) {
+                this.$router.push(route);
+                this.active = false;
             }
         }
     }
