@@ -20,27 +20,27 @@
                 <img src="../images/placeholder/REMINDERICON_LIGHT.png" alt="Notifications" width="30px" height="28px">
             </button>
             <!--Application-Button-->
-            <button width="50px" height="50px" class="burger-item" id="application-button">
+            <button width="50px" height="50px" class="burger-item" @click="goTo('/application')">
                 <img src="../images/placeholder/APPLICATIONS_LIGHT.png" alt="Applications" width="30px" height="28px">
             </button>
             <!--Analytics-Button-->
-            <button width="50px" height="50px" class="burger-item" id="analytics-button">
+            <button width="50px" height="50px" class="burger-item" @click="goTo('/analytics')">
                 <img src="../images/placeholder/ANALYTICS_LIGHT.png" alt="Analytics" width="30px" height="28px">
             </button>
             <!--Timeline-Button-->
-            <button width="50px" height="50px" class="burger-item" id="timeline-button">
+            <button width="50px" height="50px" class="burger-item" @click="goTo('/timeline')">
                 <img src="../images/placeholder/TIMELINE_LIGHT.png" alt="Timeline" width="30px" height="28px">
             </button>
             <!--Job-Board-Button-->
-            <button width="50px" height="50px" class="burger-item" id="job-board-button">
+            <button width="50px" height="50px" class="burger-item" @click="goTo('/job-board')">
                 <img src="../images/placeholder/JOBBOARD_LIGHT.png" alt="Job Board" width="30px" height="28px">
             </button>
             <!--Resumes-Button-->
-            <button width="50px" height="50px" class="burger-item" id="resumes-button">
+            <button width="50px" height="50px" class="burger-item" @click="goTo('/resumes')">
                 <img src="../images/placeholder/RESUME_LIGHT.png" alt="Resumes" width="30px" height="28px">
             </button>
             <!--Settings-Button-->
-            <button width="50px" height="50px" class="burger-item" id="settings-button">
+            <button width="50px" height="50px" class="burger-item" @click="goTo('/settings')">
                 <img src="../images/placeholder/SETTING_LIGHT.png" alt="Settings" width="30px" height="28px">
             </button>
         </div>

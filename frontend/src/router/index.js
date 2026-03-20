@@ -1,11 +1,21 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import Home from '../views/Home.vue'
-import Notifications from '../views/Notifications.vue'
 
-const routes = [
-  { path: '/', name: 'home', component: Home },
-  { path: '/notifications', name: 'notifications', component: Notifications},
-]
+const modules = import.meta.glob('../views/*.vue')
+
+/* This grabs everything from and generates routes for everything in the views folder */
+const routes = Object.keys(modules).map((path) => {
+  const name = path
+    .split('/')
+    .pop()
+    .replace('.vue', '')
+
+  return {
+    path: name.toLowerCase() === 'home' ? '/' : `/${name.toLowerCase()}`,
+    name: name.toLowerCase(),
+    component: modules[path]
+  }
+})
+
 
 const router = createRouter({
   history: createWebHistory(),
