@@ -11,8 +11,8 @@
 </template>
 
 <script>
-import Navbar from "./components/Navbar.vue"
-import Burger from "./components/Burger.vue";
+import Navbar from "../components/Navbar.vue"
+import Burger from "../components/Burger.vue";
 
 export default {
   name: "App",
