@@ -2,6 +2,9 @@
 #burger {
   position: relative;
   display: inline-block;
+  border-right: 2px solid black;
+  padding:20px;
+  height: 100vh; 
 }
 
 .burger-button {

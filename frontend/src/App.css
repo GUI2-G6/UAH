@@ -7,9 +7,7 @@ body {
 }
 
 #uah-app {
-  max-width: 900px;
-  margin: 20px;
-  padding: 0 20px;
+  max-width: 100%;
   display:flex;
 }
 
@@ -68,3 +66,8 @@ h1 {
 .loading { color: #d29922; }
 .error   { color: #f85149; }
 .ok      { color: #3fb950; }
+
+#current-page {
+  flex: 1;
+  overflow: auto;
+}

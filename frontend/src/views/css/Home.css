@@ -1,0 +1,17 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.greeting {
+    border-bottom: solid 2px rgba(246, 247, 249);
+    padding:20px;
+}
+
+.dashboard {
+    background-color: rgba(248, 250, 252);
+    flex: 1;
+    padding:20px;
+    grid-template-columns: repeat(3, 1fr);
+}
