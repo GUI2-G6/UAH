@@ -41,10 +41,86 @@ How DB session will be injected later:
       async def list_items(db: Session = Depends(get_db)):
           return db.query(Item).all()
 """
-
-from fastapi import APIRouter
+import os, sercrets, httpx
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import RedirectResponse
+from app.models.user import User
 
 router = APIRouter()
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SERCRET = os.getenv("GOOGLE_CLIENT_SECRET")
+GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
+
+@router.get("auth/google")
+async def google_oauth(request: Request):
+    # Generates a random  16 character state string to prevent attacks
+    state = secrets.token_urlsafe(16)
+    # Stores the state in the session for later verification when the user is redirected back
+    request.session["oauth_state"] = state
+    
+    # Holds all the parameters required for the Google OAuth including client ID, redirect URI, response type, scope, and the generated state
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state,
+    }
+    
+    # Creates a query string from the parameters and redirects the user to Google's OAuth 2.0 authorization endpoint with the query string attached
+    query = "&".join([f"{key}={value}" for key, value in params.items()])
+    # Then sends the user's browser to the Google OAuth consent screen s they can log in and authorize the application to access their Google account information. 
+    # After the user completes the authorization process, Google will redirect them back to the specified redirect URI with an authorization code 
+    #                                                                                                   that can be exchanged for an access token.
+    return RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{query}")
+    
+    
+    
+@router.get("/auth/google/callback")
+async def google_oauth_callback(request: Request, code: str, state: str):
+    # Verifies if the parameter "state" matches the one stored in the session to prevent any attacks. 
+    # If they don't match, it raises an HTTP 400 error.
+    if state != request.session.get("oauth_state"):
+        raise HTTPException(status_code=400, detail="Invalid state parameter")    
+    
+    # Opens an asynchronous HTTP client session using httpx to exchange the authorization code for an access token 
+    # by making a POST request to Google's token endpoint.
+    async with httpx.AsyncClient() as client:
+        
+        # Sends a POST request to Google's token endpoint with the required parameters including the authorization code, client ID, client secret, 
+        # redirect URI, and grant type.
+        token_response = await client.post("https://oauth2.googleapis.com/token", 
+            data={
+                "code": code,
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SERCRET,
+                "redirect_uri": GOOGLE_REDIRECT_URI,
+                "grant_type": "authorization_code",
+            },
+        )
+        # Converts the response to JSON and extracts the access token from the response data. 
+        # The access token can then be used to make authenticated requests to Google's APIs on behalf of the user.
+        token_response_data = token_response.json()
+        access_token = token_response_data.get("access_token")
+        if not access_token:
+            raise HTTPException(status_code=400, detail="Failed to obtain access token")
+        
+        # Gets the user's profile information by making a GET request to Google's userinfo endpoint with the access token included in the Authorization header.
+        profile_response = await client.get("https://www.googleapis.com/oauth2/v3/userinfo", headers={"Authorization": f"Bearer {access_token}"})
+        profile_data = profile_response.json()
+        
+        # Extracts the user's Google ID, email, name, and profile picture URL from the profile data returned by Google.
+        google_id = profile_data['sub']
+        email = profile_data["email"]
+        name = profile_data["name"]
+        picture = profile_data.get("picture")
+
+        
+        user = await User.get_or_create_google_user(google_id=google_id, email=email, full_name=name, picture_url=picture)
+
+        access_token = user.create_access_token({"sub": str(user.id)})
+        
+        return {"access_token": access_token, "token_type": "bearer:"}
 
 
 @router.get("/api/status", tags=["status"])
