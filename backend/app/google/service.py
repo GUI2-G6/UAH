@@ -10,7 +10,7 @@ class GoogleAuthService:
         email: str,
         full_name: str,
         picture_url: str,
-    ):
+    )   -> User:
     
         user = db.query(User).filter(User.email == email).first()
         if user: 

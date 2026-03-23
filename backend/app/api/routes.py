@@ -79,7 +79,7 @@ async def google_oauth(request: Request):
     
     
     
-@router.get("/auth/google/callback")
+@router.get("/auth/google/callback", response_model=TokenResponse)
 async def google_oauth_callback(request: Request, code: str, state: str, db: Session = Depends(get_db)):
     # Verifies if the parameter "state" matches the one stored in the session to prevent any attacks. 
     # If they don't match, it raises an HTTP 400 error.
