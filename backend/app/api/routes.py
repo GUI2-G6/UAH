@@ -51,7 +51,7 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SERCRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
 
-@router.get("auth/google")
+@router.get("/auth/google")
 async def google_oauth(request: Request):
     # Generates a random  16 character state string to prevent attacks
     state = secrets.token_urlsafe(16)
