@@ -42,9 +42,12 @@ How DB session will be injected later:
           return db.query(Item).all()
 """
 import os, secrets, httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import RedirectResponse
+from sqlalchemy.orm import Session
 from app.models.user import User
+from app.db.session import get_db
+from app.google.service import GoogleAuthService
 
 router = APIRouter()
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
@@ -77,7 +80,7 @@ async def google_oauth(request: Request):
     
     
 @router.get("/auth/google/callback")
-async def google_oauth_callback(request: Request, code: str, state: str):
+async def google_oauth_callback(request: Request, code: str, state: str, db: Session = Depends(get_db)):
     # Verifies if the parameter "state" matches the one stored in the session to prevent any attacks. 
     # If they don't match, it raises an HTTP 400 error.
     if state != request.session.get("oauth_state"):
@@ -116,11 +119,12 @@ async def google_oauth_callback(request: Request, code: str, state: str):
         picture = profile_data.get("picture")
 
         
-        user = await User.get_or_create_google_user(google_id=google_id, email=email, full_name=name, picture_url=picture)
+        user = GoogleAuthService.get_or_create_user(db=db, google_id=google_id, email=email, full_name=name, picture_url=picture)
 
-        access_token = user.create_access_token({"sub": str(user.id)})
+        from app.core.security import create_access_token
+        access_token = create_access_token(data={"sub": str(user.id)})
         
-        return {"access_token": access_token, "token_type": "bearer:"}
+        return {"access_token": access_token, "token_type": "bearer"}
 
 
 @router.get("/api/status", tags=["status"])
