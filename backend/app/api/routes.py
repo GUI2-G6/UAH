@@ -49,7 +49,7 @@ from sqlalchemy.orm import Session
 from app.models.user import User
 from app.db.session import get_db
 from app.google.service import GoogleAuthService
-from backend.app.schemas.user import TokenResponse, UserResponse
+from app.schemas.user import TokenResponse, UserResponse
 
 
 router = APIRouter()
