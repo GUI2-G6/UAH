@@ -21,7 +21,7 @@ class GoogleAuthService:
             user = User(
                 google_id=google_id,
                 email=email,
-                username=email.split("@")[0],  # Simple username from email
+                username=email.split("@")[0],
                 full_name=full_name,
                 picture_url=picture_url
             )

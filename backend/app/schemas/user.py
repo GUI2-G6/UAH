@@ -17,9 +17,10 @@ class UserLogin(BaseModel):
 class UserResponse(BaseModel):
     id: int
     email: str
-    username: str
+    username: str | None
     first_name: str | None
     last_name: str | None
+    avatar_url: str | None
     is_active: bool
 
     class Config:

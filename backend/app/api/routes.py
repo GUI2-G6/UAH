@@ -41,7 +41,7 @@ How DB session will be injected later:
       async def list_items(db: Session = Depends(get_db)):
           return db.query(Item).all()
 """
-import os, sercrets, httpx
+import os, secrets, httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from app.models.user import User
