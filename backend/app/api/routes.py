@@ -48,6 +48,8 @@ from sqlalchemy.orm import Session
 from app.models.user import User
 from app.db.session import get_db
 from app.google.service import GoogleAuthService
+from app.schemas.user import TokenResponse, UserResponse
+from app.core.security import create_access_token
 
 router = APIRouter()
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
@@ -79,7 +81,7 @@ async def google_oauth(request: Request):
     
     
     
-@router.get("/auth/google/callback")
+@router.get("/auth/google/callback", response_model=TokenResponse)
 async def google_oauth_callback(request: Request, code: str, state: str, db: Session = Depends(get_db)):
     # Verifies if the parameter "state" matches the one stored in the session to prevent any attacks. 
     # If they don't match, it raises an HTTP 400 error.
@@ -121,10 +123,9 @@ async def google_oauth_callback(request: Request, code: str, state: str, db: Ses
         
         user = GoogleAuthService.get_or_create_user(db=db, google_id=google_id, email=email, full_name=name, picture_url=picture)
 
-        from app.core.security import create_access_token
         access_token = create_access_token(data={"sub": str(user.id)})
         
-        return {"access_token": access_token, "token_type": "bearer"}
+        return TokenResponse(access_token=access_token, user=UserResponse.model_validate(user))
 
 
 @router.get("/api/status", tags=["status"])
