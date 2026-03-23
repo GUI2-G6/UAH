@@ -1,10 +1,12 @@
 <template>
   <div id="uah-app">
     <Burger />
-    <div id="current-page">
-      <router-view />
+    <div id="main-content">
+      <div id="current-page">
+        <router-view />
+      </div>
+      <Footer />
     </div>
-    <Footer />
   </div>
 </template>
 
