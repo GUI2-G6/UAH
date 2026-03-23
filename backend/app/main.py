@@ -55,21 +55,21 @@ app.add_middleware(
 # To add new route groups in the future, create additional routers and
 # include them here with appropriate prefixes and tags.
 # ---------------------------------------------------------------------------
-app.include_router(api_router)
+app.include_router(api_router, prefix="/api")
 app.include_router(auth_router)
 
 
 # ---------------------------------------------------------------------------
-# Root and health endpoints (outside /api prefix)
+# Root and health endpoints (prefixed with /api to match Nginx proxy block)
 # ---------------------------------------------------------------------------
 
-@app.get("/", tags=["root"])
+@app.get("/api/", tags=["root"])
 async def root():
     """Root endpoint — quick sanity check that the service is running."""
     return {"service": settings.PROJECT_NAME, "version": settings.VERSION}
 
 
-@app.get("/health", tags=["health"])
+@app.get("/api/health", tags=["health"])
 async def health():
     """
     Health check endpoint.
