@@ -41,6 +41,7 @@ How DB session will be injected later:
       async def list_items(db: Session = Depends(get_db)):
           return db.query(Item).all()
 """
+from contextvars import Token
 import os, secrets, httpx
 from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import RedirectResponse
@@ -48,6 +49,8 @@ from sqlalchemy.orm import Session
 from app.models.user import User
 from app.db.session import get_db
 from app.google.service import GoogleAuthService
+from backend.app.schemas.user import TokenResponse, UserResponse
+
 
 router = APIRouter()
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
@@ -79,7 +82,7 @@ async def google_oauth(request: Request):
     
     
     
-@router.get("/auth/google/callback")
+@router.get("/auth/google/callback", response_model=TokenResponse)
 async def google_oauth_callback(request: Request, code: str, state: str, db: Session = Depends(get_db)):
     # Verifies if the parameter "state" matches the one stored in the session to prevent any attacks. 
     # If they don't match, it raises an HTTP 400 error.
@@ -124,10 +127,11 @@ async def google_oauth_callback(request: Request, code: str, state: str, db: Ses
         from app.core.security import create_access_token
         access_token = create_access_token(data={"sub": str(user.id)})
         
-        return {"access_token": access_token, "token_type": "bearer"}
+        return TokenResponse(access_token=Token, user=UserResponse.model_validate(user),
+    )
 
 
-@router.get("/status", tags=["status"])
+@router.get("/api/status", tags=["status"])
 async def api_status():
     """
     Status endpoint used by the frontend to verify backend connectivity.
@@ -142,7 +146,7 @@ async def api_status():
     }
 
 
-@router.get("/diagnostics", tags=["status"])
+@router.get("/api/diagnostics", tags=["status"])
 async def diagnostics():
     """
     Comprehensive diagnostics endpoint for the status page.
