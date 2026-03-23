@@ -15,7 +15,8 @@ Key concepts:
 To run locally (outside Docker):
   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 """
-
+from starlette.middleware.sessions import SessionMiddleware
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.api.routes import router as api_router
@@ -40,6 +41,11 @@ app = FastAPI(
     redoc_url="/redoc",     # ReDoc alternative
     openapi_url="/openapi.json",
     lifespan=lifespan,
+)
+
+app.add_middleware(
+    SessionMiddleware, 
+    secret_key=os.getenv("SESSION_SECRET", "a-very-secret-random-key")
 )
 
 # ---------------------------------------------------------------------------
