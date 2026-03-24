@@ -31,3 +31,9 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
+
+class SaveJobRequest(BaseModel):
+    job_id: int
+    name: str
+    company: str
+    url: str

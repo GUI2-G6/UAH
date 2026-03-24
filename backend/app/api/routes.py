@@ -43,19 +43,91 @@ How DB session will be injected later:
 """
 from contextvars import Token
 import os, secrets, httpx
-from fastapi import APIRouter, HTTPException, Request, Depends
+import httpx
+from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from app.models.user import User
 from app.db.session import get_db
 from app.google.service import GoogleAuthService
 from app.schemas.user import TokenResponse, UserResponse
+from typing import Optional, List
 
 
 router = APIRouter()
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SERCRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
+MUSE_API_KEY = os.getenv("MUSE_API_KEY")
+
+@router.get("/jobs/search")
+async def search_jobs(
+    # Creates an endpoint for each job search query with optional parameters 
+    page: int = Query(1, ge=1, description="Page number for pagination"),
+    catogory: Optional[List[str]] = Query(None, description="e.g., 'Software Engineer', 'Data Science'"),
+    level: Optional[List[str]] = Query(None, description="e.g., 'Internship', 'Entry', 'Senior'"),
+    location: Optional[List[str]] = Query(None, description="e.g., 'New York', 'Remote'"),
+    company: Optional[List[str]] = Query(None, description="e.g., 'Google', 'Microsoft'"),
+):
+    # Gets the list of jobs from The Muse API based on the provided query parameters 
+    url = "https://www.themuse.com/api/public/jobs"    
+    # Builds the parameters for the API request based on the query parameters provided by the user.
+    params = [("page", page)]
+    
+    if MUSE_API_KEY:
+        params.append({"api_key": MUSE_API_KEY})
+    
+    # If the user provided any of the optional parameters (category, level, location, company), 
+    # It adds them to the params dictionary in the format expected by The Muse API.
+    if catogory:
+        for cat in catogory:
+            params.append("category", []).append(cat)
+    if level:
+        for lvl in level:
+            params.append("level", []).append(lvl)
+    if location:
+        for loc in location:
+            params.append("location", []).append(loc)
+    if company:
+        for comp in company:
+            params.append("company", []).append(comp)
+    
+    # Makes an GET request to The Muse API using httpx with the constructed parameters. 
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, params=params)
+        # If the response status code is not 200, it raises an HTTP 500 error indicating that the job search failed. 
+        # If the request is successful, it processes the response data to extract relevant job information and returns it in a structured format.
+        if response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Failed to fetch jobs from The Muse API")
+    
+    # Turns the raw data from The Muse API into a json format that the frontend can easily use.
+    data = response.json()
+    
+    # Exracts the list of jobs from the response data
+    # If the "results" key is not present, it defaults to an empty list.
+    jobs = data.get("results", [])
+    
+    # Iterates over all the list of jobs and constructs a new list of job data with only the relevant information needed by the frontend.
+    job_data = []
+    for job in jobs:
+        job_data.append({
+            "id": job.get("id"),
+            "name": job.get("name"),
+            "company": job.get("company", {}).get("name"),
+            "locations": [loc.get("name") for loc in job.get("locations", [])],
+            "levels": [lvl.get("name") for lvl in job.get("levels", [])],
+            "categories": [cat.get("name") for cat in job.get("categories", [])],
+            "publication_date": job.get("publication_date"),
+            "job_url": job.get("refs", {}).get("landing_page"),
+        })
+    # Returns the structured JSON response containing the current page number, total pages, total jobs, and the list of job data extracted from The Muse API.
+    return {
+        "page": data.get("page"),
+        "total_pages": data.get("page_count"),
+        "total_jobs": data.get("total"),
+        "jobs": job_data,
+    }
+        
 
 @router.get("/auth/google")
 async def google_oauth(request: Request):
@@ -72,7 +144,7 @@ async def google_oauth(request: Request):
         "scope": "openid email profile",
         "state": state,
     }
-    
+                                
     # Creates a query string from the parameters and redirects the user to Google's OAuth 2.0 authorization endpoint with the query string attached
     query = "&".join([f"{key}={value}" for key, value in params.items()])
     # Then sends the user's browser to the Google OAuth consent screen s they can log in and authorize the application to access their Google account information. 
