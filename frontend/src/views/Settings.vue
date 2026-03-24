@@ -13,6 +13,9 @@
                         Signed in as: <strong>{{ currentUser.username || 'User' }}</strong>
                         <span v-if="currentUser.email">({{ currentUser.email }})</span>
                     </p>
+                    <p v-if="currentUser && currentUser.email" class="email-status" :class="{ 'is-verified': !!currentUser.email_verified }">
+                        Email status: <strong>{{ currentUser.email_verified ? 'Verified' : 'Not verified' }}</strong>
+                    </p>
                     <p>First Name</p>
                     <input type="text" v-model="firstName">
                     <p>Last Name</p>
@@ -55,7 +58,8 @@
                 <div class="settings-group">
                     <h4>Change Username</h4>
                     <input type="text" v-model="changeUsernameNew" placeholder="New username">
-                    <input type="password" v-model="changeUsernamePassword" placeholder="Password">
+                    <input type="text" v-model="changeUsernameNewConfirm" placeholder="Confirm new username">
+                    <SecretInput v-model="changeUsernamePassword" placeholder="Password" autocomplete="current-password" :disabled="working" />
                     <button @click="changeUsername" :disabled="working" :class="buttonStatusClass('changeUsername')">Update username</button>
                     <div v-if="actionStatus.changeUsername.message" :class="feedbackClass('changeUsername')">
                         {{ actionStatus.changeUsername.message }}
@@ -65,7 +69,8 @@
                 <div class="settings-group">
                     <h4>Change Email</h4>
                     <input type="email" v-model="changeEmailNew" placeholder="New email">
-                    <input type="password" v-model="changeEmailPassword" placeholder="Password">
+                    <input type="email" v-model="changeEmailNewConfirm" placeholder="Confirm new email">
+                    <SecretInput v-model="changeEmailPassword" placeholder="Password" autocomplete="current-password" :disabled="working" />
                     <button @click="changeEmail" :disabled="working" :class="buttonStatusClass('changeEmail')">Update email</button>
                     <div v-if="actionStatus.changeEmail.message" :class="feedbackClass('changeEmail')">
                         {{ actionStatus.changeEmail.message }}
@@ -74,8 +79,9 @@
 
                 <div class="settings-group">
                     <h4>Change Password</h4>
-                    <input type="password" v-model="currentPassword" placeholder="Current password">
-                    <input type="password" v-model="newPassword" placeholder="New password">
+                    <SecretInput v-model="currentPassword" placeholder="Current password" autocomplete="current-password" :disabled="working" />
+                    <SecretInput v-model="newPassword" placeholder="New password" autocomplete="new-password" :disabled="working" />
+                    <SecretInput v-model="confirmNewPassword" placeholder="Confirm new password" autocomplete="new-password" :disabled="working" />
                     <button @click="changePassword" :disabled="working" :class="buttonStatusClass('changePassword')">Update password</button>
                     <div v-if="actionStatus.changePassword.message" :class="feedbackClass('changePassword')">
                         {{ actionStatus.changePassword.message }}
@@ -88,7 +94,7 @@
                     <div v-if="actionStatus.sendVerification.message" :class="feedbackClass('sendVerification')">
                         {{ actionStatus.sendVerification.message }}
                     </div>
-                    <input type="text" v-model="verifyToken" placeholder="Verification token">
+                    <SecretInput v-model="verifyToken" placeholder="Verification token" autocomplete="off" :disabled="working" />
                     <button @click="verifyEmail" :disabled="working" :class="buttonStatusClass('verifyEmail')">Verify email</button>
                     <div v-if="actionStatus.verifyEmail.message" :class="feedbackClass('verifyEmail')">
                         {{ actionStatus.verifyEmail.message }}
@@ -97,7 +103,7 @@
 
                 <div class="settings-group">
                     <h4>Delete Account</h4>
-                    <button class="danger" @click="deleteAccount" :disabled="working" :class="buttonStatusClass('deleteAccount')">Delete account</button>
+                    <button class="danger" @click="openDeleteConfirm" :disabled="working" :class="buttonStatusClass('deleteAccount')">Delete account</button>
                     <div v-if="actionStatus.deleteAccount.message" :class="feedbackClass('deleteAccount')">
                         {{ actionStatus.deleteAccount.message }}
                     </div>
@@ -122,18 +128,33 @@
             </Card>
 
         </div>
+
+        <ConfirmModal
+            v-if="confirmDeleteOpen"
+            title="Delete account"
+            message="Are you sure you want to delete your account? This cannot be undone."
+            cancelText="No, go back"
+            confirmText="Yes, delete my account"
+            :busy="working"
+            @cancel="confirmDeleteOpen = false"
+            @confirm="confirmDeleteAccount"
+        />
     </div>
 
 </template>
 
 <script>
 import Card from "../components/Card.vue";
+import ConfirmModal from "../components/ConfirmModal.vue";
+import SecretInput from "../components/SecretInput.vue";
 import { authedFetch, clearAuth, setCurrentUser } from "../lib/auth.js";
 
 export default {
   name: "Settings",
   components: {
-    Card
+        Card,
+        ConfirmModal,
+        SecretInput,
     },
     data() {
         return {
@@ -154,15 +175,20 @@ export default {
             _actionTimers: {},
 
             changeUsernameNew: '',
+            changeUsernameNewConfirm: '',
             changeUsernamePassword: '',
 
             changeEmailNew: '',
+            changeEmailNewConfirm: '',
             changeEmailPassword: '',
 
             currentPassword: '',
             newPassword: '',
+            confirmNewPassword: '',
 
             verifyToken: '',
+
+            confirmDeleteOpen: false,
         }
     },
     computed: {},
@@ -276,6 +302,14 @@ export default {
         },
 
         async changePassword() {
+            if (!this.newPassword || !this.confirmNewPassword) {
+                this.setActionStatus('changePassword', 'error', 'Please enter and confirm your new password')
+                return
+            }
+            if (this.newPassword !== this.confirmNewPassword) {
+                this.setActionStatus('changePassword', 'error', 'New passwords do not match')
+                return
+            }
             this.working = true
             this.setActionStatus('changePassword', 'working', 'Updating…')
             try {
@@ -292,6 +326,7 @@ export default {
                 this.setActionStatus('changePassword', 'success', data?.message || 'Password changed successfully')
                 this.currentPassword = ''
                 this.newPassword = ''
+                this.confirmNewPassword = ''
             } catch (e) {
                 this.setActionStatus('changePassword', 'error', this.formatFailure('Update password', e))
             } finally {
@@ -300,6 +335,16 @@ export default {
         },
 
         async changeEmail() {
+            const newEmail = (this.changeEmailNew || '').trim()
+            const newEmailConfirm = (this.changeEmailNewConfirm || '').trim()
+            if (!newEmail || !newEmailConfirm) {
+                this.setActionStatus('changeEmail', 'error', 'Please enter and confirm your new email')
+                return
+            }
+            if (newEmail.toLowerCase() !== newEmailConfirm.toLowerCase()) {
+                this.setActionStatus('changeEmail', 'error', 'Emails do not match')
+                return
+            }
             this.working = true
             this.setActionStatus('changeEmail', 'working', 'Updating…')
             try {
@@ -307,7 +352,7 @@ export default {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        new_email: this.changeEmailNew,
+                        new_email: newEmail,
                         password: this.changeEmailPassword,
                     }),
                 })
@@ -315,6 +360,18 @@ export default {
                 if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
                 this.setActionStatus('changeEmail', 'success', data?.message || 'Email updated')
                 this.changeEmailPassword = ''
+                this.changeEmailNewConfirm = ''
+
+                // Ensure client reflects reverification immediately.
+                if (this.currentUser) {
+                    const updated = {
+                        ...this.currentUser,
+                        email: newEmail,
+                        email_verified: false,
+                    }
+                    this.currentUser = updated
+                    setCurrentUser(updated)
+                }
 
                 await this.loadUser()
             } catch (e) {
@@ -325,6 +382,16 @@ export default {
         },
 
         async changeUsername() {
+            const newUsername = (this.changeUsernameNew || '').trim()
+            const newUsernameConfirm = (this.changeUsernameNewConfirm || '').trim()
+            if (!newUsername || !newUsernameConfirm) {
+                this.setActionStatus('changeUsername', 'error', 'Please enter and confirm your new username')
+                return
+            }
+            if (newUsername !== newUsernameConfirm) {
+                this.setActionStatus('changeUsername', 'error', 'Usernames do not match')
+                return
+            }
             this.working = true
             this.setActionStatus('changeUsername', 'working', 'Updating…')
             try {
@@ -332,7 +399,7 @@ export default {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        new_username: this.changeUsernameNew,
+                        new_username: newUsername,
                         password: this.changeUsernamePassword,
                     }),
                 })
@@ -344,6 +411,7 @@ export default {
                 setCurrentUser(data)
                 this.setActionStatus('changeUsername', 'success', 'Username updated')
                 this.changeUsernamePassword = ''
+                this.changeUsernameNewConfirm = ''
             } catch (e) {
                 this.setActionStatus('changeUsername', 'error', this.formatFailure('Update username', e))
             } finally {
@@ -389,7 +457,12 @@ export default {
             }
         },
 
-        async deleteAccount() {
+        openDeleteConfirm() {
+            this.confirmDeleteOpen = true
+        },
+
+        async confirmDeleteAccount() {
+            this.confirmDeleteOpen = false
             this.working = true
             this.setActionStatus('deleteAccount', 'working', 'Deleting…')
             try {

@@ -1,20 +1,25 @@
 <template>
     <div class="page">
-        <h1>Signup</h1>
-            <p>Track every application in one place</p>
-            <input type="email" v-model="email" placeholder="Enter Your Email to Begin account" />
-            <button @click="singup">Submit</button>
-            <div class="signup-row">
-            <span>Already have an account? </span>
-            <a @click.prevent="login" href="#">Return to Login Page</a>
-            </div>
+        <div class="auth-card">
+            <h1>Signup</h1>
+            <p class="subtitle">Redirecting to account creation…</p>
+            <button class="submit-btn" @click="goToRegister">Go to Create Account</button>
+        </div>
         </div>
 </template>
 
 
 <script>
     export default{
-        name: "Signup"
+        name: "Signup",
+        mounted() {
+            this.$router.replace('/register')
+        },
+        methods: {
+            goToRegister() {
+                this.$router.push('/register')
+            },
+        },
     }
 </script>
 

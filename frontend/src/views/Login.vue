@@ -11,12 +11,12 @@
                 autocomplete="username"
                 placeholder="Username"
             />
-            <input
-                class="email-input"
-                type="password"
+            <SecretInput
                 v-model="password"
+                inputClass="email-input"
                 autocomplete="current-password"
                 placeholder="Password"
+                :disabled="loading"
             />
 
             <button class="submit-btn" @click="login" :disabled="loading">
@@ -36,12 +36,12 @@
 
             <div class="bypass-section">
                 <span class="bypass-title">Alpha override</span>
-                <input
-                    class="email-input"
-                    type="password"
+                <SecretInput
                     v-model="bypassPassphrase"
+                    inputClass="email-input"
                     autocomplete="off"
                     placeholder="Admin bypass passphrase"
+                    :disabled="loading"
                 />
                 <button class="submit-btn" @click="bypass" :disabled="loading">
                     {{ loading ? 'Checking…' : 'Bypass login' }}
@@ -53,8 +53,13 @@
 
 
 <script>
+    import SecretInput from "../components/SecretInput.vue";
+
     export default{
         name: "Login",
+        components: {
+            SecretInput,
+        },
         data() {
             return {
                 username: "",

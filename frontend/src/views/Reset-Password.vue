@@ -4,20 +4,28 @@
       <h1>Reset password</h1>
       <p class="subtitle">Paste your reset token and choose a new password</p>
 
-      <input
-        class="email-input"
-        type="text"
+      <SecretInput
         v-model="token"
+        inputClass="email-input"
         autocomplete="off"
         placeholder="Reset token"
+        :disabled="loading"
       />
 
-      <input
-        class="email-input"
-        type="password"
+      <SecretInput
         v-model="newPassword"
+        inputClass="email-input"
         autocomplete="new-password"
         placeholder="New password"
+        :disabled="loading"
+      />
+
+      <SecretInput
+        v-model="confirmNewPassword"
+        inputClass="email-input"
+        autocomplete="new-password"
+        placeholder="Confirm new password"
+        :disabled="loading"
       />
 
       <button
@@ -42,12 +50,18 @@
 </template>
 
 <script>
+import SecretInput from '../components/SecretInput.vue'
+
 export default {
   name: 'ResetPassword',
+  components: {
+    SecretInput,
+  },
   data() {
     return {
       token: '',
       newPassword: '',
+      confirmNewPassword: '',
       loading: false,
       error: null,
       message: null,
@@ -59,6 +73,13 @@ export default {
       this.error = null
       this.message = null
       try {
+        if (!this.newPassword || !this.confirmNewPassword) {
+          throw new Error('Please enter and confirm your new password')
+        }
+        if (this.newPassword !== this.confirmNewPassword) {
+          throw new Error('Passwords do not match')
+        }
+
         const res = await fetch('/api/account/reset-password', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
