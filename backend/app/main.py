@@ -22,6 +22,7 @@ import logging
 from fastapi import FastAPI
 from app.api.routes import router as api_router
 from app.api.auth import router as auth_router
+from app.api.account import router as account_router
 from app.core.config import settings
 from app.db.base import Base
 from app.db.session import engine
@@ -63,6 +64,7 @@ def _ensure_users_table_columns() -> None:
             "google_id": "VARCHAR(255)",
             "full_name": "VARCHAR(255)",
             "picture_url": "VARCHAR(255)",
+            "email_verified": "BOOLEAN DEFAULT FALSE",
             "is_active": "BOOLEAN DEFAULT TRUE",
             "created_at": "TIMESTAMPTZ DEFAULT now()",
             "updated_at": "TIMESTAMPTZ DEFAULT now()",
@@ -122,6 +124,7 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 app.include_router(api_router, prefix="/api")
 app.include_router(auth_router)
+app.include_router(account_router)
 
 
 # ---------------------------------------------------------------------------
