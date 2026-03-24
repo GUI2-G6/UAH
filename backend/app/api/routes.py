@@ -60,7 +60,7 @@ GOOGLE_CLIENT_SERCRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
 MUSE_API_KEY = os.getenv("MUSE_API_KEY")
 
-@router.get("/jobs/search")
+@router.get("/jobs/search", tags=["jobs"])
 async def search_jobs(
     # Creates an endpoint for each job search query with optional parameters 
     page: int = Query(1, ge=1, description="Page number for pagination"),
@@ -128,7 +128,7 @@ async def search_jobs(
         "jobs": job_data,
     }
 
-@router.post("/jobs/save")
+@router.post("/jobs/save", tags=["jobs"])
 async def save_job(
     # Creates an endpoint for saving a job to the user's profile with the required job data and a database session dependency.
     job_data: SaveJobRequest,
@@ -160,7 +160,7 @@ async def save_job(
     return {"message": f"Successfully saved  {job_data.name} at {job_data.company}!"}
 
 
-@router.get("/auth/google")
+@router.get("/auth/google", tags=["Google OAuth"])
 async def google_oauth(request: Request):
     # Generates a random  16 character state string to prevent attacks
     state = secrets.token_urlsafe(16)
@@ -185,7 +185,7 @@ async def google_oauth(request: Request):
     
     
     
-@router.get("/auth/google/callback", response_model=TokenResponse)
+@router.get("/auth/google/callback", response_model=TokenResponse, tags=["Google OAuth"])
 async def google_oauth_callback(request: Request, code: str, state: str, db: Session = Depends(get_db)):
     # Verifies if the parameter "state" matches the one stored in the session to prevent any attacks. 
     # If they don't match, it raises an HTTP 400 error.
