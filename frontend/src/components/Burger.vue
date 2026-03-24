@@ -45,14 +45,16 @@
             </button>
         </div>
 
-        <div class="user-summary" v-if="currentUser">
-            <div class="user-name">{{ displayName }}</div>
-            <div class="user-email" v-if="currentUser.email">{{ currentUser.email }}</div>
-        </div>
+        <div class="burger-bottom">
+            <div class="user-summary" v-if="currentUser">
+                <div class="user-name">{{ displayName }}</div>
+                <div class="user-email" v-if="currentUser.email">{{ currentUser.email }}</div>
+            </div>
 
-        <button type="button" class="logout-button" @click="logout">
-            Logout
-        </button>
+            <button type="button" class="logout-button" @click="logout">
+                Logout
+            </button>
+        </div>
     </div>
 </template>
 
