@@ -67,9 +67,6 @@ def change_email(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if not current_user.hashed_password or not verify_password(payload.password, current_user.hashed_password):
-        raise HTTPException(status_code=401, detail="Password is incorrect")
-
     existing = db.query(User).filter(User.email == payload.new_email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already in use")
@@ -86,9 +83,6 @@ def change_username(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if not current_user.hashed_password or not verify_password(payload.password, current_user.hashed_password):
-        raise HTTPException(status_code=401, detail="Password is incorrect")
-
     existing = db.query(User).filter(User.username == payload.new_username).first()
     if existing and existing.id != current_user.id:
         raise HTTPException(status_code=400, detail="Username already taken")

@@ -92,6 +92,11 @@
   color: #1a1a2e;
 }
 
+.current-value {
+  font-size: 0.9rem;
+  color: #8a94a6;
+}
+
 .dashboard input {
   width: 100%;
   box-sizing: border-box;

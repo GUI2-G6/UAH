@@ -16,6 +16,9 @@
                     <p v-if="currentUser && currentUser.email" class="email-status" :class="{ 'is-verified': !!currentUser.email_verified }">
                         Email status: <strong>{{ currentUser.email_verified ? 'Verified' : 'Not verified' }}</strong>
                     </p>
+                    <p v-if="currentUser" class="current-value">
+                        Current name: <strong>{{ (currentUser.first_name || currentUser.firstName || '') + (currentUser.last_name || currentUser.lastName ? ' ' + (currentUser.last_name || currentUser.lastName) : '') || 'Not set' }}</strong>
+                    </p>
                     <p>First Name</p>
                     <input type="text" v-model="firstName">
                     <p>Last Name</p>
@@ -57,9 +60,9 @@
                 </template>
                 <div class="settings-group">
                     <h4>Change Username</h4>
+                    <p v-if="currentUser" class="current-value">Current: <strong>{{ currentUser.username || 'User' }}</strong></p>
                     <input type="text" v-model="changeUsernameNew" placeholder="New username">
                     <input type="text" v-model="changeUsernameNewConfirm" placeholder="Confirm new username">
-                    <SecretInput v-model="changeUsernamePassword" placeholder="Password" autocomplete="current-password" :disabled="working" />
                     <button @click="changeUsername" :disabled="working" :class="buttonStatusClass('changeUsername')">Update username</button>
                     <div v-if="actionStatus.changeUsername.message" :class="feedbackClass('changeUsername')">
                         {{ actionStatus.changeUsername.message }}
@@ -68,9 +71,9 @@
 
                 <div class="settings-group">
                     <h4>Change Email</h4>
+                    <p v-if="currentUser" class="current-value">Current: <strong>{{ currentUser.email || 'Not set' }}</strong></p>
                     <input type="email" v-model="changeEmailNew" placeholder="New email">
                     <input type="email" v-model="changeEmailNewConfirm" placeholder="Confirm new email">
-                    <SecretInput v-model="changeEmailPassword" placeholder="Password" autocomplete="current-password" :disabled="working" />
                     <button @click="changeEmail" :disabled="working" :class="buttonStatusClass('changeEmail')">Update email</button>
                     <div v-if="actionStatus.changeEmail.message" :class="feedbackClass('changeEmail')">
                         {{ actionStatus.changeEmail.message }}
@@ -176,11 +179,9 @@ export default {
 
             changeUsernameNew: '',
             changeUsernameNewConfirm: '',
-            changeUsernamePassword: '',
 
             changeEmailNew: '',
             changeEmailNewConfirm: '',
-            changeEmailPassword: '',
 
             currentPassword: '',
             newPassword: '',
@@ -353,13 +354,11 @@ export default {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         new_email: newEmail,
-                        password: this.changeEmailPassword,
                     }),
                 })
                 const data = await res.json().catch(() => null)
                 if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
                 this.setActionStatus('changeEmail', 'success', data?.message || 'Email updated')
-                this.changeEmailPassword = ''
                 this.changeEmailNewConfirm = ''
 
                 // Ensure client reflects reverification immediately.
@@ -400,7 +399,6 @@ export default {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         new_username: newUsername,
-                        password: this.changeUsernamePassword,
                     }),
                 })
                 const data = await res.json().catch(() => null)
@@ -410,7 +408,6 @@ export default {
                 this.currentUser = data
                 setCurrentUser(data)
                 this.setActionStatus('changeUsername', 'success', 'Username updated')
-                this.changeUsernamePassword = ''
                 this.changeUsernameNewConfirm = ''
             } catch (e) {
                 this.setActionStatus('changeUsername', 'error', this.formatFailure('Update username', e))
