@@ -53,7 +53,7 @@ const router = createRouter({
 router.beforeEach((to) => {
   if (isLocalDev()) return true
 
-  const publicPaths = new Set(['/login', '/register', '/status'])
+  const publicPaths = new Set(['/login', '/register', '/status', '/forgot-password', '/reset-password'])
   const authed = isAuthenticated()
 
   if (publicPaths.has(to.path)) {

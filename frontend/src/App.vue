@@ -26,7 +26,7 @@
     },
     computed: {
       showBurger() {
-        return !['/login', '/register', '/status'].includes(this.$route.path)
+        return !['/login', '/register', '/status', '/forgot-password', '/reset-password'].includes(this.$route.path)
       }
     }
   }

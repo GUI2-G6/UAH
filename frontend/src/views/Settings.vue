@@ -8,36 +8,94 @@
                 <template #header>
                     <h3>Profile Settings</h3>
                 </template>
-                <p v-if="currentUser" class="signed-in">
-                    Signed in as: <strong>{{ displayName }}</strong>
-                    <span v-if="currentUser.email">({{ currentUser.email }})</span>
-                </p>
-                <p>Full Name:</p>
-                <input type="text" v-model="fullName"> <!--v-model="name" (potential for updating variables)-->
-                <p>Job Title:</p>
-                <input type="text" v-model="jobTitle">
+                <div class="settings-group">
+                    <p v-if="currentUser" class="signed-in">
+                        Signed in as: <strong>{{ currentUser.username || 'User' }}</strong>
+                        <span v-if="currentUser.email">({{ currentUser.email }})</span>
+                    </p>
+                    <p>First Name</p>
+                    <input type="text" v-model="firstName">
+                    <p>Last Name</p>
+                    <input type="text" v-model="lastName">
+                    <button @click="changeName" :disabled="working" :class="buttonStatusClass('changeName')">Update name</button>
+                    <div v-if="actionStatus.changeName.message" :class="feedbackClass('changeName')">
+                        {{ actionStatus.changeName.message }}
+                    </div>
+                </div>
             </Card>
             <Card>
                 <template #header>
                     <h3>Notifications</h3>
                 </template>
-                <h4>Email Notifications</h4>
-                <h4>Reminder Notifications</h4>
-                <h4>Application Status Updates</h4>
+                <div class="settings-group">
+                    <h4>Email Notifications</h4>
+                    <h4>Reminder Notifications</h4>
+                    <h4>Application Status Updates</h4>
+                </div>
             </Card>
             <Card>
                 <template #header>
                     <h3>Account & Security</h3>
                 </template>
-                <h4>Change Email</h4>
-                <h4>Change Password</h4>
+                <div class="settings-group">
+                    <h4>Change Username</h4>
+                    <input type="text" v-model="changeUsernameNew" placeholder="New username">
+                    <input type="password" v-model="changeUsernamePassword" placeholder="Password">
+                    <button @click="changeUsername" :disabled="working" :class="buttonStatusClass('changeUsername')">Update username</button>
+                    <div v-if="actionStatus.changeUsername.message" :class="feedbackClass('changeUsername')">
+                        {{ actionStatus.changeUsername.message }}
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h4>Change Email</h4>
+                    <input type="email" v-model="changeEmailNew" placeholder="New email">
+                    <input type="password" v-model="changeEmailPassword" placeholder="Password">
+                    <button @click="changeEmail" :disabled="working" :class="buttonStatusClass('changeEmail')">Update email</button>
+                    <div v-if="actionStatus.changeEmail.message" :class="feedbackClass('changeEmail')">
+                        {{ actionStatus.changeEmail.message }}
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h4>Change Password</h4>
+                    <input type="password" v-model="currentPassword" placeholder="Current password">
+                    <input type="password" v-model="newPassword" placeholder="New password">
+                    <button @click="changePassword" :disabled="working" :class="buttonStatusClass('changePassword')">Update password</button>
+                    <div v-if="actionStatus.changePassword.message" :class="feedbackClass('changePassword')">
+                        {{ actionStatus.changePassword.message }}
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h4>Email Verification</h4>
+                    <button @click="sendVerification" :disabled="working" :class="buttonStatusClass('sendVerification')">Send verification token</button>
+                    <div v-if="actionStatus.sendVerification.message" :class="feedbackClass('sendVerification')">
+                        {{ actionStatus.sendVerification.message }}
+                    </div>
+                    <input type="text" v-model="verifyToken" placeholder="Verification token">
+                    <button @click="verifyEmail" :disabled="working" :class="buttonStatusClass('verifyEmail')">Verify email</button>
+                    <div v-if="actionStatus.verifyEmail.message" :class="feedbackClass('verifyEmail')">
+                        {{ actionStatus.verifyEmail.message }}
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h4>Delete Account</h4>
+                    <button class="danger" @click="deleteAccount" :disabled="working" :class="buttonStatusClass('deleteAccount')">Delete account</button>
+                    <div v-if="actionStatus.deleteAccount.message" :class="feedbackClass('deleteAccount')">
+                        {{ actionStatus.deleteAccount.message }}
+                    </div>
+                </div>
             </Card>
             <Card>
                 <template #header>
                     <h3>Preferences</h3>
                 </template>
-                <h4>Language</h4>
-                <h4>Timezone</h4>
+                <div class="settings-group">
+                    <h4>Language</h4>
+                    <h4>Timezone</h4>
+                </div>
             </Card>
 
         </div>
@@ -47,6 +105,7 @@
 
 <script>
 import Card from "../components/Card.vue";
+import { authedFetch, clearAuth, setCurrentUser } from "../lib/auth.js";
 
 export default {
   name: "Settings",
@@ -56,23 +115,83 @@ export default {
     data() {
         return {
             currentUser: null,
-            fullName: '',
-            jobTitle: '',
+            firstName: '',
+            lastName: '',
+
+            working: false,
+            actionStatus: {
+                changeName: { state: 'idle', message: '' },
+                changeUsername: { state: 'idle', message: '' },
+                changeEmail: { state: 'idle', message: '' },
+                changePassword: { state: 'idle', message: '' },
+                sendVerification: { state: 'idle', message: '' },
+                verifyEmail: { state: 'idle', message: '' },
+                deleteAccount: { state: 'idle', message: '' },
+            },
+            _actionTimers: {},
+
+            changeUsernameNew: '',
+            changeUsernamePassword: '',
+
+            changeEmailNew: '',
+            changeEmailPassword: '',
+
+            currentPassword: '',
+            newPassword: '',
+
+            verifyToken: '',
         }
     },
-    computed: {
-        displayName() {
-            if (!this.currentUser) return ''
-            const first = this.currentUser.first_name || this.currentUser.firstName
-            const last = this.currentUser.last_name || this.currentUser.lastName
-            const full = [first, last].filter(Boolean).join(' ').trim()
-            return full || this.currentUser.username || 'User'
-        }
-    },
+    computed: {},
     async mounted() {
         await this.loadUser()
     },
     methods: {
+        setActionStatus(key, state, message) {
+            if (this._actionTimers[key]) {
+                clearTimeout(this._actionTimers[key])
+                this._actionTimers[key] = null
+            }
+
+            if (!this.actionStatus[key]) {
+                this.actionStatus[key] = { state: 'idle', message: '' }
+            }
+
+            this.actionStatus[key].state = state
+            this.actionStatus[key].message = message || ''
+
+            if (state === 'success' || state === 'error') {
+                this._actionTimers[key] = setTimeout(() => {
+                    if (this.actionStatus[key]) {
+                        this.actionStatus[key].state = 'idle'
+                        this.actionStatus[key].message = ''
+                    }
+                    this._actionTimers[key] = null
+                }, 3500)
+            }
+        },
+        buttonStatusClass(key) {
+            const state = this.actionStatus?.[key]?.state
+            return {
+                'btn-working': state === 'working',
+                'btn-success': state === 'success',
+                'btn-error': state === 'error',
+            }
+        },
+        feedbackClass(key) {
+            const state = this.actionStatus?.[key]?.state
+            return {
+                'action-feedback': true,
+                'is-success': state === 'success',
+                'is-error': state === 'error',
+            }
+        },
+        formatFailure(label, e) {
+            const msg = e?.message ?? String(e)
+            if (!msg) return `${label} failed`
+            if (msg.startsWith('HTTP ')) return `${label} failed (${msg})`
+            return `${label} failed: ${msg}`
+        },
         async loadUser() {
             try {
                 const raw = localStorage.getItem('uah_current_user')
@@ -82,10 +201,8 @@ export default {
             }
 
             if (this.currentUser) {
-                const first = this.currentUser.first_name || this.currentUser.firstName
-                const last = this.currentUser.last_name || this.currentUser.lastName
-                const full = [first, last].filter(Boolean).join(' ').trim()
-                this.fullName = full || this.currentUser.username || ''
+                this.firstName = this.currentUser.first_name || this.currentUser.firstName || ''
+                this.lastName = this.currentUser.last_name || this.currentUser.lastName || ''
             }
 
             const host = window.location.hostname
@@ -103,12 +220,167 @@ export default {
                 this.currentUser = user
                 localStorage.setItem('uah_current_user', JSON.stringify(user))
 
-                const first = user.first_name || user.firstName
-                const last = user.last_name || user.lastName
-                const full = [first, last].filter(Boolean).join(' ').trim()
-                this.fullName = full || user.username || this.fullName
+                this.firstName = user.first_name || user.firstName || this.firstName
+                this.lastName = user.last_name || user.lastName || this.lastName
             } catch {
                 // ignore (backend may be down)
+            }
+        },
+
+        async changeName() {
+            this.working = true
+            this.setActionStatus('changeName', 'working', 'Updating…')
+            try {
+                const res = await authedFetch('/api/account/change-name', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        first_name: this.firstName,
+                        last_name: this.lastName,
+                    }),
+                })
+                const data = await res.json().catch(() => null)
+                if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
+
+                this.currentUser = data
+                setCurrentUser(data)
+                this.setActionStatus('changeName', 'success', 'Name updated')
+            } catch (e) {
+                this.setActionStatus('changeName', 'error', this.formatFailure('Update name', e))
+            } finally {
+                this.working = false
+            }
+        },
+
+        async changePassword() {
+            this.working = true
+            this.setActionStatus('changePassword', 'working', 'Updating…')
+            try {
+                const res = await authedFetch('/api/account/change-password', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        current_password: this.currentPassword,
+                        new_password: this.newPassword,
+                    }),
+                })
+                const data = await res.json().catch(() => null)
+                if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
+                this.setActionStatus('changePassword', 'success', data?.message || 'Password changed successfully')
+                this.currentPassword = ''
+                this.newPassword = ''
+            } catch (e) {
+                this.setActionStatus('changePassword', 'error', this.formatFailure('Update password', e))
+            } finally {
+                this.working = false
+            }
+        },
+
+        async changeEmail() {
+            this.working = true
+            this.setActionStatus('changeEmail', 'working', 'Updating…')
+            try {
+                const res = await authedFetch('/api/account/change-email', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        new_email: this.changeEmailNew,
+                        password: this.changeEmailPassword,
+                    }),
+                })
+                const data = await res.json().catch(() => null)
+                if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
+                this.setActionStatus('changeEmail', 'success', data?.message || 'Email updated')
+                this.changeEmailPassword = ''
+
+                await this.loadUser()
+            } catch (e) {
+                this.setActionStatus('changeEmail', 'error', this.formatFailure('Update email', e))
+            } finally {
+                this.working = false
+            }
+        },
+
+        async changeUsername() {
+            this.working = true
+            this.setActionStatus('changeUsername', 'working', 'Updating…')
+            try {
+                const res = await authedFetch('/api/account/change-username', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        new_username: this.changeUsernameNew,
+                        password: this.changeUsernamePassword,
+                    }),
+                })
+                const data = await res.json().catch(() => null)
+                if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
+
+                // Endpoint returns UserResponse
+                this.currentUser = data
+                setCurrentUser(data)
+                this.setActionStatus('changeUsername', 'success', 'Username updated')
+                this.changeUsernamePassword = ''
+            } catch (e) {
+                this.setActionStatus('changeUsername', 'error', this.formatFailure('Update username', e))
+            } finally {
+                this.working = false
+            }
+        },
+
+        async sendVerification() {
+            this.working = true
+            this.setActionStatus('sendVerification', 'working', 'Sending…')
+            try {
+                const res = await authedFetch('/api/account/send-verification', {
+                    method: 'POST',
+                })
+                const data = await res.json().catch(() => null)
+                if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
+                this.setActionStatus('sendVerification', 'success', data?.message || 'Verification sent')
+            } catch (e) {
+                this.setActionStatus('sendVerification', 'error', this.formatFailure('Send verification', e))
+            } finally {
+                this.working = false
+            }
+        },
+
+        async verifyEmail() {
+            this.working = true
+            this.setActionStatus('verifyEmail', 'working', 'Verifying…')
+            try {
+                const res = await fetch('/api/account/verify-email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: this.verifyToken }),
+                })
+                const data = await res.json().catch(() => null)
+                if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
+                this.setActionStatus('verifyEmail', 'success', data?.message || 'Email verified')
+                this.verifyToken = ''
+                await this.loadUser()
+            } catch (e) {
+                this.setActionStatus('verifyEmail', 'error', this.formatFailure('Verify email', e))
+            } finally {
+                this.working = false
+            }
+        },
+
+        async deleteAccount() {
+            this.working = true
+            this.setActionStatus('deleteAccount', 'working', 'Deleting…')
+            try {
+                const res = await authedFetch('/api/account/delete', {
+                    method: 'DELETE',
+                })
+                const data = await res.json().catch(() => null)
+                if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
+                clearAuth()
+                this.$router.push('/login')
+            } catch (e) {
+                this.setActionStatus('deleteAccount', 'error', this.formatFailure('Delete account', e))
+            } finally {
+                this.working = false
             }
         },
     },

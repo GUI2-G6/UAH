@@ -77,6 +77,22 @@
   background: #6a5de0;
 }
 
+.submit-btn.is-success {
+  background: #22c55e;
+}
+
+.submit-btn.is-success:hover {
+  background: #16a34a;
+}
+
+.submit-btn.is-error {
+  background: #ef4444;
+}
+
+.submit-btn.is-error:hover {
+  background: #dc2626;
+}
+
 .signup-row {
   display: flex;
   gap: 8px;

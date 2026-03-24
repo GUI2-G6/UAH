@@ -47,7 +47,7 @@
 
         <div class="burger-bottom">
             <div class="user-summary" v-if="currentUser">
-                <div class="user-name">{{ displayName }}</div>
+                <div class="user-name">{{ displayUsername }}</div>
                 <div class="user-email" v-if="currentUser.email">{{ currentUser.email }}</div>
             </div>
 
@@ -78,29 +78,32 @@
 
 <!--Exports the HBMenu so other files can see and use it-->
 <script>
+    import { clearAuth, getCurrentUser } from "../lib/auth.js";
+
     export default{
         name: "Burger",
         data() {
             return {
                 active:false,
                 currentUser: null,
+                _onUserUpdated: null,
             };
         },
         computed: {
-            displayName() {
-                if (!this.currentUser) return ''
-                const first = this.currentUser.first_name || this.currentUser.firstName
-                const last = this.currentUser.last_name || this.currentUser.lastName
-                const full = [first, last].filter(Boolean).join(' ').trim()
-                return full || this.currentUser.username || 'User'
+            displayUsername() {
+                return this.currentUser?.username || 'User'
             }
         },
         mounted() {
-            try {
-                const raw = localStorage.getItem('uah_current_user')
-                this.currentUser = raw ? JSON.parse(raw) : null
-            } catch {
-                this.currentUser = null
+            this.currentUser = getCurrentUser()
+            this._onUserUpdated = () => {
+                this.currentUser = getCurrentUser()
+            }
+            window.addEventListener('uah-user-updated', this._onUserUpdated)
+        },
+        beforeUnmount() {
+            if (this._onUserUpdated) {
+                window.removeEventListener('uah-user-updated', this._onUserUpdated)
             }
         },
         methods: {
@@ -112,8 +115,7 @@
                 this.active = false;
             },
             logout() {
-                localStorage.removeItem('uah_access_token');
-                localStorage.removeItem('uah_current_user');
+                clearAuth();
                 this.active = false;
                 this.$router.push('/login');
             }

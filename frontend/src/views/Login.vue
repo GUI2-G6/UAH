@@ -30,6 +30,10 @@
                 <a @click.prevent="goToRegister" href="#">Create an account</a>
             </div>
 
+            <div class="signup-row">
+                <a @click.prevent="goToForgotPassword" href="#">Forgot password?</a>
+            </div>
+
             <div class="bypass-section">
                 <span class="bypass-title">Alpha override</span>
                 <input
@@ -170,6 +174,9 @@
             },
             goToRegister() {
                 this.$router.push('/register')
+            },
+            goToForgotPassword() {
+                this.$router.push('/forgot-password')
             },
         },
     }

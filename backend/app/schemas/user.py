@@ -49,6 +49,10 @@ class ChangeUsernameRequest(BaseModel):
     new_username: str
     password: str
 
+class ChangeNameRequest(BaseModel):
+    first_name: str | None = None
+    last_name: str | None = None
+
 class VerifyEmailRequest(BaseModel):
     token: str
 

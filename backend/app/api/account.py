@@ -6,6 +6,7 @@ from app.api.deps import get_current_user
 from app.schemas.user import (
     ChangePasswordRequest, ResetPasswordRequest, ForgotPasswordRequest,
     ChangeEmailRequest, ChangeUsernameRequest, VerifyEmailRequest,
+    ChangeNameRequest,
     MessageResponse, UserResponse,
 )
 from app.core.security import (
@@ -93,6 +94,20 @@ def change_username(
         raise HTTPException(status_code=400, detail="Username already taken")
 
     current_user.username = payload.new_username
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+
+@router.put("/change-name", response_model=UserResponse)
+def change_name(
+    payload: ChangeNameRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Allow users (including OAuth accounts) to update their profile name.
+    current_user.first_name = payload.first_name.strip() if payload.first_name and payload.first_name.strip() else None
+    current_user.last_name = payload.last_name.strip() if payload.last_name and payload.last_name.strip() else None
     db.commit()
     db.refresh(current_user)
     return current_user

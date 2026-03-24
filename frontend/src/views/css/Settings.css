@@ -6,24 +6,68 @@
 
 .greeting {
   border-bottom: solid 2px rgba(246, 247, 249);
-  padding: 20px;
+  padding: 24px;
 }
 
 .dashboard {
   background-color: rgba(248, 250, 252);
   flex: 1;
-  padding: 20px;
+  padding: 24px;
   display: grid;
   grid-template-columns: repeat(1, 1fr);
   grid-auto-rows: minmax(120px, auto);
-  gap: 16px;
+  gap: 20px;
 }
 
 .card {
   background: #f5f5f5;
   border-radius: 12px;
 
+  padding: 24px;
+
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.dashboard .card .header {
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+}
+
+.dashboard .card .header h3 {
+  margin: 0;
+}
+
+.dashboard .card .body {
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard .card .body>* {
+  margin: 0;
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-group+.settings-group {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: solid 1px rgb(226, 227, 230);
+}
+
+.dashboard h4 {
+  line-height: 1.25;
+}
+
+.dashboard p {
+  line-height: 1.35;
+}
+
+.dashboard .settings-group>p {
+  font-weight: 600;
 }
 
 .big-card {
@@ -36,7 +80,7 @@
 }
 
 .signed-in {
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .dashboard input {
@@ -50,4 +94,52 @@
 .dashboard button {
   padding: 10px 12px;
   border-radius: 8px;
+}
+
+.dashboard button.btn-working {
+  opacity: 0.7;
+}
+
+.dashboard button.btn-success {
+  background: rgba(34, 197, 94, 0.18);
+  border: 1px solid rgba(34, 197, 94, 0.55);
+}
+
+.dashboard button.btn-error {
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid rgba(239, 68, 68, 0.55);
+}
+
+.action-feedback {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.action-feedback.is-success {
+  border-color: rgba(34, 197, 94, 0.55);
+}
+
+.action-feedback.is-error {
+  border-color: rgba(239, 68, 68, 0.55);
+}
+
+.account-message {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+}
+
+.account-error {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
+}
+
+.dashboard button.danger {
+  border: 1px solid rgba(0, 0, 0, 0.5);
 }
