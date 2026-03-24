@@ -48,14 +48,22 @@
                 </div>
 
                 <div class="settings-group">
-                    <h4>Change Password</h4>
-                    <SecretInput v-model="currentPassword" placeholder="Current password" autocomplete="current-password" :disabled="working" />
-                    <SecretInput v-model="newPassword" placeholder="New password" autocomplete="new-password" :disabled="working" />
-                    <SecretInput v-model="confirmNewPassword" placeholder="Confirm new password" autocomplete="new-password" :disabled="working" />
-                    <button @click="changePassword" :disabled="working" :class="buttonStatusClass('changePassword')">Update password</button>
-                    <div v-if="actionStatus.changePassword.message" :class="feedbackClass('changePassword')">
-                        {{ actionStatus.changePassword.message }}
-                    </div>
+                    <h4>Work Authorization</h4>
+                    <p>Work Authorization Status</p>
+                    <select name="authorization-status" id="authorization-status">
+                        <option>US Citizen</option>
+                        <option>Green Card Holder</option>
+                        <option>H1-B Visa</option>
+                        <option>OPT/CPT</option>
+                        <option>Other</option>
+                        <option>Require Sponsorship</option>
+                    </select>
+                    <p>Requires Sponsorship</p>
+                    <select name="requires-sponsorship" id="requires-sponsorship">
+                        <option>Yes</option>
+                        <option>No</option>
+                        <option>In the future</option>
+                    </select>
                 </div>
 
                 <div class="settings-group">
