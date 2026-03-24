@@ -39,7 +39,6 @@ export default {
           publication_date: job.publication_date,
           link: job.job_url
         }))
-        this.jobs = data
       } catch(e) {
         console.error("Failed to load jobs", e)
       }
