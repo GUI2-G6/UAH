@@ -160,7 +160,28 @@ async def save_job(
     return {"message": f"Successfully saved  {job_data.name} at {job_data.company}!"}
 
 
-@router.get("/auth/google", tags=["Google OAuth"])
+@router.get("/jobs/saved", tags=["jobs"])
+async def get_saved_jobs(
+    # Creates an endpoint for retrieving all saved jobs for a user with a database session dependency.
+    user_id: int,
+    db: Session = Depends(get_db),
+):
+    # Queries the SavedJob table in the database to get all saved jobs for the specified user ID.
+    saved_jobs = db.query(SavedJob).filter(SavedJob.user_id == user_id).all()
+    
+    # Constructs a list of saved job data with relevant information such as job ID, title, company, and job URL.
+    saved_job_data = []
+    for job in saved_jobs:
+        saved_job_data.append({
+            "id": job.id,
+            "title": job.title,
+            "company": job.company,
+            "job_url": job.job_url,
+        })
+    # Returns the structured JSON response containing the list of saved jobs for the user.
+    return {"saved_jobs": saved_job_data}
+
+@router.get("/auth/google", tags=["google auth"])
 async def google_oauth(request: Request):
     # Generates a random  16 character state string to prevent attacks
     state = secrets.token_urlsafe(16)
@@ -185,7 +206,7 @@ async def google_oauth(request: Request):
     
     
     
-@router.get("/auth/google/callback", response_model=TokenResponse, tags=["Google OAuth"])
+@router.get("/auth/google/callback", response_model=TokenResponse, tags=["google auth"])
 async def google_oauth_callback(request: Request, code: str, state: str, db: Session = Depends(get_db)):
     # Verifies if the parameter "state" matches the one stored in the session to prevent any attacks. 
     # If they don't match, it raises an HTTP 400 error.
