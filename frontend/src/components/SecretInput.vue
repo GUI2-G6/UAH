@@ -6,7 +6,7 @@
       :placeholder="placeholder"
       :autocomplete="autocomplete"
       :disabled="disabled"
-      :class="[inputClass, { 'secret-input-default': !inputClass }]"
+      :class="[inputClass, { 'secret-input-default': !inputClass, 'secret-input-auth': useAuthStyles }]"
       @input="$emit('update:modelValue', $event.target.value)"
     />
     <button
@@ -60,6 +60,15 @@ export default {
     computedType() {
       return this.revealed ? 'text' : this.hiddenType
     },
+    useAuthStyles() {
+      const cls = this.inputClass
+      if (!cls) return false
+      if (typeof cls === 'string') return cls.split(/\s+/).includes('email-input')
+      if (Array.isArray(cls)) return cls.some((c) => typeof c === 'string' && c.split(/\s+/).includes('email-input'))
+      // Object form: { 'email-input': true }
+      if (typeof cls === 'object') return !!cls['email-input']
+      return false
+    },
   },
   methods: {
     toggle() {
@@ -88,6 +97,19 @@ export default {
   border: 1px solid rgba(0, 0, 0, 0.2);
   border-radius: 8px;
   background: #ffffff;
+  outline: none;
+}
+
+/* Auth pages use scoped CSS, so their `.email-input` styles don't reach this child component.
+   When the parent passes `inputClass="email-input"`, apply the same look locally. */
+.secret-input-auth {
+  width: 100%;
+  padding: 14px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #f0f4f8;
+  font-size: 0.92rem;
+  color: #1a1a2e;
   outline: none;
 }
 
