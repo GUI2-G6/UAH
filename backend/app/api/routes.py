@@ -75,22 +75,22 @@ async def search_jobs(
     params = [("page", page)]
     
     if MUSE_API_KEY:
-        params.append({"api_key": MUSE_API_KEY})
+        params.append(("api_key", MUSE_API_KEY))
     
     # If the user provided any of the optional parameters (category, level, location, company), 
     # It adds them to the params dictionary in the format expected by The Muse API.
     if catogory:
         for cat in catogory:
-            params.append("category", []).append(cat)
+            params.append(("category", cat))
     if level:
         for lvl in level:
-            params.append("level", []).append(lvl)
+            params.append(("level", lvl))
     if location:
         for loc in location:
-            params.append("location", []).append(loc)
+            params.append(("location", loc))
     if company:
         for comp in company:
-            params.append("company", []).append(comp)
+            params.append(("company", comp))
     
     # Makes an GET request to The Muse API using httpx with the constructed parameters. 
     async with httpx.AsyncClient() as client:
