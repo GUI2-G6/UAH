@@ -30,4 +30,4 @@
     }
 </script>
 
-<style src="./css/Home.css"></style>
+<style scoped src="./css/Home.css"></style>

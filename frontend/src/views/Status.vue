@@ -3,6 +3,9 @@
     <div class="page-header">
       <h2>System Status</h2>
       <div class="header-actions">
+        <button class="back-btn" @click="goBack" type="button">
+          Back
+        </button>
         <span class="last-checked" v-if="lastChecked">
           Last checked: {{ lastChecked }}
         </span>
@@ -45,30 +48,34 @@
           </span>
         </div>
         <table class="info-table">
-          <tr>
-            <td class="label">Service</td>
-            <td>{{ diagnostics.services.backend.name }} v{{ diagnostics.services.backend.version }}</td>
-          </tr>
-          <tr>
-            <td class="label">Framework</td>
-            <td>{{ diagnostics.services.backend.framework }}</td>
-          </tr>
-          <tr>
-            <td class="label">Python</td>
-            <td>{{ diagnostics.services.backend.python_version }}</td>
-          </tr>
-          <tr>
-            <td class="label">Platform</td>
-            <td>{{ diagnostics.services.backend.platform }}</td>
-          </tr>
-          <tr>
-            <td class="label">PID</td>
-            <td>{{ diagnostics.services.backend.pid }}</td>
-          </tr>
-          <tr>
-            <td class="label">Container</td>
-            <td><code>{{ diagnostics.services.backend.host }}</code></td>
-          </tr>
+          <tbody>
+            <tr>
+              <td class="label">Service</td>
+              <td>
+                {{ diagnostics.services.backend.name }} v{{ diagnostics.services.backend.version }}
+              </td>
+            </tr>
+            <tr>
+              <td class="label">Framework</td>
+              <td>{{ diagnostics.services.backend.framework }}</td>
+            </tr>
+            <tr>
+              <td class="label">Python</td>
+              <td>{{ diagnostics.services.backend.python_version }}</td>
+            </tr>
+            <tr>
+              <td class="label">Platform</td>
+              <td>{{ diagnostics.services.backend.platform }}</td>
+            </tr>
+            <tr>
+              <td class="label">PID</td>
+              <td>{{ diagnostics.services.backend.pid }}</td>
+            </tr>
+            <tr>
+              <td class="label">Container</td>
+              <td><code>{{ diagnostics.services.backend.host }}</code></td>
+            </tr>
+          </tbody>
         </table>
       </div>
 
@@ -86,38 +93,40 @@
           </span>
         </div>
         <table class="info-table" v-if="diagnostics.services.database.status === 'healthy'">
-          <tr>
-            <td class="label">Engine</td>
-            <td>{{ diagnostics.services.database.postgres_version }}</td>
-          </tr>
-          <tr>
-            <td class="label">Database</td>
-            <td>{{ diagnostics.services.database.database_name }}</td>
-          </tr>
-          <tr>
-            <td class="label">User</td>
-            <td>{{ diagnostics.services.database.user }}</td>
-          </tr>
-          <tr>
-            <td class="label">Size</td>
-            <td>{{ diagnostics.services.database.size }}</td>
-          </tr>
-          <tr>
-            <td class="label">Tables</td>
-            <td>{{ diagnostics.services.database.public_tables }}</td>
-          </tr>
-          <tr>
-            <td class="label">Latency</td>
-            <td>{{ diagnostics.services.database.latency_ms }} ms</td>
-          </tr>
-          <tr>
-            <td class="label">Host</td>
-            <td>
-              <code
-                >{{ diagnostics.services.database.host }}:{{ diagnostics.services.database.port }}</code
-              >
-            </td>
-          </tr>
+          <tbody>
+            <tr>
+              <td class="label">Engine</td>
+              <td>{{ diagnostics.services.database.postgres_version }}</td>
+            </tr>
+            <tr>
+              <td class="label">Database</td>
+              <td>{{ diagnostics.services.database.database_name }}</td>
+            </tr>
+            <tr>
+              <td class="label">User</td>
+              <td>{{ diagnostics.services.database.user }}</td>
+            </tr>
+            <tr>
+              <td class="label">Size</td>
+              <td>{{ diagnostics.services.database.size }}</td>
+            </tr>
+            <tr>
+              <td class="label">Tables</td>
+              <td>{{ diagnostics.services.database.public_tables }}</td>
+            </tr>
+            <tr>
+              <td class="label">Latency</td>
+              <td>{{ diagnostics.services.database.latency_ms }} ms</td>
+            </tr>
+            <tr>
+              <td class="label">Host</td>
+              <td>
+                <code>
+                  {{ diagnostics.services.database.host }}:{{ diagnostics.services.database.port }}
+                </code>
+              </td>
+            </tr>
+          </tbody>
         </table>
         <div v-else class="error-detail">
           <p>{{ diagnostics.services.database.error }}</p>
@@ -139,13 +148,15 @@
           </span>
         </div>
         <table class="info-table">
-          <tr v-for="(info, name) in diagnostics.services.network.dns_resolution" :key="name">
-            <td class="label">{{ name }}</td>
-            <td>
-              <span class="dot-sm" :class="info.resolved ? 'green' : 'red'"></span>
-              {{ info.resolved ? info.ip : 'unresolved' }}
-            </td>
-          </tr>
+          <tbody>
+            <tr v-for="(info, name) in diagnostics.services.network.dns_resolution" :key="name">
+              <td class="label">{{ name }}</td>
+              <td>
+                <span class="dot-sm" :class="info.resolved ? 'green' : 'red'"></span>
+                {{ info.resolved ? info.ip : 'unresolved' }}
+              </td>
+            </tr>
+          </tbody>
         </table>
       </div>
 
@@ -158,26 +169,28 @@
           <span class="badge healthy">healthy</span>
         </div>
         <table class="info-table">
-          <tr>
-            <td class="label">Framework</td>
-            <td>Vue 3 + Vite</td>
-          </tr>
-          <tr>
-            <td class="label">Server</td>
-            <td>Nginx (Alpine)</td>
-          </tr>
-          <tr>
-            <td class="label">User Agent</td>
-            <td class="ua-cell">{{ userAgent }}</td>
-          </tr>
-          <tr>
-            <td class="label">Window</td>
-            <td>{{ windowSize }}</td>
-          </tr>
-          <tr>
-            <td class="label">Protocol</td>
-            <td>{{ protocol }}</td>
-          </tr>
+          <tbody>
+            <tr>
+              <td class="label">Framework</td>
+              <td>Vue 3 + Vite</td>
+            </tr>
+            <tr>
+              <td class="label">Server</td>
+              <td>Nginx (Alpine)</td>
+            </tr>
+            <tr>
+              <td class="label">User Agent</td>
+              <td class="ua-cell">{{ userAgent }}</td>
+            </tr>
+            <tr>
+              <td class="label">Window</td>
+              <td>{{ windowSize }}</td>
+            </tr>
+            <tr>
+              <td class="label">Protocol</td>
+              <td>{{ protocol }}</td>
+            </tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -217,6 +230,16 @@ export default {
     await this.fetchDiagnostics()
   },
   methods: {
+    goBack() {
+      // Prefer actual history navigation.
+      if (window.history.length > 1) {
+        this.$router.back()
+        return
+      }
+
+      const token = localStorage.getItem('uah_access_token')
+      this.$router.push(token ? '/home' : '/login')
+    },
     async fetchDiagnostics() {
       this.loading = true
       this.error = null

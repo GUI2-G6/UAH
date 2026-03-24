@@ -28,4 +28,4 @@
     }
 </script>
 
-<style src="./css/Notifications.css"></style>
+<style scoped src="./css/Notifications.css"></style>

@@ -12,7 +12,7 @@
         </button>
         <div class="menu" v-if="active">
             <!--Home-Button-->
-            <button width="50px" height="50px" class="burger-item" @click="goTo('/')">
+            <button width="50px" height="50px" class="burger-item" @click="goTo('/home')">
                 <img src="../images/placeholder/HOMEICON_LIGHT.png" alt="Home" width="30px" height="28px">
             </button>
             <!--Notification-Button-->
@@ -44,6 +44,10 @@
                 <img src="../images/placeholder/SETTING_LIGHT.png" alt="Settings" width="30px" height="28px">
             </button>
         </div>
+
+        <button type="button" class="logout-button" @click="logout">
+            Logout
+        </button>
     </div>
 </template>
 
@@ -81,6 +85,11 @@
             goTo(route) {
                 this.$router.push(route);
                 this.active = false;
+            },
+            logout() {
+                localStorage.removeItem('uah_access_token');
+                this.active = false;
+                this.$router.push('/login');
             }
         }
     }

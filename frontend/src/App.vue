@@ -1,6 +1,6 @@
 <template>
   <div id="uah-app">
-    <Burger />
+    <Burger v-if="showBurger" />
     <div id="main-content">
       <div id="current-page">
         <router-view />
@@ -23,6 +23,11 @@
       Burger,
       Footer,
       Home
+    },
+    computed: {
+      showBurger() {
+        return !['/login', '/register', '/status'].includes(this.$route.path)
+      }
     }
   }
 </script>

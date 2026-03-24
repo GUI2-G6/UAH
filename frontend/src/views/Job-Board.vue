@@ -38,4 +38,4 @@ export default {
 }
 </script>
 
-<style src="./css/Job-board.css"></style>
+<style scoped src="./css/Job-board.css"></style>

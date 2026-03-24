@@ -24,6 +24,21 @@
   gap: 16px;
 }
 
+.back-btn {
+  background: transparent;
+  color: #111827;
+  border: 1px solid #e5e7eb;
+  padding: 6px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.15s;
+}
+
+.back-btn:hover {
+  background: #e5e7eb;
+}
+
 .last-checked {
   font-size: 0.8rem;
   color: #6b7280;
