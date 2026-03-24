@@ -255,7 +255,7 @@ async def google_oauth_callback(request: Request, code: str, state: str, db: Ses
     )
 
 
-@router.get("/api/status", tags=["status"])
+@router.get("/status", tags=["status"])
 async def api_status():
     """
     Status endpoint used by the frontend to verify backend connectivity.
@@ -270,7 +270,7 @@ async def api_status():
     }
 
 
-@router.get("/api/diagnostics", tags=["status"])
+@router.get("/diagnostics", tags=["status"])
 async def diagnostics():
     """
     Comprehensive diagnostics endpoint for the status page.
