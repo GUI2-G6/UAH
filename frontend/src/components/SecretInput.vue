@@ -72,12 +72,13 @@ export default {
 <style scoped>
 .secret-input {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 8px;
 }
 
 .secret-input input {
   flex: 1;
+  min-width: 0;
 }
 
 .secret-input-default {
@@ -91,13 +92,16 @@ export default {
 }
 
 .toggle {
-  padding: 10px 12px;
+  padding: 0 12px;
   border-radius: 8px;
   border: 1px solid rgba(0, 0, 0, 0.12);
   background: #f0f4f8;
   color: #1a1a2e;
   cursor: pointer;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .toggle:disabled {
