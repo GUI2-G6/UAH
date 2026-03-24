@@ -55,6 +55,16 @@
                 Logout
             </button>
         </div>
+
+        <ConfirmModal
+            v-if="confirmLogoutOpen"
+            title="Log out"
+            message="Are you sure you want to log out?"
+            cancelText="No, go back"
+            confirmText="Yes, log out"
+            @cancel="confirmLogoutOpen = false"
+            @confirm="confirmLogout"
+        />
     </div>
 </template>
 
@@ -79,14 +89,19 @@
 <!--Exports the HBMenu so other files can see and use it-->
 <script>
     import { clearAuth, getCurrentUser } from "../lib/auth.js";
+    import ConfirmModal from "./ConfirmModal.vue";
 
     export default{
         name: "Burger",
+        components: {
+            ConfirmModal,
+        },
         data() {
             return {
                 active:false,
                 currentUser: null,
                 _onUserUpdated: null,
+                confirmLogoutOpen: false,
             };
         },
         computed: {
@@ -115,8 +130,12 @@
                 this.active = false;
             },
             logout() {
+                this.confirmLogoutOpen = true
+            },
+            confirmLogout() {
                 clearAuth();
                 this.active = false;
+                this.confirmLogoutOpen = false;
                 this.$router.push('/login');
             }
         }

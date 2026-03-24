@@ -17,6 +17,10 @@ To add a new setting:
 import os
 
 
+def _env_bool(name: str, default: str = "false") -> bool:
+  return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
 class Settings:
     """Simple settings object — swap for pydantic-settings when needed."""
 
@@ -34,6 +38,23 @@ class Settings:
     SECRET_KEY: str = os.getenv("SECRET_KEY", "change-me-in-production")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+
+    # Environment
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+
+    # Email (SMTP)
+    # By default, email sending is disabled and endpoints will return "dev only" tokens.
+    EMAILS_ENABLED: bool = _env_bool("EMAILS_ENABLED", "false")
+    PUBLIC_APP_URL: str = os.getenv("PUBLIC_APP_URL", "http://localhost:5173")
+
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USERNAME: str = os.getenv("SMTP_USERNAME", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    SMTP_FROM: str = os.getenv("SMTP_FROM", "")
+    SMTP_USE_TLS: bool = _env_bool("SMTP_USE_TLS", "true")
+    SMTP_USE_SSL: bool = _env_bool("SMTP_USE_SSL", "false")
+    SMTP_TIMEOUT_SECONDS: int = int(os.getenv("SMTP_TIMEOUT_SECONDS", "20"))
 
     @property
     def DATABASE_URL(self) -> str:

@@ -43,11 +43,9 @@ class ForgotPasswordRequest(BaseModel):
 
 class ChangeEmailRequest(BaseModel):
     new_email: str
-    password: str
 
 class ChangeUsernameRequest(BaseModel):
     new_username: str
-    password: str
 
 class ChangeNameRequest(BaseModel):
     first_name: str | None = None
