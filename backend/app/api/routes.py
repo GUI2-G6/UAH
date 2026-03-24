@@ -64,6 +64,7 @@ MUSE_API_KEY = os.getenv("MUSE_API_KEY")
 async def search_jobs(
     # Creates an endpoint for each job search query with optional parameters 
     page: int = Query(1, ge=1, description="Page number for pagination"),
+    category: Optional[List[str]] = Query(None, description="e.g., 'Software Engineer', 'Data Science'"),
     catogory: Optional[List[str]] = Query(None, description="e.g., 'Software Engineer', 'Data Science'"),
     level: Optional[List[str]] = Query(None, description="e.g., 'Internship', 'Entry', 'Senior'"),
     location: Optional[List[str]] = Query(None, description="e.g., 'New York', 'Remote'"),
@@ -79,8 +80,21 @@ async def search_jobs(
     
     # If the user provided any of the optional parameters (category, level, location, company), 
     # It adds them to the params dictionary in the format expected by The Muse API.
-    if catogory:
-        for cat in catogory:
+    categories = []
+    for cat in (category or []):
+        value = (cat or "").strip()
+        if value:
+            categories.append(value)
+    for cat in (catogory or []):
+        value = (cat or "").strip()
+        if value:
+            categories.append(value)
+
+    # Preserve first-seen order while removing duplicates.
+    categories = list(dict.fromkeys(categories))
+
+    if categories:
+        for cat in categories:
             params.append(("category", cat))
     if level:
         for lvl in level:
