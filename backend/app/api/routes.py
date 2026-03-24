@@ -128,7 +128,7 @@ async def search_jobs(
         "jobs": job_data,
     }
 
-@router.get("/jobs/save")
+@router.post("/jobs/save")
 async def save_job(
     # Creates an endpoint for saving a job to the user's profile with the required job data and a database session dependency.
     job_data: SaveJobRequest,
