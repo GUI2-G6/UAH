@@ -12,6 +12,7 @@
             />
         </div>
     </div>
+    <!--Add pages for loading 20 jobs at a time-->
 </template>
 
 
@@ -21,19 +22,25 @@ import JobPosting from "../components/JobPosting.vue";
 export default {
   name: "JobBoard",
   components: { JobPosting },
+  methods: {
+    async loadJobs() {
+      try {
+        const res = await fetch('/api/jobs/search?page=1')
+        const data = await res.json()
 
+        this.jobs = data
+      } catch(e) {
+        console.error("Failed to load jobs", e)
+      }
+    }
+  },
   data() {
     return {
       jobs: []
     };
   },
-
-  mounted() {
-    this.jobs = [
-      { id: 1, title: "Software Engineer", company: "Google", location: "Remote" },
-      { id: 2, title: "Frontend Dev", company: "Amazon", location: "NYC" },
-      { id: 3, title: "Backend Dev", company: "Meta", location: "SF" }
-    ];
+  async mounted() {
+    await this.loadJobs()
   }
 }
 </script>

@@ -1,6 +1,8 @@
 <template>
     <Card>
-        <h3>{{ job.title }}</h3>
+        <template #header>
+            <h3>{{ job.title }}</h3>
+        </template>
         <p>{{ job.company }}</p>
         <p>{{ job.location }}</p>
         <button @click="apply">Apply</button>  

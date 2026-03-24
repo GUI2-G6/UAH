@@ -3,6 +3,9 @@
         <div v-if="$slots.header" class="header">
             <slot name="header" />
         </div>
+        <div v-if="$slots.subtitle" class="subtitle">
+            <slot name="subtitle" />
+        </div>
         <div class="body">
             <slot />
         </div>
