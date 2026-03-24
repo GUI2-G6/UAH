@@ -97,6 +97,17 @@ See the **[Backend Local Development Guide](./backend/README.md)** for instructi
 
 ---
 
+## Admin Bypass (Alpha)
+
+An alpha-only login override is available for dev/testing.
+
+- Overview and setup: [ADMIN_BYPASS.md](ADMIN_BYPASS.md)
+- Admin email is fixed to `admincontact@uahapp.com`
+
+> Do not commit real secrets. Set passphrases/passwords only in the server's environment `.env`.
+
+---
+
 ## File Structure
 
 ```

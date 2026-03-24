@@ -91,11 +91,33 @@ def _ensure_users_table_columns() -> None:
         logger.exception("User table schema fixup failed: %s", exc)
 
 
+def _bootstrap_admin_user_if_enabled() -> None:
+    if os.getenv("ADMIN_BOOTSTRAP_ENABLED", "false").lower() != "true":
+        return
+
+    try:
+        from app.db.session import SessionLocal
+        from app.api.auth import _ensure_admin_user
+    except Exception as exc:
+        logger.exception("Admin bootstrap import failed: %s", exc)
+        return
+
+    db = SessionLocal()
+    try:
+        _ensure_admin_user(db)
+        logger.warning("Admin bootstrap ensured for %s", "admincontact@uahapp.com")
+    except Exception as exc:
+        logger.exception("Admin bootstrap failed: %s", exc)
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Create all tables on startup
     Base.metadata.create_all(bind=engine)
     _ensure_users_table_columns()
+    _bootstrap_admin_user_if_enabled()
     yield
 
 app = FastAPI(

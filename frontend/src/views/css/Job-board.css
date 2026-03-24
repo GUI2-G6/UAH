@@ -6,27 +6,16 @@
 
 .greeting {
   border-bottom: solid 2px rgba(246, 247, 249);
-  padding:20px;
+  padding: 20px;
 }
 
 .dashboard {
   background-color: rgba(248, 250, 252);
   flex: 1;
-  padding:20px;
+  padding: 20px;
 
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 16px;
   padding: 16px;
-}
-
-.card {
-  background: #f5f5f5;
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-}
-.big-card {
-  grid-column: span 4;
-  height: 300px;
 }

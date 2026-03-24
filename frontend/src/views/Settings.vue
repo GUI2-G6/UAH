@@ -52,4 +52,4 @@ export default {
 }
 </script>
 
-<style src="./css/Settings.css"></style>
+<style scoped src="./css/Settings.css"></style>
