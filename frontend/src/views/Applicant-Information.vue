@@ -150,7 +150,7 @@ import Textarea from "../components/Textarea.vue";
 import { authedFetch, clearAuth, setCurrentUser } from "../lib/auth.js";
 
 export default {
-  name: "Settings",
+  name: "ApplicantInformation",
   components: {
         Card,
         ConfirmModal,
