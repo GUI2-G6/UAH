@@ -27,7 +27,7 @@ export default {
       try {
         const res = await fetch('/api/jobs/search?page=1')
         const data = await res.json()
-
+        console.log("RAW JOBS:", data)
         this.jobs = data
       } catch(e) {
         console.error("Failed to load jobs", e)
