@@ -73,3 +73,49 @@ To shut down the local database:
 # From the root of the repository
 docker compose -f docker-compose.local.yml down
 ```
+
+## Email Verification / Password Reset (Google Workspace)
+
+Right now, the API endpoints for email verification and password reset generate JWT tokens.
+
+- If `EMAILS_ENABLED=false` (default), the backend returns the token in the API response ("dev only") so you can test locally.
+- If `EMAILS_ENABLED=true`, the backend will email the token using SMTP.
+
+### Option A (simplest): Gmail SMTP with an App Password
+
+1. Pick a real mailbox like `noreply@uahapp.com` (or `security@uahapp.com`).
+2. Enable 2‑Step Verification on that mailbox.
+3. Create an App Password (Google Account → Security → App passwords).
+4. Set these env vars for the backend:
+
+```powershell
+$env:EMAILS_ENABLED="true"
+$env:PUBLIC_APP_URL="https://uahapp.com"
+
+$env:SMTP_HOST="smtp.gmail.com"
+$env:SMTP_PORT="587"
+$env:SMTP_USE_TLS="true"
+$env:SMTP_USERNAME="noreply@uahapp.com"
+$env:SMTP_PASSWORD="<APP_PASSWORD>"
+$env:SMTP_FROM="UAH <noreply@uahapp.com>"
+```
+
+### Option B (production-friendly): Google Workspace SMTP relay
+
+If you don’t want to store a mailbox password on the server, set up an SMTP relay in Google Admin:
+
+- Admin console → Apps → Google Workspace → Gmail → Routing → SMTP relay service
+- Allow your backend server IP(s) to relay
+- Require TLS
+- Restrict sender domain to `uahapp.com`
+
+Then configure the backend with `SMTP_HOST="smtp-relay.gmail.com"` (port 587) and either:
+- no auth (IP allowlist), or
+- SMTP auth (depending on your relay configuration)
+
+### Deliverability (recommended)
+
+For best results, ensure your DNS has:
+- SPF including Google (`include:_spf.google.com`)
+- DKIM enabled in Google Admin and published to DNS
+- A basic DMARC record
