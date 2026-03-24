@@ -18,6 +18,7 @@ To run locally (outside Docker):
 from starlette.middleware.sessions import SessionMiddleware
 import os
 from contextlib import asynccontextmanager
+import logging
 from fastapi import FastAPI
 from app.api.routes import router as api_router
 from app.api.auth import router as auth_router
@@ -26,11 +27,75 @@ from app.db.base import Base
 from app.db.session import engine
 import app.models  # noqa: F401 — ensure all models are registered
 
+logger = logging.getLogger(__name__)
+
+
+def _ensure_users_table_columns() -> None:
+    """Dev safety net: add missing columns when DB schema lags behind models.
+
+    This project currently uses `Base.metadata.create_all()`, which does not
+    apply schema migrations to existing tables. If the `users` table already
+    exists (e.g. persisted Docker volume) but the model gained new columns,
+    SQLAlchemy will raise runtime errors like:
+      psycopg2.errors.UndefinedColumn: column users.<col> does not exist
+
+    Long-term fix: introduce Alembic migrations.
+    """
+
+    try:
+        from sqlalchemy import inspect, text
+    except Exception:
+        return
+
+    try:
+        inspector = inspect(engine)
+        if "users" not in inspector.get_table_names():
+            return
+
+        existing = {col["name"] for col in inspector.get_columns("users")}
+
+        # Only add columns that may be absent in older DB volumes.
+        required_columns: dict[str, str] = {
+            "hashed_password": "VARCHAR(255)",
+            "first_name": "VARCHAR(100)",
+            "last_name": "VARCHAR(100)",
+            "linkedIn_id": "VARCHAR(255)",
+            "google_id": "VARCHAR(255)",
+            "full_name": "VARCHAR(255)",
+            "picture_url": "VARCHAR(255)",
+            "is_active": "BOOLEAN DEFAULT TRUE",
+            "created_at": "TIMESTAMPTZ DEFAULT now()",
+            "updated_at": "TIMESTAMPTZ DEFAULT now()",
+        }
+
+        ddl_statements: list[str] = []
+        for column_name, column_ddl in required_columns.items():
+            if column_name in existing:
+                continue
+
+            needs_quotes = any(ch.isupper() for ch in column_name)
+            rendered_name = f'"{column_name}"' if needs_quotes else column_name
+            ddl_statements.append(
+                f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {rendered_name} {column_ddl}"
+            )
+
+        if not ddl_statements:
+            return
+
+        with engine.begin() as conn:
+            for ddl in ddl_statements:
+                conn.execute(text(ddl))
+        logger.warning("Applied dev schema fixups to users table: %s", ", ".join([s.split()[5] for s in ddl_statements]))
+    except Exception as exc:
+        # Don't crash the app if the DB user lacks ALTER privileges.
+        logger.exception("User table schema fixup failed: %s", exc)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Create all tables on startup
     Base.metadata.create_all(bind=engine)
+    _ensure_users_table_columns()
     yield
 
 app = FastAPI(
