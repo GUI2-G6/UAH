@@ -114,13 +114,16 @@
                 <div class="settings-group">
                     <h4>Language</h4>
                     <select name="language" id="language">
-                        <option>Yes</option>
-                        <option>No</option>
+                        <option>English</option>
+                        <option>Spanish</option>
+                        <option>French</option>
                     </select>
                     <h4>Timezone</h4>
                     <select name="timezone" id="timezone">
-                        <option>Yes</option>
-                        <option>No</option>
+                        <option>Eastern Standard Time (EST)</option>
+                        <option>Central Standard Time (CST)</option>
+                        <option>Mountain Standard Time (MST)</option>
+                        <option>Pacific Standard Time (PST)</option>
                     </select>
                 </div>
             </Card>

@@ -1,15 +1,19 @@
 <template>
-    <div class="job-card">
+    <Card>
         <h3>{{ job.title }}</h3>
         <p>{{ job.company }}</p>
         <p>{{ job.location }}</p>
-        <button @click="apply">Apply</button>
-    </div>
+        <button @click="apply">Apply</button>  
+    </Card>
 </template>
 
 <script>
+import Card from "./Card.vue";
 export default {
     name: "JobPosting",
+    components: {
+        Card
+    },
     props: {
         job: Object
     },
