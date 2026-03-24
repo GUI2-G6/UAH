@@ -43,7 +43,7 @@
 
             <Card>
                 <div class="appInfo-group">
-                    <h4>Professional Summary</h4>
+                    <h3>Professional Summary</h3>
                     <span>Summary</span>
                     <p style="white-space: pre-line;">{{ message }}</p>
                     <textarea v-model="message" placeholder="Brief professional summary highlighting your key skills and experience..."></textarea>
@@ -52,7 +52,7 @@
 
             <Card>
                 <div class="appInfo-group">
-                    <h4>Work Authorization</h4>
+                    <h3>Work Authorization</h3>
                     <p>Work Authorization Status</p>
                     <select name="authorization-status" id="authorization-status">
                         <option>US Citizen</option>
@@ -73,43 +73,18 @@
 
 
             <Card>
-                <template #header>
-                    <h3>Notifications & Preferences</h3>
-                </template>
-                <div class="settings-group">
-                    <h4>Email Notifications</h4>
-                    <!--Using a select box here is obtrusive and bad. Redesign it to be a switch.-->
-                    <select name="email-notifications" id="email-notifications">
-                        <option>Yes</option>
-                        <option>No</option>
-                    </select>
-                    <h4>Reminder Notifications</h4>
-                    <!--Using a select box here is obtrusive and bad. Redesign it to be a switch.-->
-                    <select name="reminder-notifications" id="reminder-notifications">
-                        <option>Yes</option>
-                        <option>No</option>
-                    </select>
-                    <h4>Application Status Updates</h4>
-                    <!--Using a select box here is obtrusive and bad. Redesign it to be a switch.-->
-                    <select name="application-status-updates" id="application-status-updates">
-                        <option>Yes</option>
-                        <option>No</option>
-                    </select>
-                </div>
-                <div class="settings-group">
-                    <h4>Language</h4>
-                    <select name="language" id="language">
-                        <option>English</option>
-                        <option>Spanish</option>
-                        <option>French</option>
-                    </select>
-                    <h4>Timezone</h4>
-                    <select name="timezone" id="timezone">
-                        <option>Eastern Standard Time (EST)</option>
-                        <option>Central Standard Time (CST)</option>
-                        <option>Mountain Standard Time (MST)</option>
-                        <option>Pacific Standard Time (PST)</option>
-                    </select>
+                <h3>Education</h3>
+                <div class="appInfo-group">
+                    <p>Degree</p>
+                    <input type="text" v-model="currentUser.degree" placeholder="Degree">
+                    <p>Major/Field of Study</p>
+                    <input type="text" v-model="currentUser.major" placeholder="Major/Field of Study">
+                    <p>University</p>
+                    <input type="text" v-model="currentUser.university" placeholder="University">
+                    <p>Graduation Year</p>
+                    <input type="text" v-model="currentUser.gradYear" placeholder="Graduation Year">
+                    <p>GPA (Optional)</p>
+                    <input type="text" v-model="currentUser.gpa" placeholder="GPA">
                 </div>
             </Card>
 
