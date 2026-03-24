@@ -61,6 +61,14 @@
             }
         },
         methods: {
+            storeAuth(data) {
+                if (data?.access_token) {
+                    localStorage.setItem('uah_access_token', data.access_token)
+                }
+                if (data?.user) {
+                    localStorage.setItem('uah_current_user', JSON.stringify(data.user))
+                }
+            },
             async login() {
                 this.loading = true
                 this.error = null
@@ -80,7 +88,7 @@
                     }
 
                     const data = await res.json()
-                    localStorage.setItem('uah_access_token', data.access_token)
+                    this.storeAuth(data)
                     const next = this.$route?.query?.next
                     this.$router.push(typeof next === 'string' && next.length ? next : '/home')
                 } catch (e) {
@@ -97,7 +105,19 @@
                     const isLocalDev = host === 'localhost' || host === '127.0.0.1' || host === '::1'
 
                     if (isLocalDev) {
-                        localStorage.setItem('uah_access_token', 'local-dev-bypass')
+                        this.storeAuth({
+                            access_token: 'local-dev-bypass',
+                            user: {
+                                id: 0,
+                                email: 'local@dev',
+                                username: 'local-dev',
+                                first_name: 'Local',
+                                last_name: 'Dev',
+                                avatar_url: null,
+                                email_verified: false,
+                                is_active: true,
+                            },
+                        })
                         const next = this.$route?.query?.next
                         this.$router.push(typeof next === 'string' && next.length ? next : '/home')
                         return
@@ -117,7 +137,7 @@
                     }
 
                     const data = await res.json()
-                    localStorage.setItem('uah_access_token', data.access_token)
+                    this.storeAuth(data)
                     const next = this.$route?.query?.next
                     this.$router.push(typeof next === 'string' && next.length ? next : '/home')
                 } catch (e) {
@@ -125,7 +145,19 @@
                     const host = window.location.hostname
                     const isLocalDev = host === 'localhost' || host === '127.0.0.1' || host === '::1'
                     if (isLocalDev) {
-                        localStorage.setItem('uah_access_token', 'local-dev-bypass')
+                        this.storeAuth({
+                            access_token: 'local-dev-bypass',
+                            user: {
+                                id: 0,
+                                email: 'local@dev',
+                                username: 'local-dev',
+                                first_name: 'Local',
+                                last_name: 'Dev',
+                                avatar_url: null,
+                                email_verified: false,
+                                is_active: true,
+                            },
+                        })
                         const next = this.$route?.query?.next
                         this.$router.push(typeof next === 'string' && next.length ? next : '/home')
                         return

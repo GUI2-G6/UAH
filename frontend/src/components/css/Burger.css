@@ -67,6 +67,29 @@
   padding-bottom: 70px;
 }
 
+.user-summary {
+  position: absolute;
+  left: 20px;
+  bottom: 62px;
+  max-width: 120px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.user-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-email {
+  opacity: 0.8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .logout-button {
   position: absolute;
   left: 20px;

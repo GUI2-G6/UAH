@@ -39,6 +39,14 @@ export default {
     }
   },
   methods: {
+    storeAuth(data) {
+      if (data?.access_token) {
+        localStorage.setItem('uah_access_token', data.access_token)
+      }
+      if (data?.user) {
+        localStorage.setItem('uah_current_user', JSON.stringify(data.user))
+      }
+    },
     async register() {
       this.loading = true
       this.error = null
@@ -61,7 +69,7 @@ export default {
         }
 
         const data = await res.json()
-        localStorage.setItem('uah_access_token', data.access_token)
+        this.storeAuth(data)
         const next = this.$route?.query?.next
         this.$router.push(typeof next === 'string' && next.length ? next : '/home')
       } catch (e) {

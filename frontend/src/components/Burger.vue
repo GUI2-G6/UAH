@@ -45,6 +45,11 @@
             </button>
         </div>
 
+        <div class="user-summary" v-if="currentUser">
+            <div class="user-name">{{ displayName }}</div>
+            <div class="user-email" v-if="currentUser.email">{{ currentUser.email }}</div>
+        </div>
+
         <button type="button" class="logout-button" @click="logout">
             Logout
         </button>
@@ -75,8 +80,26 @@
         name: "Burger",
         data() {
             return {
-                active:false
+                active:false,
+                currentUser: null,
             };
+        },
+        computed: {
+            displayName() {
+                if (!this.currentUser) return ''
+                const first = this.currentUser.first_name || this.currentUser.firstName
+                const last = this.currentUser.last_name || this.currentUser.lastName
+                const full = [first, last].filter(Boolean).join(' ').trim()
+                return full || this.currentUser.username || 'User'
+            }
+        },
+        mounted() {
+            try {
+                const raw = localStorage.getItem('uah_current_user')
+                this.currentUser = raw ? JSON.parse(raw) : null
+            } catch {
+                this.currentUser = null
+            }
         },
         methods: {
             toggleActive() {
@@ -88,6 +111,7 @@
             },
             logout() {
                 localStorage.removeItem('uah_access_token');
+                localStorage.removeItem('uah_current_user');
                 this.active = false;
                 this.$router.push('/login');
             }
