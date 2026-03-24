@@ -30,14 +30,14 @@
                     <h3>Address</h3>
                 </template>
                 <div class="appInfo-group">
-                    <h4>Street Address</h4>
-                    <p v-if="currentUser" class="current-value">Current: <strong>{{ currentUser.username || 'User' }}</strong></p>
-                    <input type="text" v-model="changeUsernameNew" placeholder="New username">
-                    <input type="text" v-model="changeUsernameNewConfirm" placeholder="Confirm new username">
-                    <button @click="changeUsername" :disabled="working" :class="buttonStatusClass('changeUsername')">Update username</button>
-                    <div v-if="actionStatus.changeUsername.message" :class="feedbackClass('changeUsername')">
-                        {{ actionStatus.changeUsername.message }}
-                    </div>
+                    <p>Street Address</p>
+                    <input type="text" v-model="currentUser.streetAddress" placeholder="Street address">
+                    <p>City</p>
+                    <input type="text" v-model="currentUser.City" placeholder="City">
+                    <p>State/Province</p>
+                    <input type="text" v-model="currentUser.state" placeholder="State/Province">
+                    <p>Country</p>
+                    <input type="text" v-model="currentUser.zip" placeholder="ZIP/Postal Code">
                 </div>
 
                 <div class="appInfo-group">
