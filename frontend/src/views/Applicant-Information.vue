@@ -42,14 +42,9 @@
 
                 <div class="appInfo-group">
                     <h4>Professional Summary</h4>
-                    <h5>Summary</h5>
-                        <Form v-slot="$form" :resolver="resolver" :initialValues="initialValues" @submit="onFormSubmit" class="flex flex-col gap-4">
-                            <div class="flex flex-col gap-1">
-                                <Textarea name="address" rows="5" cols="30" style="resize: none" />
-                                <Message v-if="$form.address?.invalid" severity="error" size="small" variant="simple">{{ $form.address.error?.message }}</Message>
-                            </div>
-                            <Button type="submit" severity="secondary" label="Submit" />
-                        </Form>
+                    <span>Summary</span>
+                    <p style="white-space: pre-line;">{{ message }}</p>
+                    <textarea v-model="message" placeholder="Brief professional summary highlighting your key skills and experience..."></textarea>
                 </div>
 
                 <div class="settings-group">
@@ -146,7 +141,6 @@
 import Card from "../components/Card.vue";
 import ConfirmModal from "../components/ConfirmModal.vue";
 import SecretInput from "../components/SecretInput.vue";
-import Textarea from "../components/Textarea.vue";
 import { authedFetch, clearAuth, setCurrentUser } from "../lib/auth.js";
 
 export default {
