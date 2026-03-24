@@ -83,6 +83,15 @@
   margin-bottom: 6px;
 }
 
+.email-status {
+  font-size: 0.9rem;
+  color: #8a94a6;
+}
+
+.email-status.is-verified {
+  color: #1a1a2e;
+}
+
 .dashboard input {
   width: 100%;
   box-sizing: border-box;
