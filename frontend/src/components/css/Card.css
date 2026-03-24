@@ -6,5 +6,10 @@
 }
 
 .card .header {
-    border-bottom: solid 2px rgb(226, 227, 230);
+  border-bottom: solid 2px rgb(226, 227, 230);
+}
+
+.big-card {
+  grid-column: span 4;
+  height: 300px;
 }

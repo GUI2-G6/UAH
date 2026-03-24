@@ -5,27 +5,32 @@
             <p>Good afternoon, Test User Demo! You have 1 new reminder for today. Welcome!</p> <!-- Add links to actual variables here! -->
         </div>
         <div class="dashboard">
-            <div class="card">
-                <h1>Applied: 0</h1>
-            </div>
-            <div class="card">
-                <h1>Interviews: 0</h1>
-            </div>
-            <div class="card">
-                <h1>Offers: 0</h1>
-            </div>
-            <div class="card">
-                <h1>Rejected: 0</h1>
-            </div>
-            <div class="card big-card">
+            <Card>
+                <h2>Applied: 0</h2>
+            </Card>
+            <Card>
+                <h2>Interviews: 0</h2>
+            </Card>
+            <Card>
+                <h2>Offers: 0</h2>
+            </Card>
+            <Card>
+                <h2>Rejected: 0</h2>
+            </Card>
+            <Card class="big-card">
                 <h2>Recent Applications</h2>
-            </div>
+            </Card>
         </div>
     </div>
 </template>
 
 <script>
+    import Card from "../components/Card.vue";
+
     export default{
+        components: {
+            Card
+        },
         name: "Home"
     }
 </script>
