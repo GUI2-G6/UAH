@@ -1,6 +1,6 @@
 <template>
     <div class="page">
-        <h1>Login</h1>
+        <h1>Signup</h1>
             <p>Track every application in one place</p>
             <input type="email" v-model="email" placeholder="Enter Your Email to Begin account" />
             <button @click="singup">Submit</button>
