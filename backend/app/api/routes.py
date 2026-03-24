@@ -150,7 +150,7 @@ async def save_job(
         job_id=job_data.job_id,
         title=job_data.name,
         company=job_data.company,
-        job_url=job_data.url
+        url=job_data.url
     )
     # Commits the transaction to save the new job to the database and refreshes the instance to get the updated data.
     db.add(new_saved_job)
@@ -176,7 +176,7 @@ async def get_saved_jobs(
             "id": job.id,
             "title": job.title,
             "company": job.company,
-            "job_url": job.job_url,
+            "job_url": job.url,
         })
     # Returns the structured JSON response containing the list of saved jobs for the user.
     return {"saved_jobs": saved_job_data}
