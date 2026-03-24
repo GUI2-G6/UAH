@@ -5,26 +5,30 @@
             <p>Keep track of your follow-ups and deadlines</p> <!-- Add links to actual variables here! -->
         </div>
         <div class="dashboard">
-            <div class="card big-card">
+            <Card class="big-card">
                 <h2>No pending reminders. Great job keeping on top of things!</h2>
-            </div>
-
-            <div class="card">
-                <h1>Total Pending: 0</h1>
-            </div>
-            <div class="card">
-                <h1>Action Required: 0</h1>
-            </div>
-            <div class="card">
-                <h1>Upcoming: 0</h1>
-            </div>
+            </Card>
+            <Card>
+                <h2>Total Pending: 0</h2>
+            </Card>
+            <Card>
+                <h2>Action Required: 0</h2>
+            </Card>
+            <Card>
+                <h2>Upcoming: 0</h2>
+            </Card>
         </div>
     </div>
 </template>
 
 <script>
+    import Card from '@/components/Card.vue';
+
     export default{
-        name: "Notifications"
+        name: "Notifications",
+        components:{
+            Card
+        }
     }
 </script>
 

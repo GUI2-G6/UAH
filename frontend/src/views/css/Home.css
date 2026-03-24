@@ -19,14 +19,3 @@
   gap: 16px;
   padding: 16px;
 }
-
-.card {
-  background: #f5f5f5;
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-}
-.big-card {
-  grid-column: span 4;
-  height: 300px;
-}
