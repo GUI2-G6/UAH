@@ -28,6 +28,17 @@ export default {
         const res = await fetch('/api/jobs/search?page=1')
         const data = await res.json()
         console.log("RAW JOBS:", data)
+
+        this.jobs = data.jobs.map(job => ({
+          id : job.id,
+          title : job.name,
+          company : job.company,
+          location: job.locations?.[0] || "Unknown",
+          level: job.levels?.[0] || "",
+          categories: job.categories || [],
+          publication_date: job.publication_date,
+          link: job.job_url
+        }))
         this.jobs = data
       } catch(e) {
         console.error("Failed to load jobs", e)
