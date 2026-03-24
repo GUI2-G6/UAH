@@ -73,8 +73,8 @@
 
 
             <Card>
-                <h3>Education</h3>
                 <div class="appInfo-group">
+                <h3>Education</h3>
                     <p>Degree</p>
                     <input type="text" v-model="currentUser.degree" placeholder="Degree">
                     <p>Major/Field of Study</p>
@@ -86,6 +86,35 @@
                     <p>GPA (Optional)</p>
                     <input type="text" v-model="currentUser.gpa" placeholder="GPA">
                 </div>
+            </Card>
+
+            <Card>
+                <h3>Skills and Languages</h3>
+            </Card>
+
+            <Card>
+                <h3>Current Experience</h3>
+                <p>Years of Experience</p>
+                <input type="text" v-model="currentUser.yearsExperience" placeholder="Years of Experience">
+                <p>Current Job Title</p>
+                <input type="text" v-model="currentUser.currentJobTitle" placeholder="Current Job Title">
+                <p>Current Company</p>
+                <input type="text" v-model="currentUser.currentCompany" placeholder="Current Company">
+            </Card>
+
+            <Card>
+                <h3>Job Preferences</h3>
+                <p>Desired Salary Range</p>
+                <input type="text" v-model="currentUser.salaryRange" placeholder="Desired Salary Range">
+                <p>Preferred Job Locations</p>
+                <input type="text" v-model="currentUser.preferredLocations" placeholder="Preferred Job Locations">
+                <p>Remote Work Preference</p>
+                <select name="remote-work-preference" id="remote-work-preference">
+                    <option>Remote Only</option>
+                    <option>On-site</option>
+                    <option>Hybrid</option>
+                    <option>No Preference</option>
+                </select>
             </Card>
 
         </div>
