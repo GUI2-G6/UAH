@@ -56,7 +56,7 @@ from typing import Optional, List
 
 router = APIRouter()
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SERCRET = os.getenv("GOOGLE_CLIENT_SECRET")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
 MUSE_API_KEY = os.getenv("MUSE_API_KEY")
 
@@ -223,7 +223,7 @@ async def google_oauth_callback(request: Request, code: str, state: str, db: Ses
             data={
                 "code": code,
                 "client_id": GOOGLE_CLIENT_ID,
-                "client_secret": GOOGLE_CLIENT_SERCRET,
+                "client_secret": GOOGLE_CLIENT_SECRET,
                 "redirect_uri": GOOGLE_REDIRECT_URI,
                 "grant_type": "authorization_code",
             },
@@ -249,7 +249,7 @@ async def google_oauth_callback(request: Request, code: str, state: str, db: Ses
         user = GoogleAuthService.get_or_create_user(db=db, google_id=google_id, email=email, full_name=name, picture_url=picture)
 
         from app.core.security import create_access_token
-        access_token = create_access_token(data={"sub": str(user.id)})
+        user_access_token = create_access_token(data={"sub": str(user.id)})
         
         return TokenResponse(access_token=Token, user=UserResponse.model_validate(user),
     )
