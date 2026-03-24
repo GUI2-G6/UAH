@@ -31,31 +31,6 @@
             </Card>
             <Card>
                 <template #header>
-                    <h3>Notifications</h3>
-                </template>
-                <div class="settings-group">
-                    <h4>Email Notifications</h4>
-                    <!--Using a select box here is obtrusive and bad. Redesign it to be a switch.-->
-                    <select name="email-notifications" id="email-notifications">
-                        <option>Yes</option>
-                        <option>No</option>
-                    </select>
-                    <h4>Reminder Notifications</h4>
-                    <!--Using a select box here is obtrusive and bad. Redesign it to be a switch.-->
-                    <select name="reminder-notifications" id="reminder-notifications">
-                        <option>Yes</option>
-                        <option>No</option>
-                    </select>
-                    <h4>Application Status Updates</h4>
-                    <!--Using a select box here is obtrusive and bad. Redesign it to be a switch.-->
-                    <select name="application-status-updates" id="application-status-updates">
-                        <option>Yes</option>
-                        <option>No</option>
-                    </select>
-                </div>
-            </Card>
-            <Card>
-                <template #header>
                     <h3>Account & Security</h3>
                 </template>
                 <div class="settings-group">
@@ -114,8 +89,28 @@
             </Card>
             <Card>
                 <template #header>
-                    <h3>Preferences</h3>
+                    <h3>Notifications & Preferences</h3>
                 </template>
+                <div class="settings-group">
+                    <h4>Email Notifications</h4>
+                    <!--Using a select box here is obtrusive and bad. Redesign it to be a switch.-->
+                    <select name="email-notifications" id="email-notifications">
+                        <option>Yes</option>
+                        <option>No</option>
+                    </select>
+                    <h4>Reminder Notifications</h4>
+                    <!--Using a select box here is obtrusive and bad. Redesign it to be a switch.-->
+                    <select name="reminder-notifications" id="reminder-notifications">
+                        <option>Yes</option>
+                        <option>No</option>
+                    </select>
+                    <h4>Application Status Updates</h4>
+                    <!--Using a select box here is obtrusive and bad. Redesign it to be a switch.-->
+                    <select name="application-status-updates" id="application-status-updates">
+                        <option>Yes</option>
+                        <option>No</option>
+                    </select>
+                </div>
                 <div class="settings-group">
                     <h4>Language</h4>
                     <select name="language" id="language">

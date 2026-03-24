@@ -14,9 +14,27 @@
   flex: 1;
   padding: 24px;
   display: grid;
-  grid-template-columns: repeat(1, 1fr);
+  /* Responsive layout: 1 col (default), 2 cols, then 3 cols */
+  grid-template-columns: 1fr;
   grid-auto-rows: minmax(120px, auto);
   gap: 20px;
+  width: 100%;
+  /* Cap width so auto-fit never creates a 4th column */
+  max-width: 1200px;
+  margin: 0 auto;
+  justify-items: stretch;
+}
+
+@media (min-width: 720px) {
+  .dashboard {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1080px) {
+  .dashboard {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .card {
@@ -26,6 +44,8 @@
   padding: 24px;
 
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 920px;
 }
 
 .dashboard .card .header {
@@ -50,6 +70,14 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  align-items: flex-start;
+}
+
+.settings-group input,
+.settings-group select,
+.settings-group button,
+.settings-group .secret-input {
+  width: min(420px, 100%);
 }
 
 .settings-group+.settings-group {

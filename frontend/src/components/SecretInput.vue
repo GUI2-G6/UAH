@@ -6,7 +6,7 @@
       :placeholder="placeholder"
       :autocomplete="autocomplete"
       :disabled="disabled"
-      :class="inputClass"
+      :class="[inputClass, { 'secret-input-default': !inputClass }]"
       @input="$emit('update:modelValue', $event.target.value)"
     />
     <button
@@ -78,6 +78,16 @@ export default {
 
 .secret-input input {
   flex: 1;
+}
+
+.secret-input-default {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  background: #ffffff;
+  outline: none;
 }
 
 .toggle {
