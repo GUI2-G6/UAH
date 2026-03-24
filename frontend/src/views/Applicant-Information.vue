@@ -39,15 +39,19 @@
                     <p>Country</p>
                     <input type="text" v-model="currentUser.zip" placeholder="ZIP/Postal Code">
                 </div>
+            </Card>
 
+            <Card>
                 <div class="appInfo-group">
                     <h4>Professional Summary</h4>
                     <span>Summary</span>
                     <p style="white-space: pre-line;">{{ message }}</p>
                     <textarea v-model="message" placeholder="Brief professional summary highlighting your key skills and experience..."></textarea>
                 </div>
+            </Card>
 
-                <div class="settings-group">
+            <Card>
+                <div class="appInfo-group">
                     <h4>Work Authorization</h4>
                     <p>Work Authorization Status</p>
                     <select name="authorization-status" id="authorization-status">
@@ -65,28 +69,9 @@
                         <option>In the future</option>
                     </select>
                 </div>
-
-                <div class="settings-group">
-                    <h4>Email Verification</h4>
-                    <button @click="sendVerification" :disabled="working" :class="buttonStatusClass('sendVerification')">Send verification token</button>
-                    <div v-if="actionStatus.sendVerification.message" :class="feedbackClass('sendVerification')">
-                        {{ actionStatus.sendVerification.message }}
-                    </div>
-                    <SecretInput v-model="verifyToken" placeholder="Verification token" autocomplete="off" :disabled="working" />
-                    <button @click="verifyEmail" :disabled="working" :class="buttonStatusClass('verifyEmail')">Verify email</button>
-                    <div v-if="actionStatus.verifyEmail.message" :class="feedbackClass('verifyEmail')">
-                        {{ actionStatus.verifyEmail.message }}
-                    </div>
-                </div>
-
-                <div class="settings-group">
-                    <h4>Delete Account</h4>
-                    <button class="danger" @click="openDeleteConfirm" :disabled="working" :class="buttonStatusClass('deleteAccount')">Delete account</button>
-                    <div v-if="actionStatus.deleteAccount.message" :class="feedbackClass('deleteAccount')">
-                        {{ actionStatus.deleteAccount.message }}
-                    </div>
-                </div>
             </Card>
+
+
             <Card>
                 <template #header>
                     <h3>Notifications & Preferences</h3>
