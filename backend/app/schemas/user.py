@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field, AliasChoices
 
 
 class UserRegister(BaseModel):
@@ -17,9 +17,10 @@ class UserLogin(BaseModel):
 class UserResponse(BaseModel):
     id: int
     email: str
-    username: str
+    username: str | None
     first_name: str | None
     last_name: str | None
+    avatar_url: str | None
     is_active: bool
 
     class Config:
@@ -30,3 +31,10 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
+
+class SaveJobRequest(BaseModel):
+    user_id: int = Field(validation_alias=AliasChoices("user_id", "userId"))
+    job_id: int = Field(validation_alias=AliasChoices("job_id", "jobId"))
+    name: str
+    company: str
+    url: str = Field(validation_alias=AliasChoices("url", "job_url", "jobUrl"))

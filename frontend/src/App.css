@@ -1,4 +1,8 @@
-* { margin: 0; padding: 0; box-sizing: border-box; }
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -8,7 +12,19 @@ body {
 
 #uah-app {
   max-width: 100%;
-  display:flex;
+  display: flex;
+  min-height: 100vh;
+}
+
+#main-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+#current-page {
+  flex: 1;
+  overflow: auto;
 }
 
 header {
@@ -60,12 +76,31 @@ h1 {
   display: inline-block;
 }
 
-.dot.green { background: #3fb950; }
-.dot.red   { background: #f85149; }
+.dot.green {
+  background: #3fb950;
+}
 
-.loading { color: #d29922; }
-.error   { color: #f85149; }
-.ok      { color: #3fb950; }
+.dot.red {
+  background: #f85149;
+}
+
+.loading {
+  color: #d29922;
+}
+
+.error {
+  color: #f85149;
+}
+
+.ok {
+  color: #3fb950;
+}
+
+#main-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
 
 #current-page {
   flex: 1;

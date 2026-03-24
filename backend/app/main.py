@@ -15,7 +15,8 @@ Key concepts:
 To run locally (outside Docker):
   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 """
-
+from starlette.middleware.sessions import SessionMiddleware
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.api.routes import router as api_router
@@ -42,6 +43,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(
+    SessionMiddleware, 
+    secret_key=os.getenv("SESSION_SECRET", "a-very-secret-random-key")
+)
+
 # ---------------------------------------------------------------------------
 # Mount the API router
 # ---------------------------------------------------------------------------
@@ -49,21 +55,21 @@ app = FastAPI(
 # To add new route groups in the future, create additional routers and
 # include them here with appropriate prefixes and tags.
 # ---------------------------------------------------------------------------
-app.include_router(api_router)
+app.include_router(api_router, prefix="/api")
 app.include_router(auth_router)
 
 
 # ---------------------------------------------------------------------------
-# Root and health endpoints (outside /api prefix)
+# Root and health endpoints (prefixed with /api to match Nginx proxy block)
 # ---------------------------------------------------------------------------
 
-@app.get("/", tags=["root"])
+@app.get("/api/", tags=["root"])
 async def root():
     """Root endpoint — quick sanity check that the service is running."""
     return {"service": settings.PROJECT_NAME, "version": settings.VERSION}
 
 
-@app.get("/health", tags=["health"])
+@app.get("/api/health", tags=["health"])
 async def health():
     """
     Health check endpoint.

@@ -41,13 +41,221 @@ How DB session will be injected later:
       async def list_items(db: Session = Depends(get_db)):
           return db.query(Item).all()
 """
+from contextvars import Token
+import os, secrets, httpx
+import httpx
+from fastapi import APIRouter, HTTPException, Request, Query, Depends
+from fastapi.responses import RedirectResponse
+from sqlalchemy.orm import Session
+from app.models.user import User, SavedJob
+from app.db.session import get_db
+from app.google.service import GoogleAuthService
+from app.schemas.user import TokenResponse, UserResponse, SaveJobRequest
+from typing import Optional, List
 
-from fastapi import APIRouter
 
 router = APIRouter()
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SERCRET = os.getenv("GOOGLE_CLIENT_SECRET")
+GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
+MUSE_API_KEY = os.getenv("MUSE_API_KEY")
+
+@router.get("/jobs/search", tags=["jobs"])
+async def search_jobs(
+    # Creates an endpoint for each job search query with optional parameters 
+    page: int = Query(1, ge=1, description="Page number for pagination"),
+    catogory: Optional[List[str]] = Query(None, description="e.g., 'Software Engineer', 'Data Science'"),
+    level: Optional[List[str]] = Query(None, description="e.g., 'Internship', 'Entry', 'Senior'"),
+    location: Optional[List[str]] = Query(None, description="e.g., 'New York', 'Remote'"),
+    company: Optional[List[str]] = Query(None, description="e.g., 'Google', 'Microsoft'"),
+):
+    # Gets the list of jobs from The Muse API based on the provided query parameters 
+    url = "https://www.themuse.com/api/public/jobs"    
+    # Builds the parameters for the API request based on the query parameters provided by the user.
+    params = [("page", page)]
+    
+    if MUSE_API_KEY:
+        params.append(("api_key", MUSE_API_KEY))
+    
+    # If the user provided any of the optional parameters (category, level, location, company), 
+    # It adds them to the params dictionary in the format expected by The Muse API.
+    if catogory:
+        for cat in catogory:
+            params.append(("category", cat))
+    if level:
+        for lvl in level:
+            params.append(("level", lvl))
+    if location:
+        for loc in location:
+            params.append(("location", loc))
+    if company:
+        for comp in company:
+            params.append(("company", comp))
+    
+    # Makes an GET request to The Muse API using httpx with the constructed parameters. 
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, params=params)
+        # If the response status code is not 200, it raises an HTTP 500 error indicating that the job search failed. 
+        # If the request is successful, it processes the response data to extract relevant job information and returns it in a structured format.
+        if response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Failed to fetch jobs from The Muse API")
+    
+    # Turns the raw data from The Muse API into a json format that the frontend can easily use.
+    data = response.json()
+    
+    # Exracts the list of jobs from the response data
+    # If the "results" key is not present, it defaults to an empty list.
+    jobs = data.get("results", [])
+    
+    # Iterates over all the list of jobs and constructs a new list of job data with only the relevant information needed by the frontend.
+    job_data = []
+    for job in jobs:
+        job_data.append({
+            "id": job.get("id"),
+            "name": job.get("name"),
+            "company": job.get("company", {}).get("name"),
+            "locations": [loc.get("name") for loc in job.get("locations", [])],
+            "levels": [lvl.get("name") for lvl in job.get("levels", [])],
+            "categories": [cat.get("name") for cat in job.get("categories", [])],
+            "publication_date": job.get("publication_date"),
+            "job_url": job.get("refs", {}).get("landing_page"),
+        })
+    # Returns the structured JSON response containing the current page number, total pages, total jobs, and the list of job data extracted from The Muse API.
+    return {
+        "page": data.get("page"),
+        "total_pages": data.get("page_count"),
+        "total_jobs": data.get("total"),
+        "jobs": job_data,
+    }
+
+@router.post("/jobs/save", tags=["jobs"])
+async def save_job(
+    # Creates an endpoint for saving a job to the user's profile with the required job data and a database session dependency.
+    job_data: SaveJobRequest,
+    db: Session = Depends(get_db),
+):
+    # Checks if the job is already saved for the user by querying the SavedJob table in the database with the user ID and job ID.
+    existing_job = db.query(SavedJob).filter(
+        SavedJob.user_id == job_data.user_id,
+        SavedJob.job_id == job_data.job_id
+    ).first()
+    
+    # If the job is already saved, it raises an HTTP 400 error indicating that the job has already been saved by the user.
+    if existing_job:
+        raise HTTPException(status_code=400, detail="Job already saved")
+    
+    # If the job isnt saved, it creates a new SavedJob instance with the provided job data and adds it to the database session.
+    new_saved_job = SavedJob(
+        user_id=job_data.user_id,
+        job_id=job_data.job_id,
+        title=job_data.name,
+        company=job_data.company,
+        url=job_data.url
+    )
+    # Commits the transaction to save the new job to the database and refreshes the instance to get the updated data.
+    db.add(new_saved_job)
+    db.commit()
+    db.refresh(new_saved_job)
+    # Tells the frontend that the job has been successfully saved to the user's profile with a success message.
+    return {"message": f"Successfully saved  {job_data.name} at {job_data.company}!"}
 
 
-@router.get("/api/status", tags=["status"])
+@router.get("/jobs/saved", tags=["jobs"])
+async def get_saved_jobs(
+    # Creates an endpoint for retrieving all saved jobs for a user with a database session dependency.
+    user_id: int,
+    db: Session = Depends(get_db),
+):
+    # Queries the SavedJob table in the database to get all saved jobs for the specified user ID.
+    saved_jobs = db.query(SavedJob).filter(SavedJob.user_id == user_id).all()
+    
+    # Constructs a list of saved job data with relevant information such as job ID, title, company, and job URL.
+    saved_job_data = []
+    for job in saved_jobs:
+        saved_job_data.append({
+            "id": job.id,
+            "title": job.title,
+            "company": job.company,
+            "job_url": job.url,
+        })
+    # Returns the structured JSON response containing the list of saved jobs for the user.
+    return {"saved_jobs": saved_job_data}
+
+@router.get("/auth/google", tags=["google auth"])
+async def google_oauth(request: Request):
+    # Generates a random  16 character state string to prevent attacks
+    state = secrets.token_urlsafe(16)
+    # Stores the state in the session for later verification when the user is redirected back
+    request.session["oauth_state"] = state
+    
+    # Holds all the parameters required for the Google OAuth including client ID, redirect URI, response type, scope, and the generated state
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state,
+    }
+                                
+    # Creates a query string from the parameters and redirects the user to Google's OAuth 2.0 authorization endpoint with the query string attached
+    query = "&".join([f"{key}={value}" for key, value in params.items()])
+    # Then sends the user's browser to the Google OAuth consent screen s they can log in and authorize the application to access their Google account information. 
+    # After the user completes the authorization process, Google will redirect them back to the specified redirect URI with an authorization code 
+    #                                                                                                   that can be exchanged for an access token.
+    return RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{query}")
+    
+    
+    
+@router.get("/auth/google/callback", response_model=TokenResponse, tags=["google auth"])
+async def google_oauth_callback(request: Request, code: str, state: str, db: Session = Depends(get_db)):
+    # Verifies if the parameter "state" matches the one stored in the session to prevent any attacks. 
+    # If they don't match, it raises an HTTP 400 error.
+    if state != request.session.get("oauth_state"):
+        raise HTTPException(status_code=400, detail="Invalid state parameter")    
+    
+    # Opens an asynchronous HTTP client session using httpx to exchange the authorization code for an access token 
+    # by making a POST request to Google's token endpoint.
+    async with httpx.AsyncClient() as client:
+        
+        # Sends a POST request to Google's token endpoint with the required parameters including the authorization code, client ID, client secret, 
+        # redirect URI, and grant type.
+        token_response = await client.post("https://oauth2.googleapis.com/token", 
+            data={
+                "code": code,
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SERCRET,
+                "redirect_uri": GOOGLE_REDIRECT_URI,
+                "grant_type": "authorization_code",
+            },
+        )
+        # Converts the response to JSON and extracts the access token from the response data. 
+        # The access token can then be used to make authenticated requests to Google's APIs on behalf of the user.
+        token_response_data = token_response.json()
+        access_token = token_response_data.get("access_token")
+        if not access_token:
+            raise HTTPException(status_code=400, detail="Failed to obtain access token")
+        
+        # Gets the user's profile information by making a GET request to Google's userinfo endpoint with the access token included in the Authorization header.
+        profile_response = await client.get("https://www.googleapis.com/oauth2/v3/userinfo", headers={"Authorization": f"Bearer {access_token}"})
+        profile_data = profile_response.json()
+        
+        # Extracts the user's Google ID, email, name, and profile picture URL from the profile data returned by Google.
+        google_id = profile_data['sub']
+        email = profile_data["email"]
+        name = profile_data["name"]
+        picture = profile_data.get("picture")
+
+        
+        user = GoogleAuthService.get_or_create_user(db=db, google_id=google_id, email=email, full_name=name, picture_url=picture)
+
+        from app.core.security import create_access_token
+        access_token = create_access_token(data={"sub": str(user.id)})
+        
+        return TokenResponse(access_token=Token, user=UserResponse.model_validate(user),
+    )
+
+
+@router.get("/status", tags=["status"])
 async def api_status():
     """
     Status endpoint used by the frontend to verify backend connectivity.
@@ -62,7 +270,7 @@ async def api_status():
     }
 
 
-@router.get("/api/diagnostics", tags=["status"])
+@router.get("/diagnostics", tags=["status"])
 async def diagnostics():
     """
     Comprehensive diagnostics endpoint for the status page.
