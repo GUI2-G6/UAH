@@ -25,6 +25,10 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    @property
+    def avatar_url(self):
+        return self.picture_url
+
 # class to save jobs for users
 class SavedJob(Base):
     __tablename__ = "saved_jobs"

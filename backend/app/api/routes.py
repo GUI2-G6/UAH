@@ -75,22 +75,22 @@ async def search_jobs(
     params = [("page", page)]
     
     if MUSE_API_KEY:
-        params.append({"api_key": MUSE_API_KEY})
+        params.append(("api_key", MUSE_API_KEY))
     
     # If the user provided any of the optional parameters (category, level, location, company), 
     # It adds them to the params dictionary in the format expected by The Muse API.
     if catogory:
         for cat in catogory:
-            params.append("category", []).append(cat)
+            params.append(("category", cat))
     if level:
         for lvl in level:
-            params.append("level", []).append(lvl)
+            params.append(("level", lvl))
     if location:
         for loc in location:
-            params.append("location", []).append(loc)
+            params.append(("location", loc))
     if company:
         for comp in company:
-            params.append("company", []).append(comp)
+            params.append(("company", comp))
     
     # Makes an GET request to The Muse API using httpx with the constructed parameters. 
     async with httpx.AsyncClient() as client:
@@ -150,7 +150,7 @@ async def save_job(
         job_id=job_data.job_id,
         title=job_data.name,
         company=job_data.company,
-        job_url=job_data.url
+        url=job_data.url
     )
     # Commits the transaction to save the new job to the database and refreshes the instance to get the updated data.
     db.add(new_saved_job)
@@ -176,7 +176,7 @@ async def get_saved_jobs(
             "id": job.id,
             "title": job.title,
             "company": job.company,
-            "job_url": job.job_url,
+            "job_url": job.url,
         })
     # Returns the structured JSON response containing the list of saved jobs for the user.
     return {"saved_jobs": saved_job_data}
@@ -255,7 +255,7 @@ async def google_oauth_callback(request: Request, code: str, state: str, db: Ses
     )
 
 
-@router.get("/api/status", tags=["status"])
+@router.get("/status", tags=["status"])
 async def api_status():
     """
     Status endpoint used by the frontend to verify backend connectivity.
@@ -270,7 +270,7 @@ async def api_status():
     }
 
 
-@router.get("/api/diagnostics", tags=["status"])
+@router.get("/diagnostics", tags=["status"])
 async def diagnostics():
     """
     Comprehensive diagnostics endpoint for the status page.
