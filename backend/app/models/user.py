@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 from app.db.base import Base
 
 
@@ -23,3 +24,14 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+# class to save jobs for users
+class SavedJob(Base):
+    __tablename__ = "saved_jobs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    job_id = Column(Integer, nullable=False)
+    title = Column(String(255), nullable=False)
+    company = Column(String(255), nullable=False)
+    url = Column(String(255), nullable=False)

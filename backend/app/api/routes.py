@@ -47,10 +47,10 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
-from app.models.user import User
+from app.models.user import User, SavedJob
 from app.db.session import get_db
 from app.google.service import GoogleAuthService
-from app.schemas.user import TokenResponse, UserResponse
+from app.schemas.user import TokenResponse, UserResponse, SaveJobRequest
 from typing import Optional, List
 
 
@@ -127,7 +127,38 @@ async def search_jobs(
         "total_jobs": data.get("total"),
         "jobs": job_data,
     }
-        
+
+@router.get("/jobs/save")
+async def save_job(
+    # Creates an endpoint for saving a job to the user's profile with the required job data and a database session dependency.
+    job_data: SaveJobRequest,
+    db: Session = Depends(get_db),
+):
+    # Checks if the job is already saved for the user by querying the SavedJob table in the database with the user ID and job ID.
+    existing_job = db.query(SavedJob).filter(
+        SavedJob.user_id == job_data.user_id,
+        SavedJob.job_id == job_data.job_id
+    ).first()
+    
+    # If the job is already saved, it raises an HTTP 400 error indicating that the job has already been saved by the user.
+    if existing_job:
+        raise HTTPException(status_code=400, detail="Job already saved")
+    
+    # If the job isnt saved, it creates a new SavedJob instance with the provided job data and adds it to the database session.
+    new_saved_job = SavedJob(
+        user_id=job_data.user_id,
+        job_id=job_data.job_id,
+        title=job_data.name,
+        company=job_data.company,
+        job_url=job_data.url
+    )
+    # Commits the transaction to save the new job to the database and refreshes the instance to get the updated data.
+    db.add(new_saved_job)
+    db.commit()
+    db.refresh(new_saved_job)
+    # Tells the frontend that the job has been successfully saved to the user's profile with a success message.
+    return {"message": f"Successfully saved  {job_data.name} at {job_data.company}!"}
+
 
 @router.get("/auth/google")
 async def google_oauth(request: Request):
