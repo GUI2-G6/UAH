@@ -54,8 +54,8 @@
 
 .filter-group input:focus,
 .filter-group select:focus {
-  outline: 2px solid rgba(15, 118, 110, 0.18);
-  border-color: #0f766e;
+  outline: 2px solid rgba(37, 99, 235, 0.18);
+  border-color: var(--color-primary-600);
 }
 
 .filter-group select[multiple] {
@@ -95,7 +95,7 @@
 
 .category-option:hover,
 .category-option.active {
-  background: rgba(15, 118, 110, 0.12);
+  background: rgba(37, 99, 235, 0.12);
 }
 
 .full-width {
@@ -143,8 +143,8 @@
 }
 
 .mode-button.active {
-  background: #0f766e;
-  border-color: #0f766e;
+  background: var(--color-primary-600);
+  border-color: var(--color-primary-600);
   color: #fff;
 }
 
@@ -305,8 +305,8 @@
 }
 
 .city-sort-btn.active {
-  background: #0f766e;
-  border-color: #0f766e;
+  background: var(--color-primary-600);
+  border-color: var(--color-primary-600);
   color: #ffffff;
 }
 
@@ -335,7 +335,7 @@
 
 .hint-text {
   margin: 0;
-  color: #0f4f4a;
+  color: var(--color-primary-700);
   font-size: 0.9rem;
 }
 
@@ -359,9 +359,9 @@
 }
 
 .filter-actions .primary {
-  background: #0f766e;
+  background: var(--color-primary-600);
   color: #fff;
-  border-color: #0f766e;
+  border-color: var(--color-primary-600);
 }
 
 .filter-actions .secondary {
@@ -426,8 +426,8 @@
 }
 
 .pagination button.active {
-  background: #0f766e;
-  border-color: #0f766e;
+  background: var(--color-primary-600);
+  border-color: var(--color-primary-600);
   color: #ffffff;
 }
 

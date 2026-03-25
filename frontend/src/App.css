@@ -12,12 +12,24 @@
   --space-2: 12px;
   --space-3: 16px;
   --space-4: 24px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 14px;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-text-primary: #1a1a2e;
+  --color-text-muted: #8a94a6;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f8fafc;
+  --border-color: rgba(203, 213, 225, 0.9);
+  --shadow-soft: 0 2px 6px rgba(15, 23, 42, 0.08);
 }
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #ffffff;
-  color: #000000;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
   line-height: 1.4;
 }
 
@@ -49,7 +61,7 @@ header {
 h1 {
   font-size: 2.4rem;
   letter-spacing: 4px;
-  color: #58a6ff;
+  color: var(--color-primary-600);
 }
 
 .logo-link {
@@ -59,8 +71,13 @@ h1 {
 
 .subtitle {
   margin-top: 6px;
-  color: #8b949e;
+  color: var(--color-text-muted);
   font-size: 0.95rem;
+}
+
+.btn-primary,
+.btn-secondary {
+  border-radius: var(--radius-sm);
 }
 
 .status-card {

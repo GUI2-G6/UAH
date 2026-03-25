@@ -35,7 +35,13 @@
 
             <div ref="inlineImportSection" class="appinfo-card inline-import-card">
                 <h3>Import Resume</h3>
-                <p class="subtitle" style="margin-top:-8px; margin-bottom: 12px;">Upload your resume PDF to extract job-application data inline.</p>
+                <p class="subtitle import-subtitle">Upload your resume PDF and follow the staged flow: Select file, Confirm settings, Parse, then review readiness.</p>
+
+                <div class="upload-stage-row" v-if="activeTab === 'imported'">
+                    <span :class="['stage-pill', uploadStep === 'select' ? 'active' : '']">1. Select</span>
+                    <span :class="['stage-pill', uploadStep === 'confirm' ? 'active' : '']">2. Confirm + Parse</span>
+                    <span class="stage-pill">3. Review Readiness</span>
+                </div>
 
                 <div
                     v-if="uploadStep === 'select'"
@@ -46,10 +52,10 @@
                     @dragleave="isDragOver = false"
                     @drop.prevent="onFileDrop"
                 >
-                    <div class="drop-icon">&#128228;</div>
+                    <div class="drop-icon" aria-hidden="true">PDF</div>
                     <p>Upload your resume</p>
                     <p class="drop-hint">Drag and drop your PDF file here, or click to browse</p>
-                    <button class="btn-primary" @click.stop="triggerFileInput">&#128196; Choose PDF File</button>
+                    <button class="btn-primary" @click.stop="triggerFileInput">Choose PDF File</button>
                     <p class="drop-hint">PDF files only, max 5MB</p>
                 </div>
                 <input
@@ -61,7 +67,7 @@
                 />
 
                 <template v-if="uploadStep === 'confirm'">
-                    <div class="file-preview-row" style="margin-top:6px;">
+                    <div class="file-preview-row file-preview-top-gap">
                         <div class="pdf-icon">PDF</div>
                         <div class="file-info">
                             <p class="file-name">{{ pendingFile.name }}</p>
@@ -70,24 +76,24 @@
                         <button class="clear-btn" @click="clearFile" title="Remove file">&#x2715;</button>
                     </div>
 
-                    <div class="import-options" style="margin-top:10px;">
+                    <div class="import-options import-options-spaced">
                         <h4>Import Options</h4>
                         <div class="import-option-row">
-                            <div class="check-circle">&#10003;</div>
+                            <div class="check-circle" aria-hidden="true"></div>
                             <div class="option-text">
                                 <strong>Extract contact information</strong>
                                 <span>Name, email, phone number, and location</span>
                             </div>
                         </div>
                         <div class="import-option-row">
-                            <div class="check-circle">&#10003;</div>
+                            <div class="check-circle" aria-hidden="true"></div>
                             <div class="option-text">
                                 <strong>Parse education and work history</strong>
                                 <span>School and employment details used in applications</span>
                             </div>
                         </div>
                         <div class="import-option-row">
-                            <div class="check-circle">&#10003;</div>
+                            <div class="check-circle" aria-hidden="true"></div>
                             <div class="option-text">
                                 <strong>Identify skills, links, and certifications</strong>
                                 <span>Technical skills and profile-ready metadata</span>
@@ -95,19 +101,19 @@
                         </div>
                     </div>
 
-                    <div style="margin-top: 8px;">
-                        <label style="font-size:0.82rem;font-weight:600;color:#8a94a6;display:block;margin-bottom:6px;">Parse method</label>
+                    <div class="parse-method-group">
+                        <label class="parse-method-label">Parse method</label>
                         <div class="method-toggle">
                             <button :class="{ active: parseMethod === 'llm' }" @click="parseMethod = 'llm'">AI (LLM)</button>
                             <button :class="{ active: parseMethod === 'rules' }" @click="parseMethod = 'rules'">Rules-based</button>
                         </div>
                     </div>
 
-                    <div class="modal-actions" style="justify-content:flex-start;">
+                    <div class="modal-actions inline-actions">
                         <button class="btn-secondary" @click="clearFile" :disabled="uploading">Choose Different File</button>
                         <button class="btn-primary" @click="doUpload" :disabled="uploading">
                             <span v-if="uploading">
-                                <span class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></span>
+                                <span class="spinner spinner-inline"></span>
                                 Importing...
                             </span>
                             <span v-else>Import Resume</span>
@@ -130,7 +136,7 @@
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">Latest Upload</div>
-                    <div class="stat-value" style="font-size:1rem; padding-top:4px;">{{ latestUploadDate }}</div>
+                    <div class="stat-value stat-value-small">{{ latestUploadDate }}</div>
                 </div>
             </div>
 
@@ -152,14 +158,14 @@
                     </div>
                     <span :class="['badge', badgeClass(r)]">{{ badgeText(r) }}</span>
                     <div class="resume-actions">
-                        <button title="View parsed data" @click="viewResume(r.id)">&#128065;</button>
+                        <button title="View parsed data" @click="viewResume(r.id)">View</button>
                         <button
                             title="Delete resume"
                             class="delete-btn"
                             :class="{ 'confirm-delete': deletingId === r.id }"
                             @click="handleDelete(r.id)"
                         >
-                            {{ deletingId === r.id ? 'Confirm?' : '&#128465;' }}
+                            {{ deletingId === r.id ? 'Confirm Delete' : 'Delete' }}
                         </button>
                     </div>
                 </div>
@@ -168,7 +174,6 @@
             <!-- Empty -->
             <div v-else class="resume-list-card">
                 <div class="empty-state">
-                    <div style="font-size:2rem">&#128196;</div>
                     <p>No resumes yet. Import a PDF to get started.</p>
                 </div>
             </div>
@@ -220,7 +225,7 @@
             <!-- Address -->
             <div class="appinfo-card">
                 <h3>Address</h3>
-                <div class="field-group" style="margin-bottom:14px;">
+                <div class="field-group field-group-spaced">
                     <label>Street Address</label>
                     <input type="text" v-model="streetAddress" placeholder="123 Main Street">
                 </div>
@@ -245,7 +250,7 @@
                 <h3>Professional Summary</h3>
                 <div class="field-group">
                     <label>Summary</label>
-                    <textarea v-model="summary" placeholder="Brief professional summary highlighting your key skills and experience…" style="min-height:110px;"></textarea>
+                    <textarea v-model="summary" class="textarea-summary" placeholder="Brief professional summary highlighting your key skills and experience…"></textarea>
                 </div>
             </div>
 
@@ -289,7 +294,7 @@
                         <label>Major / Field of Study</label>
                         <input type="text" v-model="major" placeholder="Computer Science">
                     </div>
-                    <div class="field-group" style="grid-column: 1 / -1;">
+                    <div class="field-group appinfo-full">
                         <label>University</label>
                         <input type="text" v-model="university" placeholder="University of Alabama in Huntsville">
                     </div>
@@ -321,11 +326,11 @@
 
             <div class="appinfo-card">
                 <h3>Skills and Certifications</h3>
-                <div class="field-group" style="margin-bottom:14px;">
+                <div class="field-group field-group-spaced">
                     <label>Skills (comma-separated)</label>
                     <textarea v-model="skillsText" placeholder="Python, SQL, FastAPI, Vue.js, Docker"></textarea>
                 </div>
-                <div class="field-group" style="margin-bottom:14px;">
+                <div class="field-group field-group-spaced">
                     <label>Certifications and Licenses</label>
                     <textarea v-model="certificationsText" placeholder="AWS Certified Cloud Practitioner - Amazon - 2025"></textarea>
                 </div>
@@ -340,9 +345,9 @@
                 <div class="field-group">
                     <label>Education History</label>
                     <textarea
+                        class="textarea-tall"
                         v-model="educationHistoryText"
                         placeholder="School | Degree | Field | Start Date | End Date&#10;Example University | B.S. | Computer Science | August 2022 | May 2026"
-                        style="min-height:130px;"
                     ></textarea>
                 </div>
             </div>
@@ -352,9 +357,9 @@
                 <div class="field-group">
                     <label>Employment History</label>
                     <textarea
+                        class="textarea-tall"
                         v-model="employmentHistoryText"
                         placeholder="Company | Title | Location | Start Date | End Date&#10;Tech Corp | Software Engineer Intern | Boston, MA | June 2024 | August 2024"
-                        style="min-height:130px;"
                     ></textarea>
                 </div>
             </div>
@@ -405,7 +410,7 @@
             <div class="eeo-card">
                 <div class="eeo-header-row">
                     <div>
-                        <h3>Veteran Status <span style="color:#dc2626;">*</span></h3>
+                        <h3>Veteran Status <span class="required-mark">*</span></h3>
                         <p class="eeo-subtitle">Protected veteran status under VEVRAA</p>
                     </div>
                 </div>
@@ -429,7 +434,7 @@
             <div class="eeo-card">
                 <div class="eeo-header-row">
                     <div>
-                        <h3>Disability Status <span style="color:#dc2626;">*</span></h3>
+                        <h3>Disability Status <span class="required-mark">*</span></h3>
                         <p class="eeo-subtitle">Voluntary self-identification under Section 503</p>
                     </div>
                 </div>
@@ -449,7 +454,7 @@
             <div class="eeo-card">
                 <div class="eeo-header-row">
                     <div>
-                        <h3>California Resident <span style="color:#dc2626;">*</span></h3>
+                        <h3>California Resident <span class="required-mark">*</span></h3>
                         <p class="eeo-subtitle">Required for CCPA compliance</p>
                     </div>
                 </div>
@@ -480,9 +485,9 @@
         ═════════════════════════════════════════════════════ -->
         <div v-if="showViewModal" class="modal-overlay" @click.self="showViewModal = false">
             <div class="modal-box view-modal-box" v-draggable-modal="{ handle: '.modal-drag-header' }">
-                <div class="modal-drag-header drag-handle" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-                    <h2 style="margin:0;">{{ viewingResume ? viewingResume.file_name : 'Resume' }}</h2>
-                    <button class="btn-secondary" style="padding:6px 12px;font-size:0.85rem;" @click="showViewModal = false">Close</button>
+                <div class="modal-drag-header drag-handle view-modal-header-row">
+                    <h2>{{ viewingResume ? viewingResume.file_name : 'Resume' }}</h2>
+                    <button class="btn-secondary btn-compact" @click="showViewModal = false">Close</button>
                 </div>
 
                 <div v-if="viewLoading" class="loading-row">
@@ -490,7 +495,7 @@
                 </div>
 
                 <template v-else-if="viewingResume && viewingResume.structured_data">
-                    <span :class="['badge', badgeClass(viewingResume)]" style="align-self:flex-start;">
+                    <span :class="['badge', badgeClass(viewingResume), 'view-badge']">
                         {{ badgeText(viewingResume) }}
                     </span>
 
@@ -505,8 +510,26 @@
                                     :style="{ width: portalPercent(viewingResume) + '%' }"
                                 ></div>
                             </div>
-                            <span style="font-size:0.8rem;color:#8a94a6;">{{ portalFilledCount(viewingResume) }}/15 required fields filled</span>
+                            <span class="portal-fill-caption">{{ portalFilledCount(viewingResume) }}/15 required fields filled</span>
                         </div>
+
+                        <div v-if="missingRequiredList(viewingResume).length" class="missing-fields-list">
+                            <span
+                                v-for="field in missingRequiredList(viewingResume).slice(0, 6)"
+                                :key="field"
+                                class="missing-field-pill"
+                            >
+                                {{ field }}
+                            </span>
+                        </div>
+                        <button
+                            v-if="missingRequiredList(viewingResume).length"
+                            type="button"
+                            class="btn-secondary portal-action-btn"
+                            @click="goToApplicantInfo"
+                        >
+                            Review Missing Fields
+                        </button>
                     </div>
 
                     <!-- Personal Info -->
@@ -543,7 +566,7 @@
                     <!-- Summary -->
                     <div v-if="viewingResume.structured_data.summary" class="view-section">
                         <h4>Summary</h4>
-                        <p style="font-size:0.88rem;color:#374151;line-height:1.55;margin:0;">
+                        <p class="summary-text">
                             {{ viewingResume.structured_data.summary }}
                         </p>
                     </div>
@@ -586,7 +609,7 @@
                                 {{ [edu.degree, edu.field_of_study].filter(Boolean).join(' — ') }}
                                 <span v-if="edu.end_date"> · {{ edu.end_date }}</span>
                             </p>
-                            <p v-if="edu.gpa" style="font-size:0.82rem;margin:0;color:#6b7280;">GPA: {{ edu.gpa }}</p>
+                            <p v-if="edu.gpa" class="gpa-text">GPA: {{ edu.gpa }}</p>
                         </div>
                     </div>
 
@@ -609,8 +632,7 @@
 
                 </template>
 
-                <div v-else-if="viewingResume && !viewingResume.structured_data"
-                     style="color:#8a94a6;font-size:0.9rem;">
+                <div v-else-if="viewingResume && !viewingResume.structured_data" class="not-parsed-message">
                     This resume hasn't been parsed yet. Delete and re-import to parse it.
                 </div>
 
@@ -829,6 +851,11 @@ export default {
             if (!skills) return false
             return !!(skills.technical?.length || skills.languages?.length || skills.tools?.length || skills.soft_skills?.length)
         },
+        missingRequiredList(r) {
+            const list = r?.structured_data?._validation?.missing_required
+            if (!Array.isArray(list)) return []
+            return list
+        },
         portalFilledCount(r) {
             if (!r.structured_data) return 0
             const pi = r.structured_data.personal_info || {}
@@ -843,6 +870,11 @@ export default {
         },
         portalPercent(r) {
             return Math.round((this.portalFilledCount(r) / 15) * 100)
+        },
+        goToApplicantInfo() {
+            this.showViewModal = false
+            this.activeTab = 'applicant'
+            this.publishDebugState('navigate-to-applicant-from-readiness')
         },
 
         // ── Inline upload ───────────────────────────────────
