@@ -694,6 +694,7 @@ export default {
       totalsAreEstimated: false,
       hasNextPage: false,
       locationLimitNotice: "",
+      lastSearchDiagnostics: {},
       maxLocationParams,
       locationSourceMode,
       categoryGroups,
@@ -1056,6 +1057,7 @@ export default {
         includeRemote: this.appliedFilters.includeRemote,
         locationWarning: this.locationWarning,
         locationError: this.locationError,
+        searchDiagnostics: this.lastSearchDiagnostics,
       })
     },
     openLevelMenu() {
@@ -1485,6 +1487,7 @@ export default {
     async loadJobs(allowAutoClamp = true) {
       this.loading = true
       this.error = ""
+      let debugReason = "jobs-loaded"
 
       try {
         const query = this.buildSearchQuery(this.page)
@@ -1498,6 +1501,21 @@ export default {
         this.totalPages = Math.max(1, Number(data.total_pages_estimated || data.total_pages || 1))
         this.totalsAreEstimated = data.totals_are_estimated === true
         this.hasNextPage = data.has_next_page === true
+        this.lastSearchDiagnostics = {
+          totalEstimateStrategy: data.total_estimate_strategy || "",
+          guardrailStopReason: data.guardrail_stop_reason || "",
+          sourcePagesScanned: Number(data.source_pages_scanned || 0),
+          filteredOutCount: Number(data.filtered_out_count || 0),
+          requestedLocationCount: Number(data.requested_location_count || 0),
+          usedLocationCount: Number(data.used_location_count || data.location_params_used || 0),
+          locationParamsTruncated: data.location_params_truncated === true,
+          hasNextPagePossibleRaw: data.has_next_page_possible_raw === true,
+          hasMoreSourcePages: data.has_more_source_pages === true,
+          sourcePageCount: Number(data.source_page_count || 0),
+          windowStartPage: Number(data.window_start_page || 0),
+          windowSize: Number(data.window_size || 0),
+          cacheHit: data.cache_hit === true,
+        }
         if (this.page > this.totalPages) {
           this.page = this.totalPages
         }
@@ -1531,7 +1549,6 @@ export default {
         }))
 
         this.jobs = this.applyClientFilters(mappedJobs)
-        this.publishDebugState("jobs-loaded")
 
         if (allowAutoClamp && this.page > 1 && !this.jobs.length && !this.hasNextPage) {
           this.page = Math.max(1, this.page - 1)
@@ -1542,9 +1559,11 @@ export default {
         this.jobs = []
         this.error = "Failed to load jobs. Please try again."
         console.error("Failed to load jobs", e)
-        this.publishDebugState("jobs-load-error")
+        this.lastSearchDiagnostics = {}
+        debugReason = "jobs-load-error"
       } finally {
         this.loading = false
+        this.publishDebugState(debugReason)
       }
     },
     async applyFilters() {

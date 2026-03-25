@@ -804,21 +804,21 @@ async def search_jobs(
 
     # Returns structured response with original pagination info and guarded-fetch diagnostics.
     page_jobs = accepted_jobs[:page_size]
-    has_next_page_filtered = (len(accepted_jobs) > page_size) or has_more_source_pages
+    # Keep UI pagination conservative and monotonic: only advertise next page when we
+    # have direct filtered evidence beyond the current page window.
+    has_next_page_filtered = len(accepted_jobs) > page_size
 
     raw_total_jobs = int(first_payload.get("total") or 0)
-    observed_total = max(1, raw_jobs_seen)
-    acceptance_ratio = len(accepted_jobs) / observed_total
-    acceptance_ratio = min(max(acceptance_ratio, 0.0), 1.0)
-
-    estimated_from_ratio = int(round((raw_total_jobs or observed_total) * acceptance_ratio))
-    minimum_total = max(0, (page - 1) * page_size) + len(page_jobs)
+    filtered_total_jobs_estimate = max(0, (page - 1) * page_size) + len(page_jobs)
     if has_next_page_filtered:
-        minimum_total += 1
+        filtered_total_jobs_estimate += 1
 
-    filtered_total_jobs_estimate = max(minimum_total, estimated_from_ratio)
-    filtered_total_pages = max(page, (filtered_total_jobs_estimate + page_size - 1) // page_size)
-    if has_next_page_filtered and filtered_total_pages <= page:
+    if not has_next_page_filtered:
+        if not page_jobs and page > 1:
+            filtered_total_pages = page - 1
+        else:
+            filtered_total_pages = page
+    else:
         filtered_total_pages = page + 1
 
     response_payload = {
@@ -828,6 +828,7 @@ async def search_jobs(
         "total_pages_estimated": filtered_total_pages,
         "total_jobs_estimated": filtered_total_jobs_estimate,
         "totals_are_estimated": True,
+        "total_estimate_strategy": "lower-bound-window",
         "raw_total_pages": first_payload.get("page_count"),
         "raw_total_jobs": raw_total_jobs,
         "jobs": page_jobs,
@@ -845,6 +846,7 @@ async def search_jobs(
         "window_start_page": window_start_page,
         "window_size": window_size,
         "has_more_source_pages": has_more_source_pages,
+        "has_next_page_possible_raw": has_more_source_pages,
         "source_page_count": last_seen_page_count,
         "cache_hit": False,
     }

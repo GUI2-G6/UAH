@@ -25,6 +25,21 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value))
 }
 
+function summarizeRequestUrl(rawUrl) {
+  const url = String(rawUrl || "unknown")
+  if (url.length <= 280) return url
+
+  const queryIndex = url.indexOf("?")
+  if (queryIndex === -1) {
+    return `${url.slice(0, 280)}...[${url.length} chars]`
+  }
+
+  const base = url.slice(0, queryIndex)
+  const query = url.slice(queryIndex + 1)
+  const paramCount = query.split("&").filter(Boolean).length
+  return `${base}?...[${paramCount} params, ${url.length} chars]`
+}
+
 function redactSensitive(value, depth = 0) {
   if (depth > 6) return "[Truncated]"
   if (value === null || value === undefined) return value
@@ -122,7 +137,8 @@ export function installDebugFetchTracker() {
   const nativeFetch = window.fetch.bind(window)
   window.fetch = async (input, init = {}) => {
     const method = String(init?.method || "GET").toUpperCase()
-    const url = typeof input === "string" ? input : input?.url || "unknown"
+    const rawUrl = typeof input === "string" ? input : input?.url || "unknown"
+    const url = summarizeRequestUrl(rawUrl)
     const startedAt = performance.now()
 
     try {
