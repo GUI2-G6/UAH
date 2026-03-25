@@ -51,13 +51,30 @@ async def upload_resume(
         raise HTTPException(status_code=400, detail="File too large, max 5MB")
 
     ocr_result = await ocr_pdf(pdf_bytes)
-
-    if ocr_result is None:
-        raise HTTPException(status_code=500, detail="OCR extraction failed")
+    if not ocr_result.get("ok"):
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "OCR_EXTRACTION_FAILED",
+                "message": "Could not extract text from the uploaded PDF.",
+                "debug": {
+                    "error_code": ocr_result.get("error_code"),
+                    "status_code": ocr_result.get("status_code"),
+                    "exception_type": ocr_result.get("exception_type"),
+                    "response_excerpt": ocr_result.get("response_excerpt"),
+                },
+            },
+        )
 
     md_text = ocr_result.get("md_results", "")
     if not md_text:
-        raise HTTPException(status_code=500, detail="OCR returned empty results")
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "OCR_EMPTY_RESULTS",
+                "message": "OCR completed but no text was detected in this PDF.",
+            },
+        )
 
     resume = Resume(
         user_id=current_user.id,

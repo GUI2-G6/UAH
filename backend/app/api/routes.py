@@ -73,6 +73,7 @@ from app.services.muse_location_index import (
     refresh_muse_location_index,
 )
 from app.core.config import settings
+from app.models.muse_location import MuseSupportedLocation
 
 
 router = APIRouter()
@@ -300,6 +301,141 @@ def _location_matches_selected(location_name: str, selected_locations: List[str]
             return True
 
     return False
+
+
+def _normalize_location_key(value: Optional[str]) -> str:
+    return " ".join((value or "").strip().split()).lower()
+
+
+def _location_tokens(value: Optional[str]) -> set[str]:
+    normalized = _normalize_location_key(value)
+    if not normalized:
+        return set()
+    return {token for token in re.split(r"[^a-z0-9]+", normalized) if token}
+
+
+def _choose_best_supported_location(
+    raw_location: str,
+    candidates: List[MuseSupportedLocation],
+) -> Optional[str]:
+    raw_tokens = _location_tokens(raw_location)
+    if not candidates:
+        return None
+
+    best: Optional[MuseSupportedLocation] = None
+    best_score: tuple[int, int, int] = (-1, -1, -1)
+    for row in candidates:
+        candidate_tokens = _location_tokens(row.location_name)
+        overlap = len(raw_tokens & candidate_tokens)
+        observed_count = int(row.observed_count or 0)
+        token_similarity = -abs(len(candidate_tokens) - len(raw_tokens))
+        score = (overlap, observed_count, token_similarity)
+
+        if score > best_score:
+            best = row
+            best_score = score
+
+    return best.location_name if best is not None else None
+
+
+def _canonicalize_selected_locations(
+    *,
+    raw_locations: List[str],
+    location_country_code: Optional[str],
+    location_param_cap: int,
+    db: Session,
+) -> tuple[List[str], dict[str, Any]]:
+    normalized_raw = []
+    seen_raw = set()
+    for raw in raw_locations:
+        clean = " ".join((raw or "").strip().split())
+        if not clean:
+            continue
+        key = clean.lower()
+        if key in seen_raw:
+            continue
+        seen_raw.add(key)
+        normalized_raw.append(clean)
+
+    if not normalized_raw:
+        return [], {
+            "canonicalized_count": 0,
+            "transformed_count": 0,
+            "unmatched_count": 0,
+            "requested_unique_count": 0,
+            "strategy": "none",
+            "country_scope": (location_country_code or "").upper(),
+        }
+
+    scope_country = (location_country_code or "").strip().upper()
+    query = db.query(MuseSupportedLocation).filter(MuseSupportedLocation.active.is_(True))
+    if scope_country:
+        query = query.filter(MuseSupportedLocation.country_code == scope_country)
+
+    supported_rows = query.all()
+    if not supported_rows:
+        selected = normalized_raw[:location_param_cap]
+        return selected, {
+            "canonicalized_count": len(selected),
+            "transformed_count": 0,
+            "unmatched_count": len(selected),
+            "requested_unique_count": len(normalized_raw),
+            "strategy": "raw-fallback-no-index",
+            "country_scope": scope_country,
+        }
+
+    by_exact_key: dict[str, MuseSupportedLocation] = {}
+    by_city_key: dict[str, list[MuseSupportedLocation]] = {}
+
+    for row in supported_rows:
+        exact_key = _normalize_location_key(row.location_name)
+        existing_exact = by_exact_key.get(exact_key)
+        if existing_exact is None or int(row.observed_count or 0) > int(existing_exact.observed_count or 0):
+            by_exact_key[exact_key] = row
+
+        city_key = exact_key.split(",")[0].strip()
+        if city_key:
+            by_city_key.setdefault(city_key, []).append(row)
+
+    selected_locations: List[str] = []
+    selected_seen = set()
+    transformed_count = 0
+    unmatched_count = 0
+
+    for raw in normalized_raw:
+        raw_key = _normalize_location_key(raw)
+        resolved = None
+
+        exact_row = by_exact_key.get(raw_key)
+        if exact_row is not None:
+            resolved = exact_row.location_name
+        else:
+            city_key = raw_key.split(",")[0].strip()
+            candidates = by_city_key.get(city_key, []) if city_key else []
+            resolved = _choose_best_supported_location(raw, candidates)
+
+        if not resolved:
+            resolved = raw
+            unmatched_count += 1
+        elif _normalize_location_key(resolved) != raw_key:
+            transformed_count += 1
+
+        resolved_key = resolved.lower()
+        if resolved_key in selected_seen:
+            continue
+        selected_seen.add(resolved_key)
+        selected_locations.append(resolved)
+        if len(selected_locations) >= location_param_cap:
+            break
+
+    return selected_locations, {
+        "canonicalized_count": len(selected_locations),
+        "transformed_count": transformed_count,
+        "unmatched_count": unmatched_count,
+        "requested_unique_count": len(normalized_raw),
+        "strategy": "muse-index-country-aware" if scope_country else "muse-index-global",
+        "country_scope": scope_country,
+    }
 
 
 def _has_concrete_selected_location(job_locations: List[str], selected_locations: List[str]) -> bool:
@@ -629,9 +765,12 @@ async def search_jobs(
     catogory: Optional[List[str]] = Query(None, description="e.g., 'Software Engineer', 'Data Science'"),
     level: Optional[List[str]] = Query(None, description="e.g., 'Internship', 'Entry', 'Senior'"),
     location: Optional[List[str]] = Query(None, description="e.g., 'New York', 'Remote'"),
+    location_mode: Optional[str] = Query(None, description="Location mode hint: nearby/country/manual"),
+    location_country_code: Optional[str] = Query(None, min_length=2, max_length=2, description="Optional ISO country code for location canonicalization"),
     company: Optional[List[str]] = Query(None, description="e.g., 'Google', 'Microsoft'"),
     include_remote: bool = Query(False, description="Include fully remote roles in results"),
     include_hybrid: bool = Query(True, description="Include hybrid roles in results"),
+    db: Session = Depends(get_db),
 ):
     # Gets the list of jobs from The Muse API based on the provided query parameters 
     url = "https://www.themuse.com/api/public/jobs"
@@ -674,18 +813,29 @@ async def search_jobs(
     requested_location_count = len(location or [])
     location_param_cap = max(1, settings.MUSE_LOCATION_PARAM_CAP)
     location_params_truncated = False
-    if location:
-        selected_locations = []
-        for index, loc in enumerate(location):
-            if index >= location_param_cap:
-                location_params_truncated = True
-                break
-            normalized_loc = (loc or "").strip()
-            if normalized_loc:
-                params_base.append(("location", normalized_loc))
-                selected_locations.append(normalized_loc)
+    raw_location_inputs = [" ".join((loc or "").strip().split()) for loc in (location or []) if (loc or "").strip()]
+
+    if raw_location_inputs:
+        await ensure_muse_location_index()
+        selected_locations, location_canonicalization = _canonicalize_selected_locations(
+            raw_locations=raw_location_inputs,
+            location_country_code=location_country_code,
+            location_param_cap=location_param_cap,
+            db=db,
+        )
+        location_params_truncated = location_canonicalization["requested_unique_count"] > len(selected_locations)
+        for normalized_loc in selected_locations:
+            params_base.append(("location", normalized_loc))
     else:
         selected_locations = []
+        location_canonicalization = {
+            "canonicalized_count": 0,
+            "transformed_count": 0,
+            "unmatched_count": 0,
+            "requested_unique_count": 0,
+            "strategy": "none",
+            "country_scope": (location_country_code or "").upper(),
+        }
 
     normalized_companies: List[str] = []
     if company:
@@ -843,6 +993,12 @@ async def search_jobs(
         "location_params_used": len(selected_locations),
         "used_location_count": len(selected_locations),
         "location_params_truncated": location_params_truncated,
+        "location_mode": (location_mode or "").strip().lower(),
+        "location_country_code": (location_country_code or "").strip().upper(),
+        "location_selection_strategy": location_canonicalization.get("strategy"),
+        "canonicalized_location_count": int(location_canonicalization.get("canonicalized_count") or 0),
+        "transformed_location_count": int(location_canonicalization.get("transformed_count") or 0),
+        "unmatched_location_count": int(location_canonicalization.get("unmatched_count") or 0),
         "window_start_page": window_start_page,
         "window_size": window_size,
         "has_more_source_pages": has_more_source_pages,

@@ -886,6 +886,28 @@ export default {
       }
       return out
     },
+    formatLocationCandidate(city) {
+      const name = (city?.name || "").trim()
+      if (!name) return ""
+
+      const admin = (city?.admin1 || "").trim()
+      const countryCode = (city?.country_code || "").trim().toUpperCase()
+      const country = (city?.country || "").trim()
+
+      if (admin && countryCode === "US") {
+        return `${name}, ${admin}`
+      }
+      if (admin && countryCode && admin.toUpperCase() !== countryCode) {
+        return `${name}, ${admin}, ${countryCode}`
+      }
+      if (countryCode) {
+        return `${name}, ${countryCode}`
+      }
+      if (country) {
+        return `${name}, ${country}`
+      }
+      return name
+    },
     normalizeCategoryValues(values) {
       const canonicalized = []
       for (const value of values || []) {
@@ -1363,7 +1385,7 @@ export default {
       )
 
       const previewCities = (payload.cities || []).filter(city => city?.name)
-      const names = this.normalizeUnique(previewCities.map(city => city.name))
+      const names = this.normalizeUnique(previewCities.map(city => this.formatLocationCandidate(city)))
       this.locationPreviewCities = previewCities
       this.locationPreviewCenter = {
         latitude: center.latitude,
@@ -1402,6 +1424,12 @@ export default {
       const params = new URLSearchParams()
       params.set("page", String(page))
       params.set("page_size", String(this.pageSize))
+      params.set("location_mode", this.appliedFilters.locationMode || "")
+
+      const locationCountryCode = (this.appliedFilters.countryCode || "").trim().toUpperCase()
+      if (locationCountryCode) {
+        params.set("location_country_code", locationCountryCode)
+      }
 
       for (const value of this.normalizeUnique(this.appliedFilters.categories)) {
         params.append("category", value)
@@ -1514,6 +1542,10 @@ export default {
           sourcePageCount: Number(data.source_page_count || 0),
           windowStartPage: Number(data.window_start_page || 0),
           windowSize: Number(data.window_size || 0),
+          locationSelectionStrategy: data.location_selection_strategy || "",
+          canonicalizedLocationCount: Number(data.canonicalized_location_count || 0),
+          transformedLocationCount: Number(data.transformed_location_count || 0),
+          unmatchedLocationCount: Number(data.unmatched_location_count || 0),
           cacheHit: data.cache_hit === true,
         }
         if (this.page > this.totalPages) {

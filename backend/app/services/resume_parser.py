@@ -116,7 +116,7 @@ Resume Text:
 """
 
 
-async def ocr_pdf(pdf_bytes: bytes) -> dict | None:
+async def ocr_pdf(pdf_bytes: bytes) -> dict:
     file_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
     data_url = f"data:application/pdf;base64,{file_base64}"
 
@@ -140,11 +140,24 @@ async def ocr_pdf(pdf_bytes: bytes) -> dict | None:
                 f"OCR API error: status={resp.status_code}, url={settings.ZAI_OCR_URL}, "
                 f"response_text={resp.text[:200]}"
             )
-            return None
-        return resp.json()
+            return {
+                "ok": False,
+                "error_code": "OCR_API_STATUS",
+                "status_code": resp.status_code,
+                "response_excerpt": (resp.text or "")[:200],
+            }
+
+        payload = resp.json()
+        payload["ok"] = True
+        return payload
     except Exception as e:
         logger.error(f"OCR PDF processing failed: {type(e).__name__}: {str(e)}")
-        return None
+        return {
+            "ok": False,
+            "error_code": "OCR_REQUEST_EXCEPTION",
+            "exception_type": type(e).__name__,
+            "exception_message": str(e),
+        }
 
 
 async def categorize_with_llm(md_text: str) -> dict | None:
