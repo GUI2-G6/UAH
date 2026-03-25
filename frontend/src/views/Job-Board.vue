@@ -181,7 +181,7 @@
                       type="button"
                       class="mode-button"
                       :class="{ active: draftFilters.locationMode === 'nearby' }"
-                      @click="draftFilters.locationMode = 'nearby'"
+                      @click="setLocationMode('nearby')"
                     >
                       Nearby Me
                     </button>
@@ -189,7 +189,7 @@
                       type="button"
                       class="mode-button"
                       :class="{ active: draftFilters.locationMode === 'country' }"
-                      @click="draftFilters.locationMode = 'country'"
+                      @click="setLocationMode('country')"
                     >
                       Within My Country
                     </button>
@@ -503,7 +503,7 @@
             <p v-else-if="error" class="error-text">{{ error }}</p>
             <p v-else>
               Showing {{ jobs.length }} jobs on page {{ page }}
-              <span v-if="totalJobs > 0">of {{ totalJobs }} total</span>
+              <span v-if="totalJobs > 0">of {{ totalJobs }} {{ totalsAreEstimated ? 'estimated total' : 'total' }}</span>
             </p>
             <p v-if="locationLimitNotice" class="warn-text">{{ locationLimitNotice }}</p>
         </div>
@@ -520,7 +520,7 @@
           >
             {{ pageNumber }}
           </button>
-          <span>of {{ totalPages }}</span>
+          <span>of {{ totalPages }}{{ totalsAreEstimated ? ' est.' : '' }}</span>
           <button type="button" @click="goToNextPage" :disabled="!hasNextPage || loading">Next</button>
         </div>
 
@@ -548,7 +548,7 @@
             >
               {{ pageNumber }}
             </button>
-            <span>of {{ totalPages }}</span>
+            <span>of {{ totalPages }}{{ totalsAreEstimated ? ' est.' : '' }}</span>
             <button type="button" @click="goToNextPage" :disabled="!hasNextPage || loading">Next</button>
           </div>
     </div>
@@ -690,6 +690,7 @@ export default {
       pageSize: uiPageSize,
       totalJobs: 0,
       totalPages: 1,
+      totalsAreEstimated: false,
       hasNextPage: false,
       locationLimitNotice: "",
       maxLocationParams,
@@ -1017,8 +1018,20 @@ export default {
       this.advancedLocationModalOpen = false
     },
     async activateNearbyMode() {
-      this.draftFilters.locationMode = "nearby"
+      this.setLocationMode("nearby")
       await this.useNearbyMe()
+    },
+    setLocationMode(mode) {
+      if (!["nearby", "country", "manual"].includes(mode)) return
+      if (this.draftFilters.locationMode === mode) return
+
+      this.draftFilters.locationMode = mode
+      this.locationPreviewNames = []
+      this.locationPreviewCities = []
+      this.locationPreviewCenter = null
+      this.locationInfo = ""
+      this.locationWarning = ""
+      this.locationError = ""
     },
     openLevelMenu() {
       this.levelMenuOpen = true
@@ -1370,12 +1383,7 @@ export default {
         params.append("level", this.normalizeLevelForApi(value))
       }
       const normalizedLocations = this.normalizeUnique(this.appliedFilters.locationNames)
-      const cappedLocations = normalizedLocations.slice(0, this.maxLocationParams)
-      this.locationLimitNotice = normalizedLocations.length > this.maxLocationParams
-        ? `Large location set detected. Using first ${this.maxLocationParams} locations for stable results.`
-        : ""
-
-      for (const value of cappedLocations) {
+      for (const value of normalizedLocations) {
         params.append("location", value)
       }
       for (const value of this.normalizeUnique(this.appliedFilters.companies)) {
@@ -1461,14 +1469,19 @@ export default {
         }
 
         const data = await res.json()
-        this.totalJobs = Number(data.total_jobs || 0)
-        this.totalPages = Math.max(1, Number(data.total_pages || 1))
+        this.totalJobs = Number(data.total_jobs_estimated || data.total_jobs || 0)
+        this.totalPages = Math.max(1, Number(data.total_pages_estimated || data.total_pages || 1))
+        this.totalsAreEstimated = data.totals_are_estimated === true
         this.hasNextPage = data.has_next_page === true
         if (this.page > this.totalPages) {
           this.page = this.totalPages
         }
-        if (data.location_params_truncated === true && !this.locationLimitNotice) {
-          this.locationLimitNotice = "Location filters were trimmed by backend guardrails to protect API stability."
+        if (data.location_params_truncated === true) {
+          const used = Number(data.used_location_count || data.location_params_used || 0)
+          const requested = Number(data.requested_location_count || used)
+          this.locationLimitNotice = `Large location set detected. Backend used ${used} of ${requested} locations for stable results.`
+        } else {
+          this.locationLimitNotice = ""
         }
 
         const mappedJobs = (data.jobs || []).map(job => ({
@@ -1551,6 +1564,7 @@ export default {
       this.locationPreviewCenter = null
       this.totalJobs = 0
       this.totalPages = 1
+      this.totalsAreEstimated = false
       this.hasNextPage = false
       this.locationLimitNotice = ""
       this.page = 1

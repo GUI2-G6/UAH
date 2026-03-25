@@ -280,11 +280,23 @@ def _location_matches_selected(location_name: str, selected_locations: List[str]
     if not normalized_location:
         return False
 
+    location_tokens = [token for token in re.split(r"[^a-z0-9]+", normalized_location) if token]
+    location_token_set = set(location_tokens)
+
     for selected in selected_locations:
         normalized_selected = _normalize_text(selected)
         if not normalized_selected:
             continue
-        if normalized_selected in normalized_location or normalized_location in normalized_selected:
+        selected_tokens = [token for token in re.split(r"[^a-z0-9]+", normalized_selected) if token]
+        if not selected_tokens:
+            continue
+
+        selected_token_set = set(selected_tokens)
+        if selected_token_set.issubset(location_token_set):
+            return True
+
+        # Also allow an exact normalized match when tokenization is too strict for edge cases.
+        if normalized_selected == normalized_location:
             return True
 
     return False
@@ -659,6 +671,7 @@ async def search_jobs(
             if normalized_level:
                 normalized_levels.append(normalized_level)
                 params_base.append(("level", normalized_level))
+    requested_location_count = len(location or [])
     location_param_cap = max(1, settings.MUSE_LOCATION_PARAM_CAP)
     location_params_truncated = False
     if location:
@@ -702,11 +715,16 @@ async def search_jobs(
 
     accepted_jobs = []
     accepted_ids = set()
+    raw_jobs_seen = 0
     filtered_out_count = 0
     source_pages_scanned = 0
     guardrail_stop_reason = ""
     first_payload = None
-    current_page = page
+    window_size = max_pages
+    window_start_page = ((page - 1) * window_size) + 1
+    current_page = window_start_page
+    has_more_source_pages = False
+    last_seen_page_count = current_page
     start_time = time.monotonic()
 
     async with httpx.AsyncClient(timeout=timeout_budget) as client:
@@ -725,6 +743,7 @@ async def search_jobs(
 
             source_pages_scanned += 1
             raw_jobs = payload.get("results", []) or []
+            raw_jobs_seen += len(raw_jobs)
             page_filtered = 0
 
             for raw_job in raw_jobs:
@@ -759,6 +778,8 @@ async def search_jobs(
             filtered_ratio = (page_filtered / total_on_page) if total_on_page else 0.0
             next_page = (payload.get("page") or current_page) + 1
             page_count = payload.get("page_count") or current_page
+            has_more_source_pages = next_page <= page_count
+            last_seen_page_count = page_count
 
             if not settings.MUSE_PAGE_CHASE_ENABLED:
                 guardrail_stop_reason = "disabled"
@@ -783,25 +804,32 @@ async def search_jobs(
 
     # Returns structured response with original pagination info and guarded-fetch diagnostics.
     page_jobs = accepted_jobs[:page_size]
-    has_next_page_filtered = len(accepted_jobs) > page_size
-    if not has_next_page_filtered:
-        if not page_jobs and page > 1:
-            filtered_total_pages = page - 1
-        else:
-            filtered_total_pages = page
-    else:
-        filtered_total_pages = page + 1
+    has_next_page_filtered = (len(accepted_jobs) > page_size) or has_more_source_pages
 
-    filtered_total_jobs_estimate = max(0, (page - 1) * page_size) + len(page_jobs)
+    raw_total_jobs = int(first_payload.get("total") or 0)
+    observed_total = max(1, raw_jobs_seen)
+    acceptance_ratio = len(accepted_jobs) / observed_total
+    acceptance_ratio = min(max(acceptance_ratio, 0.0), 1.0)
+
+    estimated_from_ratio = int(round((raw_total_jobs or observed_total) * acceptance_ratio))
+    minimum_total = max(0, (page - 1) * page_size) + len(page_jobs)
     if has_next_page_filtered:
-        filtered_total_jobs_estimate += 1
+        minimum_total += 1
+
+    filtered_total_jobs_estimate = max(minimum_total, estimated_from_ratio)
+    filtered_total_pages = max(page, (filtered_total_jobs_estimate + page_size - 1) // page_size)
+    if has_next_page_filtered and filtered_total_pages <= page:
+        filtered_total_pages = page + 1
 
     response_payload = {
         "page": first_payload.get("page"),
         "total_pages": filtered_total_pages,
         "total_jobs": filtered_total_jobs_estimate,
+        "total_pages_estimated": filtered_total_pages,
+        "total_jobs_estimated": filtered_total_jobs_estimate,
+        "totals_are_estimated": True,
         "raw_total_pages": first_payload.get("page_count"),
-        "raw_total_jobs": first_payload.get("total"),
+        "raw_total_jobs": raw_total_jobs,
         "jobs": page_jobs,
         "source_pages_scanned": source_pages_scanned,
         "filtered_out_count": filtered_out_count,
@@ -810,8 +838,14 @@ async def search_jobs(
         "page_size": page_size,
         "has_next_page": has_next_page_filtered,
         "has_previous_page": page > 1,
+        "requested_location_count": requested_location_count,
         "location_params_used": len(selected_locations),
+        "used_location_count": len(selected_locations),
         "location_params_truncated": location_params_truncated,
+        "window_start_page": window_start_page,
+        "window_size": window_size,
+        "has_more_source_pages": has_more_source_pages,
+        "source_page_count": last_seen_page_count,
         "cache_hit": False,
     }
     _set_jobs_cache_response(cache_signature, page, response_payload)
