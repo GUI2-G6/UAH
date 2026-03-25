@@ -64,6 +64,12 @@ from app.services.geolocation import (
     resolve_ip_location,
     reverse_geocode,
 )
+from app.services.muse_location_index import (
+    ensure_muse_location_index,
+    list_supported_countries,
+    list_supported_locations_for_country,
+    refresh_muse_location_index,
+)
 from app.core.config import settings
 
 
@@ -78,6 +84,74 @@ REMOTE_TEXT_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 HYBRID_TEXT_PATTERN = re.compile(r"\bhybrid\b", flags=re.IGNORECASE)
+
+UNIFIED_CATEGORY_GROUPS = {
+    "tech": [
+        "Software Engineer",
+        "Software Engineering",
+        "Computer and IT",
+        "IT",
+        "Data and Analytics",
+        "Data Science",
+        "Design and UX",
+        "UX",
+        "Science and Engineering",
+    ],
+    "finance": [
+        "Accounting",
+        "Accounting and Finance",
+        "Finance",
+        "Real Estate",
+    ],
+    "product": [
+        "Product",
+        "Product Management",
+        "Project Management",
+    ],
+    "people": [
+        "HR",
+        "Human Resources and Recruitment",
+        "Recruiting",
+        "Social Services",
+    ],
+    "business and operations": [
+        "Business Operations",
+        "Corporate",
+        "Operations",
+        "Office Administration",
+        "Administration and Office",
+    ],
+    "sales and marketing": [
+        "Sales",
+        "Marketing",
+        "Advertising and Marketing",
+        "Public Relations",
+        "Media, PR, and Communications",
+        "Account Management",
+        "Account Management/Customer Success",
+    ],
+    "customer and support": [
+        "Customer Service",
+        "Education",
+        "Legal Services",
+    ],
+}
+
+CATEGORY_GROUP_ALIAS = {
+    "technology": "tech",
+    "engineering": "tech",
+    "tech": "tech",
+    "fintech": "finance",
+    "finance": "finance",
+    "product": "product",
+    "people": "people",
+    "hr": "people",
+    "operations": "business and operations",
+    "business": "business and operations",
+    "sales": "sales and marketing",
+    "marketing": "sales and marketing",
+    "support": "customer and support",
+}
 
 
 def _normalize_text(value: Optional[str]) -> str:
@@ -145,6 +219,20 @@ def _normalize_level_for_muse(level_value: str) -> str:
     if normalized.lower() == "management":
         return "management"
     return normalized
+
+
+def _expand_category_for_muse(raw_value: str) -> List[str]:
+    value = (raw_value or "").strip()
+    if not value:
+        return []
+
+    key = value.lower()
+    canonical_group = CATEGORY_GROUP_ALIAS.get(key, key)
+    expanded = UNIFIED_CATEGORY_GROUPS.get(canonical_group)
+    if expanded:
+        return expanded
+
+    return [value]
 
 
 def _map_muse_job(job: dict) -> dict:
@@ -326,6 +414,50 @@ async def country_cities(
         "country_code": country_code.upper(),
     }
 
+
+@router.get("/geolocation/muse-supported-countries", tags=["geolocation"])
+async def muse_supported_countries(db: Session = Depends(get_db)):
+    await ensure_muse_location_index()
+    countries = list_supported_countries(db)
+    return {
+        "countries": countries,
+        "total_count": len(countries),
+    }
+
+
+@router.get("/geolocation/muse-supported-locations", tags=["geolocation"])
+async def muse_supported_locations(
+    country_code: str = Query(..., min_length=2, max_length=2, description="ISO country code"),
+    limit: int = Query(200, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    await ensure_muse_location_index()
+    locations = list_supported_locations_for_country(db, country_code=country_code, limit=limit)
+    if not locations:
+        return {
+            "code": "MUSE_COUNTRY_EMPTY",
+            "message": "No Muse-supported locations were found for that country.",
+            "locations": [],
+            "total_count": 0,
+            "country_code": country_code.upper(),
+        }
+
+    return {
+        "locations": locations,
+        "total_count": len(locations),
+        "country_code": country_code.upper(),
+    }
+
+
+@router.post("/geolocation/muse-supported-locations/refresh", tags=["geolocation"])
+async def refresh_muse_supported_locations(force: bool = Query(False), db: Session = Depends(get_db)):
+    result = await refresh_muse_location_index(force=force)
+    countries = list_supported_countries(db)
+    return {
+        "refresh": result,
+        "countries_total": len(countries),
+    }
+
 @router.get("/jobs/search", tags=["jobs"])
 async def search_jobs(
     # Creates an endpoint for each job search query with optional parameters 
@@ -360,8 +492,14 @@ async def search_jobs(
     # Preserve first-seen order while removing duplicates.
     categories = list(dict.fromkeys(categories))
 
-    if categories:
-        for cat in categories:
+    expanded_categories: List[str] = []
+    for cat in categories:
+        expanded_categories.extend(_expand_category_for_muse(cat))
+
+    expanded_categories = [value for value in dict.fromkeys([c.strip() for c in expanded_categories if c.strip()])]
+
+    if expanded_categories:
+        for cat in expanded_categories:
             params_base.append(("category", cat))
     if level:
         for lvl in level:
@@ -597,7 +735,7 @@ async def google_oauth_callback(request: Request, code: str, state: str, db: Ses
         from app.core.security import create_access_token
         user_access_token = create_access_token(data={"sub": str(user.id)})
         
-        return TokenResponse(access_token=Token, user=UserResponse.model_validate(user),
+        return TokenResponse(access_token=user_access_token, user=UserResponse.model_validate(user),
     )
 
 

@@ -98,6 +98,13 @@
                     </div>
 
                     <p class="hint-text" v-if="categoryInfo">{{ categoryInfo }}</p>
+                    <p class="hint-text">Unified groups expand to Muse subcategories automatically.</p>
+
+                    <div class="custom-input-row">
+                      <button type="button" @click="openCategoryMappingModal" :disabled="!draftFilters.categories.length">
+                        View Group Mapping
+                      </button>
+                    </div>
 
                     <div class="chip-list" v-if="draftFilters.categories.length">
                       <button
@@ -210,100 +217,123 @@
                       <button type="button" @click="useNearbyMe" :disabled="locationBusy">
                         Use Current Location
                       </button>
-                      <button type="button" @click="detectViaIp" :disabled="locationBusy">
-                        Refresh Approximate Location
-                      </button>
                     </div>
 
                     <p class="hint-text" v-if="resolvedLocation">
                       Center: {{ resolvedLocation.city || 'Unknown city' }} {{ resolvedLocation.country_code ? `(${resolvedLocation.country_code})` : '' }}
                     </p>
 
-                    <div class="custom-input-row">
-                      <input
-                        v-model.trim="locationFallbackInput"
-                        type="text"
-                        placeholder="If detection fails, enter ZIP/city"
-                        @keyup.enter="resolveFallbackLocation"
-                      />
-                      <button type="button" @click="resolveFallbackLocation" :disabled="locationBusy">
-                        Use ZIP/City
-                      </button>
-                    </div>
                   </div>
 
                   <div v-if="draftFilters.locationMode === 'country'" class="mode-panel">
                     <select v-model="draftFilters.countryCode">
                       <option v-for="country in countryOptions" :key="country.code" :value="country.code">
-                        {{ country.name }}
+                        {{ country.name }}{{ country.location_count ? ` (${country.location_count})` : '' }}
                       </option>
                     </select>
                   </div>
 
-                  <div v-if="draftFilters.locationMode !== 'country'" class="mode-panel">
-                    <label for="job-radius">Radius</label>
-                    <div class="radius-row">
-                      <input
-                        id="job-radius"
-                        v-model.number="draftFilters.locationRadius"
-                        type="range"
-                        :min="1"
-                        :max="maxRadiusForUnit"
-                        step="1"
-                      />
-                      <span>{{ Math.round(draftFilters.locationRadius) }} {{ draftFilters.radiusUnit }}</span>
-                    </div>
-                    <div class="mode-row compact">
-                      <button
-                        type="button"
-                        class="mode-button"
-                        :class="{ active: draftFilters.radiusUnit === 'mi' }"
-                        @click="setRadiusUnit('mi')"
-                      >
-                        Miles
-                      </button>
-                      <button
-                        type="button"
-                        class="mode-button"
-                        :class="{ active: draftFilters.radiusUnit === 'km' }"
-                        @click="setRadiusUnit('km')"
-                      >
-                        Kilometers
-                      </button>
-                    </div>
+                  <div class="custom-input-row">
+                    <button
+                      type="button"
+                      class="advanced-toggle"
+                      :aria-expanded="showAdvancedLocation"
+                      aria-controls="advanced-location-options"
+                      @click="showAdvancedLocation = !showAdvancedLocation"
+                    >
+                      {{ showAdvancedLocation ? 'Hide' : 'Show' }} advanced location options
+                    </button>
                   </div>
 
-                  <div class="custom-input-row">
-                    <button type="button" @click="previewLocationSelection" :disabled="locationBusy">
-                      {{ locationBusy ? 'Resolving area...' : 'Preview Area Cities' }}
-                    </button>
+                  <div
+                    id="advanced-location-options"
+                    class="advanced-location-panel"
+                    v-if="showAdvancedLocation"
+                  >
+                    <div v-if="draftFilters.locationMode === 'nearby'" class="mode-panel">
+                      <div class="custom-input-row">
+                        <button type="button" @click="detectViaIp" :disabled="locationBusy">
+                          Refresh Approximate Location
+                        </button>
+                      </div>
+                      <div class="custom-input-row">
+                        <input
+                          v-model.trim="locationFallbackInput"
+                          type="text"
+                          placeholder="If detection fails, enter ZIP/city"
+                          @keyup.enter="resolveFallbackLocation"
+                        />
+                        <button type="button" @click="resolveFallbackLocation" :disabled="locationBusy">
+                          Use ZIP/City
+                        </button>
+                      </div>
+                    </div>
+
+                    <div v-if="draftFilters.locationMode !== 'country'" class="mode-panel">
+                      <label for="job-radius">Radius</label>
+                      <div class="radius-row">
+                        <input
+                          id="job-radius"
+                          v-model.number="draftFilters.locationRadius"
+                          type="range"
+                          :min="1"
+                          :max="maxRadiusForUnit"
+                          step="1"
+                        />
+                        <span>{{ Math.round(draftFilters.locationRadius) }} {{ draftFilters.radiusUnit }}</span>
+                      </div>
+                      <div class="mode-row compact">
+                        <button
+                          type="button"
+                          class="mode-button"
+                          :class="{ active: draftFilters.radiusUnit === 'mi' }"
+                          @click="setRadiusUnit('mi')"
+                        >
+                          Miles
+                        </button>
+                        <button
+                          type="button"
+                          class="mode-button"
+                          :class="{ active: draftFilters.radiusUnit === 'km' }"
+                          @click="setRadiusUnit('km')"
+                        >
+                          Kilometers
+                        </button>
+                      </div>
+                    </div>
+
+                    <div class="custom-input-row">
+                      <button type="button" @click="previewLocationSelection" :disabled="locationBusy">
+                        {{ locationBusy ? 'Resolving area...' : 'Preview Area Cities' }}
+                      </button>
+                    </div>
+
+                    <div class="city-preview" v-if="locationPreviewNames.length">
+                      <div class="city-preview-header">
+                        <strong>Area Cities ({{ locationPreviewNames.length }})</strong>
+                      </div>
+                      <ul class="city-preview-list">
+                        <li
+                          v-for="city in visibleLocationPreviewNames"
+                          :key="`preview-city-${city}`"
+                        >
+                          {{ city }}
+                        </li>
+                      </ul>
+                      <button
+                        v-if="hasMorePreviewCities"
+                        type="button"
+                        class="city-preview-more"
+                        @click="openCityPreviewModal"
+                      >
+                        Show {{ hiddenLocationPreviewCount }} more
+                      </button>
+                    </div>
                   </div>
 
                   <p class="hint-text" v-if="locationInfo">{{ locationInfo }}</p>
                   <p class="error-text" v-if="locationError">{{ locationError }}</p>
                   <p class="warn-text" v-if="locationWarning">{{ locationWarning }}</p>
-
-                  <div class="city-preview" v-if="locationPreviewNames.length">
-                    <div class="city-preview-header">
-                      <strong>Area Cities ({{ locationPreviewNames.length }})</strong>
-                    </div>
-                    <ul class="city-preview-list">
-                      <li
-                        v-for="city in visibleLocationPreviewNames"
-                        :key="`preview-city-${city}`"
-                      >
-                        {{ city }}
-                      </li>
-                    </ul>
-                    <button
-                      v-if="hasMorePreviewCities"
-                      type="button"
-                      class="city-preview-more"
-                      @click="openCityPreviewModal"
-                    >
-                      Show {{ hiddenLocationPreviewCount }} more
-                    </button>
-                  </div>
                 </div>
             </div>
 
@@ -344,6 +374,33 @@
                 </button>
             </div>
         </section>
+
+        <div
+          v-if="categoryMappingModalOpen"
+          class="city-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Category mapping"
+          @click="closeCategoryMappingModal"
+        >
+          <div class="city-modal-dialog" @click.stop>
+            <div class="city-modal-header">
+              <h2>Category Group Mapping</h2>
+              <button type="button" class="city-modal-close" @click="closeCategoryMappingModal">Close</button>
+            </div>
+            <p class="city-modal-subtitle">Selected groups expand to these Muse categories during API search.</p>
+            <div class="city-modal-scroll">
+              <ul class="city-modal-list">
+                <li v-for="group in selectedCategoryGroups" :key="`cat-map-${group.name}`">
+                  <strong>{{ group.name }}</strong>: {{ group.muse_categories.join(', ') }}
+                </li>
+              </ul>
+            </div>
+            <div class="city-modal-actions">
+              <button type="button" @click="closeCategoryMappingModal">Close</button>
+            </div>
+          </div>
+        </div>
 
         <div
           v-if="cityPreviewModalOpen"
@@ -436,78 +493,72 @@ export default {
   name: "JobBoard",
   components: { JobPosting },
   data() {
-    const categoryOptions = [
-      "Accounting",
-      "Accounting and Finance",
-      "Account Management",
-      "Account Management/Customer Success",
-      "Administration and Office",
-      "Advertising and Marketing",
-      "Animal Care",
-      "Arts",
-      "Business Operations",
-      "Cleaning and Facilities",
-      "Computer and IT",
-      "Construction",
-      "Corporate",
-      "Customer Service",
-      "Data and Analytics",
-      "Data Science",
-      "Design",
-      "Design and UX",
-      "Editor",
-      "Education",
-      "Energy Generation and Mining",
-      "Entertainment and Travel Services",
-      "Farming and Outdoors",
-      "Food and Hospitality Services",
-      "Healthcare",
-      "HR",
-      "Human Resources and Recruitment",
-      "Installation, Maintenance, and Repairs",
-      "IT",
-      "Law",
-      "Legal Services",
-      "Management",
-      "Manufacturing and Warehouse",
-      "Marketing",
-      "Mechanic",
-      "Media, PR, and Communications",
-      "Mental Health",
-      "Nurses",
-      "Office Administration",
-      "Personal Care and Services",
-      "Physical Assistant",
-      "Product",
-      "Product Management",
-      "Project Management",
-      "Protective Services",
-      "Public Relations",
-      "Real Estate",
-      "Recruiting",
-      "Retail",
-      "Sales",
-      "Science and Engineering",
-      "Social Services",
-      "Software Engineer",
-      "Software Engineering",
-      "Sports, Fitness, and Recreation",
-      "Transportation and Logistics",
-      "Unknown",
-      "UX",
-      "Videography",
-      "Writer",
-      "Writing and Editing"
+    const locationSourceMode = "muse"
+
+    const categoryGroups = [
+      {
+        name: "Tech",
+        muse_categories: [
+          "Software Engineer",
+          "Software Engineering",
+          "Computer and IT",
+          "IT",
+          "Data and Analytics",
+          "Data Science",
+          "Design and UX",
+          "UX",
+          "Science and Engineering"
+        ]
+      },
+      {
+        name: "Finance",
+        muse_categories: ["Accounting", "Accounting and Finance", "Finance", "Real Estate"]
+      },
+      {
+        name: "Product",
+        muse_categories: ["Product", "Product Management", "Project Management"]
+      },
+      {
+        name: "People",
+        muse_categories: ["HR", "Human Resources and Recruitment", "Recruiting", "Social Services"]
+      },
+      {
+        name: "Business and Operations",
+        muse_categories: ["Business Operations", "Corporate", "Operations", "Office Administration", "Administration and Office"]
+      },
+      {
+        name: "Sales and Marketing",
+        muse_categories: [
+          "Sales",
+          "Marketing",
+          "Advertising and Marketing",
+          "Public Relations",
+          "Media, PR, and Communications",
+          "Account Management",
+          "Account Management/Customer Success"
+        ]
+      },
+      {
+        name: "Customer and Support",
+        muse_categories: ["Customer Service", "Education", "Legal Services"]
+      }
     ]
 
+    const categoryOptions = categoryGroups.map(group => group.name)
+
     const categoryAliases = {
-      "software engineer": "Software Engineer",
-      "software engineering": "Software Engineering",
-      "human resources": "Human Resources and Recruitment",
-      "hr": "HR",
-      "it": "IT",
-      "ux": "UX",
-      "pr": "Public Relations"
+      tech: "Tech",
+      technology: "Tech",
+      engineering: "Tech",
+      finance: "Finance",
+      product: "Product",
+      people: "People",
+      hr: "People",
+      operations: "Business and Operations",
+      business: "Business and Operations",
+      sales: "Sales and Marketing",
+      marketing: "Sales and Marketing",
+      support: "Customer and Support"
     }
 
     const categoryLookup = {}
@@ -531,13 +582,12 @@ export default {
       levelLookup[value.toLowerCase()] = value
     }
 
-    const countryOptions = [
-      { code: "US", name: "United States" },
-      { code: "CA", name: "Canada" },
-      { code: "GB", name: "United Kingdom" },
-      { code: "DE", name: "Germany" },
-      { code: "FR", name: "France" }
-    ]
+    const categoryMapLookup = {}
+    for (const group of categoryGroups) {
+      categoryMapLookup[group.name] = group
+    }
+
+    const countryOptions = [{ code: "US", name: "United States", location_count: 0 }]
 
     const defaultFilters = {
       categories: [],
@@ -561,6 +611,9 @@ export default {
       loading: false,
       error: "",
       page: 1,
+      locationSourceMode,
+      categoryGroups,
+      categoryMapLookup,
       categoryOptions,
       categoryLookup,
       levelOptions,
@@ -570,10 +623,12 @@ export default {
       categoryInfo: "",
       categoryMenuOpen: false,
       categoryActiveIndex: 0,
+      categoryMappingModalOpen: false,
       levelInput: "",
       levelInfo: "",
       levelMenuOpen: false,
       levelActiveIndex: 0,
+      showAdvancedLocation: false,
       cityPreviewVisibleLimit: 10,
       cityPreviewModalOpen: false,
       citySortMode: "closest",
@@ -609,6 +664,11 @@ export default {
     },
     showCategoryMenu() {
       return this.categoryMenuOpen && this.filteredCategoryOptions.length > 0
+    },
+    selectedCategoryGroups() {
+      return (this.draftFilters.categories || [])
+        .map(name => this.categoryMapLookup[name])
+        .filter(Boolean)
     },
     filteredLevelOptions() {
       const selected = new Set((this.draftFilters.levels || []).map(value => value.toLowerCase()))
@@ -738,6 +798,34 @@ export default {
       }
       return this.normalizeUnique(canonicalized)
     },
+    async fetchCountryOptions() {
+      try {
+        if (this.locationSourceMode !== "muse") {
+          return
+        }
+        const payload = await this.fetchJson("/api/geolocation/muse-supported-countries")
+        const countries = (payload.countries || [])
+          .filter(country => country?.code)
+          .map(country => ({
+            code: country.code,
+            name: country.name || country.code,
+            location_count: Number(country.location_count || 0)
+          }))
+
+        if (!countries.length) {
+          this.locationWarning = "Muse country coverage is still loading. Try again shortly."
+          return
+        }
+
+        this.countryOptions = countries
+        if (!countries.some(country => country.code === this.draftFilters.countryCode)) {
+          this.draftFilters.countryCode = countries[0].code
+        }
+      } catch (error) {
+        this.locationWarning = "Could not load Muse country coverage."
+        console.error("Failed to load Muse countries", error)
+      }
+    },
     normalizeLevelValues(values) {
       const canonicalized = []
       for (const value of values || []) {
@@ -818,7 +906,14 @@ export default {
         return
       }
 
-      this.categoryInfo = "Choose a valid Muse category from suggestions."
+      this.categoryInfo = "Choose a valid category group from suggestions."
+    },
+    openCategoryMappingModal() {
+      if (!this.selectedCategoryGroups.length) return
+      this.categoryMappingModalOpen = true
+    },
+    closeCategoryMappingModal() {
+      this.categoryMappingModalOpen = false
     },
     openLevelMenu() {
       this.levelMenuOpen = true
@@ -935,6 +1030,9 @@ export default {
       return null
     },
     handleGlobalKeydown(event) {
+      if (event.key === "Escape" && this.categoryMappingModalOpen) {
+        this.closeCategoryMappingModal()
+      }
       if (event.key === "Escape" && this.cityPreviewModalOpen) {
         this.closeCityPreviewModal()
       }
@@ -1075,8 +1173,12 @@ export default {
       const mode = this.draftFilters.locationMode
 
       if (mode === "country") {
-        const payload = await this.fetchJson(`/api/geolocation/country-cities?country_code=${encodeURIComponent(this.draftFilters.countryCode)}&limit=140`)
-        const previewCities = (payload.cities || []).filter(city => city?.name)
+        const endpoint = this.locationSourceMode === "muse"
+          ? "/api/geolocation/muse-supported-locations"
+          : "/api/geolocation/country-cities"
+
+        const payload = await this.fetchJson(`${endpoint}?country_code=${encodeURIComponent(this.draftFilters.countryCode)}&limit=200`)
+        const previewCities = (payload.locations || payload.cities || []).filter(city => city?.name)
         const names = this.normalizeUnique(previewCities.map(city => city.name))
         this.locationPreviewCities = previewCities
         const center = this.getBestKnownCenter()
@@ -1085,9 +1187,9 @@ export default {
           : null
         this.locationPreviewNames = names
         if (!names.length) {
-          this.locationWarning = "No country-wide city data found for that country yet."
+          this.locationWarning = "No Muse-supported locations found for that country right now."
         } else {
-          this.locationInfo = `Using ${names.length} cities in ${this.draftFilters.countryCode}.`
+          this.locationInfo = `Using ${names.length} Muse-supported locations in ${this.draftFilters.countryCode}.`
         }
         return names
       }
@@ -1301,10 +1403,12 @@ export default {
       this.categoryInfo = ""
       this.categoryActiveIndex = 0
       this.categoryMenuOpen = false
+      this.categoryMappingModalOpen = false
       this.levelInput = ""
       this.levelInfo = ""
       this.levelActiveIndex = 0
       this.levelMenuOpen = false
+      this.showAdvancedLocation = false
       this.cityPreviewModalOpen = false
       this.companyInput = ""
       this.locationFallbackInput = ""
@@ -1321,6 +1425,7 @@ export default {
   },
   async mounted() {
     window.addEventListener("keydown", this.handleGlobalKeydown)
+    await this.fetchCountryOptions()
 
     const cached = getCachedLocation()
     if (cached?.latitude && cached?.longitude) {

@@ -245,14 +245,11 @@ export default {
 
             const host = window.location.hostname
             const isLocalDev = host === 'localhost' || host === '127.0.0.1' || host === '::1'
-            const token = localStorage.getItem('uah_access_token')
-            if (!token || isLocalDev) return
+            if (isLocalDev) return
 
             // Refresh from backend if available.
             try {
-                const res = await fetch('/api/auth/me', {
-                    headers: { Authorization: `Bearer ${token}` },
-                })
+                const res = await authedFetch('/api/auth/me')
                 if (!res.ok) return
                 const user = await res.json()
                 this.currentUser = user
@@ -260,8 +257,11 @@ export default {
 
                 this.firstName = user.first_name || user.firstName || this.firstName
                 this.lastName = user.last_name || user.lastName || this.lastName
-            } catch {
-                // ignore (backend may be down)
+            } catch (e) {
+                if (e.message === 'Session expired' || e.message === 'Not authenticated') {
+                    this.$router.push('/login')
+                }
+                // otherwise ignore (backend may be down)
             }
         },
 

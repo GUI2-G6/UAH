@@ -57,10 +57,12 @@
 
                 <div class="settings-group">
                     <h4>Change Password</h4>
-                    <SecretInput v-model="currentPassword" placeholder="Current password" autocomplete="current-password" :disabled="working" />
-                    <SecretInput v-model="newPassword" placeholder="New password" autocomplete="new-password" :disabled="working" />
-                    <SecretInput v-model="confirmNewPassword" placeholder="Confirm new password" autocomplete="new-password" :disabled="working" />
-                    <button @click="changePassword" :disabled="working" :class="buttonStatusClass('changePassword')">Update password</button>
+                    <form @submit.prevent="changePassword">
+                        <SecretInput v-model="currentPassword" placeholder="Current password" autocomplete="current-password" :disabled="working" />
+                        <SecretInput v-model="newPassword" placeholder="New password" autocomplete="new-password" :disabled="working" />
+                        <SecretInput v-model="confirmNewPassword" placeholder="Confirm new password" autocomplete="new-password" :disabled="working" />
+                        <button type="submit" :disabled="working" :class="buttonStatusClass('changePassword')">Update password</button>
+                    </form>
                     <div v-if="actionStatus.changePassword.message" :class="feedbackClass('changePassword')">
                         {{ actionStatus.changePassword.message }}
                     </div>
@@ -72,8 +74,10 @@
                     <div v-if="actionStatus.sendVerification.message" :class="feedbackClass('sendVerification')">
                         {{ actionStatus.sendVerification.message }}
                     </div>
-                    <SecretInput v-model="verifyToken" placeholder="Verification token" autocomplete="off" :disabled="working" />
-                    <button @click="verifyEmail" :disabled="working" :class="buttonStatusClass('verifyEmail')">Verify email</button>
+                    <form @submit.prevent="verifyEmail">
+                        <SecretInput v-model="verifyToken" placeholder="Verification token" autocomplete="off" :disabled="working" />
+                        <button type="submit" :disabled="working" :class="buttonStatusClass('verifyEmail')">Verify email</button>
+                    </form>
                     <div v-if="actionStatus.verifyEmail.message" :class="feedbackClass('verifyEmail')">
                         {{ actionStatus.verifyEmail.message }}
                     </div>
@@ -255,14 +259,11 @@ export default {
 
             const host = window.location.hostname
             const isLocalDev = host === 'localhost' || host === '127.0.0.1' || host === '::1'
-            const token = localStorage.getItem('uah_access_token')
-            if (!token || isLocalDev) return
+            if (isLocalDev) return
 
             // Refresh from backend if available.
             try {
-                const res = await fetch('/api/auth/me', {
-                    headers: { Authorization: `Bearer ${token}` },
-                })
+                const res = await authedFetch('/api/auth/me')
                 if (!res.ok) return
                 const user = await res.json()
                 this.currentUser = user
@@ -270,8 +271,11 @@ export default {
 
                 this.firstName = user.first_name || user.firstName || this.firstName
                 this.lastName = user.last_name || user.lastName || this.lastName
-            } catch {
-                // ignore (backend may be down)
+            } catch (e) {
+                if (e.message === 'Session expired' || e.message === 'Not authenticated') {
+                    this.$router.push('/login')
+                }
+                // otherwise ignore (backend may be down)
             }
         },
 

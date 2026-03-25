@@ -68,6 +68,13 @@ class Settings:
     MUSE_PAGE_CHASE_MIN_FILTERED_RATIO: float = float(os.getenv("MUSE_PAGE_CHASE_MIN_FILTERED_RATIO", "0.4"))
     MUSE_PAGE_CHASE_TIMEOUT_SECONDS: float = float(os.getenv("MUSE_PAGE_CHASE_TIMEOUT_SECONDS", "8"))
 
+    # Muse-supported location index refresh settings
+    MUSE_LOCATION_INDEX_ENABLED: bool = _env_bool("MUSE_LOCATION_INDEX_ENABLED", "true")
+    MUSE_LOCATION_INDEX_REFRESH_HOURS: int = int(os.getenv("MUSE_LOCATION_INDEX_REFRESH_HOURS", "24"))
+    MUSE_LOCATION_INDEX_SCAN_MAX_PAGES: int = int(os.getenv("MUSE_LOCATION_INDEX_SCAN_MAX_PAGES", "25"))
+    MUSE_LOCATION_INDEX_TIMEOUT_SECONDS: float = float(os.getenv("MUSE_LOCATION_INDEX_TIMEOUT_SECONDS", "10"))
+    MUSE_LOCATION_INDEX_RETENTION_DAYS: int = int(os.getenv("MUSE_LOCATION_INDEX_RETENTION_DAYS", "45"))
+
     @property
     def DATABASE_URL(self) -> str:
         """

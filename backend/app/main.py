@@ -28,6 +28,7 @@ from app.core.config import settings
 from app.db.base import Base
 from app.db.session import engine
 from app.services.geolocation import ensure_city_dataset
+from app.services.muse_location_index import ensure_muse_location_index
 import app.models  # noqa: F401 — ensure all models are registered
 
 logger = logging.getLogger(__name__)
@@ -143,6 +144,9 @@ async def lifespan(app: FastAPI):
             "Geolocation city dataset build failed: %s. Falling back to embedded cities.",
             geo_dataset_status.get("error", "unknown error"),
         )
+
+    muse_index_status = await ensure_muse_location_index()
+    logger.info("Muse location index startup status: %s", muse_index_status)
 
     yield
 

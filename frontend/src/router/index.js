@@ -1,8 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { getAccessToken } from '@/lib/auth'
 
 const modules = import.meta.glob('../views/*.vue')
-
-const ACCESS_TOKEN_KEY = 'uah_access_token'
 
 function isLocalDev() {
   const host = window.location.hostname
@@ -11,7 +10,7 @@ function isLocalDev() {
 
 function isAuthenticated() {
   if (isLocalDev()) return true
-  return Boolean(localStorage.getItem(ACCESS_TOKEN_KEY))
+  return Boolean(getAccessToken())
 }
 
 /* This grabs everything from and generates routes for everything in the views folder */

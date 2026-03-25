@@ -1,8 +1,26 @@
 const ACCESS_TOKEN_KEY = 'uah_access_token'
 const CURRENT_USER_KEY = 'uah_current_user'
 
+function parseTokenPayload(token) {
+    try {
+        return JSON.parse(atob(token.split('.')[1]))
+    } catch { return null }
+}
+
+export function isTokenExpired(token) {
+    if (!token || token === 'local-dev-bypass') return false
+    const payload = parseTokenPayload(token)
+    if (!payload?.exp) return true
+    return Date.now() / 1000 >= payload.exp
+}
+
 export function getAccessToken() {
-    return localStorage.getItem(ACCESS_TOKEN_KEY)
+    const token = localStorage.getItem(ACCESS_TOKEN_KEY)
+    if (token && isTokenExpired(token)) {
+        clearAuth()
+        return null
+    }
+    return token
 }
 
 export function setAccessToken(token) {
@@ -47,8 +65,15 @@ export async function authedFetch(url, options = {}) {
     const headers = new Headers(options.headers || {})
     headers.set('Authorization', `Bearer ${token}`)
 
-    return fetch(url, {
+    const res = await fetch(url, {
         ...options,
         headers,
     })
+
+    if (res.status === 401) {
+        clearAuth()
+        throw new Error('Session expired')
+    }
+
+    return res
 }

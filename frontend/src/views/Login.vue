@@ -4,24 +4,26 @@
             <h1>Login</h1>
             <p class="subtitle">Track every application in one place</p>
 
-            <input
-                class="email-input"
-                type="text"
-                v-model="username"
-                autocomplete="username"
-                placeholder="Username"
-            />
-            <SecretInput
-                v-model="password"
-                inputClass="email-input"
-                autocomplete="current-password"
-                placeholder="Password"
-                :disabled="loading"
-            />
+            <form @submit.prevent="login">
+                <input
+                    class="email-input"
+                    type="text"
+                    v-model="username"
+                    autocomplete="username"
+                    placeholder="Username"
+                />
+                <SecretInput
+                    v-model="password"
+                    inputClass="email-input"
+                    autocomplete="current-password"
+                    placeholder="Password"
+                    :disabled="loading"
+                />
 
-            <button class="submit-btn" @click="login" :disabled="loading">
-                {{ loading ? 'Signing in…' : 'Sign in' }}
-            </button>
+                <button type="submit" class="submit-btn" :disabled="loading">
+                    {{ loading ? 'Signing in…' : 'Sign in' }}
+                </button>
+            </form>
 
             <p v-if="error" class="subtitle">{{ error }}</p>
 
@@ -36,16 +38,18 @@
 
             <div class="bypass-section">
                 <span class="bypass-title">Alpha override</span>
-                <SecretInput
-                    v-model="bypassPassphrase"
-                    inputClass="email-input"
-                    autocomplete="off"
-                    placeholder="Admin bypass passphrase"
-                    :disabled="loading"
-                />
-                <button class="submit-btn" @click="bypass" :disabled="loading">
-                    {{ loading ? 'Checking…' : 'Bypass login' }}
-                </button>
+                <form @submit.prevent="bypass">
+                    <SecretInput
+                        v-model="bypassPassphrase"
+                        inputClass="email-input"
+                        autocomplete="off"
+                        placeholder="Admin bypass passphrase"
+                        :disabled="loading"
+                    />
+                    <button type="submit" class="submit-btn" :disabled="loading">
+                        {{ loading ? 'Checking…' : 'Bypass login' }}
+                    </button>
+                </form>
             </div>
         </div>
     </div>
