@@ -10,6 +10,9 @@ from urllib.request import urlopen
 import httpx  # type: ignore[import-not-found]
 
 
+# Provider mapping notes:
+# - "ipapi"  -> ip-api.com (endpoint: http://ip-api.com/json/{ip})
+# - "ipstack" -> ipstack.com (endpoint: http://api.ipstack.com/{ip})
 GEO_IP_PROVIDER = os.getenv("GEO_IP_PROVIDER", "ipapi").strip().lower()
 IPSTACK_API_KEY = os.getenv("IPSTACK_API_KEY", "").strip()
 NOMINATIM_USER_AGENT = os.getenv("NOMINATIM_USER_AGENT", "UAH-JobBoard-Geolocation/1.0")
