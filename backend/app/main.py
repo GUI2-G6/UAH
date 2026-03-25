@@ -23,6 +23,7 @@ from fastapi import FastAPI
 from app.api.routes import router as api_router
 from app.api.auth import router as auth_router
 from app.api.account import router as account_router
+from app.api.resume import router as resume_router
 from app.core.config import settings
 from app.db.base import Base
 from app.db.session import engine
@@ -170,6 +171,7 @@ app.add_middleware(
 app.include_router(api_router, prefix="/api")
 app.include_router(auth_router)
 app.include_router(account_router)
+app.include_router(resume_router)
 
 
 # ---------------------------------------------------------------------------

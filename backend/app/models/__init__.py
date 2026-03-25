@@ -14,3 +14,4 @@ Example:
 Currently empty — add imports as you create models.
 """
 from app.models.user import User  # noqa: F401
+from app.models.resume import Resume  # noqa: F401

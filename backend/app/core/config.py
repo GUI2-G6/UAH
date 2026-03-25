@@ -43,7 +43,6 @@ class Settings:
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
 
     # Email (SMTP)
-    # By default, email sending is disabled and endpoints will return "dev only" tokens.
     EMAILS_ENABLED: bool = _env_bool("EMAILS_ENABLED", "false")
     PUBLIC_APP_URL: str = os.getenv("PUBLIC_APP_URL", "http://localhost:5173")
 
@@ -55,6 +54,11 @@ class Settings:
     SMTP_USE_TLS: bool = _env_bool("SMTP_USE_TLS", "true")
     SMTP_USE_SSL: bool = _env_bool("SMTP_USE_SSL", "false")
     SMTP_TIMEOUT_SECONDS: int = int(os.getenv("SMTP_TIMEOUT_SECONDS", "20"))
+
+    ZAI_API_KEY: str = os.getenv("ZAI_API_KEY", "")
+    ZAI_OCR_URL: str = os.getenv("ZAI_OCR_URL", "https://api.z.ai/api/paas/v4/layout_parsing")
+    ZAI_LLM_URL: str = os.getenv("ZAI_LLM_URL", "https://api.z.ai/api/paas/v4/chat/completions")
+    ZAI_LLM_MODEL: str = os.getenv("ZAI_LLM_MODEL", "GLM-4.7-Flash")
 
     @property
     def DATABASE_URL(self) -> str:
