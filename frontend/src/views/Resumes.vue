@@ -39,8 +39,9 @@
 
                 <div class="upload-stage-row" v-if="activeTab === 'imported'">
                     <span :class="['stage-pill', uploadStep === 'select' ? 'active' : '']">1. Select</span>
-                    <span :class="['stage-pill', uploadStep === 'confirm' ? 'active' : '']">2. Confirm + Parse</span>
-                    <span class="stage-pill">3. Review Readiness</span>
+                    <span :class="['stage-pill', uploadStep === 'confirm' ? 'active' : '']">2. Confirm</span>
+                    <span :class="['stage-pill', uploadStep === 'parsing' ? 'active' : '']">3. Parsing</span>
+                    <span class="stage-pill">4. Review Readiness</span>
                 </div>
 
                 <div
@@ -121,6 +122,26 @@
                     </div>
                 </template>
 
+                <!-- Stage 3: Parsing progress -->
+                <template v-if="uploadStep === 'parsing'">
+                    <div class="parse-progress-card">
+                        <div class="parse-progress-header">
+                            <div class="spinner spinner-inline"></div>
+                            <span class="parse-stage-label">{{ parseStageLabel || 'Starting…' }}</span>
+                        </div>
+                        <div class="parse-progress-bar-track">
+                            <div
+                                class="parse-progress-bar-fill"
+                                :style="{ width: parseProgressPercent + '%' }"
+                            ></div>
+                        </div>
+                        <p class="parse-progress-hint">{{ parseProgressHint }}</p>
+                        <button class="btn-secondary" @click="cancelParse" :disabled="parseStatus === 'cancelled'">
+                            Cancel
+                        </button>
+                    </div>
+                </template>
+
                 <div v-if="uploadError" class="upload-error">{{ uploadError }}</div>
             </div>
 
@@ -185,6 +206,36 @@
              TAB 2 — Applicant Information
         ═════════════════════════════════════════════════════ -->
         <div v-if="activeTab === 'applicant'" class="dashboard">
+
+            <!-- Profile switcher -->
+            <div v-if="profiles.length > 0" class="profile-switcher">
+                <div class="profile-switcher-row">
+                    <label class="profile-switcher-label">Active Profile:</label>
+                    <select class="profile-select" :value="activeProfileId" @change="switchProfile(Number($event.target.value))">
+                        <option v-for="p in profiles" :key="p.id" :value="p.id">
+                            {{ p.name }}{{ p.is_active ? ' (active)' : '' }}
+                        </option>
+                    </select>
+                    <button class="btn-secondary btn-compact" @click="showNewProfileInput = !showNewProfileInput" title="New profile">+</button>
+                    <button
+                        v-if="profiles.length > 1"
+                        class="btn-secondary btn-compact delete-profile-btn"
+                        @click="deleteProfile(activeProfileId)"
+                        title="Delete current profile"
+                    >Delete</button>
+                </div>
+                <div v-if="showNewProfileInput" class="new-profile-row">
+                    <input
+                        v-model="newProfileName"
+                        type="text"
+                        placeholder="New profile name…"
+                        class="new-profile-input"
+                        @keyup.enter="createNewProfile"
+                    />
+                    <button class="btn-primary btn-compact" @click="createNewProfile" :disabled="!newProfileName.trim()">Create</button>
+                    <button class="btn-secondary btn-compact" @click="showNewProfileInput = false">Cancel</button>
+                </div>
+            </div>
 
             <!-- Save feedback -->
             <div v-if="saveStatus.message" :class="['save-feedback', saveStatus.type === 'success' ? 'is-success' : 'is-error']">
@@ -494,146 +545,177 @@
                     <div class="spinner"></div> Loading…
                 </div>
 
-                <template v-else-if="viewingResume && viewingResume.structured_data">
-                    <span :class="['badge', badgeClass(viewingResume), 'view-badge']">
-                        {{ badgeText(viewingResume) }}
-                    </span>
-
-                    <!-- Portal readiness bar -->
-                    <div class="view-section">
-                        <h4>Portal Readiness</h4>
-                        <div class="portal-bar-wrap">
-                            <div class="portal-bar-track">
-                                <div
-                                    class="portal-bar-fill"
-                                    :class="{ partial: !viewingResume.portal_ready }"
-                                    :style="{ width: portalPercent(viewingResume) + '%' }"
-                                ></div>
-                            </div>
-                            <span class="portal-fill-caption">{{ portalFilledCount(viewingResume) }}/15 required fields filled</span>
-                        </div>
-
-                        <div v-if="missingRequiredList(viewingResume).length" class="missing-fields-list">
-                            <span
-                                v-for="field in missingRequiredList(viewingResume).slice(0, 6)"
-                                :key="field"
-                                class="missing-field-pill"
-                            >
-                                {{ field }}
-                            </span>
-                        </div>
+                <template v-else-if="viewingResume">
+                    <!-- View sub-tabs: PDF | Parsed Data -->
+                    <nav class="view-sub-nav" v-if="viewingResume.has_pdf || viewingResume.structured_data">
                         <button
-                            v-if="missingRequiredList(viewingResume).length"
-                            type="button"
-                            class="btn-secondary portal-action-btn"
-                            @click="goToApplicantInfo"
-                        >
-                            Review Missing Fields
-                        </button>
+                            v-if="viewingResume.has_pdf"
+                            :class="{ active: viewSubTab === 'pdf' }"
+                            @click="viewSubTab = 'pdf'"
+                        >PDF Document</button>
+                        <button
+                            v-if="viewingResume.structured_data"
+                            :class="{ active: viewSubTab === 'parsed' }"
+                            @click="viewSubTab = 'parsed'"
+                        >Parsed Data</button>
+                    </nav>
+
+                    <!-- PDF sub-tab -->
+                    <div v-if="viewSubTab === 'pdf' && viewingResume.has_pdf" class="view-pdf-container">
+                        <iframe
+                            :src="pdfViewUrl"
+                            class="pdf-iframe"
+                            title="Resume PDF"
+                        ></iframe>
                     </div>
 
-                    <!-- Personal Info -->
-                    <div v-if="viewingResume.structured_data.personal_info" class="view-section">
-                        <h4>Personal Information</h4>
-                        <div class="view-grid">
-                            <div class="view-field">
-                                <label>Name</label>
-                                <p>{{ fullName(viewingResume.structured_data.personal_info) || '—' }}</p>
-                            </div>
-                            <div class="view-field">
-                                <label>Email</label>
-                                <p>{{ viewingResume.structured_data.personal_info.email || '—' }}</p>
-                            </div>
-                            <div class="view-field">
-                                <label>Phone</label>
-                                <p>{{ viewingResume.structured_data.personal_info.phone || '—' }}</p>
-                            </div>
-                            <div class="view-field">
-                                <label>Location</label>
-                                <p>{{ locationStr(viewingResume.structured_data.personal_info) || '—' }}</p>
-                            </div>
-                            <div v-if="viewingResume.structured_data.personal_info.linkedin" class="view-field">
-                                <label>LinkedIn</label>
-                                <p>{{ viewingResume.structured_data.personal_info.linkedin }}</p>
-                            </div>
-                            <div v-if="viewingResume.structured_data.personal_info.website" class="view-field">
-                                <label>Website</label>
-                                <p>{{ viewingResume.structured_data.personal_info.website }}</p>
-                            </div>
-                        </div>
-                    </div>
+                    <!-- Parsed data sub-tab -->
+                    <template v-if="viewSubTab === 'parsed' && viewingResume.structured_data">
+                        <span :class="['badge', badgeClass(viewingResume), 'view-badge']">
+                            {{ badgeText(viewingResume) }}
+                        </span>
 
-                    <!-- Summary -->
-                    <div v-if="viewingResume.structured_data.summary" class="view-section">
-                        <h4>Summary</h4>
-                        <p class="summary-text">
-                            {{ viewingResume.structured_data.summary }}
-                        </p>
-                    </div>
+                        <!-- Portal readiness bar -->
+                        <div class="view-section">
+                            <h4>Portal Readiness</h4>
+                            <div class="portal-bar-wrap">
+                                <div class="portal-bar-track">
+                                    <div
+                                        class="portal-bar-fill"
+                                        :class="{ partial: !viewingResume.portal_ready }"
+                                        :style="{ width: portalPercent(viewingResume) + '%' }"
+                                    ></div>
+                                </div>
+                                <span class="portal-fill-caption">{{ portalFilledCount(viewingResume) }}/15 required fields filled</span>
+                            </div>
 
-                    <!-- Skills -->
-                    <div v-if="hasSkills(viewingResume.structured_data.skills)" class="view-section">
-                        <h4>Skills</h4>
-                        <div v-if="viewingResume.structured_data.skills.technical && viewingResume.structured_data.skills.technical.length">
-                            <p class="skill-group-label">Technical</p>
-                            <div class="skill-pills">
-                                <span v-for="s in viewingResume.structured_data.skills.technical" :key="s" class="skill-pill">{{ s }}</span>
-                            </div>
-                        </div>
-                        <div v-if="viewingResume.structured_data.skills.languages && viewingResume.structured_data.skills.languages.length">
-                            <p class="skill-group-label">Languages</p>
-                            <div class="skill-pills">
-                                <span v-for="s in viewingResume.structured_data.skills.languages" :key="s" class="skill-pill">{{ s }}</span>
-                            </div>
-                        </div>
-                        <div v-if="viewingResume.structured_data.skills.tools && viewingResume.structured_data.skills.tools.length">
-                            <p class="skill-group-label">Tools</p>
-                            <div class="skill-pills">
-                                <span v-for="s in viewingResume.structured_data.skills.tools" :key="s" class="skill-pill">{{ s }}</span>
-                            </div>
-                        </div>
-                        <div v-if="viewingResume.structured_data.skills.soft_skills && viewingResume.structured_data.skills.soft_skills.length">
-                            <p class="skill-group-label">Soft Skills</p>
-                            <div class="skill-pills">
-                                <span v-for="s in viewingResume.structured_data.skills.soft_skills" :key="s" class="skill-pill">{{ s }}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Education -->
-                    <div v-if="viewingResume.structured_data.education && viewingResume.structured_data.education.length" class="view-section">
-                        <h4>Education</h4>
-                        <div v-for="(edu, i) in viewingResume.structured_data.education" :key="i" class="exp-entry">
-                            <p class="exp-title">{{ edu.institution || '—' }}</p>
-                            <p class="exp-sub">
-                                {{ [edu.degree, edu.field_of_study].filter(Boolean).join(' — ') }}
-                                <span v-if="edu.end_date"> · {{ edu.end_date }}</span>
-                            </p>
-                            <p v-if="edu.gpa" class="gpa-text">GPA: {{ edu.gpa }}</p>
-                        </div>
-                    </div>
-
-                    <!-- Work Experience -->
-                    <div v-if="viewingResume.structured_data.work_experience && viewingResume.structured_data.work_experience.length" class="view-section">
-                        <h4>Work Experience</h4>
-                        <div v-for="(job, i) in viewingResume.structured_data.work_experience" :key="i" class="exp-entry">
-                            <p class="exp-title">{{ job.title || '—' }}</p>
-                            <p class="exp-sub">
-                                {{ job.company || '' }}
-                                <span v-if="job.start_date || job.end_date">
-                                    · {{ job.start_date || '' }} – {{ job.end_date || 'Present' }}
+                            <div v-if="missingRequiredList(viewingResume).length" class="missing-fields-list">
+                                <span
+                                    v-for="field in missingRequiredList(viewingResume).slice(0, 6)"
+                                    :key="field"
+                                    class="missing-field-pill"
+                                >
+                                    {{ field }}
                                 </span>
-                            </p>
-                            <ul v-if="job.bullets && job.bullets.length">
-                                <li v-for="(b, j) in job.bullets" :key="j">{{ b }}</li>
-                            </ul>
+                            </div>
+                            <button
+                                v-if="missingRequiredList(viewingResume).length"
+                                type="button"
+                                class="btn-secondary portal-action-btn"
+                                @click="goToApplicantInfo"
+                            >
+                                Review Missing Fields
+                            </button>
                         </div>
-                    </div>
 
+                        <!-- Personal Info -->
+                        <div v-if="viewingResume.structured_data.personal_info" class="view-section">
+                            <h4>Personal Information</h4>
+                            <div class="view-grid">
+                                <div class="view-field">
+                                    <label>Name</label>
+                                    <p>{{ fullName(viewingResume.structured_data.personal_info) || '—' }}</p>
+                                </div>
+                                <div class="view-field">
+                                    <label>Email</label>
+                                    <p>{{ viewingResume.structured_data.personal_info.email || '—' }}</p>
+                                </div>
+                                <div class="view-field">
+                                    <label>Phone</label>
+                                    <p>{{ viewingResume.structured_data.personal_info.phone || '—' }}</p>
+                                </div>
+                                <div class="view-field">
+                                    <label>Location</label>
+                                    <p>{{ locationStr(viewingResume.structured_data.personal_info) || '—' }}</p>
+                                </div>
+                                <div v-if="viewingResume.structured_data.personal_info.linkedin" class="view-field">
+                                    <label>LinkedIn</label>
+                                    <p>{{ viewingResume.structured_data.personal_info.linkedin }}</p>
+                                </div>
+                                <div v-if="viewingResume.structured_data.personal_info.website" class="view-field">
+                                    <label>Website</label>
+                                    <p>{{ viewingResume.structured_data.personal_info.website }}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Summary -->
+                        <div v-if="viewingResume.structured_data.summary" class="view-section">
+                            <h4>Summary</h4>
+                            <p class="summary-text">
+                                {{ viewingResume.structured_data.summary }}
+                            </p>
+                        </div>
+
+                        <!-- Skills -->
+                        <div v-if="hasSkills(viewingResume.structured_data.skills)" class="view-section">
+                            <h4>Skills</h4>
+                            <div v-if="viewingResume.structured_data.skills.technical && viewingResume.structured_data.skills.technical.length">
+                                <p class="skill-group-label">Technical</p>
+                                <div class="skill-pills">
+                                    <span v-for="s in viewingResume.structured_data.skills.technical" :key="s" class="skill-pill">{{ s }}</span>
+                                </div>
+                            </div>
+                            <div v-if="viewingResume.structured_data.skills.languages && viewingResume.structured_data.skills.languages.length">
+                                <p class="skill-group-label">Languages</p>
+                                <div class="skill-pills">
+                                    <span v-for="s in viewingResume.structured_data.skills.languages" :key="s" class="skill-pill">{{ s }}</span>
+                                </div>
+                            </div>
+                            <div v-if="viewingResume.structured_data.skills.tools && viewingResume.structured_data.skills.tools.length">
+                                <p class="skill-group-label">Tools</p>
+                                <div class="skill-pills">
+                                    <span v-for="s in viewingResume.structured_data.skills.tools" :key="s" class="skill-pill">{{ s }}</span>
+                                </div>
+                            </div>
+                            <div v-if="viewingResume.structured_data.skills.soft_skills && viewingResume.structured_data.skills.soft_skills.length">
+                                <p class="skill-group-label">Soft Skills</p>
+                                <div class="skill-pills">
+                                    <span v-for="s in viewingResume.structured_data.skills.soft_skills" :key="s" class="skill-pill">{{ s }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Education -->
+                        <div v-if="viewingResume.structured_data.education && viewingResume.structured_data.education.length" class="view-section">
+                            <h4>Education</h4>
+                            <div v-for="(edu, i) in viewingResume.structured_data.education" :key="i" class="exp-entry">
+                                <p class="exp-title">{{ edu.institution || '—' }}</p>
+                                <p class="exp-sub">
+                                    {{ [edu.degree, edu.field_of_study].filter(Boolean).join(' — ') }}
+                                    <span v-if="edu.end_date"> · {{ edu.end_date }}</span>
+                                </p>
+                                <p v-if="edu.gpa" class="gpa-text">GPA: {{ edu.gpa }}</p>
+                            </div>
+                        </div>
+
+                        <!-- Work Experience -->
+                        <div v-if="viewingResume.structured_data.work_experience && viewingResume.structured_data.work_experience.length" class="view-section">
+                            <h4>Work Experience</h4>
+                            <div v-for="(job, i) in viewingResume.structured_data.work_experience" :key="i" class="exp-entry">
+                                <p class="exp-title">{{ job.title || '—' }}</p>
+                                <p class="exp-sub">
+                                    {{ job.company || '' }}
+                                    <span v-if="job.start_date || job.end_date">
+                                        · {{ job.start_date || '' }} – {{ job.end_date || 'Present' }}
+                                    </span>
+                                </p>
+                                <ul v-if="job.bullets && job.bullets.length">
+                                    <li v-for="(b, j) in job.bullets" :key="j">{{ b }}</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- No data at all -->
+                    <div v-if="!viewingResume.has_pdf && !viewingResume.structured_data" class="not-parsed-message">
+                        This resume hasn't been parsed yet. Delete and re-import to parse it.
+                    </div>
                 </template>
 
-                <div v-else-if="viewingResume && !viewingResume.structured_data" class="not-parsed-message">
-                    This resume hasn't been parsed yet. Delete and re-import to parse it.
+                <div v-else-if="viewError" class="view-error-state">
+                    <p class="view-error-text">{{ viewError }}</p>
+                    <button class="btn-secondary" @click="viewResume(_viewResumeId)">Retry</button>
                 </div>
 
             </div>
@@ -670,13 +752,26 @@ export default {
             uploadError: null,
             isDragOver: false,
 
+            // Async parse progress
+            parseJobId: null,
+            parseStatus: null,      // queued|parsing|validating|success|failed|cancelled
+            parseStageLabel: '',
+            parseError: null,
+            _pollTimer: null,
+
             // View modal
             showViewModal: false,
             viewingResume: null,
             viewLoading: false,
+            viewError: null,
+            viewSubTab: 'pdf',   // 'pdf' | 'parsed'
+            _viewResumeId: null,
 
             // ── Applicant Information tab ───────────────────
             currentUser: null,
+            profiles: [],
+            activeProfileId: null,
+            profilesLoading: false,
             firstName: '',
             lastName: '',
             appEmail: '',
@@ -707,6 +802,8 @@ export default {
             working: false,
             saveStatus: { type: '', message: '' },
             _saveTimer: null,
+            showNewProfileInput: false,
+            newProfileName: '',
 
             // ── Job Application Info tab ────────────────────
             veteranOptions: [
@@ -740,17 +837,37 @@ export default {
             if (!this.resumes.length) return '—'
             return this.formatDate(this.resumes[0].created_at)
         },
+        parseProgressPercent() {
+            const map = { queued: 10, parsing: 50, validating: 85, success: 100, failed: 0, cancelled: 0 }
+            return map[this.parseStatus] ?? 0
+        },
+        parseProgressHint() {
+            const map = {
+                queued: 'Preparing to parse your resume…',
+                parsing: this.parseMethod === 'llm' ? 'AI is analyzing your resume — this may take up to a minute.' : 'Rules engine is extracting data…',
+                validating: 'Validating and normalizing extracted fields…',
+                success: 'Parsing complete!',
+                failed: 'Parsing failed.',
+                cancelled: 'Cancelled.',
+            }
+            return map[this.parseStatus] ?? ''
+        },
+        pdfViewUrl() {
+            if (!this.viewingResume?.id) return ''
+            return `/api/resume/${this.viewingResume.id}/pdf`
+        },
     },
 
     async mounted() {
         await this.loadResumes()
-        this.loadApplicantInfo()
+        await this.loadProfiles()
         this.publishDebugState('mounted')
     },
 
     beforeUnmount() {
         if (this._saveTimer) clearTimeout(this._saveTimer)
         if (this._jobInfoTimer) clearTimeout(this._jobInfoTimer)
+        if (this._pollTimer) clearTimeout(this._pollTimer)
         clearCurrentPageDiagnostics()
     },
 
@@ -824,17 +941,21 @@ export default {
 
         // ── View modal ──────────────────────────────────────
         async viewResume(id) {
+            this._viewResumeId = id
             this.showViewModal = true
             this.viewLoading = true
             this.viewingResume = null
+            this.viewError = null
             this.publishDebugState('view-open')
             try {
                 const res = await authedFetch(`/api/resume/${id}`)
                 if (!res.ok) throw new Error(`HTTP ${res.status}`)
                 this.viewingResume = await res.json()
+                // Default to PDF tab if available, else parsed data
+                this.viewSubTab = this.viewingResume.has_pdf ? 'pdf' : 'parsed'
                 this.publishDebugState('view-loaded')
-            } catch {
-                this.showViewModal = false
+            } catch (e) {
+                this.viewError = 'Failed to load resume data. Please try again.'
                 this.publishDebugState('view-load-error')
             } finally {
                 this.viewLoading = false
@@ -895,6 +1016,11 @@ export default {
             this.uploadError = null
             this.uploading = false
             this.isDragOver = false
+            this.parseJobId = null
+            this.parseStatus = null
+            this.parseStageLabel = ''
+            this.parseError = null
+            if (this._pollTimer) clearTimeout(this._pollTimer)
         },
         triggerFileInput() {
             this.$refs.fileInput.value = ''
@@ -944,9 +1070,9 @@ export default {
                     throw new Error(this.apiErrorMessage(uploadData, uploadRes.status, 'Upload failed'))
                 }
 
-                // 2. Parse
+                // 2. Start async parse
                 const resumeId = uploadData.id
-                const parseRes = await authedFetch(`/api/resume/${resumeId}/parse`, {
+                const parseRes = await authedFetch(`/api/resume/${resumeId}/parse-async`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ method: this.parseMethod }),
@@ -956,19 +1082,228 @@ export default {
                     throw new Error(this.apiErrorMessage(parseData, parseRes.status, 'Parse failed'))
                 }
 
-                this.resetUploadFlow()
-                await this.loadResumes()
-                this.publishDebugState('upload-success')
+                // 3. Switch to parsing progress stage
+                this.parseJobId = parseData.job_id
+                this.parseStatus = 'queued'
+                this.parseStageLabel = 'Queued…'
+                this.parseError = null
+                this.uploadStep = 'parsing'
+                this.uploading = false
+                this.publishDebugState('parse-started')
+
+                // Start polling
+                this.pollParseJob()
             } catch (e) {
                 this.uploadError = e.message ?? String(e)
-                this.publishDebugState('upload-error')
-            } finally {
                 this.uploading = false
+                this.publishDebugState('upload-error')
             }
         },
 
-        // ── Applicant Info ──────────────────────────────────
-        loadApplicantInfo() {
+        async pollParseJob() {
+            if (!this.parseJobId) return
+            try {
+                const res = await authedFetch(`/api/resume/parse-job/${this.parseJobId}`)
+                if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                const job = await res.json()
+
+                this.parseStatus = job.status
+                this.parseStageLabel = job.progress_stage || this.parseStageLabel
+
+                if (job.status === 'success') {
+                    this.resetUploadFlow()
+                    await this.loadResumes()
+                    this.publishDebugState('parse-success')
+                    return
+                }
+                if (job.status === 'failed') {
+                    this.uploadError = job.error_message || 'Parsing failed.'
+                    this.uploadStep = 'confirm'
+                    this.parseJobId = null
+                    this.publishDebugState('parse-failed')
+                    return
+                }
+                if (job.status === 'cancelled') {
+                    this.uploadStep = 'confirm'
+                    this.parseJobId = null
+                    this.publishDebugState('parse-cancelled')
+                    return
+                }
+
+                // Still running — poll again
+                this._pollTimer = setTimeout(() => this.pollParseJob(), 1500)
+            } catch (e) {
+                this.uploadError = 'Lost connection while checking parse status.'
+                this.uploadStep = 'confirm'
+                this.parseJobId = null
+                this.publishDebugState('poll-error')
+            }
+        },
+
+        async cancelParse() {
+            if (!this.parseJobId) return
+            try {
+                await authedFetch(`/api/resume/parse-job/${this.parseJobId}/cancel`, { method: 'POST' })
+            } catch { /* best-effort */ }
+            if (this._pollTimer) clearTimeout(this._pollTimer)
+            this.parseStatus = 'cancelled'
+            this.uploadStep = 'confirm'
+            this.parseJobId = null
+            this.publishDebugState('parse-cancelled-by-user')
+        },
+
+        // ── Profile Management ────────────────────────────
+        async loadProfiles() {
+            this.profilesLoading = true
+            this.currentUser = getCurrentUser()
+            try {
+                const res = await authedFetch('/api/applicant-profile/')
+                if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                this.profiles = await res.json()
+
+                if (this.profiles.length === 0) {
+                    // First-time: migrate from localStorage if present, or create empty default
+                    await this.migrateLocalToBackend()
+                } else {
+                    // Load the active profile
+                    const active = this.profiles.find(p => p.is_active) || this.profiles[0]
+                    await this.loadProfileData(active.id)
+                }
+            } catch (e) {
+                if (e.message === 'Session expired' || e.message === 'Not authenticated') {
+                    this.$router.push('/login')
+                    return
+                }
+                // Fallback: try to load from localStorage
+                this.loadApplicantInfoFromLocal()
+            } finally {
+                this.profilesLoading = false
+            }
+        },
+
+        async migrateLocalToBackend() {
+            const payload = this.buildProfilePayload()
+            // Check localStorage for existing data
+            try {
+                const saved = localStorage.getItem(APPINFO_KEY)
+                if (saved) {
+                    const d = JSON.parse(saved)
+                    Object.assign(payload, {
+                        phone: d.phone || '', linkedin: d.linkedin || '', portfolio: d.portfolio || '',
+                        street_address: d.streetAddress || '', city: d.city || '', state: d.appState || '', zip: d.zip || '',
+                        summary: d.summary || '', work_auth: d.workAuth || '', requires_sponsorship: d.requiresSponsorship || '',
+                        degree: d.degree || '', major: d.major || '', university: d.university || '',
+                        grad_year: d.gradYear || '', gpa: d.gpa || '',
+                        years_experience: d.yearsExperience || '', job_title: d.jobTitle || '',
+                        skills_text: d.skillsText || '', certifications_text: d.certificationsText || '',
+                        professional_links_text: d.professionalLinksText || '',
+                        education_history_text: d.educationHistoryText || '',
+                        employment_history_text: d.employmentHistoryText || '',
+                        demographic_gender: d.demographicGender || '',
+                        demographic_ethnicity: d.demographicEthnicity || '',
+                    })
+                }
+                const eeo = localStorage.getItem('uah_job_info')
+                if (eeo) {
+                    const d = JSON.parse(eeo)
+                    payload.veteran_status = d.veteranStatus || ''
+                    payload.disability_status = d.disabilityStatus || ''
+                    payload.california_resident = d.californiaResident || ''
+                }
+            } catch { /* ignore local parse errors */ }
+
+            // Fill from current user
+            if (this.currentUser) {
+                payload.first_name = payload.first_name || this.currentUser.first_name || this.currentUser.firstName || ''
+                payload.last_name = payload.last_name || this.currentUser.last_name || this.currentUser.lastName || ''
+                payload.email = payload.email || this.currentUser.email || ''
+            }
+
+            try {
+                const res = await authedFetch('/api/applicant-profile/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                })
+                if (res.ok) {
+                    const profile = await res.json()
+                    this.populateFormFromProfile(profile)
+                    this.profiles = [{ id: profile.id, name: profile.name, is_active: true, first_name: profile.first_name, last_name: profile.last_name, created_at: profile.created_at }]
+                    // Clean up localStorage after successful migration
+                    localStorage.removeItem(APPINFO_KEY)
+                    localStorage.removeItem('uah_job_info')
+                }
+            } catch {
+                this.loadApplicantInfoFromLocal()
+            }
+        },
+
+        async loadProfileData(profileId) {
+            try {
+                const res = await authedFetch(`/api/applicant-profile/${profileId}`)
+                if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                const profile = await res.json()
+                this.populateFormFromProfile(profile)
+            } catch {
+                this.loadApplicantInfoFromLocal()
+            }
+        },
+
+        populateFormFromProfile(p) {
+            this.activeProfileId = p.id
+            this.firstName = p.first_name || ''
+            this.lastName = p.last_name || ''
+            this.appEmail = p.email || ''
+            this.phone = p.phone || ''
+            this.linkedin = p.linkedin || ''
+            this.portfolio = p.portfolio || ''
+            this.streetAddress = p.street_address || ''
+            this.city = p.city || ''
+            this.appState = p.state || ''
+            this.zip = p.zip || ''
+            this.summary = p.summary || ''
+            this.workAuth = p.work_auth || ''
+            this.requiresSponsorship = p.requires_sponsorship || ''
+            this.degree = p.degree || ''
+            this.major = p.major || ''
+            this.university = p.university || ''
+            this.gradYear = p.grad_year || ''
+            this.gpa = p.gpa || ''
+            this.yearsExperience = p.years_experience || ''
+            this.jobTitle = p.job_title || ''
+            this.skillsText = p.skills_text || ''
+            this.certificationsText = p.certifications_text || ''
+            this.professionalLinksText = p.professional_links_text || ''
+            this.educationHistoryText = p.education_history_text || ''
+            this.employmentHistoryText = p.employment_history_text || ''
+            this.demographicGender = p.demographic_gender || ''
+            this.demographicEthnicity = p.demographic_ethnicity || ''
+            this.veteranStatus = p.veteran_status || ''
+            this.disabilityStatus = p.disability_status || ''
+            this.californiaResident = p.california_resident || ''
+        },
+
+        buildProfilePayload() {
+            return {
+                name: 'Default',
+                first_name: this.firstName, last_name: this.lastName, email: this.appEmail,
+                phone: this.phone, linkedin: this.linkedin, portfolio: this.portfolio,
+                street_address: this.streetAddress, city: this.city, state: this.appState, zip: this.zip,
+                summary: this.summary, work_auth: this.workAuth, requires_sponsorship: this.requiresSponsorship,
+                degree: this.degree, major: this.major, university: this.university,
+                grad_year: this.gradYear, gpa: this.gpa,
+                years_experience: this.yearsExperience, job_title: this.jobTitle,
+                skills_text: this.skillsText, certifications_text: this.certificationsText,
+                professional_links_text: this.professionalLinksText,
+                education_history_text: this.educationHistoryText,
+                employment_history_text: this.employmentHistoryText,
+                demographic_gender: this.demographicGender, demographic_ethnicity: this.demographicEthnicity,
+                veteran_status: this.veteranStatus, disability_status: this.disabilityStatus,
+                california_resident: this.californiaResident,
+            }
+        },
+
+        loadApplicantInfoFromLocal() {
             this.currentUser = getCurrentUser()
             if (this.currentUser) {
                 this.firstName = this.currentUser.first_name || this.currentUser.firstName || ''
@@ -979,41 +1314,87 @@ export default {
                 const saved = localStorage.getItem(APPINFO_KEY)
                 if (saved) {
                     const d = JSON.parse(saved)
-                    this.phone = d.phone || ''
-                    this.linkedin = d.linkedin || ''
-                    this.portfolio = d.portfolio || ''
-                    this.streetAddress = d.streetAddress || ''
-                    this.city = d.city || ''
-                    this.appState = d.appState || ''
-                    this.zip = d.zip || ''
-                    this.summary = d.summary || ''
-                    this.workAuth = d.workAuth || ''
-                    this.requiresSponsorship = d.requiresSponsorship || ''
-                    this.degree = d.degree || ''
-                    this.major = d.major || ''
-                    this.university = d.university || ''
-                    this.gradYear = d.gradYear || ''
-                    this.gpa = d.gpa || ''
-                    this.yearsExperience = d.yearsExperience || ''
-                    this.jobTitle = d.jobTitle || ''
-                    this.skillsText = d.skillsText || ''
-                    this.certificationsText = d.certificationsText || ''
+                    this.phone = d.phone || ''; this.linkedin = d.linkedin || ''; this.portfolio = d.portfolio || ''
+                    this.streetAddress = d.streetAddress || ''; this.city = d.city || ''; this.appState = d.appState || ''; this.zip = d.zip || ''
+                    this.summary = d.summary || ''; this.workAuth = d.workAuth || ''; this.requiresSponsorship = d.requiresSponsorship || ''
+                    this.degree = d.degree || ''; this.major = d.major || ''; this.university = d.university || ''
+                    this.gradYear = d.gradYear || ''; this.gpa = d.gpa || ''
+                    this.yearsExperience = d.yearsExperience || ''; this.jobTitle = d.jobTitle || ''
+                    this.skillsText = d.skillsText || ''; this.certificationsText = d.certificationsText || ''
                     this.professionalLinksText = d.professionalLinksText || ''
-                    this.educationHistoryText = d.educationHistoryText || ''
-                    this.employmentHistoryText = d.employmentHistoryText || ''
-                    this.demographicGender = d.demographicGender || ''
-                    this.demographicEthnicity = d.demographicEthnicity || ''
+                    this.educationHistoryText = d.educationHistoryText || ''; this.employmentHistoryText = d.employmentHistoryText || ''
+                    this.demographicGender = d.demographicGender || ''; this.demographicEthnicity = d.demographicEthnicity || ''
                 }
             } catch { /* ignore */ }
             try {
                 const eeo = localStorage.getItem('uah_job_info')
                 if (eeo) {
                     const d = JSON.parse(eeo)
-                    this.veteranStatus = d.veteranStatus || ''
-                    this.disabilityStatus = d.disabilityStatus || ''
-                    this.californiaResident = d.californiaResident || ''
+                    this.veteranStatus = d.veteranStatus || ''; this.disabilityStatus = d.disabilityStatus || ''; this.californiaResident = d.californiaResident || ''
                 }
             } catch { /* ignore */ }
+        },
+
+        async switchProfile(profileId) {
+            if (profileId === this.activeProfileId) return
+            try {
+                const res = await authedFetch(`/api/applicant-profile/${profileId}/activate`, { method: 'POST' })
+                if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                await this.loadProfileData(profileId)
+                await this.refreshProfileList()
+                this.publishDebugState('profile-switched')
+            } catch (e) {
+                this.saveStatus = { type: 'error', message: 'Failed to switch profile.' }
+            }
+        },
+
+        async refreshProfileList() {
+            try {
+                const res = await authedFetch('/api/applicant-profile/')
+                if (res.ok) this.profiles = await res.json()
+            } catch { /* ignore */ }
+        },
+
+        async createNewProfile() {
+            const name = (this.newProfileName || '').trim()
+            if (!name) return
+            try {
+                const res = await authedFetch('/api/applicant-profile/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name }),
+                })
+                if (!res.ok) {
+                    const data = await res.json().catch(() => null)
+                    throw new Error(data?.detail || `HTTP ${res.status}`)
+                }
+                const profile = await res.json()
+                this.showNewProfileInput = false
+                this.newProfileName = ''
+                await this.switchProfile(profile.id)
+                await this.refreshProfileList()
+            } catch (e) {
+                this.saveStatus = { type: 'error', message: e.message || 'Failed to create profile.' }
+            }
+        },
+
+        async deleteProfile(profileId) {
+            if (this.profiles.length <= 1) {
+                this.saveStatus = { type: 'error', message: 'Cannot delete your only profile.' }
+                return
+            }
+            try {
+                const res = await authedFetch(`/api/applicant-profile/${profileId}`, { method: 'DELETE' })
+                if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                await this.refreshProfileList()
+                if (this.profiles.length) {
+                    const active = this.profiles.find(p => p.is_active) || this.profiles[0]
+                    await this.loadProfileData(active.id)
+                }
+                this.publishDebugState('profile-deleted')
+            } catch (e) {
+                this.saveStatus = { type: 'error', message: 'Failed to delete profile.' }
+            }
         },
 
         async saveApplicantInfo() {
@@ -1021,35 +1402,49 @@ export default {
             this.saveStatus = { type: '', message: '' }
             if (this._saveTimer) clearTimeout(this._saveTimer)
             try {
-                const user = getCurrentUser()
-                const nameChanged =
-                    this.firstName !== (user?.first_name || user?.firstName || '') ||
-                    this.lastName !== (user?.last_name || user?.lastName || '')
-                if (nameChanged && (this.firstName || this.lastName)) {
-                    const res = await authedFetch('/api/account/change-name', {
+                const payload = this.buildProfilePayload()
+                delete payload.name  // don't overwrite profile name on save
+
+                if (this.activeProfileId) {
+                    // Update existing profile
+                    const res = await authedFetch(`/api/applicant-profile/${this.activeProfileId}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ first_name: this.firstName, last_name: this.lastName }),
+                        body: JSON.stringify(payload),
                     })
-                    const data = await res.json().catch(() => null)
-                    if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
-                    setCurrentUser(data)
+                    if (!res.ok) {
+                        const data = await res.json().catch(() => null)
+                        throw new Error(data?.detail || `HTTP ${res.status}`)
+                    }
+
+                    // Also update user name if changed
+                    const user = getCurrentUser()
+                    const nameChanged =
+                        this.firstName !== (user?.first_name || user?.firstName || '') ||
+                        this.lastName !== (user?.last_name || user?.lastName || '')
+                    if (nameChanged && (this.firstName || this.lastName)) {
+                        const nameRes = await authedFetch('/api/account/change-name', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ first_name: this.firstName, last_name: this.lastName }),
+                        })
+                        const nameData = await nameRes.json().catch(() => null)
+                        if (nameRes.ok) setCurrentUser(nameData)
+                    }
+                } else {
+                    // Create new profile (shouldn't normally happen after migration)
+                    payload.name = 'Default'
+                    const res = await authedFetch('/api/applicant-profile/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    })
+                    if (!res.ok) throw new Error('Failed to create profile')
+                    const profile = await res.json()
+                    this.activeProfileId = profile.id
+                    await this.refreshProfileList()
                 }
-                localStorage.setItem(APPINFO_KEY, JSON.stringify({
-                    phone: this.phone, linkedin: this.linkedin, portfolio: this.portfolio,
-                    streetAddress: this.streetAddress, city: this.city, appState: this.appState, zip: this.zip,
-                    summary: this.summary, workAuth: this.workAuth, requiresSponsorship: this.requiresSponsorship,
-                    degree: this.degree, major: this.major, university: this.university,
-                    gradYear: this.gradYear, gpa: this.gpa,
-                    yearsExperience: this.yearsExperience, jobTitle: this.jobTitle,
-                    skillsText: this.skillsText,
-                    certificationsText: this.certificationsText,
-                    professionalLinksText: this.professionalLinksText,
-                    educationHistoryText: this.educationHistoryText,
-                    employmentHistoryText: this.employmentHistoryText,
-                    demographicGender: this.demographicGender,
-                    demographicEthnicity: this.demographicEthnicity,
-                }))
+
                 this.saveStatus = { type: 'success', message: 'Information saved.' }
                 this.publishDebugState('applicant-save-success')
             } catch (e) {
@@ -1075,11 +1470,18 @@ export default {
                 this.publishDebugState('jobinfo-validation-error')
                 return
             }
-            localStorage.setItem('uah_job_info', JSON.stringify({
-                veteranStatus: this.veteranStatus,
-                disabilityStatus: this.disabilityStatus,
-                californiaResident: this.californiaResident,
-            }))
+            // Save EEO data to the active profile
+            if (this.activeProfileId) {
+                authedFetch(`/api/applicant-profile/${this.activeProfileId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        veteran_status: this.veteranStatus,
+                        disability_status: this.disabilityStatus,
+                        california_resident: this.californiaResident,
+                    }),
+                }).catch(() => {})
+            }
             this.jobInfoSuccess = 'Information saved.'
             this.publishDebugState('jobinfo-save-success')
             this._jobInfoTimer = setTimeout(() => { this.jobInfoSuccess = '' }, 3500)

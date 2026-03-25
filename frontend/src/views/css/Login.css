@@ -6,13 +6,12 @@
 
 .page {
   min-height: 100vh;
-  background-color: #f0f4f8;
+  background-color: var(--color-surface-muted);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-family: 'Segoe UI', sans-serif;
-  padding: 24px 16px;
+  padding: var(--space-4) var(--space-3);
 }
 
 .auth-card {
@@ -22,23 +21,23 @@
   align-items: stretch;
   gap: 10px;
   padding: 26px 22px;
-  border-radius: 14px;
-  background: #ffffff;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-soft);
   text-align: center;
 }
 
 .auth-card h1 {
   font-size: 1.65rem;
   font-weight: 700;
-  color: #1a1a2e;
+  color: var(--color-text-primary);
   text-align: center;
   line-height: 1.3;
 }
 
 .subtitle {
   font-size: 0.9rem;
-  color: #8a94a6;
+  color: var(--color-text-muted);
   text-align: center;
   line-height: 1.6;
 }
@@ -47,10 +46,10 @@
   width: 100%;
   padding: 14px 16px;
   border: none;
-  border-radius: 8px;
-  background: #f0f4f8;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
   font-size: 0.92rem;
-  color: #1a1a2e;
+  color: var(--color-text-primary);
   outline: none;
   margin-top: 0;
 }
@@ -62,35 +61,35 @@
 .submit-btn {
   width: 100%;
   padding: 14px;
-  background: #7c6fef;
+  background: var(--color-primary-600);
   color: #ffffff;
   font-size: 1rem;
   font-weight: 500;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   margin-top: 0;
-  transition: background 0.2s ease;
+  transition: background var(--transition-fast);
 }
 
 .submit-btn:hover {
-  background: #6a5de0;
+  background: var(--color-primary-700);
 }
 
 .submit-btn.is-success {
-  background: #22c55e;
+  background: var(--color-success-600);
 }
 
 .submit-btn.is-success:hover {
-  background: #16a34a;
+  background: #15803d;
 }
 
 .submit-btn.is-error {
-  background: #ef4444;
+  background: var(--color-danger-600);
 }
 
 .submit-btn.is-error:hover {
-  background: #dc2626;
+  background: #b91c1c;
 }
 
 .signup-row {
@@ -102,11 +101,11 @@
 }
 
 .signup-row span {
-  color: #8a94a6;
+  color: var(--color-text-muted);
 }
 
 .signup-row a {
-  color: #7c6fef;
+  color: var(--color-primary-600);
   text-decoration: none;
   font-weight: 500;
 }
@@ -125,6 +124,6 @@
 }
 
 .bypass-title {
-  color: #8a94a6;
+  color: var(--color-text-muted);
   font-size: 0.85rem;
 }

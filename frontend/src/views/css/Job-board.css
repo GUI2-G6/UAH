@@ -5,8 +5,8 @@
 }
 
 .greeting {
-  border-bottom: solid 2px rgba(236, 239, 243, 1);
-  padding: 20px 24px 14px;
+  border-bottom: solid 2px var(--border-color-light);
+  padding: 20px var(--space-4) 14px;
 }
 
 .greeting h1 {
@@ -19,9 +19,9 @@
 }
 
 .filters {
-  padding: 14px 16px 16px;
-  background: #ffffff;
-  border-bottom: solid 1px #e6e8ec;
+  padding: 14px var(--space-3) var(--space-3);
+  background: var(--color-surface);
+  border-bottom: solid 1px var(--border-color-light);
 }
 
 .filter-grid {
@@ -39,16 +39,16 @@
 
 .filter-group label {
   font-size: 0.875rem;
-  color: #1f2937;
+  color: var(--color-text-secondary);
   font-weight: 600;
 }
 
 .filter-group input,
 .filter-group select {
-  border: 1px solid #cdd2da;
-  border-radius: 8px;
-  background: #fff;
-  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  padding: var(--space-1) 10px;
   font-size: 0.925rem;
 }
 

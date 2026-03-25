@@ -1,19 +1,26 @@
+import asyncio
+import logging
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from app.db.session import get_db
+from app.db.session import get_db, SessionLocal
 from app.models.user import User
 from app.models.resume import Resume
+from app.models.parse_job import ParseJob
 from app.api.deps import get_current_user
 from app.schemas.resume import (
     ResumeUploadResponse, ResumeResponse, ResumeListItem,
     PortalCheckResponse, ParseRequest,
+    ParseJobResponse, ParseJobStartResponse,
 )
 from app.services.resume_parser import (
     ocr_pdf, categorize_with_llm, parse_with_rules, validate_and_fix,
     check_portal_required,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/resume", tags=["resume"])
 
@@ -87,6 +94,7 @@ async def upload_resume(
     resume = Resume(
         user_id=current_user.id,
         file_name=file.filename,
+        pdf_data=pdf_bytes,
         raw_markdown=md_text,
     )
     db.add(resume)
@@ -125,6 +133,16 @@ async def parse_resume(
     if structured is None:
         raise HTTPException(status_code=500, detail="Parsing failed")
 
+    # Handle structured error returns from parser functions
+    if isinstance(structured, dict) and structured.get("ok") is False:
+        error_code = structured.get("error_code", "PARSE_FAILED")
+        message = structured.get("message", "Parsing failed")
+        status = 504 if "TIMEOUT" in error_code else 502
+        raise HTTPException(
+            status_code=status,
+            detail={"code": error_code, "message": message},
+        )
+
     structured = validate_and_fix(structured)
 
     resume.structured_data = structured
@@ -155,6 +173,24 @@ def get_resume(
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
     return resume
+
+
+@router.get("/{resume_id}/pdf")
+def get_resume_pdf(
+    resume_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    resume = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == current_user.id).first()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    if not resume.pdf_data:
+        raise HTTPException(status_code=404, detail="PDF file not available for this resume")
+    return Response(
+        content=resume.pdf_data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{resume.file_name}"'},
+    )
 
 
 @router.get("/{resume_id}/portal-check", response_model=PortalCheckResponse)
@@ -193,3 +229,177 @@ def delete_resume(
     db.delete(resume)
     db.commit()
     return {"message": "Resume deleted"}
+
+
+# ── Async parse job endpoints ─────────────────────────────────────────────
+
+def _run_parse_job(job_id: int):
+    """Background task: run parse, update job status in DB."""
+    db = SessionLocal()
+    try:
+        job = db.query(ParseJob).filter(ParseJob.id == job_id).first()
+        if not job or job.status == "cancelled":
+            return
+
+        resume = db.query(Resume).filter(Resume.id == job.resume_id).first()
+        if not resume or not resume.raw_markdown:
+            job.status = "failed"
+            job.error_code = "NO_DATA"
+            job.error_message = "Resume has no OCR data to parse."
+            db.commit()
+            return
+
+        # Stage: parsing
+        job.status = "parsing"
+        job.progress_stage = "AI parsing…" if job.method == "llm" else "Rules-based parsing…"
+        db.commit()
+
+        # Check if cancelled before the expensive call
+        db.refresh(job)
+        if job.status == "cancelled":
+            return
+
+        # Run the actual parse (synchronous wrapper for async functions)
+        loop = asyncio.new_event_loop()
+        try:
+            if job.method == "llm":
+                structured = loop.run_until_complete(categorize_with_llm(resume.raw_markdown))
+            else:
+                structured = parse_with_rules(resume.raw_markdown)
+        finally:
+            loop.close()
+
+        # Check for errors from parser
+        if isinstance(structured, dict) and structured.get("ok") is False:
+            job.status = "failed"
+            job.error_code = structured.get("error_code", "PARSE_FAILED")
+            job.error_message = structured.get("message", "Parsing failed")
+            db.commit()
+            return
+
+        if structured is None:
+            job.status = "failed"
+            job.error_code = "PARSE_EMPTY"
+            job.error_message = "Parsing produced no results."
+            db.commit()
+            return
+
+        # Check cancelled again
+        db.refresh(job)
+        if job.status == "cancelled":
+            return
+
+        # Stage: validating
+        job.status = "validating"
+        job.progress_stage = "Validating and fixing data…"
+        db.commit()
+
+        structured = validate_and_fix(structured)
+
+        # Save to resume
+        resume.structured_data = structured
+        resume.parse_method = job.method
+        resume.portal_ready = structured.get("_validation", {}).get("portal_ready", False)
+
+        # Build result summary for polling
+        validation = structured.get("_validation", {})
+        job.status = "success"
+        job.progress_stage = "Complete"
+        job.result_summary = {
+            "portal_ready": validation.get("portal_ready", False),
+            "has_name": validation.get("has_name", False),
+            "has_email": validation.get("has_email", False),
+            "education_count": validation.get("education_count", 0),
+            "experience_count": validation.get("experience_count", 0),
+            "skills_count": validation.get("skills_count", 0),
+            "missing_count": len(validation.get("missing_required", [])),
+        }
+        db.commit()
+
+    except Exception as e:
+        logger.exception("Parse job %d failed: %s", job_id, e)
+        try:
+            job = db.query(ParseJob).filter(ParseJob.id == job_id).first()
+            if job and job.status not in ("cancelled", "success"):
+                job.status = "failed"
+                job.error_code = "INTERNAL_ERROR"
+                job.error_message = "An unexpected error occurred during parsing."
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+@router.post("/{resume_id}/parse-async", response_model=ParseJobStartResponse, status_code=202)
+def start_async_parse(
+    resume_id: int,
+    payload: ParseRequest = ParseRequest(),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    resume = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == current_user.id).first()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    if not resume.raw_markdown:
+        raise HTTPException(status_code=400, detail="No OCR data to parse, upload the resume first")
+
+    if payload.method not in ("llm", "rules"):
+        raise HTTPException(status_code=400, detail="Method must be 'llm' or 'rules'")
+
+    # Prevent duplicate active jobs for the same resume
+    active = db.query(ParseJob).filter(
+        ParseJob.resume_id == resume_id,
+        ParseJob.user_id == current_user.id,
+        ParseJob.status.in_(["queued", "parsing", "validating"]),
+    ).first()
+    if active:
+        raise HTTPException(status_code=409, detail="A parse job is already running for this resume")
+
+    job = ParseJob(
+        resume_id=resume_id,
+        user_id=current_user.id,
+        method=payload.method,
+        status="queued",
+        progress_stage="Queued…",
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    background_tasks.add_task(_run_parse_job, job.id)
+
+    return ParseJobStartResponse(job_id=job.id, status="queued")
+
+
+@router.get("/parse-job/{job_id}", response_model=ParseJobResponse)
+def get_parse_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    job = db.query(ParseJob).filter(ParseJob.id == job_id, ParseJob.user_id == current_user.id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Parse job not found")
+    return job
+
+
+@router.post("/parse-job/{job_id}/cancel")
+def cancel_parse_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    job = db.query(ParseJob).filter(ParseJob.id == job_id, ParseJob.user_id == current_user.id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Parse job not found")
+
+    if job.status in ("success", "failed", "cancelled"):
+        return {"message": f"Job already in terminal state: {job.status}"}
+
+    job.status = "cancelled"
+    job.progress_stage = "Cancelled"
+    db.commit()
+    return {"message": "Parse job cancelled"}

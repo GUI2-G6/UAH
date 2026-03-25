@@ -189,7 +189,8 @@ async def ocr_pdf(pdf_bytes: bytes) -> dict:
         }
 
 
-async def categorize_with_llm(md_text: str) -> dict | None:
+async def categorize_with_llm(md_text: str) -> dict:
+    """Parse resume text with LLM. Returns dict with 'ok' key on failure."""
     headers = {
         "Authorization": f"Bearer {settings.ZAI_API_KEY}",
         "Content-Type": "application/json",
@@ -210,11 +211,31 @@ async def categorize_with_llm(md_text: str) -> dict | None:
         "max_tokens": 8192,
     }
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(settings.ZAI_LLM_URL, json=request_body, headers=headers)
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(settings.ZAI_LLM_URL, json=request_body, headers=headers)
+    except httpx.TimeoutException as e:
+        logger.error("LLM parse request timed out: %s", str(e))
+        return {
+            "ok": False,
+            "error_code": "LLM_TIMEOUT",
+            "message": "AI parsing timed out. Try again or use rules-based parsing.",
+        }
+    except httpx.HTTPError as e:
+        logger.error("LLM parse request failed: %s: %s", type(e).__name__, str(e))
+        return {
+            "ok": False,
+            "error_code": "LLM_REQUEST_FAILED",
+            "message": "Could not reach the AI parsing service. Please try again.",
+        }
 
     if resp.status_code != 200:
-        return None
+        logger.error("LLM API error: status=%d, body=%s", resp.status_code, resp.text[:200])
+        return {
+            "ok": False,
+            "error_code": "LLM_API_ERROR",
+            "message": f"AI service returned status {resp.status_code}. Please retry.",
+        }
 
     result = resp.json()
     raw_content = result["choices"][0]["message"]["content"]
@@ -226,9 +247,17 @@ async def categorize_with_llm(md_text: str) -> dict | None:
             if json_match:
                 raw_content = json_match.group(0)
             else:
-                return None
+                return {
+                    "ok": False,
+                    "error_code": "LLM_EMPTY_RESPONSE",
+                    "message": "AI returned no structured data. Try again or use rules-based parsing.",
+                }
         else:
-            return None
+            return {
+                "ok": False,
+                "error_code": "LLM_EMPTY_RESPONSE",
+                "message": "AI returned no structured data. Try again or use rules-based parsing.",
+            }
 
     cleaned = raw_content.strip()
     if cleaned.startswith("```json"):
@@ -242,15 +271,40 @@ async def categorize_with_llm(md_text: str) -> dict | None:
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
-        return None
+        logger.error("LLM returned invalid JSON: %s", cleaned[:200])
+        return {
+            "ok": False,
+            "error_code": "LLM_INVALID_JSON",
+            "message": "AI returned malformed data. Please try again.",
+        }
 
 
-def parse_with_rules(md_text: str) -> dict | None:
+def parse_with_rules(md_text: str) -> dict:
+    """Parse resume text with rules engine. Returns dict with 'ok' key on failure."""
     try:
         from app.services.rule_parser import parse_resume_markdown
-        return parse_resume_markdown(md_text)
-    except Exception:
-        return None
+        result = parse_resume_markdown(md_text)
+        if result is None:
+            return {
+                "ok": False,
+                "error_code": "RULES_EMPTY_RESULT",
+                "message": "Rules-based parsing produced no results. Try AI parsing instead.",
+            }
+        return result
+    except ImportError:
+        logger.error("Rule parser module not found")
+        return {
+            "ok": False,
+            "error_code": "RULES_NOT_AVAILABLE",
+            "message": "Rules-based parser is not installed.",
+        }
+    except Exception as e:
+        logger.error("Rules parse failed: %s: %s", type(e).__name__, str(e))
+        return {
+            "ok": False,
+            "error_code": "RULES_PARSE_FAILED",
+            "message": "Rules-based parsing encountered an error. Try AI parsing instead.",
+        }
 
 
 def _resolve_field(structured, dotpath):

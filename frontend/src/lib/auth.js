@@ -56,6 +56,10 @@ export function clearAuth() {
     window.dispatchEvent(new Event('uah-user-updated'))
 }
 
+/**
+ * Authenticated fetch with optional timeout (default 5 min for long parse ops).
+ * Pass `options.timeout` in ms to override, or `options.signal` for your own AbortController.
+ */
 export async function authedFetch(url, options = {}) {
     const token = getAccessToken()
     if (!token) {
@@ -65,15 +69,36 @@ export async function authedFetch(url, options = {}) {
     const headers = new Headers(options.headers || {})
     headers.set('Authorization', `Bearer ${token}`)
 
-    const res = await fetch(url, {
-        ...options,
-        headers,
-    })
+    const timeoutMs = options.timeout ?? 300_000 // 5 minutes default
+    let controller
+    let timeoutId
 
-    if (res.status === 401) {
-        clearAuth()
-        throw new Error('Session expired')
+    if (!options.signal) {
+        controller = new AbortController()
+        timeoutId = setTimeout(() => controller.abort(), timeoutMs)
     }
 
-    return res
+    try {
+        const res = await fetch(url, {
+            ...options,
+            headers,
+            signal: options.signal || controller?.signal,
+        })
+
+        if (res.status === 401) {
+            clearAuth()
+            throw new Error('Session expired')
+        }
+
+        return res
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            const timeoutErr = new Error('Request timed out')
+            timeoutErr.code = 'FETCH_TIMEOUT'
+            throw timeoutErr
+        }
+        throw err
+    } finally {
+        if (timeoutId) clearTimeout(timeoutId)
+    }
 }

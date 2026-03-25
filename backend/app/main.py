@@ -24,6 +24,7 @@ from app.api.routes import router as api_router
 from app.api.auth import router as auth_router
 from app.api.account import router as account_router
 from app.api.resume import router as resume_router
+from app.api.applicant_profile import router as profile_router
 from app.core.config import settings
 from app.db.base import Base
 from app.db.session import engine
@@ -96,6 +97,27 @@ def _ensure_users_table_columns() -> None:
         logger.exception("User table schema fixup failed: %s", exc)
 
 
+def _ensure_resumes_table_columns() -> None:
+    """Dev safety net: add pdf_data column to existing resumes table if missing."""
+    try:
+        from sqlalchemy import inspect, text
+    except Exception:
+        return
+
+    try:
+        inspector = inspect(engine)
+        if "resumes" not in inspector.get_table_names():
+            return
+
+        existing = {col["name"] for col in inspector.get_columns("resumes")}
+        if "pdf_data" not in existing:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE resumes ADD COLUMN IF NOT EXISTS pdf_data BYTEA"))
+            logger.warning("Added pdf_data column to resumes table")
+    except Exception as exc:
+        logger.exception("Resumes table schema fixup failed: %s", exc)
+
+
 def _bootstrap_admin_user_if_enabled() -> None:
     if os.getenv("ADMIN_BOOTSTRAP_ENABLED", "false").lower() != "true":
         return
@@ -122,6 +144,7 @@ async def lifespan(app: FastAPI):
     # Create all tables on startup
     Base.metadata.create_all(bind=engine)
     _ensure_users_table_columns()
+    _ensure_resumes_table_columns()
     _bootstrap_admin_user_if_enabled()
 
     geo_dataset_status = ensure_city_dataset()
@@ -176,6 +199,7 @@ app.include_router(api_router, prefix="/api")
 app.include_router(auth_router)
 app.include_router(account_router)
 app.include_router(resume_router)
+app.include_router(profile_router)
 
 
 # ---------------------------------------------------------------------------

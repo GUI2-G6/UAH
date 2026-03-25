@@ -15,4 +15,6 @@ Currently empty — add imports as you create models.
 """
 from app.models.user import User  # noqa: F401
 from app.models.resume import Resume  # noqa: F401
+from app.models.parse_job import ParseJob  # noqa: F401
+from app.models.applicant_profile import ApplicantProfile  # noqa: F401
 from app.models.muse_location import MuseSupportedLocation  # noqa: F401

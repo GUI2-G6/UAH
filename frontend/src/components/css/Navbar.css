@@ -8,21 +8,21 @@
 }
 
 .nav-link {
-  color: #8b949e;
+  color: var(--color-text-muted);
   text-decoration: none;
   font-size: 0.9rem;
   padding: 4px 0;
   border-bottom: 2px solid transparent;
-  transition: color 0.15s, border-color 0.15s;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
 }
 
 .nav-link:hover {
-  color: #e1e4e8;
+  color: var(--color-text-primary);
 }
 
 .nav-link.router-link-active {
-  color: #58a6ff;
-  border-bottom-color: #58a6ff;
+  color: var(--color-primary-600);
+  border-bottom-color: var(--color-primary-600);
 }
 
 @media (max-width: 768px) {

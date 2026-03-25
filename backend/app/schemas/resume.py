@@ -16,6 +16,7 @@ class ResumeResponse(BaseModel):
     structured_data: dict | None
     portal_ready: bool
     parse_method: str | None
+    has_pdf: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -27,6 +28,7 @@ class ResumeListItem(BaseModel):
     file_name: str
     portal_ready: bool
     parse_method: str | None
+    has_pdf: bool = False
     created_at: datetime
 
     class Config:
@@ -40,3 +42,24 @@ class PortalCheckResponse(BaseModel):
 
 class ParseRequest(BaseModel):
     method: str = "llm"
+
+
+class ParseJobResponse(BaseModel):
+    id: int
+    resume_id: int
+    method: str
+    status: str
+    progress_stage: str | None
+    error_code: str | None
+    error_message: str | None
+    result_summary: dict | None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ParseJobStartResponse(BaseModel):
+    job_id: int
+    status: str

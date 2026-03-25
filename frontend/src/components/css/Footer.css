@@ -1,12 +1,12 @@
 .footer {
     margin-top: auto;
-    padding: 24px 16px;
-    border-top: 1px solid #30363d;
+    padding: var(--space-4) var(--space-3);
+    border-top: 1px solid var(--border-color-light);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
-    color: #8b949e;
+    gap: var(--space-2);
+    color: var(--color-text-muted);
     font-size: 0.85rem;
     text-align: center;
 }
@@ -23,15 +23,15 @@
 }
 
 .footer a {
-    color: #58a6ff;
+    color: var(--color-primary-500);
     text-decoration: none;
-    transition: color 0.15s;
+    transition: color var(--transition-fast);
 }
 
 .footer-link-button {
-    color: #58a6ff;
+    color: var(--color-primary-500);
     text-decoration: none;
-    transition: color 0.15s;
+    transition: color var(--transition-fast);
     background: none;
     border: none;
     cursor: pointer;
@@ -41,12 +41,12 @@
 
 .footer a:hover {
     text-decoration: underline;
-    color: #79c0ff;
+    color: var(--color-primary-600);
 }
 
 .footer-link-button:hover {
     text-decoration: underline;
-    color: #79c0ff;
+    color: var(--color-primary-600);
 }
 
 @media (max-width: 768px) {
