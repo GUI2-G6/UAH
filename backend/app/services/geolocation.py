@@ -389,24 +389,40 @@ async def geocode_query(query: str, country_code: Optional[str] = None) -> Dict[
 
 
 async def resolve_ip_location(client_ip: Optional[str]) -> Dict[str, Any]:
-    provider = GEO_IP_PROVIDER
-    last_error: Optional[Exception] = None
+    provider = GEO_IP_PROVIDER if GEO_IP_PROVIDER in {"ipapi", "ipstack"} else "ipapi"
+    primary_error: Optional[Exception] = None
 
-    order = [provider] if provider in {"ipapi", "ipstack"} else ["ipapi"]
-    if "ipapi" not in order:
-        order.append("ipapi")
-    if "ipstack" not in order:
-        order.append("ipstack")
+    # Try explicitly selected provider first.
+    try:
+        if provider == "ipstack":
+            return await _ipstack_lookup(client_ip)
+        return await _ipapi_lookup(client_ip)
+    except Exception as exc:
+        primary_error = exc
 
-    for candidate in order:
+    # Fallback behavior:
+    # - If provider is ipapi, only try ipstack when a key is available.
+    # - If provider is ipstack, always try ipapi fallback.
+    try_fallback = False
+    fallback_provider = ""
+    if provider == "ipapi" and IPSTACK_API_KEY:
+        try_fallback = True
+        fallback_provider = "ipstack"
+    elif provider == "ipstack":
+        try_fallback = True
+        fallback_provider = "ipapi"
+
+    if try_fallback:
         try:
-            if candidate == "ipstack":
+            if fallback_provider == "ipstack":
                 return await _ipstack_lookup(client_ip)
             return await _ipapi_lookup(client_ip)
-        except Exception as exc:
-            last_error = exc
+        except Exception as fallback_error:
+            raise RuntimeError(
+                f"{provider} failed: {primary_error}; {fallback_provider} fallback failed: {fallback_error}"
+            )
 
-    raise RuntimeError(str(last_error) if last_error else "ip location lookup failed")
+    raise RuntimeError(f"{provider} failed: {primary_error}")
 
 
 def find_cities_in_radius(
