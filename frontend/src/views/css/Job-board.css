@@ -72,6 +72,68 @@
   cursor: pointer;
 }
 
+.mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mode-row.compact {
+  margin-top: 6px;
+}
+
+.mode-button {
+  border: 1px solid #c9cfda;
+  background: #f7f8fb;
+  color: #1f2937;
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.mode-button.active {
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #fff;
+}
+
+.mode-panel {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.radius-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.radius-row input[type="range"] {
+  flex: 1;
+}
+
+.city-preview {
+  margin-top: 8px;
+  background: #ffffff;
+  border: 1px solid #dbe1e7;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.hint-text {
+  margin: 0;
+  color: #0f4f4a;
+  font-size: 0.9rem;
+}
+
+.warn-text {
+  margin: 0;
+  color: #9a6700;
+  font-size: 0.9rem;
+}
+
 .chip-list {
   display: flex;
   flex-wrap: wrap;
