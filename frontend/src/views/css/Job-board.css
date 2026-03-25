@@ -265,6 +265,33 @@
   background: #fafbfc;
 }
 
+.city-sort-row {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e7eaee;
+  background: #fafbfc;
+}
+
+.city-sort-btn {
+  border: 1px solid #c9cfda;
+  background: #ffffff;
+  color: #1f2937;
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.city-sort-btn.active {
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #ffffff;
+}
+
 .city-modal-list {
   margin: 0;
   padding: 10px 12px 12px 28px;
@@ -275,6 +302,11 @@
 .city-modal-list li {
   color: #1f2937;
   font-size: 0.92rem;
+}
+
+.city-distance {
+  color: #4b5563;
+  font-size: 0.85rem;
 }
 
 .city-modal-actions {
@@ -415,6 +447,15 @@
 
   .city-modal-scroll {
     max-height: 52vh;
+  }
+
+  .city-sort-row {
+    gap: 6px;
+  }
+
+  .city-sort-btn {
+    flex: 1 1 calc(50% - 6px);
+    text-align: center;
   }
 }
 

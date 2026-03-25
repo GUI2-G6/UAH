@@ -35,6 +35,29 @@
                         type="date"
                     />
                 </div>
+
+                <div class="filter-group">
+                    <label>Work Setup</label>
+                    <div class="mode-row compact">
+                      <button
+                        type="button"
+                        class="mode-button"
+                        :class="{ active: draftFilters.includeHybrid }"
+                        @click="draftFilters.includeHybrid = !draftFilters.includeHybrid"
+                      >
+                        Hybrid {{ draftFilters.includeHybrid ? 'On' : 'Off' }}
+                      </button>
+                      <button
+                        type="button"
+                        class="mode-button"
+                        :class="{ active: draftFilters.includeRemote }"
+                        @click="draftFilters.includeRemote = !draftFilters.includeRemote"
+                      >
+                        Remote {{ draftFilters.includeRemote ? 'On' : 'Off' }}
+                      </button>
+                    </div>
+                    <p class="hint-text">Hybrid is enabled by default. Fully remote jobs are off by default.</p>
+                </div>
             </div>
 
             <div class="filter-grid">
@@ -295,8 +318,38 @@
             <p class="city-modal-subtitle">Showing all {{ locationPreviewNames.length }} matched cities.</p>
 
             <div class="city-modal-scroll">
+              <div class="city-sort-row">
+                <button
+                  type="button"
+                  class="city-sort-btn"
+                  :class="{ active: citySortMode === 'closest' }"
+                  @click="setCitySortMode('closest')"
+                >
+                  Closest
+                </button>
+                <button
+                  type="button"
+                  class="city-sort-btn"
+                  :class="{ active: citySortMode === 'alpha' }"
+                  @click="setCitySortMode('alpha')"
+                >
+                  A to Z
+                </button>
+                <button
+                  type="button"
+                  class="city-sort-btn"
+                  :class="{ active: citySortMode === 'reverse' }"
+                  @click="setCitySortMode('reverse')"
+                >
+                  Z to A
+                </button>
+              </div>
+              <p class="warn-text" v-if="closestSortNotice">{{ closestSortNotice }}</p>
               <ul class="city-modal-list">
-                <li v-for="city in locationPreviewNames" :key="`all-city-${city}`">{{ city }}</li>
+                <li v-for="city in sortedLocationPreviewCities" :key="city.sort_key">
+                  {{ city.name }}
+                  <span v-if="city.distance_miles !== null" class="city-distance">({{ city.distance_miles.toFixed(1) }} mi)</span>
+                </li>
               </ul>
             </div>
 
@@ -440,6 +493,8 @@ export default {
     const defaultFilters = {
       categories: [],
       levels: [],
+      includeHybrid: true,
+      includeRemote: false,
       locationMode: "nearby",
       locationRadius: 25,
       radiusUnit: "mi",
@@ -467,6 +522,7 @@ export default {
       categoryActiveIndex: 0,
       cityPreviewVisibleLimit: 10,
       cityPreviewModalOpen: false,
+      citySortMode: "closest",
       companyInput: "",
       locationFallbackInput: "",
       locationBusy: false,
@@ -474,6 +530,8 @@ export default {
       locationError: "",
       locationWarning: "",
       locationPreviewNames: [],
+      locationPreviewCities: [],
+      locationPreviewCenter: null,
       resolvedLocation: null,
       draftFilters: JSON.parse(JSON.stringify(defaultFilters)),
       appliedFilters: JSON.parse(JSON.stringify(defaultFilters))
@@ -507,6 +565,63 @@ export default {
     },
     hasMorePreviewCities() {
       return this.hiddenLocationPreviewCount > 0
+    },
+    sortedLocationPreviewCities() {
+      const rawCities = this.locationPreviewCities.length
+        ? this.locationPreviewCities
+        : this.locationPreviewNames.map(name => ({ name }))
+
+      const withDistance = rawCities.map((city, index) => {
+        const name = (city.name || "").trim()
+        let distance = typeof city.distance_miles === "number" ? city.distance_miles : null
+
+        if (
+          distance === null
+          && this.locationPreviewCenter
+          && typeof city.latitude === "number"
+          && typeof city.longitude === "number"
+        ) {
+          distance = this.haversineMiles(
+            this.locationPreviewCenter.latitude,
+            this.locationPreviewCenter.longitude,
+            city.latitude,
+            city.longitude
+          )
+        }
+
+        return {
+          name,
+          distance_miles: distance,
+          sort_key: `${name}-${index}`
+        }
+      }).filter(city => city.name)
+
+      const sorted = [...withDistance]
+      if (this.citySortMode === "alpha") {
+        sorted.sort((a, b) => a.name.localeCompare(b.name))
+      } else if (this.citySortMode === "reverse") {
+        sorted.sort((a, b) => b.name.localeCompare(a.name))
+      } else {
+        const hasAnyDistance = sorted.some(city => city.distance_miles !== null)
+        if (!hasAnyDistance) {
+          sorted.sort((a, b) => a.name.localeCompare(b.name))
+        } else {
+          sorted.sort((a, b) => {
+            const aDist = a.distance_miles === null ? Number.MAX_SAFE_INTEGER : a.distance_miles
+            const bDist = b.distance_miles === null ? Number.MAX_SAFE_INTEGER : b.distance_miles
+            if (aDist !== bDist) return aDist - bDist
+            return a.name.localeCompare(b.name)
+          })
+        }
+      }
+
+      return sorted
+    },
+    closestSortNotice() {
+      if (this.citySortMode !== "closest") return ""
+      const hasAnyDistance = this.sortedLocationPreviewCities.some(city => city.distance_miles !== null)
+      if (hasAnyDistance) return ""
+      return "Closest sorting needs a known center location, so this list is currently alphabetical."
     }
   },
   methods: {
@@ -514,6 +629,8 @@ export default {
       return {
         categories: [],
         levels: [],
+        includeHybrid: true,
+        includeRemote: false,
         locationMode: "nearby",
         locationRadius: 25,
         radiusUnit: "mi",
@@ -634,8 +751,37 @@ export default {
       if (!this.locationPreviewNames.length) return
       this.cityPreviewModalOpen = true
     },
+    setCitySortMode(mode) {
+      if (["closest", "alpha", "reverse"].includes(mode)) {
+        this.citySortMode = mode
+      }
+    },
     closeCityPreviewModal() {
       this.cityPreviewModalOpen = false
+    },
+    haversineMiles(lat1, lon1, lat2, lon2) {
+      const toRadians = deg => deg * (Math.PI / 180)
+      const earthRadiusMiles = 3958.7613
+
+      const dLat = toRadians(lat2 - lat1)
+      const dLon = toRadians(lon2 - lon1)
+      const rLat1 = toRadians(lat1)
+      const rLat2 = toRadians(lat2)
+
+      const a = Math.sin(dLat / 2) ** 2
+        + Math.cos(rLat1) * Math.cos(rLat2) * Math.sin(dLon / 2) ** 2
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+      return earthRadiusMiles * c
+    },
+    getBestKnownCenter() {
+      if (this.resolvedLocation?.latitude && this.resolvedLocation?.longitude) {
+        return this.resolvedLocation
+      }
+      const cached = getCachedLocation()
+      if (cached?.latitude && cached?.longitude) {
+        return cached
+      }
+      return null
     },
     handleGlobalKeydown(event) {
       if (event.key === "Escape" && this.cityPreviewModalOpen) {
@@ -779,7 +925,13 @@ export default {
 
       if (mode === "country") {
         const payload = await this.fetchJson(`/api/geolocation/country-cities?country_code=${encodeURIComponent(this.draftFilters.countryCode)}&limit=140`)
-        const names = this.normalizeUnique((payload.cities || []).map(city => city.name))
+        const previewCities = (payload.cities || []).filter(city => city?.name)
+        const names = this.normalizeUnique(previewCities.map(city => city.name))
+        this.locationPreviewCities = previewCities
+        const center = this.getBestKnownCenter()
+        this.locationPreviewCenter = center
+          ? { latitude: center.latitude, longitude: center.longitude }
+          : null
         this.locationPreviewNames = names
         if (!names.length) {
           this.locationWarning = "No country-wide city data found for that country yet."
@@ -796,6 +948,8 @@ export default {
       if (!center) {
         this.locationWarning = "Could not determine location center. Enter ZIP/city manually."
         this.locationPreviewNames = []
+        this.locationPreviewCities = []
+        this.locationPreviewCenter = null
         return []
       }
 
@@ -807,12 +961,19 @@ export default {
         `/api/geolocation/cities-in-radius?latitude=${encodeURIComponent(center.latitude)}&longitude=${encodeURIComponent(center.longitude)}&radius=${encodeURIComponent(radius)}&unit=${encodeURIComponent(this.draftFilters.radiusUnit)}&country_code=${encodeURIComponent(this.draftFilters.countryCode || "")}&limit=240`
       )
 
-      const names = this.normalizeUnique((payload.cities || []).map(city => city.name))
+      const previewCities = (payload.cities || []).filter(city => city?.name)
+      const names = this.normalizeUnique(previewCities.map(city => city.name))
+      this.locationPreviewCities = previewCities
+      this.locationPreviewCenter = {
+        latitude: center.latitude,
+        longitude: center.longitude
+      }
       this.locationPreviewNames = names
 
       if (!names.length) {
         const fallbackName = center.city || this.draftFilters.manualLocationQuery || ""
         if (fallbackName) {
+          this.locationPreviewCities = [{ name: fallbackName }]
           this.locationPreviewNames = [fallbackName]
           this.locationWarning = "No cities found in that radius, so only the center location will be used."
           return [fallbackName]
@@ -875,6 +1036,22 @@ export default {
         })
       }
 
+      filtered = filtered.filter(job => {
+        const includeHybrid = this.appliedFilters.includeHybrid !== false
+        const includeRemote = this.appliedFilters.includeRemote === true
+        const hasHybrid = job.has_hybrid === true
+        const hasRemote = job.has_remote === true
+        const isRemoteOnly = hasRemote && !hasHybrid
+
+        if (!includeHybrid && hasHybrid) {
+          return false
+        }
+        if (!includeRemote && isRemoteOnly) {
+          return false
+        }
+        return true
+      })
+
       const preset = this.appliedFilters.datePreset
       const now = new Date()
       let threshold = null
@@ -920,6 +1097,8 @@ export default {
           level: job.levels?.[0] || "",
           levels: job.levels || [],
           categories: job.categories || [],
+          has_remote: job.has_remote === true,
+          has_hybrid: job.has_hybrid === true,
           publication_date: job.publication_date,
           link: job.job_url
         }))
@@ -967,6 +1146,8 @@ export default {
       this.locationWarning = ""
       this.locationError = ""
       this.locationPreviewNames = []
+      this.locationPreviewCities = []
+      this.locationPreviewCenter = null
       this.page = 1
 
       await this.loadJobs()

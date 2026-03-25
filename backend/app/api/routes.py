@@ -45,6 +45,7 @@ from contextvars import Token
 import ipaddress
 import os, secrets, httpx
 import httpx
+import re
 from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -69,6 +70,51 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
 MUSE_API_KEY = os.getenv("MUSE_API_KEY")
+
+REMOTE_TEXT_PATTERN = re.compile(
+    r"\b(remote|work\s*from\s*home|telecommute|telecommuting|distributed|anywhere)\b",
+    flags=re.IGNORECASE,
+)
+HYBRID_TEXT_PATTERN = re.compile(r"\bhybrid\b", flags=re.IGNORECASE)
+
+
+def _normalize_text(value: Optional[str]) -> str:
+    return " ".join((value or "").strip().lower().split())
+
+
+def _is_remote_location_name(name: Optional[str]) -> bool:
+    normalized = _normalize_text(name)
+    if not normalized:
+        return False
+
+    return (
+        "remote" in normalized
+        or "work from home" in normalized
+        or "telecommute" in normalized
+        or normalized == "anywhere"
+    )
+
+
+def _classify_job_work_mode(job: dict) -> tuple[bool, bool]:
+    raw_locations = job.get("locations", []) or []
+    location_names = [loc.get("name", "") for loc in raw_locations if isinstance(loc, dict)]
+    has_remote_location = any(_is_remote_location_name(name) for name in location_names)
+
+    searchable_text = " ".join(
+        [
+            job.get("name", "") or "",
+            job.get("short_name", "") or "",
+            job.get("contents", "") or "",
+        ]
+    )
+
+    has_hybrid_text = bool(HYBRID_TEXT_PATTERN.search(searchable_text))
+    has_remote_text = bool(REMOTE_TEXT_PATTERN.search(searchable_text))
+
+    has_hybrid = has_hybrid_text
+    has_remote = has_remote_location or has_remote_text
+
+    return has_remote, has_hybrid
 
 
 def _extract_client_ip(request: Request) -> Optional[str]:
@@ -279,13 +325,23 @@ async def search_jobs(
     # Iterates over all the list of jobs and constructs a new list of job data with only the relevant information needed by the frontend.
     job_data = []
     for job in jobs:
+        has_remote, has_hybrid = _classify_job_work_mode(job)
+        location_mode_flags = []
+        if has_remote:
+            location_mode_flags.append("remote")
+        if has_hybrid:
+            location_mode_flags.append("hybrid")
+
         job_data.append({
             "id": job.get("id"),
             "name": job.get("name"),
             "company": job.get("company", {}).get("name"),
-            "locations": [loc.get("name") for loc in job.get("locations", [])],
+            "locations": [loc.get("name") for loc in job.get("locations", []) if loc.get("name")],
             "levels": [lvl.get("name") for lvl in job.get("levels", [])],
             "categories": [cat.get("name") for cat in job.get("categories", [])],
+            "has_remote": has_remote,
+            "has_hybrid": has_hybrid,
+            "location_mode_flags": location_mode_flags,
             "publication_date": job.get("publication_date"),
             "job_url": job.get("refs", {}).get("landing_page"),
         })
