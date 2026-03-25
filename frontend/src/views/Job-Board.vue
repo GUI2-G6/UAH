@@ -501,7 +501,11 @@
         <div class="jobs-meta">
             <p v-if="loading">Loading jobs...</p>
             <p v-else-if="error" class="error-text">{{ error }}</p>
-            <p v-else>Showing {{ jobs.length }} jobs</p>
+            <p v-else>
+              Showing {{ jobs.length }} jobs on page {{ page }}
+              <span v-if="totalJobs > 0">of {{ totalJobs }} total</span>
+            </p>
+            <p v-if="locationLimitNotice" class="warn-text">{{ locationLimitNotice }}</p>
         </div>
 
         <div class="dashboard">
@@ -515,6 +519,12 @@
                 :job="job"
             />
         </div>
+
+          <div class="pagination" v-if="!loading && !error">
+            <button type="button" @click="goToPreviousPage" :disabled="page <= 1 || loading">Previous</button>
+            <span>Page {{ page }}</span>
+            <button type="button" @click="goToNextPage" :disabled="!hasNextPage || loading">Next</button>
+          </div>
     </div>
 </template>
 
@@ -532,6 +542,8 @@ export default {
   components: { JobPosting },
   data() {
     const locationSourceMode = "muse"
+    const uiPageSize = 10
+    const maxLocationParams = 60
 
     const categoryGroups = [
       {
@@ -649,6 +661,11 @@ export default {
       loading: false,
       error: "",
       page: 1,
+      pageSize: uiPageSize,
+      totalJobs: 0,
+      hasNextPage: false,
+      locationLimitNotice: "",
+      maxLocationParams,
       locationSourceMode,
       categoryGroups,
       categoryMapLookup,
@@ -1304,6 +1321,7 @@ export default {
     buildSearchQuery(page = 1) {
       const params = new URLSearchParams()
       params.set("page", String(page))
+      params.set("page_size", String(this.pageSize))
 
       for (const value of this.normalizeUnique(this.appliedFilters.categories)) {
         params.append("category", value)
@@ -1311,7 +1329,13 @@ export default {
       for (const value of this.normalizeUnique(this.appliedFilters.levels)) {
         params.append("level", this.normalizeLevelForApi(value))
       }
-      for (const value of this.normalizeUnique(this.appliedFilters.locationNames)) {
+      const normalizedLocations = this.normalizeUnique(this.appliedFilters.locationNames)
+      const cappedLocations = normalizedLocations.slice(0, this.maxLocationParams)
+      this.locationLimitNotice = normalizedLocations.length > this.maxLocationParams
+        ? `Large location set detected. Using first ${this.maxLocationParams} locations for stable results.`
+        : ""
+
+      for (const value of cappedLocations) {
         params.append("location", value)
       }
       for (const value of this.normalizeUnique(this.appliedFilters.companies)) {
@@ -1397,6 +1421,12 @@ export default {
         }
 
         const data = await res.json()
+        this.totalJobs = Number(data.total_jobs || 0)
+        this.hasNextPage = data.has_next_page === true
+        if (data.location_params_truncated === true && !this.locationLimitNotice) {
+          this.locationLimitNotice = "Location filters were trimmed by backend guardrails to protect API stability."
+        }
+
         const mappedJobs = (data.jobs || []).map(job => ({
           id: job.id,
           title: job.name,
@@ -1469,8 +1499,21 @@ export default {
       this.locationPreviewNames = []
       this.locationPreviewCities = []
       this.locationPreviewCenter = null
+      this.totalJobs = 0
+      this.hasNextPage = false
+      this.locationLimitNotice = ""
       this.page = 1
 
+      await this.loadJobs()
+    },
+    async goToNextPage() {
+      if (!this.hasNextPage || this.loading) return
+      this.page += 1
+      await this.loadJobs()
+    },
+    async goToPreviousPage() {
+      if (this.page <= 1 || this.loading) return
+      this.page -= 1
       await this.loadJobs()
     }
   },

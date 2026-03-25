@@ -512,6 +512,7 @@ async def refresh_muse_supported_locations(force: bool = Query(False), db: Sessi
 async def search_jobs(
     # Creates an endpoint for each job search query with optional parameters 
     page: int = Query(1, ge=1, description="Page number for pagination"),
+    page_size: int = Query(settings.JOBS_DEFAULT_PAGE_SIZE, ge=1, le=20, description="Number of jobs to return per UI page"),
     category: Optional[List[str]] = Query(None, description="e.g., 'Software Engineer', 'Data Science'"),
     catogory: Optional[List[str]] = Query(None, description="e.g., 'Software Engineer', 'Data Science'"),
     level: Optional[List[str]] = Query(None, description="e.g., 'Internship', 'Entry', 'Senior'"),
@@ -556,9 +557,14 @@ async def search_jobs(
             normalized_level = _normalize_level_for_muse(lvl)
             if normalized_level:
                 params_base.append(("level", normalized_level))
+    location_param_cap = max(1, settings.MUSE_LOCATION_PARAM_CAP)
+    location_params_truncated = False
     if location:
         selected_locations = []
-        for loc in location:
+        for index, loc in enumerate(location):
+            if index >= location_param_cap:
+                location_params_truncated = True
+                break
             normalized_loc = (loc or "").strip()
             if normalized_loc:
                 params_base.append(("location", normalized_loc))
@@ -572,7 +578,7 @@ async def search_jobs(
                 params_base.append(("company", normalized_comp))
 
     max_pages = max(1, min(settings.MUSE_PAGE_CHASE_MAX_PAGES, settings.MUSE_PAGE_CHASE_MAX_API_CALLS_PER_REQUEST))
-    target_results = max(1, settings.MUSE_PAGE_CHASE_TARGET_ACCEPTED_RESULTS)
+    target_results = max(1, page_size)
     min_filtered_ratio = min(max(settings.MUSE_PAGE_CHASE_MIN_FILTERED_RATIO, 0.0), 1.0)
     timeout_budget = max(1.0, settings.MUSE_PAGE_CHASE_TIMEOUT_SECONDS)
 
@@ -662,10 +668,15 @@ async def search_jobs(
         "page": first_payload.get("page"),
         "total_pages": first_payload.get("page_count"),
         "total_jobs": first_payload.get("total"),
-        "jobs": accepted_jobs,
+        "jobs": accepted_jobs[:page_size],
         "source_pages_scanned": source_pages_scanned,
         "filtered_out_count": filtered_out_count,
         "guardrail_stop_reason": guardrail_stop_reason,
+        "ui_page": page,
+        "page_size": page_size,
+        "has_next_page": page < (first_payload.get("page_count") or page),
+        "location_params_used": len(selected_locations),
+        "location_params_truncated": location_params_truncated,
     }
 
 @router.post("/jobs/save", tags=["jobs"])

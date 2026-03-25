@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 import os
@@ -100,13 +100,13 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=TokenResponse)
 def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
+    payload: UserLogin,
     db: Session = Depends(get_db),
 ):
     """Log in with username and password."""
-    user = db.query(User).filter(User.username == form_data.username).first()
+    user = db.query(User).filter(User.username == payload.username).first()
 
-    if not user or not user.hashed_password or not verify_password(form_data.password, user.hashed_password):
+    if not user or not user.hashed_password or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",

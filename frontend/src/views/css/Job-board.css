@@ -402,6 +402,28 @@
   color: #4b5563;
 }
 
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 6px 16px 16px;
+}
+
+.pagination button {
+  border: 1px solid #c9cfda;
+  background: #f7f8fb;
+  color: #1f2937;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.pagination button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 @media (max-width: 900px) {
   .dashboard {
     grid-template-columns: 1fr;
