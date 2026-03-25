@@ -1,14 +1,24 @@
 /* Burger Icon */
 #burger {
-  position: relative;
-  display: inline-block;
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   border-right: 2px solid black;
-  padding: 20px;
-  height: 100vh;
+  padding: 16px 12px;
+  min-height: 100vh;
+  height: 100dvh;
+  width: 96px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #fff;
+  z-index: 10;
 }
 
 .burger-button {
-  width: 30px;
+  width: 34px;
   cursor: pointer;
   background: none;
   border: none;
@@ -45,14 +55,13 @@
 
 /*Burger items*/
 .burger-item {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
 
   border: 0px;
   background-color: transparent;
-  margin-top: 10px;
-  margin-bottom: 10px;
-  ;
+  margin-top: 8px;
+  margin-bottom: 8px;
 }
 
 .burger-item:hover {
@@ -64,17 +73,18 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding-bottom: 140px;
+  width: 100%;
+  padding-bottom: 16px;
+  margin-top: 12px;
 }
 
 .burger-bottom {
-  position: absolute;
-  left: 20px;
-  right: 20px;
-  bottom: 20px;
+  margin-top: auto;
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding-top: 8px;
 }
 
 .user-summary {
@@ -108,4 +118,58 @@
 
 .logout-button:hover {
   background-color: rgb(186, 186, 186);
+}
+
+@media (max-width: 900px) {
+  #burger {
+    width: 84px;
+    padding: 12px 8px;
+  }
+}
+
+@media (max-width: 768px) {
+  #burger {
+    position: sticky;
+    top: 0;
+    width: 100%;
+    min-height: 0;
+    height: auto;
+    max-height: 70vh;
+    border-right: none;
+    border-bottom: 2px solid black;
+    padding: 10px 12px;
+    align-items: stretch;
+  }
+
+  #burger>img {
+    width: 56px;
+    height: 56px;
+    align-self: center;
+  }
+
+  .menu {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(48px, 1fr));
+    gap: 8px;
+    justify-items: center;
+  }
+
+  .burger-item {
+    width: 100%;
+    max-width: 56px;
+    margin: 0;
+  }
+
+  .burger-bottom {
+    border-top: 1px solid #d1d5db;
+  }
+
+  .user-summary {
+    text-align: center;
+  }
+
+  .logout-button {
+    max-width: 220px;
+    margin: 0 auto;
+  }
 }

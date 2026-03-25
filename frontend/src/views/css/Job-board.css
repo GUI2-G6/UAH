@@ -5,8 +5,222 @@
 }
 
 .greeting {
-  border-bottom: solid 2px rgba(246, 247, 249);
-  padding: 20px;
+  border-bottom: solid 2px rgba(236, 239, 243, 1);
+  padding: 20px 24px 14px;
+}
+
+.greeting h1 {
+  margin: 0;
+  letter-spacing: 0.08em;
+}
+
+.greeting p {
+  margin: 4px 0 0;
+}
+
+.filters {
+  padding: 14px 16px 16px;
+  background: #ffffff;
+  border-bottom: solid 1px #e6e8ec;
+}
+
+.filter-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-bottom: 10px;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.filter-group label {
+  font-size: 0.875rem;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.filter-group input,
+.filter-group select {
+  border: 1px solid #cdd2da;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px 10px;
+  font-size: 0.925rem;
+}
+
+.filter-group input:focus,
+.filter-group select:focus {
+  outline: 2px solid rgba(15, 118, 110, 0.18);
+  border-color: #0f766e;
+}
+
+.filter-group select[multiple] {
+  min-height: 112px;
+}
+
+.category-selector {
+  position: relative;
+}
+
+.category-suggestions {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #cfd7df;
+  border-radius: 10px;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.09);
+  padding: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.category-option {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #1f2937;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.category-option:hover,
+.category-option.active {
+  background: rgba(15, 118, 110, 0.12);
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.custom-input-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.custom-input-row input {
+  flex: 1;
+}
+
+.custom-input-row button,
+.filter-actions button,
+.chip {
+  border: 1px solid #c9cfda;
+  background: #f7f8fb;
+  color: #1f2937;
+  border-radius: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+.mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mode-row.compact {
+  margin-top: 6px;
+}
+
+.mode-button {
+  border: 1px solid #c9cfda;
+  background: #f7f8fb;
+  color: #1f2937;
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.mode-button.active {
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #fff;
+}
+
+.mode-panel {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.radius-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.radius-row input[type="range"] {
+  flex: 1;
+}
+
+.city-preview {
+  margin-top: 8px;
+  background: #ffffff;
+  border: 1px solid #dbe1e7;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.hint-text {
+  margin: 0;
+  color: #0f4f4a;
+  font-size: 0.9rem;
+}
+
+.warn-text {
+  margin: 0;
+  color: #9a6700;
+  font-size: 0.9rem;
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.filter-actions .primary {
+  background: #0f766e;
+  color: #fff;
+  border-color: #0f766e;
+}
+
+.filter-actions .secondary {
+  background: #fff;
+}
+
+.filter-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.jobs-meta {
+  padding: 10px 16px 0;
+  color: #1f2937;
+  font-size: 0.95rem;
+}
+
+.error-text {
+  color: #b91c1c;
 }
 
 .dashboard {
@@ -18,4 +232,81 @@
   grid-template-columns: repeat(2, 1fr);
   gap: 16px;
   padding: 16px;
+}
+
+.empty-state {
+  grid-column: 1 / -1;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px;
+  color: #4b5563;
+}
+
+@media (max-width: 900px) {
+  .dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .custom-input-row {
+    flex-direction: column;
+  }
+
+  .filter-actions {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 600px) {
+  .greeting {
+    padding: 16px 12px 12px;
+  }
+
+  .filters {
+    padding: 12px;
+  }
+
+  .filter-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .filter-group select[multiple] {
+    min-height: 96px;
+  }
+
+  .radius-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .jobs-meta {
+    padding: 10px 12px 0;
+    font-size: 0.9rem;
+  }
+
+  .dashboard {
+    padding: 12px;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .mode-row {
+    gap: 6px;
+  }
+
+  .mode-button,
+  .filter-actions button,
+  .custom-input-row button,
+  .chip {
+    width: 100%;
+    text-align: center;
+  }
+
+  .custom-input-row {
+    gap: 6px;
+  }
 }

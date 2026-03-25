@@ -82,10 +82,26 @@ You should see containers for the frontend, backend, database, and VPN.
 |---------|-----------|---------------|---------|
 | db | uah-dev-db | None | uah-infra |
 | backend | uah-dev-backend | None | uah-infra |
-| frontend | uah-dev-frontend | 80 (via VPN only) | Shares VPN container |
+| frontend | uah-dev-frontend | 80/443 (via VPN only) | Shares VPN container |
 | vpn | uah-dev-vpn | 51820/udp | uah-infra |
 
-**Access:** `http://dev.uahapp.com` — requires VPN connection.
+**Access:** `http://dev.uahapp.com` (or `https://dev.uahapp.com` when TLS enabled) — requires VPN connection.
+
+### VPN-only HTTPS for Dev
+
+To enable HTTPS in dev without exposing your app publicly, place cert/key files on the server and keep DNS pointing to your VPN/private address.
+
+1. Put cert files in `./volumes/certs/dev/` as:
+     - `tls.crt`
+     - `tls.key`
+2. Set env vars in `.env`:
+     - `DEV_TLS_ENABLED=true`
+     - `DEV_TLS_CERT_PATH=/etc/nginx/certs/tls.crt`
+     - `DEV_TLS_KEY_PATH=/etc/nginx/certs/tls.key`
+3. Rebuild frontend container:
+     - `docker compose up -d --build frontend`
+
+If TLS is enabled but cert files are missing, frontend falls back to HTTP automatically.
 
 ---
 
@@ -256,7 +272,8 @@ docker exec uah-dev-frontend curl -s http://localhost/docs | head -20
 
 | URL | Description |
 |-----|-------------|
-| `http://dev.uahapp.com` | Frontend app |
+| `https://dev.uahapp.com` | Frontend app (preferred, when TLS enabled) |
+| `http://dev.uahapp.com` | Frontend app (fallback when TLS disabled) |
 | `http://dev.uahapp.com/status` | System status page (full diagnostics) |
 | `http://dev.uahapp.com/api/status` | API status check (JSON) |
 | `http://dev.uahapp.com/api/diagnostics` | Full diagnostics payload (JSON) |

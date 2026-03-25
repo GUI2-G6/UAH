@@ -23,9 +23,11 @@ from fastapi import FastAPI
 from app.api.routes import router as api_router
 from app.api.auth import router as auth_router
 from app.api.account import router as account_router
+from app.api.resume import router as resume_router
 from app.core.config import settings
 from app.db.base import Base
 from app.db.session import engine
+from app.services.geolocation import ensure_city_dataset
 import app.models  # noqa: F401 — ensure all models are registered
 
 logger = logging.getLogger(__name__)
@@ -120,6 +122,28 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     _ensure_users_table_columns()
     _bootstrap_admin_user_if_enabled()
+
+    geo_dataset_status = ensure_city_dataset()
+    status = geo_dataset_status.get("status")
+    if status == "built":
+        logger.warning(
+            "Geolocation city dataset built at startup (%s cities, %.2f MB)",
+            geo_dataset_status.get("cities_written", 0),
+            float(geo_dataset_status.get("size_bytes", 0)) / (1024 * 1024),
+        )
+    elif status == "existing":
+        logger.info(
+            "Geolocation city dataset already present (%.2f MB)",
+            float(geo_dataset_status.get("size_bytes", 0)) / (1024 * 1024),
+        )
+    elif status == "skipped":
+        logger.warning("Geolocation city dataset auto-build skipped: %s", geo_dataset_status.get("reason", "unknown"))
+    else:
+        logger.warning(
+            "Geolocation city dataset build failed: %s. Falling back to embedded cities.",
+            geo_dataset_status.get("error", "unknown error"),
+        )
+
     yield
 
 app = FastAPI(
@@ -147,6 +171,7 @@ app.add_middleware(
 app.include_router(api_router, prefix="/api")
 app.include_router(auth_router)
 app.include_router(account_router)
+app.include_router(resume_router)
 
 
 # ---------------------------------------------------------------------------

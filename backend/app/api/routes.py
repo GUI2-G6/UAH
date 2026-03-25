@@ -42,6 +42,7 @@ How DB session will be injected later:
           return db.query(Item).all()
 """
 from contextvars import Token
+import ipaddress
 import os, secrets, httpx
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Query, Depends
@@ -52,6 +53,15 @@ from app.db.session import get_db
 from app.google.service import GoogleAuthService
 from app.schemas.user import TokenResponse, UserResponse, SaveJobRequest
 from typing import Optional, List
+from app.services.geolocation import (
+    geocode_query,
+    km_to_miles,
+    list_country_cities,
+    miles_to_km,
+    find_cities_in_radius,
+    resolve_ip_location,
+    reverse_geocode,
+)
 
 
 router = APIRouter()
@@ -60,10 +70,156 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
 MUSE_API_KEY = os.getenv("MUSE_API_KEY")
 
+
+def _extract_client_ip(request: Request) -> Optional[str]:
+    candidates: List[str] = []
+
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        candidates.extend([part.strip() for part in forwarded.split(",") if part.strip()])
+
+    real_ip = (request.headers.get("x-real-ip", "") or "").strip()
+    if real_ip:
+        candidates.append(real_ip)
+
+    if request.client and request.client.host:
+        candidates.append((request.client.host or "").strip())
+
+    for candidate in candidates:
+        try:
+            ip_obj = ipaddress.ip_address(candidate)
+            if ip_obj.is_global:
+                return str(ip_obj)
+        except ValueError:
+            continue
+
+    # Returning None tells providers to resolve by server egress IP.
+    return None
+
+
+@router.get("/geolocation/ip", tags=["geolocation"])
+async def geolocation_by_ip(request: Request):
+    client_ip = _extract_client_ip(request)
+    try:
+        payload = await resolve_ip_location(client_ip)
+        return payload
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "GEO_IP_FAILED",
+                "message": "Could not determine location from IP.",
+                "debug": str(exc),
+            },
+        )
+
+
+@router.get("/geolocation/geocode", tags=["geolocation"])
+async def geocode_location(
+    q: str = Query(..., min_length=2, description="Zip code, city, or full location text"),
+    country_code: Optional[str] = Query(None, description="Optional ISO country code"),
+):
+    try:
+        return await geocode_query(q, country_code=country_code)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "GEO_GEOCODE_FAILED",
+                "message": "Could not find that location. Try a city name or ZIP code.",
+                "debug": str(exc),
+            },
+        )
+
+
+@router.get("/geolocation/reverse", tags=["geolocation"])
+async def reverse_geocode_location(
+    latitude: float = Query(..., ge=-90, le=90),
+    longitude: float = Query(..., ge=-180, le=180),
+):
+    try:
+        return await reverse_geocode(latitude, longitude)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "GEO_REVERSE_FAILED",
+                "message": "Could not resolve this coordinate into a place name.",
+                "debug": str(exc),
+            },
+        )
+
+
+@router.get("/geolocation/cities-in-radius", tags=["geolocation"])
+async def cities_in_radius(
+    latitude: float = Query(..., ge=-90, le=90),
+    longitude: float = Query(..., ge=-180, le=180),
+    radius: float = Query(25, gt=0, description="Radius value, interpreted by the selected unit"),
+    unit: str = Query("mi", description="mi or km"),
+    country_code: Optional[str] = Query(None, description="Optional ISO country code to constrain matches"),
+    limit: int = Query(200, ge=1, le=500),
+):
+    normalized_unit = (unit or "mi").strip().lower()
+    radius_miles = km_to_miles(radius) if normalized_unit == "km" else radius
+    radius_miles = min(radius_miles, 100.0)
+
+    cities = find_cities_in_radius(
+        latitude=latitude,
+        longitude=longitude,
+        radius_miles=radius_miles,
+        country_code=country_code,
+        limit=limit,
+    )
+
+    if not cities:
+        return {
+            "code": "GEO_RADIUS_EMPTY",
+            "message": "No cities were found within this radius.",
+            "debug": {
+                "latitude": latitude,
+                "longitude": longitude,
+                "radius_miles": round(radius_miles, 2),
+                "country_code": (country_code or "").upper(),
+            },
+            "cities": [],
+            "total_count": 0,
+            "radius_miles": round(radius_miles, 2),
+            "radius_km": round(miles_to_km(radius_miles), 2),
+        }
+
+    return {
+        "cities": cities,
+        "total_count": len(cities),
+        "radius_miles": round(radius_miles, 2),
+        "radius_km": round(miles_to_km(radius_miles), 2),
+    }
+
+
+@router.get("/geolocation/country-cities", tags=["geolocation"])
+async def country_cities(
+    country_code: str = Query(..., min_length=2, max_length=2, description="ISO country code"),
+    limit: int = Query(120, ge=1, le=400),
+):
+    cities = list_country_cities(country_code=country_code, limit=limit)
+    if not cities:
+        return {
+            "code": "GEO_COUNTRY_EMPTY",
+            "message": "No known city data for that country yet.",
+            "cities": [],
+            "total_count": 0,
+        }
+
+    return {
+        "cities": cities,
+        "total_count": len(cities),
+        "country_code": country_code.upper(),
+    }
+
 @router.get("/jobs/search", tags=["jobs"])
 async def search_jobs(
     # Creates an endpoint for each job search query with optional parameters 
     page: int = Query(1, ge=1, description="Page number for pagination"),
+    category: Optional[List[str]] = Query(None, description="e.g., 'Software Engineer', 'Data Science'"),
     catogory: Optional[List[str]] = Query(None, description="e.g., 'Software Engineer', 'Data Science'"),
     level: Optional[List[str]] = Query(None, description="e.g., 'Internship', 'Entry', 'Senior'"),
     location: Optional[List[str]] = Query(None, description="e.g., 'New York', 'Remote'"),
@@ -79,8 +235,21 @@ async def search_jobs(
     
     # If the user provided any of the optional parameters (category, level, location, company), 
     # It adds them to the params dictionary in the format expected by The Muse API.
-    if catogory:
-        for cat in catogory:
+    categories = []
+    for cat in (category or []):
+        value = (cat or "").strip()
+        if value:
+            categories.append(value)
+    for cat in (catogory or []):
+        value = (cat or "").strip()
+        if value:
+            categories.append(value)
+
+    # Preserve first-seen order while removing duplicates.
+    categories = list(dict.fromkeys(categories))
+
+    if categories:
+        for cat in categories:
             params.append(("category", cat))
     if level:
         for lvl in level:

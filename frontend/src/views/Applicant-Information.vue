@@ -39,85 +39,82 @@
                     <p>Country</p>
                     <input type="text" v-model="currentUser.zip" placeholder="ZIP/Postal Code">
                 </div>
+            </Card>
 
+            <Card>
                 <div class="appInfo-group">
-                    <h4>Professional Summary</h4>
+                    <h3>Professional Summary</h3>
                     <span>Summary</span>
                     <p style="white-space: pre-line;">{{ message }}</p>
                     <textarea v-model="message" placeholder="Brief professional summary highlighting your key skills and experience..."></textarea>
                 </div>
+            </Card>
 
-                <div class="settings-group">
-                    <h4>Change Password</h4>
-                    <SecretInput v-model="currentPassword" placeholder="Current password" autocomplete="current-password" :disabled="working" />
-                    <SecretInput v-model="newPassword" placeholder="New password" autocomplete="new-password" :disabled="working" />
-                    <SecretInput v-model="confirmNewPassword" placeholder="Confirm new password" autocomplete="new-password" :disabled="working" />
-                    <button @click="changePassword" :disabled="working" :class="buttonStatusClass('changePassword')">Update password</button>
-                    <div v-if="actionStatus.changePassword.message" :class="feedbackClass('changePassword')">
-                        {{ actionStatus.changePassword.message }}
-                    </div>
-                </div>
-
-                <div class="settings-group">
-                    <h4>Email Verification</h4>
-                    <button @click="sendVerification" :disabled="working" :class="buttonStatusClass('sendVerification')">Send verification token</button>
-                    <div v-if="actionStatus.sendVerification.message" :class="feedbackClass('sendVerification')">
-                        {{ actionStatus.sendVerification.message }}
-                    </div>
-                    <SecretInput v-model="verifyToken" placeholder="Verification token" autocomplete="off" :disabled="working" />
-                    <button @click="verifyEmail" :disabled="working" :class="buttonStatusClass('verifyEmail')">Verify email</button>
-                    <div v-if="actionStatus.verifyEmail.message" :class="feedbackClass('verifyEmail')">
-                        {{ actionStatus.verifyEmail.message }}
-                    </div>
-                </div>
-
-                <div class="settings-group">
-                    <h4>Delete Account</h4>
-                    <button class="danger" @click="openDeleteConfirm" :disabled="working" :class="buttonStatusClass('deleteAccount')">Delete account</button>
-                    <div v-if="actionStatus.deleteAccount.message" :class="feedbackClass('deleteAccount')">
-                        {{ actionStatus.deleteAccount.message }}
-                    </div>
+            <Card>
+                <div class="appInfo-group">
+                    <h3>Work Authorization</h3>
+                    <p>Work Authorization Status</p>
+                    <select name="authorization-status" id="authorization-status">
+                        <option>US Citizen</option>
+                        <option>Green Card Holder</option>
+                        <option>H1-B Visa</option>
+                        <option>OPT/CPT</option>
+                        <option>Other</option>
+                        <option>Require Sponsorship</option>
+                    </select>
+                    <p>Requires Sponsorship</p>
+                    <select name="requires-sponsorship" id="requires-sponsorship">
+                        <option>Yes</option>
+                        <option>No</option>
+                        <option>In the future</option>
+                    </select>
                 </div>
             </Card>
+
+
             <Card>
-                <template #header>
-                    <h3>Notifications & Preferences</h3>
-                </template>
-                <div class="settings-group">
-                    <h4>Email Notifications</h4>
-                    <!--Using a select box here is obtrusive and bad. Redesign it to be a switch.-->
-                    <select name="email-notifications" id="email-notifications">
-                        <option>Yes</option>
-                        <option>No</option>
-                    </select>
-                    <h4>Reminder Notifications</h4>
-                    <!--Using a select box here is obtrusive and bad. Redesign it to be a switch.-->
-                    <select name="reminder-notifications" id="reminder-notifications">
-                        <option>Yes</option>
-                        <option>No</option>
-                    </select>
-                    <h4>Application Status Updates</h4>
-                    <!--Using a select box here is obtrusive and bad. Redesign it to be a switch.-->
-                    <select name="application-status-updates" id="application-status-updates">
-                        <option>Yes</option>
-                        <option>No</option>
-                    </select>
+                <div class="appInfo-group">
+                <h3>Education</h3>
+                    <p>Degree</p>
+                    <input type="text" v-model="currentUser.degree" placeholder="Degree">
+                    <p>Major/Field of Study</p>
+                    <input type="text" v-model="currentUser.major" placeholder="Major/Field of Study">
+                    <p>University</p>
+                    <input type="text" v-model="currentUser.university" placeholder="University">
+                    <p>Graduation Year</p>
+                    <input type="text" v-model="currentUser.gradYear" placeholder="Graduation Year">
+                    <p>GPA (Optional)</p>
+                    <input type="text" v-model="currentUser.gpa" placeholder="GPA">
                 </div>
-                <div class="settings-group">
-                    <h4>Language</h4>
-                    <select name="language" id="language">
-                        <option>English</option>
-                        <option>Spanish</option>
-                        <option>French</option>
-                    </select>
-                    <h4>Timezone</h4>
-                    <select name="timezone" id="timezone">
-                        <option>Eastern Standard Time (EST)</option>
-                        <option>Central Standard Time (CST)</option>
-                        <option>Mountain Standard Time (MST)</option>
-                        <option>Pacific Standard Time (PST)</option>
-                    </select>
-                </div>
+            </Card>
+
+            <Card>
+                <h3>Skills and Languages</h3>
+            </Card>
+
+            <Card>
+                <h3>Current Experience</h3>
+                <p>Years of Experience</p>
+                <input type="text" v-model="currentUser.yearsExperience" placeholder="Years of Experience">
+                <p>Current Job Title</p>
+                <input type="text" v-model="currentUser.currentJobTitle" placeholder="Current Job Title">
+                <p>Current Company</p>
+                <input type="text" v-model="currentUser.currentCompany" placeholder="Current Company">
+            </Card>
+
+            <Card>
+                <h3>Job Preferences</h3>
+                <p>Desired Salary Range</p>
+                <input type="text" v-model="currentUser.salaryRange" placeholder="Desired Salary Range">
+                <p>Preferred Job Locations</p>
+                <input type="text" v-model="currentUser.preferredLocations" placeholder="Preferred Job Locations">
+                <p>Remote Work Preference</p>
+                <select name="remote-work-preference" id="remote-work-preference">
+                    <option>Remote Only</option>
+                    <option>On-site</option>
+                    <option>Hybrid</option>
+                    <option>No Preference</option>
+                </select>
             </Card>
 
         </div>

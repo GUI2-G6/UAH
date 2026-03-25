@@ -80,6 +80,13 @@ services:
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
       SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
       SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-20}
+
+      # Geolocation
+      GEO_IP_PROVIDER: ${GEO_IP_PROVIDER:-ipapi}
+      IPSTACK_API_KEY: ${IPSTACK_API_KEY:-}
+      GEOLOCATION_AUTO_BUILD_DATASET: ${GEOLOCATION_AUTO_BUILD_DATASET:-true}
+      GEOLOCATION_DATASET_TIMEOUT_SECONDS: ${GEOLOCATION_DATASET_TIMEOUT_SECONDS:-90}
+      NOMINATIM_USER_AGENT: ${NOMINATIM_USER_AGENT:-UAH-JobBoard-Geolocation/1.0}
     volumes:
       - ./backend:/app          # Hot-reload in dev
     networks:
@@ -97,6 +104,13 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+    environment:
+      DEV_DOMAIN: ${DEV_DOMAIN:-dev.uahapp.com}
+      DEV_TLS_ENABLED: ${DEV_TLS_ENABLED:-false}
+      DEV_TLS_CERT_PATH: ${DEV_TLS_CERT_PATH:-/etc/nginx/certs/tls.crt}
+      DEV_TLS_KEY_PATH: ${DEV_TLS_KEY_PATH:-/etc/nginx/certs/tls.key}
+    volumes:
+      - ./volumes/certs/dev:/etc/nginx/certs:ro
     # Share the VPN container's network namespace so nginx
     # listens directly on 10.8.0.1:80 (the wg0 interface).
     # This replaces ports + networks — both are inherited from VPN.
