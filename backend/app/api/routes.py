@@ -46,6 +46,7 @@ import ipaddress
 import os, secrets, httpx
 import httpx
 import re
+import time
 from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -63,6 +64,7 @@ from app.services.geolocation import (
     resolve_ip_location,
     reverse_geocode,
 )
+from app.core.config import settings
 
 
 router = APIRouter()
@@ -95,7 +97,7 @@ def _is_remote_location_name(name: Optional[str]) -> bool:
     )
 
 
-def _classify_job_work_mode(job: dict) -> tuple[bool, bool]:
+def _classify_job_work_mode(job: dict) -> tuple[bool, bool, str]:
     raw_locations = job.get("locations", []) or []
     location_names = [loc.get("name", "") for loc in raw_locations if isinstance(loc, dict)]
     has_remote_location = any(_is_remote_location_name(name) for name in location_names)
@@ -108,13 +110,76 @@ def _classify_job_work_mode(job: dict) -> tuple[bool, bool]:
         ]
     )
 
+    has_hybrid_location = any("hybrid" in _normalize_text(name) for name in location_names)
     has_hybrid_text = bool(HYBRID_TEXT_PATTERN.search(searchable_text))
     has_remote_text = bool(REMOTE_TEXT_PATTERN.search(searchable_text))
 
-    has_hybrid = has_hybrid_text
+    has_hybrid = has_hybrid_location or has_hybrid_text
     has_remote = has_remote_location or has_remote_text
 
-    return has_remote, has_hybrid
+    if has_hybrid_location:
+        reason = "location-name-hybrid"
+    elif has_hybrid_text:
+        reason = "text-hybrid"
+    elif has_remote_location:
+        reason = "location-name-remote"
+    elif has_remote_text:
+        reason = "text-remote"
+    else:
+        reason = "none"
+
+    return has_remote, has_hybrid, reason
+
+
+def _is_job_allowed_by_preferences(*, has_remote: bool, has_hybrid: bool, include_remote: bool, include_hybrid: bool) -> bool:
+    is_remote_only = has_remote and not has_hybrid
+    if not include_hybrid and has_hybrid:
+        return False
+    if not include_remote and is_remote_only:
+        return False
+    return True
+
+
+def _normalize_level_for_muse(level_value: str) -> str:
+    normalized = (level_value or "").strip()
+    if normalized.lower() == "management":
+        return "management"
+    return normalized
+
+
+def _map_muse_job(job: dict) -> dict:
+    has_remote, has_hybrid, work_mode_reason = _classify_job_work_mode(job)
+    locations = [loc.get("name") for loc in job.get("locations", []) if loc.get("name")]
+    company = job.get("company") or {}
+
+    location_mode_flags = []
+    if has_remote:
+        location_mode_flags.append("remote")
+    if has_hybrid:
+        location_mode_flags.append("hybrid")
+
+    return {
+        "id": job.get("id"),
+        "name": job.get("name"),
+        "short_name": job.get("short_name"),
+        "type": job.get("type"),
+        "model_type": job.get("model_type"),
+        "company": company.get("name"),
+        "company_id": company.get("id"),
+        "company_short_name": company.get("short_name"),
+        "locations": locations,
+        "all_location_names": locations,
+        "levels": [lvl.get("name") for lvl in job.get("levels", []) if lvl.get("name")],
+        "categories": [cat.get("name") for cat in job.get("categories", []) if cat.get("name")],
+        "tags": [tag.get("name") for tag in job.get("tags", []) if tag.get("name")],
+        "has_remote": has_remote,
+        "has_hybrid": has_hybrid,
+        "location_mode_flags": location_mode_flags,
+        "work_mode_reason": work_mode_reason,
+        "publication_date": job.get("publication_date"),
+        "job_url": job.get("refs", {}).get("landing_page"),
+        "contents": job.get("contents") or "",
+    }
 
 
 def _extract_client_ip(request: Request) -> Optional[str]:
@@ -270,14 +335,15 @@ async def search_jobs(
     level: Optional[List[str]] = Query(None, description="e.g., 'Internship', 'Entry', 'Senior'"),
     location: Optional[List[str]] = Query(None, description="e.g., 'New York', 'Remote'"),
     company: Optional[List[str]] = Query(None, description="e.g., 'Google', 'Microsoft'"),
+    include_remote: bool = Query(False, description="Include fully remote roles in results"),
+    include_hybrid: bool = Query(True, description="Include hybrid roles in results"),
 ):
     # Gets the list of jobs from The Muse API based on the provided query parameters 
-    url = "https://www.themuse.com/api/public/jobs"    
-    # Builds the parameters for the API request based on the query parameters provided by the user.
-    params = [("page", page)]
+    url = "https://www.themuse.com/api/public/jobs"
+    params_base = []
     
     if MUSE_API_KEY:
-        params.append(("api_key", MUSE_API_KEY))
+        params_base.append(("api_key", MUSE_API_KEY))
     
     # If the user provided any of the optional parameters (category, level, location, company), 
     # It adds them to the params dictionary in the format expected by The Muse API.
@@ -296,61 +362,116 @@ async def search_jobs(
 
     if categories:
         for cat in categories:
-            params.append(("category", cat))
+            params_base.append(("category", cat))
     if level:
         for lvl in level:
-            params.append(("level", lvl))
+            normalized_level = _normalize_level_for_muse(lvl)
+            if normalized_level:
+                params_base.append(("level", normalized_level))
     if location:
         for loc in location:
-            params.append(("location", loc))
+            normalized_loc = (loc or "").strip()
+            if normalized_loc:
+                params_base.append(("location", normalized_loc))
     if company:
         for comp in company:
-            params.append(("company", comp))
-    
-    # Makes an GET request to The Muse API using httpx with the constructed parameters. 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, params=params)
-        # If the response status code is not 200, it raises an HTTP 500 error indicating that the job search failed. 
-        # If the request is successful, it processes the response data to extract relevant job information and returns it in a structured format.
-        if response.status_code != 200:
-            raise HTTPException(status_code=500, detail="Failed to fetch jobs from The Muse API")
-    
-    # Turns the raw data from The Muse API into a json format that the frontend can easily use.
-    data = response.json()
-    
-    # Exracts the list of jobs from the response data
-    # If the "results" key is not present, it defaults to an empty list.
-    jobs = data.get("results", [])
-    
-    # Iterates over all the list of jobs and constructs a new list of job data with only the relevant information needed by the frontend.
-    job_data = []
-    for job in jobs:
-        has_remote, has_hybrid = _classify_job_work_mode(job)
-        location_mode_flags = []
-        if has_remote:
-            location_mode_flags.append("remote")
-        if has_hybrid:
-            location_mode_flags.append("hybrid")
+            normalized_comp = (comp or "").strip()
+            if normalized_comp:
+                params_base.append(("company", normalized_comp))
 
-        job_data.append({
-            "id": job.get("id"),
-            "name": job.get("name"),
-            "company": job.get("company", {}).get("name"),
-            "locations": [loc.get("name") for loc in job.get("locations", []) if loc.get("name")],
-            "levels": [lvl.get("name") for lvl in job.get("levels", [])],
-            "categories": [cat.get("name") for cat in job.get("categories", [])],
-            "has_remote": has_remote,
-            "has_hybrid": has_hybrid,
-            "location_mode_flags": location_mode_flags,
-            "publication_date": job.get("publication_date"),
-            "job_url": job.get("refs", {}).get("landing_page"),
-        })
-    # Returns the structured JSON response containing the current page number, total pages, total jobs, and the list of job data extracted from The Muse API.
+    max_pages = max(1, min(settings.MUSE_PAGE_CHASE_MAX_PAGES, settings.MUSE_PAGE_CHASE_MAX_API_CALLS_PER_REQUEST))
+    target_results = max(1, settings.MUSE_PAGE_CHASE_TARGET_ACCEPTED_RESULTS)
+    min_filtered_ratio = min(max(settings.MUSE_PAGE_CHASE_MIN_FILTERED_RATIO, 0.0), 1.0)
+    timeout_budget = max(1.0, settings.MUSE_PAGE_CHASE_TIMEOUT_SECONDS)
+
+    accepted_jobs = []
+    accepted_ids = set()
+    filtered_out_count = 0
+    source_pages_scanned = 0
+    guardrail_stop_reason = ""
+    first_payload = None
+    current_page = page
+    start_time = time.monotonic()
+
+    async with httpx.AsyncClient(timeout=timeout_budget) as client:
+        while source_pages_scanned < max_pages:
+            params = [("page", current_page), *params_base]
+            response = await client.get(url, params=params)
+            if response.status_code != 200:
+                if source_pages_scanned == 0:
+                    raise HTTPException(status_code=500, detail="Failed to fetch jobs from The Muse API")
+                guardrail_stop_reason = f"muse_status_{response.status_code}"
+                break
+
+            payload = response.json()
+            if first_payload is None:
+                first_payload = payload
+
+            source_pages_scanned += 1
+            raw_jobs = payload.get("results", []) or []
+            page_filtered = 0
+
+            for raw_job in raw_jobs:
+                mapped = _map_muse_job(raw_job)
+                allowed = _is_job_allowed_by_preferences(
+                    has_remote=mapped.get("has_remote", False),
+                    has_hybrid=mapped.get("has_hybrid", False),
+                    include_remote=include_remote,
+                    include_hybrid=include_hybrid,
+                )
+
+                if not allowed:
+                    page_filtered += 1
+                    continue
+
+                job_id = mapped.get("id")
+                if job_id in accepted_ids:
+                    continue
+
+                accepted_ids.add(job_id)
+                accepted_jobs.append(mapped)
+
+            filtered_out_count += page_filtered
+
+            if len(accepted_jobs) >= target_results:
+                guardrail_stop_reason = "target_reached"
+                break
+
+            total_on_page = len(raw_jobs)
+            filtered_ratio = (page_filtered / total_on_page) if total_on_page else 0.0
+            next_page = (payload.get("page") or current_page) + 1
+            page_count = payload.get("page_count") or current_page
+
+            if not settings.MUSE_PAGE_CHASE_ENABLED:
+                guardrail_stop_reason = "disabled"
+                break
+            if filtered_ratio < min_filtered_ratio:
+                guardrail_stop_reason = "low_filtered_ratio"
+                break
+            if next_page > page_count:
+                guardrail_stop_reason = "page_count_end"
+                break
+            if time.monotonic() - start_time >= timeout_budget:
+                guardrail_stop_reason = "timeout_budget"
+                break
+
+            current_page = next_page
+
+    if first_payload is None:
+        raise HTTPException(status_code=500, detail="Failed to fetch jobs from The Muse API")
+
+    if not guardrail_stop_reason:
+        guardrail_stop_reason = "max_pages_reached"
+
+    # Returns structured response with original pagination info and guarded-fetch diagnostics.
     return {
-        "page": data.get("page"),
-        "total_pages": data.get("page_count"),
-        "total_jobs": data.get("total"),
-        "jobs": job_data,
+        "page": first_payload.get("page"),
+        "total_pages": first_payload.get("page_count"),
+        "total_jobs": first_payload.get("total"),
+        "jobs": accepted_jobs,
+        "source_pages_scanned": source_pages_scanned,
+        "filtered_out_count": filtered_out_count,
+        "guardrail_stop_reason": guardrail_stop_reason,
     }
 
 @router.post("/jobs/save", tags=["jobs"])

@@ -116,11 +116,55 @@
 
                 <div class="filter-group">
                     <label for="job-levels">Levels</label>
-                    <select id="job-levels" v-model="draftFilters.levels" multiple>
-                        <option v-for="option in levelOptions" :key="option" :value="option">
-                            {{ option }}
-                        </option>
-                    </select>
+                    <div class="category-selector">
+                      <input
+                        id="job-levels"
+                        v-model.trim="levelInput"
+                        type="text"
+                        autocomplete="off"
+                        placeholder="Search levels"
+                        @focus="openLevelMenu"
+                        @input="onLevelInput"
+                        @blur="closeLevelMenuSoon"
+                        @keydown.enter.prevent="chooseLevelFromInput"
+                        @keydown.down.prevent="moveLevelSelection(1)"
+                        @keydown.up.prevent="moveLevelSelection(-1)"
+                        @keydown.esc.prevent="levelMenuOpen = false"
+                      />
+
+                      <div
+                        v-if="showLevelMenu"
+                        class="category-suggestions"
+                        role="listbox"
+                        aria-label="Level suggestions"
+                      >
+                        <button
+                          v-for="(option, index) in filteredLevelOptions"
+                          :key="option"
+                          type="button"
+                          class="category-option"
+                          :class="{ active: index === levelActiveIndex }"
+                          @mousedown.prevent="addLevel(option)"
+                        >
+                          {{ option }}
+                        </button>
+                      </div>
+
+                      <p class="hint-text" v-if="levelInfo">{{ levelInfo }}</p>
+
+                      <div class="chip-list" v-if="draftFilters.levels.length">
+                        <button
+                          class="chip"
+                          type="button"
+                          v-for="level in draftFilters.levels"
+                          :key="level"
+                          @click="removeFilterValue('levels', level)"
+                          :title="`Remove ${level}`"
+                        >
+                          {{ level }} x
+                        </button>
+                      </div>
+                    </div>
                 </div>
 
                 <div class="filter-group">
@@ -479,8 +523,13 @@ export default {
       "Entry Level",
       "Mid Level",
       "Senior Level",
-      "management"
+      "Management"
     ]
+
+    const levelLookup = {}
+    for (const value of levelOptions) {
+      levelLookup[value.toLowerCase()] = value
+    }
 
     const countryOptions = [
       { code: "US", name: "United States" },
@@ -515,11 +564,16 @@ export default {
       categoryOptions,
       categoryLookup,
       levelOptions,
+      levelLookup,
       countryOptions,
       categoryInput: "",
       categoryInfo: "",
       categoryMenuOpen: false,
       categoryActiveIndex: 0,
+      levelInput: "",
+      levelInfo: "",
+      levelMenuOpen: false,
+      levelActiveIndex: 0,
       cityPreviewVisibleLimit: 10,
       cityPreviewModalOpen: false,
       citySortMode: "closest",
@@ -555,6 +609,21 @@ export default {
     },
     showCategoryMenu() {
       return this.categoryMenuOpen && this.filteredCategoryOptions.length > 0
+    },
+    filteredLevelOptions() {
+      const selected = new Set((this.draftFilters.levels || []).map(value => value.toLowerCase()))
+      const query = (this.levelInput || "").trim().toLowerCase()
+
+      const options = this.levelOptions.filter(option => {
+        if (selected.has(option.toLowerCase())) return false
+        if (!query) return true
+        return option.toLowerCase().includes(query)
+      })
+
+      return options.slice(0, 8)
+    },
+    showLevelMenu() {
+      return this.levelMenuOpen && this.filteredLevelOptions.length > 0
     },
     visibleLocationPreviewNames() {
       return (this.locationPreviewNames || []).slice(0, this.cityPreviewVisibleLimit)
@@ -669,6 +738,23 @@ export default {
       }
       return this.normalizeUnique(canonicalized)
     },
+    normalizeLevelValues(values) {
+      const canonicalized = []
+      for (const value of values || []) {
+        const clean = (value || "").trim()
+        if (!clean) continue
+        const canonical = this.levelLookup[clean.toLowerCase()]
+        if (canonical) canonicalized.push(canonical)
+      }
+      return this.normalizeUnique(canonicalized)
+    },
+    normalizeLevelForApi(value) {
+      const canonical = this.levelLookup[(value || "").trim().toLowerCase()] || (value || "").trim()
+      if (canonical.toLowerCase() === "management") {
+        return "management"
+      }
+      return canonical
+    },
     openCategoryMenu() {
       this.categoryMenuOpen = true
       this.categoryActiveIndex = 0
@@ -733,6 +819,71 @@ export default {
       }
 
       this.categoryInfo = "Choose a valid Muse category from suggestions."
+    },
+    openLevelMenu() {
+      this.levelMenuOpen = true
+      this.levelActiveIndex = 0
+      this.levelInfo = ""
+    },
+    closeLevelMenuSoon() {
+      window.setTimeout(() => {
+        this.levelMenuOpen = false
+      }, 120)
+    },
+    onLevelInput() {
+      this.levelMenuOpen = true
+      this.levelActiveIndex = 0
+      this.levelInfo = ""
+    },
+    moveLevelSelection(step) {
+      if (!this.filteredLevelOptions.length) return
+      const next = this.levelActiveIndex + step
+      if (next < 0) {
+        this.levelActiveIndex = this.filteredLevelOptions.length - 1
+        return
+      }
+      if (next >= this.filteredLevelOptions.length) {
+        this.levelActiveIndex = 0
+        return
+      }
+      this.levelActiveIndex = next
+    },
+    addLevel(level) {
+      const canonical = this.levelLookup[(level || "").trim().toLowerCase()]
+      if (!canonical) return
+
+      this.draftFilters.levels = this.normalizeUnique([
+        ...(this.draftFilters.levels || []),
+        canonical
+      ])
+
+      this.levelInput = ""
+      this.levelActiveIndex = 0
+      this.levelMenuOpen = true
+      this.levelInfo = ""
+    },
+    chooseLevelFromInput() {
+      const input = (this.levelInput || "").trim()
+      if (!input) return
+
+      const exact = this.levelLookup[input.toLowerCase()]
+      if (exact) {
+        this.addLevel(exact)
+        return
+      }
+
+      if (this.filteredLevelOptions.length === 1) {
+        this.addLevel(this.filteredLevelOptions[0])
+        return
+      }
+
+      if (this.filteredLevelOptions.length > 1) {
+        const highlighted = this.filteredLevelOptions[this.levelActiveIndex] || this.filteredLevelOptions[0]
+        this.addLevel(highlighted)
+        return
+      }
+
+      this.levelInfo = "Choose a valid Muse level from suggestions."
     },
     addCustomFilterValue(target) {
       const input = this.companyInput
@@ -1005,7 +1156,7 @@ export default {
         params.append("category", value)
       }
       for (const value of this.normalizeUnique(this.appliedFilters.levels)) {
-        params.append("level", value)
+        params.append("level", this.normalizeLevelForApi(value))
       }
       for (const value of this.normalizeUnique(this.appliedFilters.locationNames)) {
         params.append("location", value)
@@ -1013,6 +1164,9 @@ export default {
       for (const value of this.normalizeUnique(this.appliedFilters.companies)) {
         params.append("company", value)
       }
+
+      params.set("include_remote", this.appliedFilters.includeRemote ? "true" : "false")
+      params.set("include_hybrid", this.appliedFilters.includeHybrid ? "true" : "false")
 
       return params.toString()
     },
@@ -1027,7 +1181,9 @@ export default {
             job.company,
             ...(job.locations || []),
             ...(job.categories || []),
-            ...(job.levels || [])
+            ...(job.levels || []),
+            ...(job.tags || []),
+            job.short_name || ""
           ]
           return metadata
             .join(" ")
@@ -1091,16 +1247,22 @@ export default {
         const mappedJobs = (data.jobs || []).map(job => ({
           id: job.id,
           title: job.name,
+          short_name: job.short_name || "",
           company: job.company,
           location: job.locations?.[0] || "Unknown",
           locations: job.locations || [],
           level: job.levels?.[0] || "",
           levels: job.levels || [],
           categories: job.categories || [],
+          tags: job.tags || [],
+          type: job.type || "",
+          model_type: job.model_type || "",
+          work_mode_reason: job.work_mode_reason || "",
           has_remote: job.has_remote === true,
           has_hybrid: job.has_hybrid === true,
           publication_date: job.publication_date,
-          link: job.job_url
+          link: job.job_url,
+          contents: job.contents || ""
         }))
 
         this.jobs = this.applyClientFilters(mappedJobs)
@@ -1119,7 +1281,7 @@ export default {
 
         this.appliedFilters = this.cloneFilters(this.draftFilters)
         this.appliedFilters.categories = this.normalizeCategoryValues(this.appliedFilters.categories)
-        this.appliedFilters.levels = this.normalizeUnique(this.appliedFilters.levels)
+        this.appliedFilters.levels = this.normalizeLevelValues(this.appliedFilters.levels)
         this.appliedFilters.companies = this.normalizeUnique(this.appliedFilters.companies)
         this.appliedFilters.locationNames = this.normalizeUnique(locationNames)
 
@@ -1139,6 +1301,10 @@ export default {
       this.categoryInfo = ""
       this.categoryActiveIndex = 0
       this.categoryMenuOpen = false
+      this.levelInput = ""
+      this.levelInfo = ""
+      this.levelActiveIndex = 0
+      this.levelMenuOpen = false
       this.cityPreviewModalOpen = false
       this.companyInput = ""
       this.locationFallbackInput = ""
