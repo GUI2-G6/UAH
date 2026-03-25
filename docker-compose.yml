@@ -81,6 +81,12 @@ services:
       SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
       SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-20}
 
+      # Z.AI (Resume OCR + LLM Parsing)
+      ZAI_API_KEY: ${ZAI_API_KEY:-}
+      ZAI_OCR_URL: ${ZAI_OCR_URL:-https://api.z.ai/api/paas/v4/layout_parsing}
+      ZAI_LLM_URL: ${ZAI_LLM_URL:-https://api.z.ai/api/paas/v4/chat/completions}
+      ZAI_LLM_MODEL: ${ZAI_LLM_MODEL:-GLM-4.7-Flash}
+
       # Geolocation
       GEO_IP_PROVIDER: ${GEO_IP_PROVIDER:-ipapi}
       IPSTACK_API_KEY: ${IPSTACK_API_KEY:-}

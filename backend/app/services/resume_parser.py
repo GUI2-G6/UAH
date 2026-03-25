@@ -117,6 +117,16 @@ Resume Text:
 
 
 async def ocr_pdf(pdf_bytes: bytes) -> dict:
+    missing = settings.missing_resume_ocr_config()
+    if missing:
+        logger.error("OCR is not configured. Missing env vars: %s", ", ".join(missing))
+        return {
+            "ok": False,
+            "error_code": "OCR_NOT_CONFIGURED",
+            "status_code": 503,
+            "response_excerpt": f"Missing config: {', '.join(missing)}",
+        }
+
     file_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
     data_url = f"data:application/pdf;base64,{file_base64}"
 
@@ -150,11 +160,30 @@ async def ocr_pdf(pdf_bytes: bytes) -> dict:
         payload = resp.json()
         payload["ok"] = True
         return payload
-    except Exception as e:
-        logger.error(f"OCR PDF processing failed: {type(e).__name__}: {str(e)}")
+    except httpx.TimeoutException as e:
+        logger.error("OCR request timed out: %s", str(e))
+        return {
+            "ok": False,
+            "error_code": "OCR_TIMEOUT",
+            "status_code": 504,
+            "exception_type": type(e).__name__,
+            "exception_message": str(e),
+        }
+    except httpx.HTTPError as e:
+        logger.error("OCR request failed: %s: %s", type(e).__name__, str(e))
         return {
             "ok": False,
             "error_code": "OCR_REQUEST_EXCEPTION",
+            "status_code": 502,
+            "exception_type": type(e).__name__,
+            "exception_message": str(e),
+        }
+    except Exception as e:
+        logger.error("OCR PDF processing failed: %s: %s", type(e).__name__, str(e))
+        return {
+            "ok": False,
+            "error_code": "OCR_REQUEST_EXCEPTION",
+            "status_code": 502,
             "exception_type": type(e).__name__,
             "exception_message": str(e),
         }

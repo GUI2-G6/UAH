@@ -87,6 +87,11 @@ REMOTE_TEXT_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 HYBRID_TEXT_PATTERN = re.compile(r"\bhybrid\b", flags=re.IGNORECASE)
+TIMEZONE_TOKEN_PATTERN = re.compile(
+    r"\b(eastern|central|mountain|pacific|est|edt|cst|cdt|mst|mdt|pst|pdt)\b",
+    flags=re.IGNORECASE,
+)
+EXCLUSION_SEGMENT_PATTERN = re.compile(r"(?:except|excluding)\s+([^.;\n]+)", flags=re.IGNORECASE)
 
 UNIFIED_CATEGORY_GROUPS = {
     "tech": [
@@ -158,9 +163,169 @@ CATEGORY_GROUP_ALIAS = {
 
 _JOBS_CACHE: dict[str, dict[str, Any]] = {}
 
+TIMEZONE_FAMILY_ALIASES = {
+    "eastern": "ET",
+    "est": "ET",
+    "edt": "ET",
+    "central": "CT",
+    "cst": "CT",
+    "cdt": "CT",
+    "mountain": "MT",
+    "mst": "MT",
+    "mdt": "MT",
+    "pacific": "PT",
+    "pst": "PT",
+    "pdt": "PT",
+}
+
+US_STATE_TO_TIMEZONE_FAMILY = {
+    "AL": "CT", "AK": "PT", "AZ": "MT", "AR": "CT", "CA": "PT", "CO": "MT", "CT": "ET", "DC": "ET",
+    "DE": "ET", "FL": "ET", "GA": "ET", "HI": "PT", "IA": "CT", "ID": "MT", "IL": "CT", "IN": "ET",
+    "KS": "CT", "KY": "ET", "LA": "CT", "MA": "ET", "MD": "ET", "ME": "ET", "MI": "ET", "MN": "CT",
+    "MO": "CT", "MS": "CT", "MT": "MT", "NC": "ET", "ND": "CT", "NE": "CT", "NH": "ET", "NJ": "ET",
+    "NM": "MT", "NV": "PT", "NY": "ET", "OH": "ET", "OK": "CT", "OR": "PT", "PA": "ET", "RI": "ET",
+    "SC": "ET", "SD": "CT", "TN": "CT", "TX": "CT", "UT": "MT", "VA": "ET", "VT": "ET", "WA": "PT",
+    "WI": "CT", "WV": "ET", "WY": "MT",
+}
+
 
 def _normalize_text(value: Optional[str]) -> str:
     return " ".join((value or "").strip().lower().split())
+
+
+def _normalize_constraint_text(value: Optional[str]) -> str:
+    return _normalize_text((value or "").replace("/", " ").replace("-", " "))
+
+
+def _extract_timezone_families(text: str) -> List[str]:
+    families: List[str] = []
+    for token in TIMEZONE_TOKEN_PATTERN.findall(text or ""):
+        family = TIMEZONE_FAMILY_ALIASES.get((token or "").strip().lower())
+        if family and family not in families:
+            families.append(family)
+    return families
+
+
+def _extract_state_code(location_name: str) -> Optional[str]:
+    if not location_name:
+        return None
+
+    state_match = re.search(r",\s*([A-Z]{2})(?:\s*,|\s*$)", location_name)
+    if state_match:
+        return state_match.group(1).upper()
+    return None
+
+
+def _extract_selected_timezone_families(selected_locations: List[str]) -> List[str]:
+    found: List[str] = []
+    for location_name in selected_locations:
+        state_code = _extract_state_code(location_name)
+        if not state_code:
+            continue
+
+        family = US_STATE_TO_TIMEZONE_FAMILY.get(state_code)
+        if family and family not in found:
+            found.append(family)
+
+    return found
+
+
+def _extract_location_constraints(job: dict, location_names: List[str]) -> dict[str, Any]:
+    raw_text = " ".join(
+        [
+            job.get("name", "") or "",
+            job.get("short_name", "") or "",
+            job.get("contents", "") or "",
+            " ".join(location_names),
+        ]
+    )
+    clean_text = re.sub(r"<[^>]+>", " ", raw_text)
+    normalized_text = _normalize_constraint_text(clean_text)
+
+    include_timezone_families = _extract_timezone_families(clean_text)
+    include_location_terms: List[str] = []
+    exclude_location_terms: List[str] = []
+
+    if "within the us" in normalized_text or "residing in the us" in normalized_text or "united states" in normalized_text:
+        include_location_terms.append("united states")
+
+    for segment in EXCLUSION_SEGMENT_PATTERN.findall(clean_text):
+        for chunk in re.split(r",|\band\b", segment, flags=re.IGNORECASE):
+            normalized = _normalize_constraint_text(chunk)
+            if not normalized or len(normalized) < 3:
+                continue
+            if normalized not in exclude_location_terms:
+                exclude_location_terms.append(normalized)
+
+    constraint_count = len(include_timezone_families) + len(include_location_terms) + len(exclude_location_terms)
+    if constraint_count >= 2:
+        confidence = "high"
+    elif constraint_count == 1:
+        confidence = "medium"
+    else:
+        confidence = "low"
+
+    return {
+        "include_timezone_families": include_timezone_families,
+        "include_location_terms": include_location_terms,
+        "exclude_location_terms": exclude_location_terms[:8],
+        "confidence": confidence,
+    }
+
+
+def _term_matches_selected_locations(term: str, selected_locations: List[str], selected_country_code: str) -> bool:
+    normalized_term = _normalize_constraint_text(term)
+    if not normalized_term:
+        return False
+
+    if normalized_term in {"us", "usa", "united states"}:
+        return selected_country_code.upper() == "US"
+
+    term_tokens = {tok for tok in re.split(r"[^a-z0-9]+", normalized_term) if tok}
+    if not term_tokens:
+        return False
+
+    for selected in selected_locations:
+        selected_tokens = {tok for tok in re.split(r"[^a-z0-9]+", _normalize_constraint_text(selected)) if tok}
+        if term_tokens.issubset(selected_tokens) or selected_tokens.issubset(term_tokens):
+            return True
+    return False
+
+
+def _evaluate_local_compatibility(
+    *,
+    constraints: dict[str, Any],
+    selected_locations: List[str],
+    selected_country_code: str,
+) -> tuple[bool, str]:
+    if not selected_locations:
+        return False, "no-selected-locations"
+
+    include_terms = constraints.get("include_location_terms") or []
+    exclude_terms = constraints.get("exclude_location_terms") or []
+    include_tz = constraints.get("include_timezone_families") or []
+    selected_tz = _extract_selected_timezone_families(selected_locations)
+
+    if include_terms:
+        include_overlap = any(_term_matches_selected_locations(term, selected_locations, selected_country_code) for term in include_terms)
+        if not include_overlap:
+            return False, "include-location-miss"
+
+    if include_tz:
+        if not selected_tz:
+            return False, "include-timezone-unknown"
+        tz_overlap = bool(set(include_tz) & set(selected_tz))
+        if not tz_overlap:
+            return False, "include-timezone-miss"
+
+    for term in exclude_terms:
+        if _term_matches_selected_locations(term, selected_locations, selected_country_code):
+            return False, "excluded-location-overlap"
+
+    if not include_terms and not include_tz and not exclude_terms:
+        return False, "no-constraints"
+
+    return True, "constraint-overlap"
 
 
 def _jobs_cache_enabled() -> bool:
@@ -179,6 +344,8 @@ def _build_jobs_filter_signature(
     normalized_companies: List[str],
     include_remote: bool,
     include_hybrid: bool,
+    location_mode: str,
+    location_country_code: str,
     page_size: int,
 ) -> str:
     signature_payload = {
@@ -188,6 +355,8 @@ def _build_jobs_filter_signature(
         "companies": normalized_companies,
         "include_remote": include_remote,
         "include_hybrid": include_hybrid,
+        "location_mode": location_mode,
+        "location_country_code": location_country_code,
         "page_size": page_size,
     }
     raw = json.dumps(signature_payload, sort_keys=True, separators=(",", ":"))
@@ -493,23 +662,28 @@ def _is_job_allowed_by_preferences(
     include_hybrid: bool,
     job_locations: List[str],
     selected_locations: List[str],
-) -> bool:
+    allow_local_compatible_remote: bool,
+) -> tuple[bool, str]:
     has_concrete_location_match = _has_concrete_selected_location(job_locations, selected_locations)
     if selected_locations and not has_concrete_location_match:
         # When toggles are enabled, allow remote/hybrid jobs even without a concrete nearby-city match.
         if include_remote and has_remote:
-            pass
+            reason = "remote_override"
         elif include_hybrid and has_hybrid:
-            pass
+            reason = "hybrid_override"
+        elif allow_local_compatible_remote and has_remote:
+            reason = "constraint_overlap"
         else:
-            return False
+            return False, "no-match"
+    else:
+        reason = "concrete_location" if selected_locations else "no-location-filter"
 
     is_remote_only = has_remote and not has_hybrid
     if not include_hybrid and has_hybrid:
-        return False
-    if not include_remote and is_remote_only:
-        return False
-    return True
+        return False, "hybrid-disabled"
+    if not include_remote and is_remote_only and not allow_local_compatible_remote:
+        return False, "remote-disabled"
+    return True, reason
 
 
 def _normalize_level_for_muse(level_value: str) -> str:
@@ -543,6 +717,7 @@ def _map_muse_job(job: dict) -> dict:
         location_mode_flags.append("remote")
     if has_hybrid:
         location_mode_flags.append("hybrid")
+    constraints = _extract_location_constraints(job, locations)
 
     return {
         "id": job.get("id"),
@@ -562,6 +737,7 @@ def _map_muse_job(job: dict) -> dict:
         "has_hybrid": has_hybrid,
         "location_mode_flags": location_mode_flags,
         "work_mode_reason": work_mode_reason,
+        "location_constraints": constraints,
         "publication_date": job.get("publication_date"),
         "job_url": job.get("refs", {}).get("landing_page"),
         "contents": job.get("contents") or "",
@@ -852,6 +1028,8 @@ async def search_jobs(
         normalized_companies=normalized_companies,
         include_remote=include_remote,
         include_hybrid=include_hybrid,
+        location_mode=(location_mode or "").strip().lower(),
+        location_country_code=(location_country_code or "").strip().upper(),
         page_size=page_size,
     )
     cached_response = _get_jobs_cache_response(cache_signature, page)
@@ -867,6 +1045,13 @@ async def search_jobs(
     accepted_ids = set()
     raw_jobs_seen = 0
     filtered_out_count = 0
+    accepted_by_concrete_location = 0
+    accepted_by_remote_override = 0
+    accepted_by_hybrid_override = 0
+    accepted_by_constraint_overlap = 0
+    constraint_parse_high_confidence = 0
+    constraint_parse_medium_confidence = 0
+    constraint_parse_low_confidence = 0
     source_pages_scanned = 0
     guardrail_stop_reason = ""
     first_payload = None
@@ -898,18 +1083,45 @@ async def search_jobs(
 
             for raw_job in raw_jobs:
                 mapped = _map_muse_job(raw_job)
-                allowed = _is_job_allowed_by_preferences(
+                constraints = mapped.get("location_constraints") or {}
+                confidence = constraints.get("confidence")
+                if confidence == "high":
+                    constraint_parse_high_confidence += 1
+                elif confidence == "medium":
+                    constraint_parse_medium_confidence += 1
+                else:
+                    constraint_parse_low_confidence += 1
+
+                constraint_compatible, compatibility_reason = _evaluate_local_compatibility(
+                    constraints=constraints,
+                    selected_locations=selected_locations,
+                    selected_country_code=(location_country_code or "").strip().upper(),
+                )
+                mapped["is_local_compatible_remote"] = constraint_compatible
+                mapped["local_compatibility_reason"] = compatibility_reason
+
+                allowed, allow_reason = _is_job_allowed_by_preferences(
                     has_remote=mapped.get("has_remote", False),
                     has_hybrid=mapped.get("has_hybrid", False),
                     include_remote=include_remote,
                     include_hybrid=include_hybrid,
                     job_locations=mapped.get("all_location_names", []) or [],
                     selected_locations=selected_locations,
+                    allow_local_compatible_remote=(not include_remote and constraint_compatible),
                 )
 
                 if not allowed:
                     page_filtered += 1
                     continue
+
+                if allow_reason == "concrete_location":
+                    accepted_by_concrete_location += 1
+                elif allow_reason == "remote_override":
+                    accepted_by_remote_override += 1
+                elif allow_reason == "hybrid_override":
+                    accepted_by_hybrid_override += 1
+                elif allow_reason == "constraint_overlap":
+                    accepted_by_constraint_overlap += 1
 
                 job_id = mapped.get("id")
                 if job_id in accepted_ids:
@@ -996,9 +1208,19 @@ async def search_jobs(
         "location_mode": (location_mode or "").strip().lower(),
         "location_country_code": (location_country_code or "").strip().upper(),
         "location_selection_strategy": location_canonicalization.get("strategy"),
+        "requested_locations_sample": raw_location_inputs[:12],
+        "selected_locations_sample": selected_locations[:12],
         "canonicalized_location_count": int(location_canonicalization.get("canonicalized_count") or 0),
         "transformed_location_count": int(location_canonicalization.get("transformed_count") or 0),
         "unmatched_location_count": int(location_canonicalization.get("unmatched_count") or 0),
+        "accepted_by_concrete_location": accepted_by_concrete_location,
+        "accepted_by_remote_override": accepted_by_remote_override,
+        "accepted_by_hybrid_override": accepted_by_hybrid_override,
+        "accepted_by_constraint_overlap": accepted_by_constraint_overlap,
+        "constraint_parse_high_confidence": constraint_parse_high_confidence,
+        "constraint_parse_medium_confidence": constraint_parse_medium_confidence,
+        "constraint_parse_low_confidence": constraint_parse_low_confidence,
+        "constraint_policy_remote_off": "allow-if-overlap",
         "window_start_page": window_start_page,
         "window_size": window_size,
         "has_more_source_pages": has_more_source_pages,

@@ -12,6 +12,14 @@
                 <span class="meta-pill">{{ job.location || "Unknown location" }}</span>
                 <span v-if="job.has_hybrid" class="meta-pill accent">Hybrid</span>
                 <span v-if="job.has_remote && !job.has_hybrid" class="meta-pill accent">Remote</span>
+                <span v-if="job.is_local_compatible_remote" class="meta-pill compatible">Local-Compatible</span>
+                <span
+                    v-for="tz in constraintTimezones"
+                    :key="`tz-${tz}`"
+                    class="meta-pill info"
+                >
+                    {{ tz }}
+                </span>
             </div>
 
             <p class="job-teaser">{{ teaserText }}</p>
@@ -45,6 +53,8 @@
                     <span v-if="job.categories && job.categories.length">Categories: {{ job.categories.join(", ") }}</span>
                     <span v-if="job.tags && job.tags.length">Tags: {{ job.tags.join(", ") }}</span>
                     <span v-if="job.publication_date">Posted: {{ formattedPublicationDate }}</span>
+                    <span v-if="job.is_local_compatible_remote">Compatibility: {{ compatibilityLabel }}</span>
+                    <span v-if="constraintExclusions.length">Exclusions: {{ constraintExclusions.join(", ") }}</span>
                 </div>
 
                 <div class="job-modal-body">
@@ -108,6 +118,20 @@ export default {
             const parsed = new Date(raw)
             if (Number.isNaN(parsed.getTime())) return ""
             return parsed.toLocaleDateString()
+        },
+        constraintTimezones() {
+            const values = this.job?.location_constraints?.include_timezone_families || []
+            return values.slice(0, 2)
+        },
+        constraintExclusions() {
+            const values = this.job?.location_constraints?.exclude_location_terms || []
+            return values.slice(0, 2)
+        },
+        compatibilityLabel() {
+            if (!this.job?.is_local_compatible_remote) return "No local overlap"
+            const reason = this.job?.local_compatibility_reason || "constraint-overlap"
+            if (reason === "constraint-overlap") return "Constraint overlap"
+            return reason
         }
     },
     methods: {
@@ -160,6 +184,18 @@ export default {
     border-color: #0f766e;
     color: #0f766e;
     background: rgba(15, 118, 110, 0.08);
+}
+
+.meta-pill.compatible {
+    border-color: #0c4a6e;
+    color: #0c4a6e;
+    background: rgba(14, 116, 144, 0.12);
+}
+
+.meta-pill.info {
+    border-color: #4b5563;
+    color: #374151;
+    background: #f1f5f9;
 }
 
 .job-teaser {

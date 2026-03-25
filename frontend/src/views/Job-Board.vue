@@ -1478,11 +1478,12 @@ export default {
         const hasHybrid = job.has_hybrid === true
         const hasRemote = job.has_remote === true
         const isRemoteOnly = hasRemote && !hasHybrid
+        const localCompatibleRemote = job.is_local_compatible_remote === true
 
         if (!includeHybrid && hasHybrid) {
           return false
         }
-        if (!includeRemote && isRemoteOnly) {
+        if (!includeRemote && isRemoteOnly && !localCompatibleRemote) {
           return false
         }
         return true
@@ -1546,6 +1547,15 @@ export default {
           canonicalizedLocationCount: Number(data.canonicalized_location_count || 0),
           transformedLocationCount: Number(data.transformed_location_count || 0),
           unmatchedLocationCount: Number(data.unmatched_location_count || 0),
+          acceptedByConcreteLocation: Number(data.accepted_by_concrete_location || 0),
+          acceptedByRemoteOverride: Number(data.accepted_by_remote_override || 0),
+          acceptedByHybridOverride: Number(data.accepted_by_hybrid_override || 0),
+          acceptedByConstraintOverlap: Number(data.accepted_by_constraint_overlap || 0),
+          constraintParseHighConfidence: Number(data.constraint_parse_high_confidence || 0),
+          constraintParseMediumConfidence: Number(data.constraint_parse_medium_confidence || 0),
+          constraintParseLowConfidence: Number(data.constraint_parse_low_confidence || 0),
+          requestedLocationsSample: data.requested_locations_sample || [],
+          selectedLocationsSample: data.selected_locations_sample || [],
           cacheHit: data.cache_hit === true,
         }
         if (this.page > this.totalPages) {
@@ -1575,6 +1585,9 @@ export default {
           work_mode_reason: job.work_mode_reason || "",
           has_remote: job.has_remote === true,
           has_hybrid: job.has_hybrid === true,
+          is_local_compatible_remote: job.is_local_compatible_remote === true,
+          local_compatibility_reason: job.local_compatibility_reason || "",
+          location_constraints: job.location_constraints || {},
           publication_date: job.publication_date,
           link: job.job_url,
           contents: job.contents || ""

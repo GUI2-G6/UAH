@@ -33,6 +33,91 @@
         ═════════════════════════════════════════════════════ -->
         <div v-if="activeTab === 'imported'" class="dashboard">
 
+            <div ref="inlineImportSection" class="appinfo-card inline-import-card">
+                <h3>Import Resume</h3>
+                <p class="subtitle" style="margin-top:-8px; margin-bottom: 12px;">Upload your resume PDF to extract job-application data inline.</p>
+
+                <div
+                    v-if="uploadStep === 'select'"
+                    class="drop-zone"
+                    :class="{ 'drag-over': isDragOver }"
+                    @click="triggerFileInput"
+                    @dragover.prevent="isDragOver = true"
+                    @dragleave="isDragOver = false"
+                    @drop.prevent="onFileDrop"
+                >
+                    <div class="drop-icon">&#128228;</div>
+                    <p>Upload your resume</p>
+                    <p class="drop-hint">Drag and drop your PDF file here, or click to browse</p>
+                    <button class="btn-primary" @click.stop="triggerFileInput">&#128196; Choose PDF File</button>
+                    <p class="drop-hint">PDF files only, max 5MB</p>
+                </div>
+                <input
+                    ref="fileInput"
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    style="display:none"
+                    @change="onFileChange"
+                />
+
+                <template v-if="uploadStep === 'confirm'">
+                    <div class="file-preview-row" style="margin-top:6px;">
+                        <div class="pdf-icon">PDF</div>
+                        <div class="file-info">
+                            <p class="file-name">{{ pendingFile.name }}</p>
+                            <p class="file-size">{{ formatBytes(pendingFile.size) }}</p>
+                        </div>
+                        <button class="clear-btn" @click="clearFile" title="Remove file">&#x2715;</button>
+                    </div>
+
+                    <div class="import-options" style="margin-top:10px;">
+                        <h4>Import Options</h4>
+                        <div class="import-option-row">
+                            <div class="check-circle">&#10003;</div>
+                            <div class="option-text">
+                                <strong>Extract contact information</strong>
+                                <span>Name, email, phone number, and location</span>
+                            </div>
+                        </div>
+                        <div class="import-option-row">
+                            <div class="check-circle">&#10003;</div>
+                            <div class="option-text">
+                                <strong>Parse education and work history</strong>
+                                <span>School and employment details used in applications</span>
+                            </div>
+                        </div>
+                        <div class="import-option-row">
+                            <div class="check-circle">&#10003;</div>
+                            <div class="option-text">
+                                <strong>Identify skills, links, and certifications</strong>
+                                <span>Technical skills and profile-ready metadata</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 8px;">
+                        <label style="font-size:0.82rem;font-weight:600;color:#8a94a6;display:block;margin-bottom:6px;">Parse method</label>
+                        <div class="method-toggle">
+                            <button :class="{ active: parseMethod === 'llm' }" @click="parseMethod = 'llm'">AI (LLM)</button>
+                            <button :class="{ active: parseMethod === 'rules' }" @click="parseMethod = 'rules'">Rules-based</button>
+                        </div>
+                    </div>
+
+                    <div class="modal-actions" style="justify-content:flex-start;">
+                        <button class="btn-secondary" @click="clearFile" :disabled="uploading">Choose Different File</button>
+                        <button class="btn-primary" @click="doUpload" :disabled="uploading">
+                            <span v-if="uploading">
+                                <span class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></span>
+                                Importing...
+                            </span>
+                            <span v-else>Import Resume</span>
+                        </button>
+                    </div>
+                </template>
+
+                <div v-if="uploadError" class="upload-error">{{ uploadError }}</div>
+            </div>
+
             <!-- Stats row -->
             <div class="stats-row">
                 <div class="stat-card">
@@ -234,6 +319,75 @@
                 </div>
             </div>
 
+            <div class="appinfo-card">
+                <h3>Skills and Certifications</h3>
+                <div class="field-group" style="margin-bottom:14px;">
+                    <label>Skills (comma-separated)</label>
+                    <textarea v-model="skillsText" placeholder="Python, SQL, FastAPI, Vue.js, Docker"></textarea>
+                </div>
+                <div class="field-group" style="margin-bottom:14px;">
+                    <label>Certifications and Licenses</label>
+                    <textarea v-model="certificationsText" placeholder="AWS Certified Cloud Practitioner - Amazon - 2025"></textarea>
+                </div>
+                <div class="field-group">
+                    <label>Professional Links</label>
+                    <textarea v-model="professionalLinksText" placeholder="LinkedIn: https://...&#10;GitHub: https://...&#10;Portfolio: https://..."></textarea>
+                </div>
+            </div>
+
+            <div class="appinfo-card">
+                <h3>Education History (Additional Entries)</h3>
+                <div class="field-group">
+                    <label>Education History</label>
+                    <textarea
+                        v-model="educationHistoryText"
+                        placeholder="School | Degree | Field | Start Date | End Date&#10;Example University | B.S. | Computer Science | August 2022 | May 2026"
+                        style="min-height:130px;"
+                    ></textarea>
+                </div>
+            </div>
+
+            <div class="appinfo-card">
+                <h3>Employment History (Additional Entries)</h3>
+                <div class="field-group">
+                    <label>Employment History</label>
+                    <textarea
+                        v-model="employmentHistoryText"
+                        placeholder="Company | Title | Location | Start Date | End Date&#10;Tech Corp | Software Engineer Intern | Boston, MA | June 2024 | August 2024"
+                        style="min-height:130px;"
+                    ></textarea>
+                </div>
+            </div>
+
+            <div class="appinfo-card">
+                <h3>Demographics (Optional)</h3>
+                <div class="appinfo-grid">
+                    <div class="field-group">
+                        <label>Gender Identity (Optional)</label>
+                        <select v-model="demographicGender">
+                            <option value="">Prefer not to answer</option>
+                            <option>Female</option>
+                            <option>Male</option>
+                            <option>Non-binary</option>
+                            <option>Another identity</option>
+                        </select>
+                    </div>
+                    <div class="field-group">
+                        <label>Ethnicity / Race (Optional)</label>
+                        <select v-model="demographicEthnicity">
+                            <option value="">Prefer not to answer</option>
+                            <option>American Indian or Alaska Native</option>
+                            <option>Asian</option>
+                            <option>Black or African American</option>
+                            <option>Hispanic or Latino</option>
+                            <option>Native Hawaiian or Other Pacific Islander</option>
+                            <option>White</option>
+                            <option>Two or More Races</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
         </div><!-- /tab applicant -->
 
 
@@ -319,113 +473,6 @@
             </div>
 
         </div><!-- /tab jobinfo -->
-
-
-        <!-- ════════════════════════════════════════════════════
-             UPLOAD MODAL
-        ═════════════════════════════════════════════════════ -->
-        <div v-if="showUploadModal" class="modal-overlay" @click.self="closeUploadModal">
-            <div class="modal-box" v-draggable-modal="{ handle: '.modal-drag-header' }">
-                <div class="modal-drag-header drag-handle">
-                    <h2>Import Resume</h2>
-                    <p class="subtitle">Upload your resume PDF to automatically extract job application data</p>
-                </div>
-
-                <!-- Step 1: Drop zone -->
-                <div
-                    v-if="uploadStep === 'select'"
-                    class="drop-zone"
-                    :class="{ 'drag-over': isDragOver }"
-                    @click="triggerFileInput"
-                    @dragover.prevent="isDragOver = true"
-                    @dragleave="isDragOver = false"
-                    @drop.prevent="onFileDrop"
-                >
-                    <div class="drop-icon">&#128228;</div>
-                    <p>Upload your resume</p>
-                    <p class="drop-hint">Drag and drop your PDF file here, or click to browse</p>
-                    <button class="btn-primary" @click.stop="triggerFileInput">&#128196; Choose PDF File</button>
-                    <p class="drop-hint">PDF files only, max 5MB</p>
-                </div>
-                <input
-                    ref="fileInput"
-                    type="file"
-                    accept=".pdf,application/pdf"
-                    style="display:none"
-                    @change="onFileChange"
-                />
-
-                <!-- Step 2: Confirm -->
-                <template v-if="uploadStep === 'confirm'">
-                    <!-- File preview -->
-                    <div class="file-preview-row">
-                        <div class="pdf-icon">PDF</div>
-                        <div class="file-info">
-                            <p class="file-name">{{ pendingFile.name }}</p>
-                            <p class="file-size">{{ formatBytes(pendingFile.size) }}</p>
-                        </div>
-                        <button class="clear-btn" @click="clearFile" title="Remove file">&#x2715;</button>
-                    </div>
-
-                    <!-- Import options (informational) -->
-                    <div class="import-options">
-                        <h4>Import Options</h4>
-                        <div class="import-option-row">
-                            <div class="check-circle">&#10003;</div>
-                            <div class="option-text">
-                                <strong>Extract contact information</strong>
-                                <span>Name, email, phone number, etc.</span>
-                            </div>
-                        </div>
-                        <div class="import-option-row">
-                            <div class="check-circle">&#10003;</div>
-                            <div class="option-text">
-                                <strong>Parse work experience</strong>
-                                <span>Previous positions and companies</span>
-                            </div>
-                        </div>
-                        <div class="import-option-row">
-                            <div class="check-circle">&#10003;</div>
-                            <div class="option-text">
-                                <strong>Identify skills</strong>
-                                <span>Technical skills and competencies</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Parse method toggle -->
-                    <div>
-                        <label style="font-size:0.82rem;font-weight:600;color:#8a94a6;display:block;margin-bottom:6px;">Parse method</label>
-                        <div class="method-toggle">
-                            <button :class="{ active: parseMethod === 'llm' }" @click="parseMethod = 'llm'">AI (LLM)</button>
-                            <button :class="{ active: parseMethod === 'rules' }" @click="parseMethod = 'rules'">Rules-based</button>
-                        </div>
-                    </div>
-                </template>
-
-                <!-- Error -->
-                <div v-if="uploadError" class="upload-error">{{ uploadError }}</div>
-
-                <!-- How it works (step 1 only) -->
-                <div v-if="uploadStep === 'select'" class="info-box">
-                    <strong>How it works</strong>
-                    Upload your resume and we'll automatically extract relevant information to help you track your
-                    job applications more efficiently.
-                </div>
-
-                <!-- Actions (step 2) -->
-                <div v-if="uploadStep === 'confirm'" class="modal-actions">
-                    <button class="btn-secondary" @click="closeUploadModal" :disabled="uploading">Cancel</button>
-                    <button class="btn-primary" @click="doUpload" :disabled="uploading">
-                        <span v-if="uploading">
-                            <span class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></span>
-                            Importing…
-                        </span>
-                        <span v-else>Import Resume</span>
-                    </button>
-                </div>
-            </div>
-        </div>
 
 
         <!-- ════════════════════════════════════════════════════
@@ -593,8 +640,7 @@ export default {
             resumesError: null,
             deletingId: null,
 
-            // Upload modal
-            showUploadModal: false,
+            // Inline upload
             uploadStep: 'select',   // 'select' | 'confirm'
             pendingFile: null,
             parseMethod: 'llm',
@@ -629,6 +675,13 @@ export default {
             gpa: '',
             yearsExperience: '',
             jobTitle: '',
+            skillsText: '',
+            certificationsText: '',
+            professionalLinksText: '',
+            educationHistoryText: '',
+            employmentHistoryText: '',
+            demographicGender: '',
+            demographicEthnicity: '',
             working: false,
             saveStatus: { type: '', message: '' },
             _saveTimer: null,
@@ -687,7 +740,6 @@ export default {
                 resumesLoading: this.resumesLoading,
                 resumesCount: this.resumes.length,
                 resumesError: this.resumesError,
-                showUploadModal: this.showUploadModal,
                 uploadStep: this.uploadStep,
                 uploading: this.uploading,
                 uploadError: this.uploadError,
@@ -793,23 +845,19 @@ export default {
             return Math.round((this.portalFilledCount(r) / 15) * 100)
         },
 
-        // ── Upload modal ────────────────────────────────────
+        // ── Inline upload ───────────────────────────────────
         openUploadModal() {
-            this.showUploadModal = true
             this.uploadStep = 'select'
             this.pendingFile = null
             this.parseMethod = 'llm'
             this.uploadError = null
             this.isDragOver = false
+            this.$nextTick(() => {
+                this.$refs.inlineImportSection?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            })
             this.publishDebugState('upload-open')
         },
-        closeUploadModal() {
-            if (this.uploading) return
-            this.showUploadModal = false
-            this.resetUploadModal()
-            this.publishDebugState('upload-closed')
-        },
-        resetUploadModal() {
+        resetUploadFlow() {
             this.uploadStep = 'select'
             this.pendingFile = null
             this.uploadError = null
@@ -861,7 +909,7 @@ export default {
                 })
                 const uploadData = await uploadRes.json().catch(() => null)
                 if (!uploadRes.ok) {
-                    throw new Error(uploadData?.detail || `Upload failed (HTTP ${uploadRes.status})`)
+                    throw new Error(this.apiErrorMessage(uploadData, uploadRes.status, 'Upload failed'))
                 }
 
                 // 2. Parse
@@ -873,11 +921,10 @@ export default {
                 })
                 const parseData = await parseRes.json().catch(() => null)
                 if (!parseRes.ok) {
-                    throw new Error(parseData?.detail || `Parse failed (HTTP ${parseRes.status})`)
+                    throw new Error(this.apiErrorMessage(parseData, parseRes.status, 'Parse failed'))
                 }
 
-                this.showUploadModal = false
-                this.resetUploadModal()
+                this.resetUploadFlow()
                 await this.loadResumes()
                 this.publishDebugState('upload-success')
             } catch (e) {
@@ -917,6 +964,13 @@ export default {
                     this.gpa = d.gpa || ''
                     this.yearsExperience = d.yearsExperience || ''
                     this.jobTitle = d.jobTitle || ''
+                    this.skillsText = d.skillsText || ''
+                    this.certificationsText = d.certificationsText || ''
+                    this.professionalLinksText = d.professionalLinksText || ''
+                    this.educationHistoryText = d.educationHistoryText || ''
+                    this.employmentHistoryText = d.employmentHistoryText || ''
+                    this.demographicGender = d.demographicGender || ''
+                    this.demographicEthnicity = d.demographicEthnicity || ''
                 }
             } catch { /* ignore */ }
             try {
@@ -956,6 +1010,13 @@ export default {
                     degree: this.degree, major: this.major, university: this.university,
                     gradYear: this.gradYear, gpa: this.gpa,
                     yearsExperience: this.yearsExperience, jobTitle: this.jobTitle,
+                    skillsText: this.skillsText,
+                    certificationsText: this.certificationsText,
+                    professionalLinksText: this.professionalLinksText,
+                    educationHistoryText: this.educationHistoryText,
+                    employmentHistoryText: this.employmentHistoryText,
+                    demographicGender: this.demographicGender,
+                    demographicEthnicity: this.demographicEthnicity,
                 }))
                 this.saveStatus = { type: 'success', message: 'Information saved.' }
                 this.publishDebugState('applicant-save-success')
@@ -1003,6 +1064,15 @@ export default {
             if (bytes < 1024) return bytes + ' B'
             if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
             return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+        },
+        apiErrorMessage(payload, status, fallbackLabel) {
+            const detail = payload?.detail
+            if (typeof detail === 'string' && detail.trim()) return detail
+            if (detail && typeof detail === 'object') {
+                if (typeof detail.message === 'string' && detail.message.trim()) return detail.message
+                if (typeof detail.code === 'string' && detail.code.trim()) return `${fallbackLabel}: ${detail.code}`
+            }
+            return `${fallbackLabel} (HTTP ${status})`
         },
     },
 }

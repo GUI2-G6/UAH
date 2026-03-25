@@ -92,5 +92,13 @@ class Settings:
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
 
+    def missing_resume_ocr_config(self) -> list[str]:
+        missing = []
+        if not self.ZAI_API_KEY or not self.ZAI_API_KEY.strip():
+            missing.append("ZAI_API_KEY")
+        if not self.ZAI_OCR_URL or not self.ZAI_OCR_URL.strip():
+            missing.append("ZAI_OCR_URL")
+        return missing
+
 
 settings = Settings()

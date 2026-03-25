@@ -52,14 +52,22 @@ async def upload_resume(
 
     ocr_result = await ocr_pdf(pdf_bytes)
     if not ocr_result.get("ok"):
+        error_code = ocr_result.get("error_code") or "OCR_EXTRACTION_FAILED"
+        status_code = int(ocr_result.get("status_code") or 502)
+        public_message = "Could not extract text from the uploaded PDF."
+        if error_code == "OCR_NOT_CONFIGURED":
+            public_message = "Resume OCR service is not configured. Please contact support."
+        elif error_code == "OCR_TIMEOUT":
+            public_message = "Resume OCR request timed out. Please retry in a moment."
+
         raise HTTPException(
-            status_code=502,
+            status_code=status_code,
             detail={
                 "code": "OCR_EXTRACTION_FAILED",
-                "message": "Could not extract text from the uploaded PDF.",
+                "message": public_message,
                 "debug": {
-                    "error_code": ocr_result.get("error_code"),
-                    "status_code": ocr_result.get("status_code"),
+                    "error_code": error_code,
+                    "status_code": status_code,
                     "exception_type": ocr_result.get("exception_type"),
                     "response_excerpt": ocr_result.get("response_excerpt"),
                 },
