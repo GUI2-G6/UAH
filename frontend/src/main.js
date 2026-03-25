@@ -1,6 +1,8 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
+import { draggableModalDirective } from './lib/draggableModalDirective'
+import { installDebugFetchTracker } from './lib/debugDiagnostics'
 
 // Polyfill for environments where `crypto.randomUUID` is unavailable.
 // Some browsers only expose it in secure contexts (https/localhost).
@@ -28,5 +30,9 @@ import router from './router'
 	}
 })()
 
-createApp(App).use(router).mount('#app')
+installDebugFetchTracker()
+
+const app = createApp(App)
+app.directive('draggable-modal', draggableModalDirective)
+app.use(router).mount('#app')
 

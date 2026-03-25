@@ -249,6 +249,7 @@
   gap: 12px;
   padding: 14px 16px 10px;
   border-bottom: 1px solid #e7eaee;
+  cursor: grab;
 }
 
 .city-modal-header h2 {

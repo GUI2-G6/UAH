@@ -4,6 +4,8 @@
       <h1>Forgot password</h1>
       <p class="subtitle">Enter your email to receive a reset token</p>
 
+      <input type="text" autocomplete="username" style="display:none" aria-hidden="true" />
+
       <input
         class="email-input"
         type="email"

@@ -30,8 +30,8 @@
             :aria-label="`Job details for ${job.title || 'role'}`"
             @click="closeDetails"
         >
-            <div class="job-modal-dialog" @click.stop>
-                <div class="job-modal-header">
+            <div class="job-modal-dialog" v-draggable-modal="{ handle: '.job-modal-header' }" @click.stop>
+                <div class="job-modal-header drag-handle">
                     <h2>{{ job.title }}</h2>
                     <button type="button" @click="closeDetails">Close</button>
                 </div>
@@ -227,6 +227,7 @@ export default {
     gap: 10px;
     padding: 14px 16px 10px;
     border-bottom: 1px solid #e7eaee;
+    cursor: grab;
 }
 
 .job-modal-header h2 {

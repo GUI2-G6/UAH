@@ -1,7 +1,9 @@
 <template>
   <div class="confirm-overlay" role="dialog" aria-modal="true" :aria-label="title || 'Confirm'">
-    <div class="confirm-dialog" @click.stop>
-      <h2 class="confirm-title" v-if="title">{{ title }}</h2>
+    <div class="confirm-dialog" v-draggable-modal="{ handle: '.confirm-head' }" @click.stop>
+      <div class="confirm-head drag-handle">
+        <h2 class="confirm-title" v-if="title">{{ title }}</h2>
+      </div>
       <p class="confirm-message">{{ message }}</p>
 
       <div class="confirm-actions">
@@ -87,6 +89,10 @@ export default {
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
   padding: 22px 20px;
   text-align: center;
+}
+
+.confirm-head {
+  cursor: grab;
 }
 
 .confirm-title {

@@ -4,6 +4,8 @@
       <h1>Reset password</h1>
       <p class="subtitle">Paste your reset token and choose a new password</p>
 
+      <input type="text" autocomplete="username" style="display:none" aria-hidden="true" />
+
       <SecretInput
         v-model="token"
         inputClass="email-input"

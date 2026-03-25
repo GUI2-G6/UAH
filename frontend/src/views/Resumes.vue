@@ -325,8 +325,8 @@
              UPLOAD MODAL
         ═════════════════════════════════════════════════════ -->
         <div v-if="showUploadModal" class="modal-overlay" @click.self="closeUploadModal">
-            <div class="modal-box">
-                <div>
+            <div class="modal-box" v-draggable-modal="{ handle: '.modal-drag-header' }">
+                <div class="modal-drag-header drag-handle">
                     <h2>Import Resume</h2>
                     <p class="subtitle">Upload your resume PDF to automatically extract job application data</p>
                 </div>
@@ -432,8 +432,8 @@
              VIEW RESUME MODAL
         ═════════════════════════════════════════════════════ -->
         <div v-if="showViewModal" class="modal-overlay" @click.self="showViewModal = false">
-            <div class="modal-box view-modal-box">
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+            <div class="modal-box view-modal-box" v-draggable-modal="{ handle: '.modal-drag-header' }">
+                <div class="modal-drag-header drag-handle" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
                     <h2 style="margin:0;">{{ viewingResume ? viewingResume.file_name : 'Resume' }}</h2>
                     <button class="btn-secondary" style="padding:6px 12px;font-size:0.85rem;" @click="showViewModal = false">Close</button>
                 </div>
@@ -576,6 +576,7 @@
 
 <script>
 import { authedFetch, getCurrentUser, setCurrentUser } from '../lib/auth.js'
+import { publishCurrentPageDiagnostics, clearCurrentPageDiagnostics } from '../lib/debugDiagnostics'
 
 const APPINFO_KEY = 'uah_applicant_info'
 
@@ -669,9 +670,35 @@ export default {
     async mounted() {
         await this.loadResumes()
         this.loadApplicantInfo()
+        this.publishDebugState('mounted')
+    },
+
+    beforeUnmount() {
+        if (this._saveTimer) clearTimeout(this._saveTimer)
+        if (this._jobInfoTimer) clearTimeout(this._jobInfoTimer)
+        clearCurrentPageDiagnostics()
     },
 
     methods: {
+        publishDebugState(reason = 'state-update') {
+            publishCurrentPageDiagnostics({
+                reason,
+                activeTab: this.activeTab,
+                resumesLoading: this.resumesLoading,
+                resumesCount: this.resumes.length,
+                resumesError: this.resumesError,
+                showUploadModal: this.showUploadModal,
+                uploadStep: this.uploadStep,
+                uploading: this.uploading,
+                uploadError: this.uploadError,
+                showViewModal: this.showViewModal,
+                viewLoading: this.viewLoading,
+                viewingResumeId: this.viewingResume?.id || null,
+                saveStatus: this.saveStatus,
+                jobInfoError: this.jobInfoError,
+                jobInfoSuccess: this.jobInfoSuccess,
+            })
+        },
 
         // ── Resume list ─────────────────────────────────────
         async loadResumes() {
@@ -681,12 +708,14 @@ export default {
                 const res = await authedFetch('/api/resume/')
                 if (!res.ok) throw new Error(`HTTP ${res.status}`)
                 this.resumes = await res.json()
+                this.publishDebugState('resumes-loaded')
             } catch (e) {
                 if (e.message === 'Session expired' || e.message === 'Not authenticated') {
                     this.$router.push('/login')
                 } else {
                     this.resumesError = 'Failed to load resumes.'
                 }
+                this.publishDebugState('resumes-load-error')
             } finally {
                 this.resumesLoading = false
             }
@@ -724,12 +753,15 @@ export default {
             this.showViewModal = true
             this.viewLoading = true
             this.viewingResume = null
+            this.publishDebugState('view-open')
             try {
                 const res = await authedFetch(`/api/resume/${id}`)
                 if (!res.ok) throw new Error(`HTTP ${res.status}`)
                 this.viewingResume = await res.json()
+                this.publishDebugState('view-loaded')
             } catch {
                 this.showViewModal = false
+                this.publishDebugState('view-load-error')
             } finally {
                 this.viewLoading = false
             }
@@ -769,11 +801,13 @@ export default {
             this.parseMethod = 'llm'
             this.uploadError = null
             this.isDragOver = false
+            this.publishDebugState('upload-open')
         },
         closeUploadModal() {
             if (this.uploading) return
             this.showUploadModal = false
             this.resetUploadModal()
+            this.publishDebugState('upload-closed')
         },
         resetUploadModal() {
             this.uploadStep = 'select'
@@ -845,8 +879,10 @@ export default {
                 this.showUploadModal = false
                 this.resetUploadModal()
                 await this.loadResumes()
+                this.publishDebugState('upload-success')
             } catch (e) {
                 this.uploadError = e.message ?? String(e)
+                this.publishDebugState('upload-error')
             } finally {
                 this.uploading = false
             }
@@ -922,12 +958,14 @@ export default {
                     yearsExperience: this.yearsExperience, jobTitle: this.jobTitle,
                 }))
                 this.saveStatus = { type: 'success', message: 'Information saved.' }
+                this.publishDebugState('applicant-save-success')
             } catch (e) {
                 if (e.message === 'Session expired' || e.message === 'Not authenticated') {
                     this.$router.push('/login')
                     return
                 }
                 this.saveStatus = { type: 'error', message: e.message ?? 'Save failed.' }
+                this.publishDebugState('applicant-save-error')
             } finally {
                 this.working = false
                 this._saveTimer = setTimeout(() => { this.saveStatus = { type: '', message: '' } }, 3500)
@@ -941,6 +979,7 @@ export default {
             if (this._jobInfoTimer) clearTimeout(this._jobInfoTimer)
             if (!this.veteranStatus || !this.disabilityStatus || !this.californiaResident) {
                 this.jobInfoError = 'Please complete all required fields before saving.'
+                this.publishDebugState('jobinfo-validation-error')
                 return
             }
             localStorage.setItem('uah_job_info', JSON.stringify({
@@ -949,6 +988,7 @@ export default {
                 californiaResident: this.californiaResident,
             }))
             this.jobInfoSuccess = 'Information saved.'
+            this.publishDebugState('jobinfo-save-success')
             this._jobInfoTimer = setTimeout(() => { this.jobInfoSuccess = '' }, 3500)
         },
 

@@ -281,8 +281,8 @@
           aria-label="Advanced location options"
           @click="closeAdvancedLocationModal"
         >
-          <div class="city-modal-dialog advanced-location-dialog" @click.stop>
-            <div class="city-modal-header">
+          <div class="city-modal-dialog advanced-location-dialog" v-draggable-modal="{ handle: '.city-modal-header' }" @click.stop>
+            <div class="city-modal-header drag-handle">
               <h2>Advanced Location Options</h2>
               <button type="button" class="city-modal-close" @click="closeAdvancedLocationModal">Close</button>
             </div>
@@ -295,7 +295,7 @@
                   type="button"
                   class="mode-button"
                   :class="{ active: draftFilters.locationMode === 'manual' }"
-                  @click="draftFilters.locationMode = 'manual'"
+                  @click="setLocationMode('manual')"
                 >
                   Manual
                 </button>
@@ -303,7 +303,7 @@
                   type="button"
                   class="mode-button"
                   :class="{ active: draftFilters.locationMode === 'nearby' }"
-                  @click="draftFilters.locationMode = 'nearby'"
+                  @click="setLocationMode('nearby')"
                 >
                   Nearby Me
                 </button>
@@ -311,7 +311,7 @@
                   type="button"
                   class="mode-button"
                   :class="{ active: draftFilters.locationMode === 'country' }"
-                  @click="draftFilters.locationMode = 'country'"
+                  @click="setLocationMode('country')"
                 >
                   Within My Country
                 </button>
@@ -421,8 +421,8 @@
           aria-label="Category mapping"
           @click="closeCategoryMappingModal"
         >
-          <div class="city-modal-dialog" @click.stop>
-            <div class="city-modal-header">
+          <div class="city-modal-dialog" v-draggable-modal="{ handle: '.city-modal-header' }" @click.stop>
+            <div class="city-modal-header drag-handle">
               <h2>Category Group Mapping</h2>
               <button type="button" class="city-modal-close" @click="closeCategoryMappingModal">Close</button>
             </div>
@@ -448,8 +448,8 @@
           aria-label="All area cities"
           @click="closeCityPreviewModal"
         >
-          <div class="city-modal-dialog" @click.stop>
-            <div class="city-modal-header">
+          <div class="city-modal-dialog" v-draggable-modal="{ handle: '.city-modal-header' }" @click.stop>
+            <div class="city-modal-header drag-handle">
               <h2>Area Cities</h2>
               <button type="button" class="city-modal-close" @click="closeCityPreviewModal">Close</button>
             </div>
@@ -562,6 +562,7 @@ import {
   requestBrowserLocation,
   setCachedLocation
 } from "../lib/geolocation";
+import { publishCurrentPageDiagnostics, clearCurrentPageDiagnostics } from "../lib/debugDiagnostics";
 
 export default {
   name: "JobBoard",
@@ -1032,6 +1033,30 @@ export default {
       this.locationInfo = ""
       this.locationWarning = ""
       this.locationError = ""
+      this.publishDebugState("location-mode-changed")
+    },
+    publishDebugState(reason = "state-update") {
+      publishCurrentPageDiagnostics({
+        reason,
+        loading: this.loading,
+        error: this.error,
+        page: this.page,
+        pageSize: this.pageSize,
+        totalPages: this.totalPages,
+        totalJobs: this.totalJobs,
+        totalsAreEstimated: this.totalsAreEstimated,
+        hasNextPage: this.hasNextPage,
+        locationMode: this.draftFilters.locationMode,
+        locationPreviewCount: this.locationPreviewNames.length,
+        appliedLocationCount: (this.appliedFilters.locationNames || []).length,
+        categoryCount: (this.appliedFilters.categories || []).length,
+        levelCount: (this.appliedFilters.levels || []).length,
+        companyCount: (this.appliedFilters.companies || []).length,
+        includeHybrid: this.appliedFilters.includeHybrid,
+        includeRemote: this.appliedFilters.includeRemote,
+        locationWarning: this.locationWarning,
+        locationError: this.locationError,
+      })
     },
     openLevelMenu() {
       this.levelMenuOpen = true
@@ -1506,6 +1531,7 @@ export default {
         }))
 
         this.jobs = this.applyClientFilters(mappedJobs)
+        this.publishDebugState("jobs-loaded")
 
         if (allowAutoClamp && this.page > 1 && !this.jobs.length && !this.hasNextPage) {
           this.page = Math.max(1, this.page - 1)
@@ -1516,6 +1542,7 @@ export default {
         this.jobs = []
         this.error = "Failed to load jobs. Please try again."
         console.error("Failed to load jobs", e)
+        this.publishDebugState("jobs-load-error")
       } finally {
         this.loading = false
       }
@@ -1533,9 +1560,11 @@ export default {
 
         this.page = 1
         await this.loadJobs()
+        this.publishDebugState("filters-applied")
       } catch (e) {
         this.locationError = "Failed to apply location filters. Please review your location settings."
         console.error("Apply filters failed", e)
+        this.publishDebugState("filters-apply-error")
       } finally {
         this.locationBusy = false
       }
@@ -1570,6 +1599,7 @@ export default {
       this.page = 1
 
       await this.loadJobs()
+      this.publishDebugState("filters-cleared")
     },
     async goToNextPage() {
       if (!this.hasNextPage || this.loading) return
@@ -1597,19 +1627,23 @@ export default {
       this.resolvedLocation = cached
       this.locationInfo = `Using cached location near ${cached.city || "your area"}.`
       await this.applyFilters()
+      this.publishDebugState("mounted-with-cache")
       return
     }
 
     await this.detectViaIp()
     if (this.resolvedLocation?.latitude && this.resolvedLocation?.longitude) {
       await this.applyFilters()
+      this.publishDebugState("mounted-with-ip")
       return
     }
 
     await this.loadJobs()
+    this.publishDebugState("mounted")
   },
   beforeUnmount() {
     window.removeEventListener("keydown", this.handleGlobalKeydown)
+    clearCurrentPageDiagnostics()
   }
 }
 </script>

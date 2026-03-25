@@ -1,8 +1,11 @@
 import re
 import json
 import base64
+import logging
 import httpx
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 PORTAL_REQUIRED_FIELDS = {
     "personal_info.first_name": "First Name",
@@ -128,12 +131,20 @@ async def ocr_pdf(pdf_bytes: bytes) -> dict | None:
         "Content-Type": "application/json",
     }
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(settings.ZAI_OCR_URL, json=request_body, headers=headers)
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(settings.ZAI_OCR_URL, json=request_body, headers=headers)
 
-    if resp.status_code != 200:
+        if resp.status_code != 200:
+            logger.error(
+                f"OCR API error: status={resp.status_code}, url={settings.ZAI_OCR_URL}, "
+                f"response_text={resp.text[:200]}"
+            )
+            return None
+        return resp.json()
+    except Exception as e:
+        logger.error(f"OCR PDF processing failed: {type(e).__name__}: {str(e)}")
         return None
-    return resp.json()
 
 
 async def categorize_with_llm(md_text: str) -> dict | None:

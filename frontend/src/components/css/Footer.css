@@ -28,7 +28,23 @@
     transition: color 0.15s;
 }
 
+.footer-link-button {
+    color: #58a6ff;
+    text-decoration: none;
+    transition: color 0.15s;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font: inherit;
+    padding: 0;
+}
+
 .footer a:hover {
+    text-decoration: underline;
+    color: #79c0ff;
+}
+
+.footer-link-button:hover {
     text-decoration: underline;
     color: #79c0ff;
 }

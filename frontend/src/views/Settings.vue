@@ -58,6 +58,7 @@
                 <div class="settings-group">
                     <h4>Change Password</h4>
                     <form @submit.prevent="changePassword">
+                        <input type="text" autocomplete="username" style="display:none" aria-hidden="true" />
                         <SecretInput v-model="currentPassword" placeholder="Current password" autocomplete="current-password" :disabled="working" />
                         <SecretInput v-model="newPassword" placeholder="New password" autocomplete="new-password" :disabled="working" />
                         <SecretInput v-model="confirmNewPassword" placeholder="Confirm new password" autocomplete="new-password" :disabled="working" />
