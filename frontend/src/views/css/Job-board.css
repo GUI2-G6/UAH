@@ -164,13 +164,12 @@
   cursor: pointer;
 }
 
-.advanced-location-panel {
-  margin-top: 10px;
+.advanced-location-dialog {
+  width: min(760px, 96vw);
+}
+
+.advanced-location-scroll {
   padding: 12px;
-  border: 1px solid #dbe1e7;
-  border-radius: 10px;
-  background: #f5f7fb;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
 }
 
 .radius-row {

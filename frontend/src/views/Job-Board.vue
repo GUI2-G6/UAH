@@ -180,14 +180,6 @@
                     <button
                       type="button"
                       class="mode-button"
-                      :class="{ active: draftFilters.locationMode === 'manual' }"
-                      @click="draftFilters.locationMode = 'manual'"
-                    >
-                      Manual
-                    </button>
-                    <button
-                      type="button"
-                      class="mode-button"
                       :class="{ active: draftFilters.locationMode === 'nearby' }"
                       @click="draftFilters.locationMode = 'nearby'"
                     >
@@ -203,18 +195,9 @@
                     </button>
                     </div>
 
-                  <div v-if="draftFilters.locationMode === 'manual'" class="mode-panel">
-                    <input
-                      id="job-location-query"
-                      v-model.trim="draftFilters.manualLocationQuery"
-                      type="text"
-                      placeholder="ZIP code or city (e.g., 02108 or Boston, MA)"
-                    />
-                  </div>
-
                   <div v-if="draftFilters.locationMode === 'nearby'" class="mode-panel">
                     <div class="custom-input-row">
-                      <button type="button" @click="useNearbyMe" :disabled="locationBusy">
+                      <button type="button" @click="activateNearbyMode" :disabled="locationBusy">
                         Use Current Location
                       </button>
                     </div>
@@ -237,98 +220,12 @@
                     <button
                       type="button"
                       class="advanced-toggle"
-                      :aria-expanded="showAdvancedLocation"
-                      aria-controls="advanced-location-options"
-                      @click="showAdvancedLocation = !showAdvancedLocation"
+                      :aria-expanded="advancedLocationModalOpen"
+                      aria-controls="advanced-location-modal"
+                      @click="openAdvancedLocationModal"
                     >
-                      {{ showAdvancedLocation ? 'Hide' : 'Show' }} advanced location options
+                      Show advanced location options
                     </button>
-                  </div>
-
-                  <div
-                    id="advanced-location-options"
-                    class="advanced-location-panel"
-                    v-if="showAdvancedLocation"
-                  >
-                    <div v-if="draftFilters.locationMode === 'nearby'" class="mode-panel">
-                      <div class="custom-input-row">
-                        <button type="button" @click="detectViaIp" :disabled="locationBusy">
-                          Refresh Approximate Location
-                        </button>
-                      </div>
-                      <div class="custom-input-row">
-                        <input
-                          v-model.trim="locationFallbackInput"
-                          type="text"
-                          placeholder="If detection fails, enter ZIP/city"
-                          @keyup.enter="resolveFallbackLocation"
-                        />
-                        <button type="button" @click="resolveFallbackLocation" :disabled="locationBusy">
-                          Use ZIP/City
-                        </button>
-                      </div>
-                    </div>
-
-                    <div v-if="draftFilters.locationMode !== 'country'" class="mode-panel">
-                      <label for="job-radius">Radius</label>
-                      <div class="radius-row">
-                        <input
-                          id="job-radius"
-                          v-model.number="draftFilters.locationRadius"
-                          type="range"
-                          :min="1"
-                          :max="maxRadiusForUnit"
-                          step="1"
-                        />
-                        <span>{{ Math.round(draftFilters.locationRadius) }} {{ draftFilters.radiusUnit }}</span>
-                      </div>
-                      <div class="mode-row compact">
-                        <button
-                          type="button"
-                          class="mode-button"
-                          :class="{ active: draftFilters.radiusUnit === 'mi' }"
-                          @click="setRadiusUnit('mi')"
-                        >
-                          Miles
-                        </button>
-                        <button
-                          type="button"
-                          class="mode-button"
-                          :class="{ active: draftFilters.radiusUnit === 'km' }"
-                          @click="setRadiusUnit('km')"
-                        >
-                          Kilometers
-                        </button>
-                      </div>
-                    </div>
-
-                    <div class="custom-input-row">
-                      <button type="button" @click="previewLocationSelection" :disabled="locationBusy">
-                        {{ locationBusy ? 'Resolving area...' : 'Preview Area Cities' }}
-                      </button>
-                    </div>
-
-                    <div class="city-preview" v-if="locationPreviewNames.length">
-                      <div class="city-preview-header">
-                        <strong>Area Cities ({{ locationPreviewNames.length }})</strong>
-                      </div>
-                      <ul class="city-preview-list">
-                        <li
-                          v-for="city in visibleLocationPreviewNames"
-                          :key="`preview-city-${city}`"
-                        >
-                          {{ city }}
-                        </li>
-                      </ul>
-                      <button
-                        v-if="hasMorePreviewCities"
-                        type="button"
-                        class="city-preview-more"
-                        @click="openCityPreviewModal"
-                      >
-                        Show {{ hiddenLocationPreviewCount }} more
-                      </button>
-                    </div>
                   </div>
 
                   <p class="hint-text" v-if="locationInfo">{{ locationInfo }}</p>
@@ -374,6 +271,147 @@
                 </button>
             </div>
         </section>
+
+        <div
+          v-if="advancedLocationModalOpen"
+          id="advanced-location-modal"
+          class="city-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Advanced location options"
+          @click="closeAdvancedLocationModal"
+        >
+          <div class="city-modal-dialog advanced-location-dialog" @click.stop>
+            <div class="city-modal-header">
+              <h2>Advanced Location Options</h2>
+              <button type="button" class="city-modal-close" @click="closeAdvancedLocationModal">Close</button>
+            </div>
+
+            <p class="city-modal-subtitle">Precise location uses browser permission. Approximate location uses your IP.</p>
+
+            <div class="city-modal-scroll advanced-location-scroll">
+              <div class="mode-row">
+                <button
+                  type="button"
+                  class="mode-button"
+                  :class="{ active: draftFilters.locationMode === 'manual' }"
+                  @click="draftFilters.locationMode = 'manual'"
+                >
+                  Manual
+                </button>
+                <button
+                  type="button"
+                  class="mode-button"
+                  :class="{ active: draftFilters.locationMode === 'nearby' }"
+                  @click="draftFilters.locationMode = 'nearby'"
+                >
+                  Nearby Me
+                </button>
+                <button
+                  type="button"
+                  class="mode-button"
+                  :class="{ active: draftFilters.locationMode === 'country' }"
+                  @click="draftFilters.locationMode = 'country'"
+                >
+                  Within My Country
+                </button>
+              </div>
+
+              <div v-if="draftFilters.locationMode === 'manual'" class="mode-panel">
+                <input
+                  id="job-location-query"
+                  v-model.trim="draftFilters.manualLocationQuery"
+                  type="text"
+                  placeholder="ZIP code or city (e.g., 02108 or Boston, MA)"
+                />
+              </div>
+
+              <div class="mode-panel">
+                <div class="custom-input-row">
+                  <button type="button" @click="detectViaIp" :disabled="locationBusy">
+                    Refresh Approximate Location
+                  </button>
+                </div>
+                <div class="custom-input-row">
+                  <input
+                    v-model.trim="locationFallbackInput"
+                    type="text"
+                    placeholder="If detection fails, enter ZIP/city"
+                    @keyup.enter="resolveFallbackLocation"
+                  />
+                  <button type="button" @click="resolveFallbackLocation" :disabled="locationBusy">
+                    Use ZIP/City
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="draftFilters.locationMode !== 'country'" class="mode-panel">
+                <label for="job-radius">Radius</label>
+                <div class="radius-row">
+                  <input
+                    id="job-radius"
+                    v-model.number="draftFilters.locationRadius"
+                    type="range"
+                    :min="1"
+                    :max="maxRadiusForUnit"
+                    step="1"
+                  />
+                  <span>{{ Math.round(draftFilters.locationRadius) }} {{ draftFilters.radiusUnit }}</span>
+                </div>
+                <div class="mode-row compact">
+                  <button
+                    type="button"
+                    class="mode-button"
+                    :class="{ active: draftFilters.radiusUnit === 'mi' }"
+                    @click="setRadiusUnit('mi')"
+                  >
+                    Miles
+                  </button>
+                  <button
+                    type="button"
+                    class="mode-button"
+                    :class="{ active: draftFilters.radiusUnit === 'km' }"
+                    @click="setRadiusUnit('km')"
+                  >
+                    Kilometers
+                  </button>
+                </div>
+              </div>
+
+              <div class="custom-input-row">
+                <button type="button" @click="previewLocationSelection" :disabled="locationBusy">
+                  {{ locationBusy ? 'Resolving area...' : 'Preview Area Cities' }}
+                </button>
+              </div>
+
+              <div class="city-preview" v-if="locationPreviewNames.length">
+                <div class="city-preview-header">
+                  <strong>Area Cities ({{ locationPreviewNames.length }})</strong>
+                </div>
+                <ul class="city-preview-list">
+                  <li
+                    v-for="city in visibleLocationPreviewNames"
+                    :key="`preview-city-${city}`"
+                  >
+                    {{ city }}
+                  </li>
+                </ul>
+                <button
+                  v-if="hasMorePreviewCities"
+                  type="button"
+                  class="city-preview-more"
+                  @click="openCityPreviewModal"
+                >
+                  Show {{ hiddenLocationPreviewCount }} more
+                </button>
+              </div>
+            </div>
+
+            <div class="city-modal-actions">
+              <button type="button" @click="closeAdvancedLocationModal">Close</button>
+            </div>
+          </div>
+        </div>
 
         <div
           v-if="categoryMappingModalOpen"
@@ -628,7 +666,7 @@ export default {
       levelInfo: "",
       levelMenuOpen: false,
       levelActiveIndex: 0,
-      showAdvancedLocation: false,
+      advancedLocationModalOpen: false,
       cityPreviewVisibleLimit: 10,
       cityPreviewModalOpen: false,
       citySortMode: "closest",
@@ -915,6 +953,16 @@ export default {
     closeCategoryMappingModal() {
       this.categoryMappingModalOpen = false
     },
+    openAdvancedLocationModal() {
+      this.advancedLocationModalOpen = true
+    },
+    closeAdvancedLocationModal() {
+      this.advancedLocationModalOpen = false
+    },
+    async activateNearbyMode() {
+      this.draftFilters.locationMode = "nearby"
+      await this.useNearbyMe()
+    },
     openLevelMenu() {
       this.levelMenuOpen = true
       this.levelActiveIndex = 0
@@ -1032,6 +1080,9 @@ export default {
     handleGlobalKeydown(event) {
       if (event.key === "Escape" && this.categoryMappingModalOpen) {
         this.closeCategoryMappingModal()
+      }
+      if (event.key === "Escape" && this.advancedLocationModalOpen) {
+        this.closeAdvancedLocationModal()
       }
       if (event.key === "Escape" && this.cityPreviewModalOpen) {
         this.closeCityPreviewModal()
@@ -1408,7 +1459,7 @@ export default {
       this.levelInfo = ""
       this.levelActiveIndex = 0
       this.levelMenuOpen = false
-      this.showAdvancedLocation = false
+      this.advancedLocationModalOpen = false
       this.cityPreviewModalOpen = false
       this.companyInput = ""
       this.locationFallbackInput = ""

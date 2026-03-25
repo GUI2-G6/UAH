@@ -171,6 +171,45 @@ def _is_remote_location_name(name: Optional[str]) -> bool:
     )
 
 
+def _is_flexible_or_remote_location_name(name: Optional[str]) -> bool:
+    normalized = _normalize_text(name)
+    if not normalized:
+        return False
+    return (
+        _is_remote_location_name(normalized)
+        or "hybrid" in normalized
+        or "flexible" in normalized
+    )
+
+
+def _location_matches_selected(location_name: str, selected_locations: List[str]) -> bool:
+    normalized_location = _normalize_text(location_name)
+    if not normalized_location:
+        return False
+
+    for selected in selected_locations:
+        normalized_selected = _normalize_text(selected)
+        if not normalized_selected:
+            continue
+        if normalized_selected in normalized_location or normalized_location in normalized_selected:
+            return True
+
+    return False
+
+
+def _has_concrete_selected_location(job_locations: List[str], selected_locations: List[str]) -> bool:
+    if not selected_locations:
+        return True
+
+    for location_name in job_locations:
+        if _is_flexible_or_remote_location_name(location_name):
+            continue
+        if _location_matches_selected(location_name, selected_locations):
+            return True
+
+    return False
+
+
 def _classify_job_work_mode(job: dict) -> tuple[bool, bool, str]:
     raw_locations = job.get("locations", []) or []
     location_names = [loc.get("name", "") for loc in raw_locations if isinstance(loc, dict)]
@@ -205,7 +244,18 @@ def _classify_job_work_mode(job: dict) -> tuple[bool, bool, str]:
     return has_remote, has_hybrid, reason
 
 
-def _is_job_allowed_by_preferences(*, has_remote: bool, has_hybrid: bool, include_remote: bool, include_hybrid: bool) -> bool:
+def _is_job_allowed_by_preferences(
+    *,
+    has_remote: bool,
+    has_hybrid: bool,
+    include_remote: bool,
+    include_hybrid: bool,
+    job_locations: List[str],
+    selected_locations: List[str],
+) -> bool:
+    if selected_locations and not _has_concrete_selected_location(job_locations, selected_locations):
+        return False
+
     is_remote_only = has_remote and not has_hybrid
     if not include_hybrid and has_hybrid:
         return False
@@ -507,10 +557,14 @@ async def search_jobs(
             if normalized_level:
                 params_base.append(("level", normalized_level))
     if location:
+        selected_locations = []
         for loc in location:
             normalized_loc = (loc or "").strip()
             if normalized_loc:
                 params_base.append(("location", normalized_loc))
+                selected_locations.append(normalized_loc)
+    else:
+        selected_locations = []
     if company:
         for comp in company:
             normalized_comp = (comp or "").strip()
@@ -556,6 +610,8 @@ async def search_jobs(
                     has_hybrid=mapped.get("has_hybrid", False),
                     include_remote=include_remote,
                     include_hybrid=include_hybrid,
+                    job_locations=mapped.get("all_location_names", []) or [],
+                    selected_locations=selected_locations,
                 )
 
                 if not allowed:
