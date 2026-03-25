@@ -39,12 +39,56 @@
 
             <div class="filter-grid">
                 <div class="filter-group">
-                    <label for="job-categories">Categories</label>
-                    <select id="job-categories" v-model="draftFilters.categories" multiple>
-                        <option v-for="option in categoryOptions" :key="option" :value="option">
-                            {{ option }}
-                        </option>
-                    </select>
+                  <label for="job-categories">Categories</label>
+                  <div class="category-selector">
+                    <input
+                      id="job-categories"
+                      v-model.trim="categoryInput"
+                      type="text"
+                      autocomplete="off"
+                      placeholder="Search categories"
+                      @focus="openCategoryMenu"
+                      @input="onCategoryInput"
+                      @blur="closeCategoryMenuSoon"
+                      @keydown.enter.prevent="chooseCategoryFromInput"
+                      @keydown.down.prevent="moveCategorySelection(1)"
+                      @keydown.up.prevent="moveCategorySelection(-1)"
+                      @keydown.esc.prevent="categoryMenuOpen = false"
+                    />
+
+                    <div
+                      v-if="showCategoryMenu"
+                      class="category-suggestions"
+                      role="listbox"
+                      aria-label="Category suggestions"
+                    >
+                      <button
+                        v-for="(option, index) in filteredCategoryOptions"
+                        :key="option"
+                        type="button"
+                        class="category-option"
+                        :class="{ active: index === categoryActiveIndex }"
+                        @mousedown.prevent="addCategory(option)"
+                      >
+                        {{ option }}
+                      </button>
+                    </div>
+
+                    <p class="hint-text" v-if="categoryInfo">{{ categoryInfo }}</p>
+
+                    <div class="chip-list" v-if="draftFilters.categories.length">
+                      <button
+                        class="chip"
+                        type="button"
+                        v-for="category in draftFilters.categories"
+                        :key="category"
+                        @click="removeFilterValue('categories', category)"
+                        :title="`Remove ${category}`"
+                      >
+                        {{ category }} x
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <div class="filter-group">
@@ -251,14 +295,86 @@ export default {
   components: { JobPosting },
   data() {
     const categoryOptions = [
+      "Accounting",
+      "Accounting and Finance",
+      "Account Management",
+      "Account Management/Customer Success",
+      "Administration and Office",
+      "Advertising and Marketing",
+      "Animal Care",
+      "Arts",
+      "Business Operations",
+      "Cleaning and Facilities",
+      "Computer and IT",
+      "Construction",
+      "Corporate",
+      "Customer Service",
+      "Data and Analytics",
       "Data Science",
+      "Design",
       "Design and UX",
+      "Editor",
+      "Education",
+      "Energy Generation and Mining",
+      "Entertainment and Travel Services",
+      "Farming and Outdoors",
+      "Food and Hospitality Services",
+      "Healthcare",
+      "HR",
+      "Human Resources and Recruitment",
+      "Installation, Maintenance, and Repairs",
       "IT",
-      "Science and Engineering",
-      "Software Engineering",
+      "Law",
+      "Legal Services",
+      "Management",
+      "Manufacturing and Warehouse",
+      "Marketing",
+      "Mechanic",
+      "Media, PR, and Communications",
+      "Mental Health",
+      "Nurses",
+      "Office Administration",
+      "Personal Care and Services",
+      "Physical Assistant",
       "Product",
-      "Project Management"
+      "Product Management",
+      "Project Management",
+      "Protective Services",
+      "Public Relations",
+      "Real Estate",
+      "Recruiting",
+      "Retail",
+      "Sales",
+      "Science and Engineering",
+      "Social Services",
+      "Software Engineer",
+      "Software Engineering",
+      "Sports, Fitness, and Recreation",
+      "Transportation and Logistics",
+      "Unknown",
+      "UX",
+      "Videography",
+      "Writer",
+      "Writing and Editing"
     ]
+
+    const categoryAliases = {
+      "software engineer": "Software Engineer",
+      "software engineering": "Software Engineering",
+      "human resources": "Human Resources and Recruitment",
+      "hr": "HR",
+      "it": "IT",
+      "ux": "UX",
+      "pr": "Public Relations"
+    }
+
+    const categoryLookup = {}
+    for (const value of categoryOptions) {
+      categoryLookup[value.toLowerCase()] = value
+    }
+    for (const [alias, canonical] of Object.entries(categoryAliases)) {
+      categoryLookup[alias] = canonical
+    }
 
     const levelOptions = [
       "Internship",
@@ -297,8 +413,13 @@ export default {
       error: "",
       page: 1,
       categoryOptions,
+      categoryLookup,
       levelOptions,
       countryOptions,
+      categoryInput: "",
+      categoryInfo: "",
+      categoryMenuOpen: false,
+      categoryActiveIndex: 0,
       companyInput: "",
       locationFallbackInput: "",
       locationBusy: false,
@@ -314,6 +435,21 @@ export default {
   computed: {
     maxRadiusForUnit() {
       return this.draftFilters.radiusUnit === "km" ? 161 : 100
+    },
+    filteredCategoryOptions() {
+      const selected = new Set((this.draftFilters.categories || []).map(value => value.toLowerCase()))
+      const query = (this.categoryInput || "").trim().toLowerCase()
+
+      const options = this.categoryOptions.filter(option => {
+        if (selected.has(option.toLowerCase())) return false
+        if (!query) return true
+        return option.toLowerCase().includes(query)
+      })
+
+      return options.slice(0, 12)
+    },
+    showCategoryMenu() {
+      return this.categoryMenuOpen && this.filteredCategoryOptions.length > 0
     }
   },
   methods: {
@@ -338,12 +474,91 @@ export default {
     },
     normalizeUnique(values) {
       const out = []
+      const seen = new Set()
       for (const value of values || []) {
         const clean = (value || "").trim()
         if (!clean) continue
-        if (!out.includes(clean)) out.push(clean)
+        const key = clean.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        out.push(clean)
       }
       return out
+    },
+    normalizeCategoryValues(values) {
+      const canonicalized = []
+      for (const value of values || []) {
+        const clean = (value || "").trim()
+        if (!clean) continue
+        const canonical = this.categoryLookup[clean.toLowerCase()]
+        if (canonical) canonicalized.push(canonical)
+      }
+      return this.normalizeUnique(canonicalized)
+    },
+    openCategoryMenu() {
+      this.categoryMenuOpen = true
+      this.categoryActiveIndex = 0
+      this.categoryInfo = ""
+    },
+    closeCategoryMenuSoon() {
+      window.setTimeout(() => {
+        this.categoryMenuOpen = false
+      }, 120)
+    },
+    onCategoryInput() {
+      this.categoryMenuOpen = true
+      this.categoryActiveIndex = 0
+      this.categoryInfo = ""
+    },
+    moveCategorySelection(step) {
+      if (!this.filteredCategoryOptions.length) return
+      const next = this.categoryActiveIndex + step
+      if (next < 0) {
+        this.categoryActiveIndex = this.filteredCategoryOptions.length - 1
+        return
+      }
+      if (next >= this.filteredCategoryOptions.length) {
+        this.categoryActiveIndex = 0
+        return
+      }
+      this.categoryActiveIndex = next
+    },
+    addCategory(category) {
+      const canonical = this.categoryLookup[(category || "").trim().toLowerCase()]
+      if (!canonical) return
+
+      this.draftFilters.categories = this.normalizeUnique([
+        ...(this.draftFilters.categories || []),
+        canonical
+      ])
+
+      this.categoryInput = ""
+      this.categoryActiveIndex = 0
+      this.categoryMenuOpen = true
+      this.categoryInfo = ""
+    },
+    chooseCategoryFromInput() {
+      const input = (this.categoryInput || "").trim()
+      if (!input) return
+
+      const exact = this.categoryLookup[input.toLowerCase()]
+      if (exact) {
+        this.addCategory(exact)
+        return
+      }
+
+      if (this.filteredCategoryOptions.length === 1) {
+        this.addCategory(this.filteredCategoryOptions[0])
+        return
+      }
+
+      if (this.filteredCategoryOptions.length > 1) {
+        const highlighted = this.filteredCategoryOptions[this.categoryActiveIndex] || this.filteredCategoryOptions[0]
+        this.addCategory(highlighted)
+        return
+      }
+
+      this.categoryInfo = "Choose a valid Muse category from suggestions."
     },
     addCustomFilterValue(target) {
       const input = this.companyInput
@@ -654,7 +869,7 @@ export default {
         const locationNames = await this.resolveLocationNamesFromDraft()
 
         this.appliedFilters = this.cloneFilters(this.draftFilters)
-        this.appliedFilters.categories = this.normalizeUnique(this.appliedFilters.categories)
+        this.appliedFilters.categories = this.normalizeCategoryValues(this.appliedFilters.categories)
         this.appliedFilters.levels = this.normalizeUnique(this.appliedFilters.levels)
         this.appliedFilters.companies = this.normalizeUnique(this.appliedFilters.companies)
         this.appliedFilters.locationNames = this.normalizeUnique(locationNames)
@@ -671,6 +886,10 @@ export default {
     async clearFilters() {
       this.draftFilters = this.createDefaultFilters()
       this.appliedFilters = this.createDefaultFilters()
+      this.categoryInput = ""
+      this.categoryInfo = ""
+      this.categoryActiveIndex = 0
+      this.categoryMenuOpen = false
       this.companyInput = ""
       this.locationFallbackInput = ""
       this.locationInfo = ""
