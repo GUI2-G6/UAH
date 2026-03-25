@@ -42,7 +42,9 @@ How DB session will be injected later:
           return db.query(Item).all()
 """
 from contextvars import Token
+import hashlib
 import ipaddress
+import json
 import os, secrets, httpx
 import httpx
 import re
@@ -54,7 +56,7 @@ from app.models.user import User, SavedJob
 from app.db.session import get_db
 from app.google.service import GoogleAuthService
 from app.schemas.user import TokenResponse, UserResponse, SaveJobRequest
-from typing import Optional, List
+from typing import Optional, List, Any
 from app.services.geolocation import (
     geocode_query,
     km_to_miles,
@@ -153,9 +155,100 @@ CATEGORY_GROUP_ALIAS = {
     "support": "customer and support",
 }
 
+_JOBS_CACHE: dict[str, dict[str, Any]] = {}
+
 
 def _normalize_text(value: Optional[str]) -> str:
     return " ".join((value or "").strip().lower().split())
+
+
+def _jobs_cache_enabled() -> bool:
+    return settings.JOBS_CACHE_ENABLED and settings.JOBS_CACHE_TTL_SECONDS > 0
+
+
+def _clone_cache_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    return json.loads(json.dumps(payload))
+
+
+def _build_jobs_filter_signature(
+    *,
+    expanded_categories: List[str],
+    normalized_levels: List[str],
+    selected_locations: List[str],
+    normalized_companies: List[str],
+    include_remote: bool,
+    include_hybrid: bool,
+    page_size: int,
+) -> str:
+    signature_payload = {
+        "categories": expanded_categories,
+        "levels": normalized_levels,
+        "locations": selected_locations,
+        "companies": normalized_companies,
+        "include_remote": include_remote,
+        "include_hybrid": include_hybrid,
+        "page_size": page_size,
+    }
+    raw = json.dumps(signature_payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _cleanup_jobs_cache(now: float) -> None:
+    expired_keys = [key for key, item in _JOBS_CACHE.items() if float(item.get("expires_at", 0)) <= now]
+    for key in expired_keys:
+        _JOBS_CACHE.pop(key, None)
+
+    max_keys = max(10, settings.JOBS_CACHE_MAX_KEYS)
+    if len(_JOBS_CACHE) <= max_keys:
+        return
+
+    ordered = sorted(_JOBS_CACHE.items(), key=lambda item: float(item[1].get("last_access", 0)))
+    for key, _ in ordered[: len(_JOBS_CACHE) - max_keys]:
+        _JOBS_CACHE.pop(key, None)
+
+
+def _get_jobs_cache_response(signature: str, page: int) -> Optional[dict[str, Any]]:
+    if not _jobs_cache_enabled():
+        return None
+
+    now = time.monotonic()
+    _cleanup_jobs_cache(now)
+
+    entry = _JOBS_CACHE.get(signature)
+    if not entry:
+        return None
+
+    pages = entry.get("pages") or {}
+    cached = pages.get(page)
+    if not cached:
+        return None
+
+    entry["last_access"] = now
+    response = _clone_cache_payload(cached)
+    response["cache_hit"] = True
+    return response
+
+
+def _set_jobs_cache_response(signature: str, page: int, response_payload: dict[str, Any]) -> None:
+    if not _jobs_cache_enabled():
+        return
+
+    now = time.monotonic()
+    _cleanup_jobs_cache(now)
+
+    ttl = max(1, settings.JOBS_CACHE_TTL_SECONDS)
+    entry = _JOBS_CACHE.get(signature)
+    if entry is None:
+        entry = {
+            "expires_at": now + ttl,
+            "last_access": now,
+            "pages": {},
+        }
+        _JOBS_CACHE[signature] = entry
+
+    entry["expires_at"] = now + ttl
+    entry["last_access"] = now
+    entry.setdefault("pages", {})[page] = _clone_cache_payload(response_payload)
 
 
 def _is_remote_location_name(name: Optional[str]) -> bool:
@@ -552,10 +645,12 @@ async def search_jobs(
     if expanded_categories:
         for cat in expanded_categories:
             params_base.append(("category", cat))
+    normalized_levels: List[str] = []
     if level:
         for lvl in level:
             normalized_level = _normalize_level_for_muse(lvl)
             if normalized_level:
+                normalized_levels.append(normalized_level)
                 params_base.append(("level", normalized_level))
     location_param_cap = max(1, settings.MUSE_LOCATION_PARAM_CAP)
     location_params_truncated = False
@@ -571,11 +666,27 @@ async def search_jobs(
                 selected_locations.append(normalized_loc)
     else:
         selected_locations = []
+
+    normalized_companies: List[str] = []
     if company:
         for comp in company:
             normalized_comp = (comp or "").strip()
             if normalized_comp:
+                normalized_companies.append(normalized_comp)
                 params_base.append(("company", normalized_comp))
+
+    cache_signature = _build_jobs_filter_signature(
+        expanded_categories=expanded_categories,
+        normalized_levels=normalized_levels,
+        selected_locations=selected_locations,
+        normalized_companies=normalized_companies,
+        include_remote=include_remote,
+        include_hybrid=include_hybrid,
+        page_size=page_size,
+    )
+    cached_response = _get_jobs_cache_response(cache_signature, page)
+    if cached_response is not None:
+        return cached_response
 
     max_pages = max(1, min(settings.MUSE_PAGE_CHASE_MAX_PAGES, settings.MUSE_PAGE_CHASE_MAX_API_CALLS_PER_REQUEST))
     target_results = max(1, page_size)
@@ -664,7 +775,7 @@ async def search_jobs(
         guardrail_stop_reason = "max_pages_reached"
 
     # Returns structured response with original pagination info and guarded-fetch diagnostics.
-    return {
+    response_payload = {
         "page": first_payload.get("page"),
         "total_pages": first_payload.get("page_count"),
         "total_jobs": first_payload.get("total"),
@@ -675,9 +786,13 @@ async def search_jobs(
         "ui_page": page,
         "page_size": page_size,
         "has_next_page": page < (first_payload.get("page_count") or page),
+        "has_previous_page": page > 1,
         "location_params_used": len(selected_locations),
         "location_params_truncated": location_params_truncated,
+        "cache_hit": False,
     }
+    _set_jobs_cache_response(cache_signature, page, response_payload)
+    return response_payload
 
 @router.post("/jobs/save", tags=["jobs"])
 async def save_job(

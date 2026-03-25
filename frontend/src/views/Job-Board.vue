@@ -522,7 +522,17 @@
 
           <div class="pagination" v-if="!loading && !error">
             <button type="button" @click="goToPreviousPage" :disabled="page <= 1 || loading">Previous</button>
-            <span>Page {{ page }}</span>
+            <button
+              type="button"
+              v-for="pageNumber in visiblePageButtons"
+              :key="`jobs-page-${pageNumber}`"
+              :class="{ active: pageNumber === page }"
+              @click="goToPage(pageNumber)"
+              :disabled="loading"
+            >
+              {{ pageNumber }}
+            </button>
+            <span>of {{ totalPages }}</span>
             <button type="button" @click="goToNextPage" :disabled="!hasNextPage || loading">Next</button>
           </div>
     </div>
@@ -663,6 +673,7 @@ export default {
       page: 1,
       pageSize: uiPageSize,
       totalJobs: 0,
+      totalPages: 1,
       hasNextPage: false,
       locationLimitNotice: "",
       maxLocationParams,
@@ -806,6 +817,19 @@ export default {
       const hasAnyDistance = this.sortedLocationPreviewCities.some(city => city.distance_miles !== null)
       if (hasAnyDistance) return ""
       return "Closest sorting needs a known center location, so this list is currently alphabetical."
+    },
+    visiblePageButtons() {
+      const total = Math.max(1, Number(this.totalPages || 1))
+      const current = Math.max(1, Number(this.page || 1))
+      const span = 2
+      const start = Math.max(1, current - span)
+      const end = Math.min(total, current + span)
+
+      const pages = []
+      for (let p = start; p <= end; p += 1) {
+        pages.push(p)
+      }
+      return pages
     }
   },
   methods: {
@@ -1422,6 +1446,7 @@ export default {
 
         const data = await res.json()
         this.totalJobs = Number(data.total_jobs || 0)
+        this.totalPages = Math.max(1, Number(data.total_pages || 1))
         this.hasNextPage = data.has_next_page === true
         if (data.location_params_truncated === true && !this.locationLimitNotice) {
           this.locationLimitNotice = "Location filters were trimmed by backend guardrails to protect API stability."
@@ -1500,6 +1525,7 @@ export default {
       this.locationPreviewCities = []
       this.locationPreviewCenter = null
       this.totalJobs = 0
+      this.totalPages = 1
       this.hasNextPage = false
       this.locationLimitNotice = ""
       this.page = 1
@@ -1514,6 +1540,12 @@ export default {
     async goToPreviousPage() {
       if (this.page <= 1 || this.loading) return
       this.page -= 1
+      await this.loadJobs()
+    },
+    async goToPage(pageNumber) {
+      const target = Number(pageNumber || 1)
+      if (this.loading || target < 1 || target > this.totalPages || target === this.page) return
+      this.page = target
       await this.loadJobs()
     }
   },

@@ -424,6 +424,12 @@
   cursor: not-allowed;
 }
 
+.pagination button.active {
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #ffffff;
+}
+
 @media (max-width: 900px) {
   .dashboard {
     grid-template-columns: 1fr;

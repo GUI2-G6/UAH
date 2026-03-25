@@ -69,6 +69,9 @@ class Settings:
     MUSE_PAGE_CHASE_TIMEOUT_SECONDS: float = float(os.getenv("MUSE_PAGE_CHASE_TIMEOUT_SECONDS", "8"))
     MUSE_LOCATION_PARAM_CAP: int = int(os.getenv("MUSE_LOCATION_PARAM_CAP", "60"))
     JOBS_DEFAULT_PAGE_SIZE: int = int(os.getenv("JOBS_DEFAULT_PAGE_SIZE", "10"))
+    JOBS_CACHE_ENABLED: bool = _env_bool("JOBS_CACHE_ENABLED", "true")
+    JOBS_CACHE_TTL_SECONDS: int = int(os.getenv("JOBS_CACHE_TTL_SECONDS", "45"))
+    JOBS_CACHE_MAX_KEYS: int = int(os.getenv("JOBS_CACHE_MAX_KEYS", "250"))
 
     # Muse-supported location index refresh settings
     MUSE_LOCATION_INDEX_ENABLED: bool = _env_bool("MUSE_LOCATION_INDEX_ENABLED", "true")
