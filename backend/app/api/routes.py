@@ -42,6 +42,7 @@ How DB session will be injected later:
           return db.query(Item).all()
 """
 from contextvars import Token
+import ipaddress
 import os, secrets, httpx
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Query, Depends
@@ -71,17 +72,28 @@ MUSE_API_KEY = os.getenv("MUSE_API_KEY")
 
 
 def _extract_client_ip(request: Request) -> Optional[str]:
+    candidates: List[str] = []
+
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded:
-        candidate = forwarded.split(",")[0].strip()
-        if candidate:
-            return candidate
+        candidates.extend([part.strip() for part in forwarded.split(",") if part.strip()])
+
+    real_ip = (request.headers.get("x-real-ip", "") or "").strip()
+    if real_ip:
+        candidates.append(real_ip)
 
     if request.client and request.client.host:
-        host = request.client.host.strip()
-        if host and host not in {"127.0.0.1", "::1", "localhost"}:
-            return host
+        candidates.append((request.client.host or "").strip())
 
+    for candidate in candidates:
+        try:
+            ip_obj = ipaddress.ip_address(candidate)
+            if ip_obj.is_global:
+                return str(ip_obj)
+        except ValueError:
+            continue
+
+    # Returning None tells providers to resolve by server egress IP.
     return None
 
 

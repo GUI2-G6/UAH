@@ -1,5 +1,6 @@
 import json
 import io
+import ipaddress
 import math
 import os
 import zipfile
@@ -47,6 +48,22 @@ FALLBACK_CITIES = [
     {"name": "Paris", "admin1": "IDF", "country_code": "FR", "country": "France", "lat": 48.8566, "lon": 2.3522, "population": 2102650},
     {"name": "Lyon", "admin1": "ARA", "country_code": "FR", "country": "France", "lat": 45.764, "lon": 4.8357, "population": 522250},
 ]
+
+
+def _normalize_public_ip(candidate: Optional[str]) -> Optional[str]:
+    value = (candidate or "").strip()
+    if not value:
+        return None
+
+    try:
+        ip_obj = ipaddress.ip_address(value)
+    except ValueError:
+        return None
+
+    if not ip_obj.is_global:
+        return None
+
+    return str(ip_obj)
 
 
 def _env_bool(name: str, default: str = "true") -> bool:
@@ -389,6 +406,7 @@ async def geocode_query(query: str, country_code: Optional[str] = None) -> Dict[
 
 
 async def resolve_ip_location(client_ip: Optional[str]) -> Dict[str, Any]:
+    client_ip = _normalize_public_ip(client_ip)
     provider = GEO_IP_PROVIDER if GEO_IP_PROVIDER in {"ipapi", "ipstack"} else "ipapi"
     primary_error: Optional[Exception] = None
 
