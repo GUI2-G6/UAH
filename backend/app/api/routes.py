@@ -92,6 +92,10 @@ TIMEZONE_TOKEN_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 EXCLUSION_SEGMENT_PATTERN = re.compile(r"(?:except|excluding)\s+([^.;\n]+)", flags=re.IGNORECASE)
+EXCLUSION_INLINE_PATTERN = re.compile(
+    r"(?:not\s+available\s+in|unavailable\s+in|outside\s+of)\s+([^.;\n]+)",
+    flags=re.IGNORECASE,
+)
 
 UNIFIED_CATEGORY_GROUPS = {
     "tech": [
@@ -188,6 +192,23 @@ US_STATE_TO_TIMEZONE_FAMILY = {
     "WI": "CT", "WV": "ET", "WY": "MT",
 }
 
+METRO_ALIAS_STATES = {
+    "bay area": {"CA"},
+    "san francisco bay": {"CA"},
+    "san francisco bay metro area": {"CA"},
+    "nyc": {"NY", "NJ", "CT"},
+    "nyc metro area": {"NY", "NJ", "CT"},
+    "new york city metro area": {"NY", "NJ", "CT"},
+    "washington dc metro area": {"DC", "VA", "MD"},
+    "washington d c metro area": {"DC", "VA", "MD"},
+}
+
+CONSTRAINT_CONFIDENCE_RANK = {
+    "low": 0,
+    "medium": 1,
+    "high": 2,
+}
+
 
 def _normalize_text(value: Optional[str]) -> str:
     return " ".join((value or "").strip().lower().split())
@@ -230,6 +251,23 @@ def _extract_selected_timezone_families(selected_locations: List[str]) -> List[s
     return found
 
 
+def _split_constraint_terms(raw_segment: str) -> List[str]:
+    terms: List[str] = []
+    for chunk in re.split(r",|\band\b|\bor\b|\bbut\b", raw_segment or "", flags=re.IGNORECASE):
+        normalized = _normalize_constraint_text(chunk)
+        normalized = re.sub(r"\b(the|metro|area|region|candidates|candidate|residing|within|in)\b", " ", normalized)
+        normalized = _normalize_constraint_text(normalized)
+        if not normalized or len(normalized) < 3:
+            continue
+        if normalized not in terms:
+            terms.append(normalized)
+    return terms
+
+
+def _confidence_meets_threshold(confidence: str, threshold: str) -> bool:
+    return CONSTRAINT_CONFIDENCE_RANK.get((confidence or "").lower(), 0) >= CONSTRAINT_CONFIDENCE_RANK.get((threshold or "").lower(), 2)
+
+
 def _extract_location_constraints(job: dict, location_names: List[str]) -> dict[str, Any]:
     raw_text = " ".join(
         [
@@ -249,13 +287,21 @@ def _extract_location_constraints(job: dict, location_names: List[str]) -> dict[
     if "within the us" in normalized_text or "residing in the us" in normalized_text or "united states" in normalized_text:
         include_location_terms.append("united states")
 
+    include_match = re.search(r"(?:residing\s+in|located\s+in|within)\s+([^.;\n]+)", clean_text, flags=re.IGNORECASE)
+    if include_match:
+        for term in _split_constraint_terms(include_match.group(1)):
+            if term not in include_location_terms:
+                include_location_terms.append(term)
+
     for segment in EXCLUSION_SEGMENT_PATTERN.findall(clean_text):
-        for chunk in re.split(r",|\band\b", segment, flags=re.IGNORECASE):
-            normalized = _normalize_constraint_text(chunk)
-            if not normalized or len(normalized) < 3:
-                continue
-            if normalized not in exclude_location_terms:
-                exclude_location_terms.append(normalized)
+        for term in _split_constraint_terms(segment):
+            if term not in exclude_location_terms:
+                exclude_location_terms.append(term)
+
+    for segment in EXCLUSION_INLINE_PATTERN.findall(clean_text):
+        for term in _split_constraint_terms(segment):
+            if term not in exclude_location_terms:
+                exclude_location_terms.append(term)
 
     constraint_count = len(include_timezone_families) + len(include_location_terms) + len(exclude_location_terms)
     if constraint_count >= 2:
@@ -277,6 +323,16 @@ def _term_matches_selected_locations(term: str, selected_locations: List[str], s
     normalized_term = _normalize_constraint_text(term)
     if not normalized_term:
         return False
+
+    selected_states = {
+        (_extract_state_code(selected) or "").upper()
+        for selected in selected_locations
+        if _extract_state_code(selected)
+    }
+
+    for alias, alias_states in METRO_ALIAS_STATES.items():
+        if alias in normalized_term and selected_states.intersection(alias_states):
+            return True
 
     if normalized_term in {"us", "usa", "united states"}:
         return selected_country_code.upper() == "US"
@@ -486,14 +542,29 @@ def _location_tokens(value: Optional[str]) -> set[str]:
 def _choose_best_supported_location(
     raw_location: str,
     candidates: List[MuseSupportedLocation],
-) -> Optional[str]:
+    preferred_state_code: Optional[str] = None,
+) -> tuple[Optional[str], bool]:
     raw_tokens = _location_tokens(raw_location)
     if not candidates:
-        return None
+        return None, False
+
+    filtered_candidates = candidates
+    matched_preferred_state = False
+    if preferred_state_code:
+        preferred_state = preferred_state_code.strip().upper()
+        state_filtered = [
+            row for row in candidates
+            if (_extract_state_code(row.location_name) or "").upper() == preferred_state
+        ]
+        if state_filtered:
+            filtered_candidates = state_filtered
+            matched_preferred_state = True
+        else:
+            return None, False
 
     best: Optional[MuseSupportedLocation] = None
     best_score: tuple[int, int, int] = (-1, -1, -1)
-    for row in candidates:
+    for row in filtered_candidates:
         candidate_tokens = _location_tokens(row.location_name)
         overlap = len(raw_tokens & candidate_tokens)
         observed_count = int(row.observed_count or 0)
@@ -504,12 +575,15 @@ def _choose_best_supported_location(
             best = row
             best_score = score
 
-    return best.location_name if best is not None else None
+    if best is None:
+        return None, False
+    return best.location_name, matched_preferred_state
 
 
 def _canonicalize_selected_locations(
     *,
     raw_locations: List[str],
+    location_mode: Optional[str],
     location_country_code: Optional[str],
     location_param_cap: int,
     db: Session,
@@ -566,22 +640,37 @@ def _canonicalize_selected_locations(
         if city_key:
             by_city_key.setdefault(city_key, []).append(row)
 
-    selected_locations: List[str] = []
+    resolved_candidates: List[dict[str, Any]] = []
     selected_seen = set()
     transformed_count = 0
     unmatched_count = 0
+    strict_state_blocked_count = 0
+    normalized_mode = (location_mode or "").strip().lower()
+    strict_state_mode = normalized_mode in {"nearby", "manual"} and scope_country == "US"
 
-    for raw in normalized_raw:
+    for raw_index, raw in enumerate(normalized_raw):
         raw_key = _normalize_location_key(raw)
         resolved = None
+        match_type = "raw-fallback"
+        raw_state = _extract_state_code(raw)
 
         exact_row = by_exact_key.get(raw_key)
         if exact_row is not None:
             resolved = exact_row.location_name
+            match_type = "exact"
         else:
             city_key = raw_key.split(",")[0].strip()
             candidates = by_city_key.get(city_key, []) if city_key else []
-            resolved = _choose_best_supported_location(raw, candidates)
+            preferred_state = raw_state if strict_state_mode and raw_state else None
+            resolved, matched_preferred_state = _choose_best_supported_location(
+                raw,
+                candidates,
+                preferred_state_code=preferred_state,
+            )
+            if resolved:
+                match_type = "city-fallback-state" if matched_preferred_state else "city-fallback"
+            elif preferred_state:
+                strict_state_blocked_count += 1
 
         if not resolved:
             resolved = raw
@@ -593,16 +682,59 @@ def _canonicalize_selected_locations(
         if resolved_key in selected_seen:
             continue
         selected_seen.add(resolved_key)
-        selected_locations.append(resolved)
-        if len(selected_locations) >= location_param_cap:
-            break
+
+        resolved_candidates.append(
+            {
+                "resolved": resolved,
+                "raw_index": raw_index,
+                "match_type": match_type,
+                "state_code": _extract_state_code(resolved) or "",
+            }
+        )
+
+    ordered_candidates = sorted(
+        resolved_candidates,
+        key=lambda item: (
+            item["raw_index"],
+            0 if item["match_type"] == "exact" else 1,
+        ),
+    )
+
+    selected_locations: List[str] = []
+    if strict_state_mode:
+        by_state: dict[str, List[dict[str, Any]]] = {}
+        for item in ordered_candidates:
+            state_key = item["state_code"] or "__none__"
+            by_state.setdefault(state_key, []).append(item)
+
+        ordered_states = sorted(
+            by_state.keys(),
+            key=lambda state: min(entry["raw_index"] for entry in by_state[state]),
+        )
+
+        while len(selected_locations) < location_param_cap:
+            advanced = False
+            for state in ordered_states:
+                bucket = by_state[state]
+                if not bucket:
+                    continue
+                selected_locations.append(bucket.pop(0)["resolved"])
+                advanced = True
+                if len(selected_locations) >= location_param_cap:
+                    break
+            if not advanced:
+                break
+    else:
+        selected_locations = [item["resolved"] for item in ordered_candidates[:location_param_cap]]
 
     return selected_locations, {
         "canonicalized_count": len(selected_locations),
         "transformed_count": transformed_count,
         "unmatched_count": unmatched_count,
+        "strict_state_blocked_count": strict_state_blocked_count,
+        "state_diversity_count": len({(_extract_state_code(name) or "") for name in selected_locations if _extract_state_code(name)}),
         "requested_unique_count": len(normalized_raw),
-        "strategy": "muse-index-country-aware" if scope_country else "muse-index-global",
+        "strategy": "muse-index-country-aware-nearby-state-locked" if strict_state_mode else ("muse-index-country-aware" if scope_country else "muse-index-global"),
         "country_scope": scope_country,
     }
 
@@ -995,6 +1127,7 @@ async def search_jobs(
         await ensure_muse_location_index()
         selected_locations, location_canonicalization = _canonicalize_selected_locations(
             raw_locations=raw_location_inputs,
+            location_mode=location_mode,
             location_country_code=location_country_code,
             location_param_cap=location_param_cap,
             db=db,
@@ -1036,9 +1169,27 @@ async def search_jobs(
     if cached_response is not None:
         return cached_response
 
-    max_pages = max(1, min(settings.MUSE_PAGE_CHASE_MAX_PAGES, settings.MUSE_PAGE_CHASE_MAX_API_CALLS_PER_REQUEST))
+    adaptive_extra_pages = 0
+    if (
+        settings.MUSE_ADAPTIVE_PAGE_CHASE_ENABLED
+        and len(selected_locations) >= max(1, settings.MUSE_ADAPTIVE_PAGE_CHASE_BREADTH_THRESHOLD)
+    ):
+        adaptive_extra_pages = max(0, settings.MUSE_ADAPTIVE_PAGE_CHASE_EXTRA_PAGES)
+
+    max_pages = max(
+        1,
+        min(
+            settings.MUSE_PAGE_CHASE_MAX_PAGES + adaptive_extra_pages,
+            settings.MUSE_PAGE_CHASE_MAX_API_CALLS_PER_REQUEST + adaptive_extra_pages,
+        ),
+    )
     target_results = max(1, page_size) + 1
     min_filtered_ratio = min(max(settings.MUSE_PAGE_CHASE_MIN_FILTERED_RATIO, 0.0), 1.0)
+    if adaptive_extra_pages > 0:
+        min_filtered_ratio = min(
+            min_filtered_ratio,
+            min(max(settings.MUSE_ADAPTIVE_PAGE_CHASE_MIN_FILTERED_RATIO, 0.0), 1.0),
+        )
     timeout_budget = max(1.0, settings.MUSE_PAGE_CHASE_TIMEOUT_SECONDS)
 
     accepted_jobs = []
@@ -1097,6 +1248,15 @@ async def search_jobs(
                     selected_locations=selected_locations,
                     selected_country_code=(location_country_code or "").strip().upper(),
                 )
+                confidence_ok_for_filter = _confidence_meets_threshold(
+                    constraints.get("confidence", "low"),
+                    settings.CONSTRAINT_FILTER_MIN_CONFIDENCE,
+                )
+                use_constraint_compatibility = (
+                    settings.CONSTRAINT_COMPATIBILITY_ENABLED
+                    and confidence_ok_for_filter
+                    and constraint_compatible
+                )
                 mapped["is_local_compatible_remote"] = constraint_compatible
                 mapped["local_compatibility_reason"] = compatibility_reason
 
@@ -1107,7 +1267,7 @@ async def search_jobs(
                     include_hybrid=include_hybrid,
                     job_locations=mapped.get("all_location_names", []) or [],
                     selected_locations=selected_locations,
-                    allow_local_compatible_remote=(not include_remote and constraint_compatible),
+                    allow_local_compatible_remote=(not include_remote and use_constraint_compatibility),
                 )
 
                 if not allowed:
@@ -1213,6 +1373,8 @@ async def search_jobs(
         "canonicalized_location_count": int(location_canonicalization.get("canonicalized_count") or 0),
         "transformed_location_count": int(location_canonicalization.get("transformed_count") or 0),
         "unmatched_location_count": int(location_canonicalization.get("unmatched_count") or 0),
+        "strict_state_blocked_count": int(location_canonicalization.get("strict_state_blocked_count") or 0),
+        "selected_state_diversity_count": int(location_canonicalization.get("state_diversity_count") or 0),
         "accepted_by_concrete_location": accepted_by_concrete_location,
         "accepted_by_remote_override": accepted_by_remote_override,
         "accepted_by_hybrid_override": accepted_by_hybrid_override,
@@ -1221,6 +1383,12 @@ async def search_jobs(
         "constraint_parse_medium_confidence": constraint_parse_medium_confidence,
         "constraint_parse_low_confidence": constraint_parse_low_confidence,
         "constraint_policy_remote_off": "allow-if-overlap",
+        "constraint_compatibility_enabled": settings.CONSTRAINT_COMPATIBILITY_ENABLED,
+        "constraint_filter_min_confidence": settings.CONSTRAINT_FILTER_MIN_CONFIDENCE,
+        "adaptive_chase_enabled": settings.MUSE_ADAPTIVE_PAGE_CHASE_ENABLED,
+        "adaptive_chase_extra_pages": adaptive_extra_pages,
+        "effective_max_pages": max_pages,
+        "effective_min_filtered_ratio": min_filtered_ratio,
         "window_start_page": window_start_page,
         "window_size": window_size,
         "has_more_source_pages": has_more_source_pages,

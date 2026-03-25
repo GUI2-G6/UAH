@@ -57,6 +57,7 @@
                       </button>
                     </div>
                     <p class="hint-text">Hybrid is enabled by default. Fully remote jobs are off by default.</p>
+                    <p class="hint-text">With Remote off, constrained remote/flexible roles may still appear if constraints overlap your selected area.</p>
                 </div>
             </div>
 
@@ -1547,6 +1548,8 @@ export default {
           canonicalizedLocationCount: Number(data.canonicalized_location_count || 0),
           transformedLocationCount: Number(data.transformed_location_count || 0),
           unmatchedLocationCount: Number(data.unmatched_location_count || 0),
+          strictStateBlockedCount: Number(data.strict_state_blocked_count || 0),
+          selectedStateDiversityCount: Number(data.selected_state_diversity_count || 0),
           acceptedByConcreteLocation: Number(data.accepted_by_concrete_location || 0),
           acceptedByRemoteOverride: Number(data.accepted_by_remote_override || 0),
           acceptedByHybridOverride: Number(data.accepted_by_hybrid_override || 0),
@@ -1554,6 +1557,12 @@ export default {
           constraintParseHighConfidence: Number(data.constraint_parse_high_confidence || 0),
           constraintParseMediumConfidence: Number(data.constraint_parse_medium_confidence || 0),
           constraintParseLowConfidence: Number(data.constraint_parse_low_confidence || 0),
+          constraintCompatibilityEnabled: data.constraint_compatibility_enabled === true,
+          constraintFilterMinConfidence: data.constraint_filter_min_confidence || "",
+          adaptiveChaseEnabled: data.adaptive_chase_enabled === true,
+          adaptiveChaseExtraPages: Number(data.adaptive_chase_extra_pages || 0),
+          effectiveMaxPages: Number(data.effective_max_pages || 0),
+          effectiveMinFilteredRatio: Number(data.effective_min_filtered_ratio || 0),
           requestedLocationsSample: data.requested_locations_sample || [],
           selectedLocationsSample: data.selected_locations_sample || [],
           cacheHit: data.cache_hit === true,
