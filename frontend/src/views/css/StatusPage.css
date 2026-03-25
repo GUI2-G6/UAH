@@ -1,7 +1,8 @@
 .status-page {
-  max-width: 900px;
+  max-width: 1000px;
+  width: 100%;
   margin: 0 auto;
-  padding: 20px;
+  padding: 20px clamp(12px, 3vw, 24px);
 }
 
 .page-header {
@@ -21,6 +22,7 @@
 .header-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 16px;
 }
 
@@ -139,7 +141,7 @@
 /* Service grid */
 .service-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 16px;
   margin-bottom: 24px;
 }
@@ -156,6 +158,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
   margin-bottom: 16px;
 }
 
@@ -214,7 +218,7 @@
 
 .info-table .label {
   color: #6b7280;
-  width: 100px;
+  width: 120px;
   font-weight: 500;
 }
 
@@ -340,4 +344,61 @@
   border-radius: 4px;
   margin-top: 8px;
   font-size: 0.85rem;
+}
+
+@media (max-width: 768px) {
+  .page-header {
+    align-items: flex-start;
+  }
+
+  .header-actions {
+    width: 100%;
+    gap: 10px;
+  }
+
+  .service-card {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 600px) {
+  .page-header h2 {
+    font-size: 1.2rem;
+  }
+
+  .back-btn,
+  .refresh-btn {
+    width: 100%;
+    text-align: center;
+  }
+
+  .overall-banner {
+    padding: 12px 14px;
+    font-size: 0.95rem;
+  }
+
+  .service-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .info-table,
+  .info-table tbody,
+  .info-table tr,
+  .info-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .info-table tr {
+    padding: 8px 0;
+  }
+
+  .info-table .label {
+    width: auto;
+    padding-bottom: 2px;
+  }
+
+  .raw-json {
+    font-size: 0.72rem;
+  }
 }

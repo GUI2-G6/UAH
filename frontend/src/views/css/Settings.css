@@ -99,8 +99,9 @@
 }
 
 .big-card {
-  grid-column: span 4;
-  height: 300px;
+  grid-column: 1 / -1;
+  min-height: 220px;
+  height: auto;
 }
 
 .title {

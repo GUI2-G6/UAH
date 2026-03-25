@@ -1,6 +1,6 @@
 .footer {
     margin-top: auto;
-    padding: 24px 0;
+    padding: 24px 16px;
     border-top: 1px solid #30363d;
     display: flex;
     flex-direction: column;
@@ -8,6 +8,7 @@
     gap: 12px;
     color: #8b949e;
     font-size: 0.85rem;
+    text-align: center;
 }
 
 .footer p {
@@ -16,6 +17,8 @@
 
 .footer nav {
     display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
     gap: 24px;
 }
 
@@ -28,4 +31,22 @@
 .footer a:hover {
     text-decoration: underline;
     color: #79c0ff;
+}
+
+@media (max-width: 768px) {
+    .footer {
+        padding: 16px 12px;
+        gap: 10px;
+    }
+
+    .footer nav {
+        gap: 14px;
+    }
+}
+
+@media (max-width: 480px) {
+    .footer nav {
+        flex-direction: column;
+        gap: 8px;
+    }
 }

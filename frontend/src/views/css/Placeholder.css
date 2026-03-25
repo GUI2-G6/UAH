@@ -1,0 +1,39 @@
+.placeholder-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: #f8fafc;
+}
+
+.placeholder-card {
+    width: min(720px, 100%);
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #ffffff;
+    padding: 24px;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+.placeholder-card h1 {
+    font-size: clamp(1.35rem, 3.2vw, 1.8rem);
+    letter-spacing: 0.02em;
+    margin-bottom: 8px;
+    color: #111827;
+}
+
+.placeholder-card p {
+    color: #4b5563;
+    line-height: 1.45;
+}
+
+@media (max-width: 600px) {
+    .placeholder-page {
+        padding: 12px;
+    }
+
+    .placeholder-card {
+        padding: 16px;
+    }
+}

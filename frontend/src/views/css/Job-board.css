@@ -256,3 +256,57 @@
     flex-direction: column;
   }
 }
+
+@media (max-width: 600px) {
+  .greeting {
+    padding: 16px 12px 12px;
+  }
+
+  .filters {
+    padding: 12px;
+  }
+
+  .filter-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .filter-group select[multiple] {
+    min-height: 96px;
+  }
+
+  .radius-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .jobs-meta {
+    padding: 10px 12px 0;
+    font-size: 0.9rem;
+  }
+
+  .dashboard {
+    padding: 12px;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .mode-row {
+    gap: 6px;
+  }
+
+  .mode-button,
+  .filter-actions button,
+  .custom-input-row button,
+  .chip {
+    width: 100%;
+    text-align: center;
+  }
+
+  .custom-input-row {
+    gap: 6px;
+  }
+}
