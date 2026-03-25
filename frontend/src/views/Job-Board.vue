@@ -217,8 +217,25 @@
                   <p class="warn-text" v-if="locationWarning">{{ locationWarning }}</p>
 
                   <div class="city-preview" v-if="locationPreviewNames.length">
-                    <strong>Area Cities ({{ locationPreviewNames.length }}):</strong>
-                    <p>{{ locationPreviewNames.join(', ') }}</p>
+                    <div class="city-preview-header">
+                      <strong>Area Cities ({{ locationPreviewNames.length }})</strong>
+                    </div>
+                    <ul class="city-preview-list">
+                      <li
+                        v-for="city in visibleLocationPreviewNames"
+                        :key="`preview-city-${city}`"
+                      >
+                        {{ city }}
+                      </li>
+                    </ul>
+                    <button
+                      v-if="hasMorePreviewCities"
+                      type="button"
+                      class="city-preview-more"
+                      @click="openCityPreviewModal"
+                    >
+                      Show {{ hiddenLocationPreviewCount }} more
+                    </button>
                   </div>
                 </div>
             </div>
@@ -260,6 +277,34 @@
                 </button>
             </div>
         </section>
+
+        <div
+          v-if="cityPreviewModalOpen"
+          class="city-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="All area cities"
+          @click="closeCityPreviewModal"
+        >
+          <div class="city-modal-dialog" @click.stop>
+            <div class="city-modal-header">
+              <h2>Area Cities</h2>
+              <button type="button" class="city-modal-close" @click="closeCityPreviewModal">Close</button>
+            </div>
+
+            <p class="city-modal-subtitle">Showing all {{ locationPreviewNames.length }} matched cities.</p>
+
+            <div class="city-modal-scroll">
+              <ul class="city-modal-list">
+                <li v-for="city in locationPreviewNames" :key="`all-city-${city}`">{{ city }}</li>
+              </ul>
+            </div>
+
+            <div class="city-modal-actions">
+              <button type="button" @click="closeCityPreviewModal">Close</button>
+            </div>
+          </div>
+        </div>
 
         <div class="jobs-meta">
             <p v-if="loading">Loading jobs...</p>
@@ -420,6 +465,8 @@ export default {
       categoryInfo: "",
       categoryMenuOpen: false,
       categoryActiveIndex: 0,
+      cityPreviewVisibleLimit: 10,
+      cityPreviewModalOpen: false,
       companyInput: "",
       locationFallbackInput: "",
       locationBusy: false,
@@ -450,6 +497,16 @@ export default {
     },
     showCategoryMenu() {
       return this.categoryMenuOpen && this.filteredCategoryOptions.length > 0
+    },
+    visibleLocationPreviewNames() {
+      return (this.locationPreviewNames || []).slice(0, this.cityPreviewVisibleLimit)
+    },
+    hiddenLocationPreviewCount() {
+      const hidden = (this.locationPreviewNames || []).length - this.cityPreviewVisibleLimit
+      return hidden > 0 ? hidden : 0
+    },
+    hasMorePreviewCities() {
+      return this.hiddenLocationPreviewCount > 0
     }
   },
   methods: {
@@ -572,6 +629,18 @@ export default {
     },
     removeFilterValue(target, value) {
       this.draftFilters[target] = (this.draftFilters[target] || []).filter(item => item !== value)
+    },
+    openCityPreviewModal() {
+      if (!this.locationPreviewNames.length) return
+      this.cityPreviewModalOpen = true
+    },
+    closeCityPreviewModal() {
+      this.cityPreviewModalOpen = false
+    },
+    handleGlobalKeydown(event) {
+      if (event.key === "Escape" && this.cityPreviewModalOpen) {
+        this.closeCityPreviewModal()
+      }
     },
     milesToKm(value) {
       return value * 1.609344
@@ -758,6 +827,7 @@ export default {
     async previewLocationSelection() {
       this.locationBusy = true
       try {
+        this.closeCityPreviewModal()
         await this.resolveLocationNamesFromDraft()
       } catch (e) {
         this.locationError = "Failed to preview area cities. Please try again."
@@ -890,6 +960,7 @@ export default {
       this.categoryInfo = ""
       this.categoryActiveIndex = 0
       this.categoryMenuOpen = false
+      this.cityPreviewModalOpen = false
       this.companyInput = ""
       this.locationFallbackInput = ""
       this.locationInfo = ""
@@ -902,6 +973,8 @@ export default {
     }
   },
   async mounted() {
+    window.addEventListener("keydown", this.handleGlobalKeydown)
+
     const cached = getCachedLocation()
     if (cached?.latitude && cached?.longitude) {
       this.resolvedLocation = cached
@@ -917,6 +990,9 @@ export default {
     }
 
     await this.loadJobs()
+  },
+  beforeUnmount() {
+    window.removeEventListener("keydown", this.handleGlobalKeydown)
   }
 }
 </script>
