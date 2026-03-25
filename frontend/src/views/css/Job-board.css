@@ -521,3 +521,12 @@
     gap: 6px;
   }
 }
+
+.pagination-top {
+  padding-top: 10px;
+  padding-bottom: 6px;
+}
+
+.pagination-bottom {
+  padding-top: 6px;
+}

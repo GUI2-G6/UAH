@@ -346,8 +346,15 @@ def _is_job_allowed_by_preferences(
     job_locations: List[str],
     selected_locations: List[str],
 ) -> bool:
-    if selected_locations and not _has_concrete_selected_location(job_locations, selected_locations):
-        return False
+    has_concrete_location_match = _has_concrete_selected_location(job_locations, selected_locations)
+    if selected_locations and not has_concrete_location_match:
+        # When toggles are enabled, allow remote/hybrid jobs even without a concrete nearby-city match.
+        if include_remote and has_remote:
+            pass
+        elif include_hybrid and has_hybrid:
+            pass
+        else:
+            return False
 
     is_remote_only = has_remote and not has_hybrid
     if not include_hybrid and has_hybrid:
@@ -689,7 +696,7 @@ async def search_jobs(
         return cached_response
 
     max_pages = max(1, min(settings.MUSE_PAGE_CHASE_MAX_PAGES, settings.MUSE_PAGE_CHASE_MAX_API_CALLS_PER_REQUEST))
-    target_results = max(1, page_size)
+    target_results = max(1, page_size) + 1
     min_filtered_ratio = min(max(settings.MUSE_PAGE_CHASE_MIN_FILTERED_RATIO, 0.0), 1.0)
     timeout_budget = max(1.0, settings.MUSE_PAGE_CHASE_TIMEOUT_SECONDS)
 
@@ -775,17 +782,33 @@ async def search_jobs(
         guardrail_stop_reason = "max_pages_reached"
 
     # Returns structured response with original pagination info and guarded-fetch diagnostics.
+    page_jobs = accepted_jobs[:page_size]
+    has_next_page_filtered = len(accepted_jobs) > page_size
+    if not has_next_page_filtered:
+        if not page_jobs and page > 1:
+            filtered_total_pages = page - 1
+        else:
+            filtered_total_pages = page
+    else:
+        filtered_total_pages = page + 1
+
+    filtered_total_jobs_estimate = max(0, (page - 1) * page_size) + len(page_jobs)
+    if has_next_page_filtered:
+        filtered_total_jobs_estimate += 1
+
     response_payload = {
         "page": first_payload.get("page"),
-        "total_pages": first_payload.get("page_count"),
-        "total_jobs": first_payload.get("total"),
-        "jobs": accepted_jobs[:page_size],
+        "total_pages": filtered_total_pages,
+        "total_jobs": filtered_total_jobs_estimate,
+        "raw_total_pages": first_payload.get("page_count"),
+        "raw_total_jobs": first_payload.get("total"),
+        "jobs": page_jobs,
         "source_pages_scanned": source_pages_scanned,
         "filtered_out_count": filtered_out_count,
         "guardrail_stop_reason": guardrail_stop_reason,
         "ui_page": page,
         "page_size": page_size,
-        "has_next_page": page < (first_payload.get("page_count") or page),
+        "has_next_page": has_next_page_filtered,
         "has_previous_page": page > 1,
         "location_params_used": len(selected_locations),
         "location_params_truncated": location_params_truncated,

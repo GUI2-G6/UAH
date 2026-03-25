@@ -508,6 +508,22 @@
             <p v-if="locationLimitNotice" class="warn-text">{{ locationLimitNotice }}</p>
         </div>
 
+        <div class="pagination pagination-top" v-if="!loading && !error">
+          <button type="button" @click="goToPreviousPage" :disabled="page <= 1 || loading">Previous</button>
+          <button
+            type="button"
+            v-for="pageNumber in visiblePageButtons"
+            :key="`jobs-page-top-${pageNumber}`"
+            :class="{ active: pageNumber === page }"
+            @click="goToPage(pageNumber)"
+            :disabled="loading"
+          >
+            {{ pageNumber }}
+          </button>
+          <span>of {{ totalPages }}</span>
+          <button type="button" @click="goToNextPage" :disabled="!hasNextPage || loading">Next</button>
+        </div>
+
         <div class="dashboard">
             <div class="empty-state" v-if="!loading && !error && !jobs.length">
                 No jobs matched the selected filters.
@@ -520,7 +536,7 @@
             />
         </div>
 
-          <div class="pagination" v-if="!loading && !error">
+          <div class="pagination pagination-bottom" v-if="!loading && !error">
             <button type="button" @click="goToPreviousPage" :disabled="page <= 1 || loading">Previous</button>
             <button
               type="button"
@@ -1433,7 +1449,7 @@ export default {
 
       return filtered
     },
-    async loadJobs() {
+    async loadJobs(allowAutoClamp = true) {
       this.loading = true
       this.error = ""
 
@@ -1448,6 +1464,9 @@ export default {
         this.totalJobs = Number(data.total_jobs || 0)
         this.totalPages = Math.max(1, Number(data.total_pages || 1))
         this.hasNextPage = data.has_next_page === true
+        if (this.page > this.totalPages) {
+          this.page = this.totalPages
+        }
         if (data.location_params_truncated === true && !this.locationLimitNotice) {
           this.locationLimitNotice = "Location filters were trimmed by backend guardrails to protect API stability."
         }
@@ -1474,6 +1493,12 @@ export default {
         }))
 
         this.jobs = this.applyClientFilters(mappedJobs)
+
+        if (allowAutoClamp && this.page > 1 && !this.jobs.length && !this.hasNextPage) {
+          this.page = Math.max(1, this.page - 1)
+          await this.loadJobs(false)
+          return
+        }
       } catch (e) {
         this.jobs = []
         this.error = "Failed to load jobs. Please try again."
