@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 import os
 from app.db.session import get_db
@@ -58,10 +57,6 @@ def _ensure_admin_user(db: Session) -> User:
     db.commit()
     db.refresh(user)
     return user
-
-
-class BypassRequest(BaseModel):
-    passphrase: str
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -149,30 +144,6 @@ def token_login(
         "access_token": token,
         "token_type": "bearer",
     }
-
-
-@router.post("/bypass", response_model=TokenResponse)
-def bypass(payload: BypassRequest, db: Session = Depends(get_db)):
-    """Alpha-only bypass: exchange a server-side passphrase for an admin JWT."""
-    expected = os.getenv("ADMIN_BYPASS_PASSPHRASE")
-    if not expected:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="ADMIN_BYPASS_PASSPHRASE is not set",
-        )
-
-    if payload.passphrase != expected:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid bypass passphrase",
-        )
-
-    admin_user = _ensure_admin_user(db)
-    token = create_access_token(data={"sub": str(admin_user.id)})
-    return TokenResponse(
-        access_token=token,
-        user=UserResponse.model_validate(admin_user),
-    )
 
 
 @router.get("/me", response_model=UserResponse)

@@ -29,13 +29,14 @@ class Settings:
 
     # Database — constructed from individual env vars for clarity.
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "uah")
-    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "uah_dev_pass")
+    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "")
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "uah_dev")
     POSTGRES_HOST: str = os.getenv("POSTGRES_HOST", "db")  # Docker service name
     POSTGRES_PORT: str = os.getenv("POSTGRES_PORT", "5432")
 
     # Auth / JWT
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "change-me-in-production")
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "")
+    SESSION_SECRET: str = os.getenv("SESSION_SECRET", "")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 
@@ -105,6 +106,18 @@ class Settings:
         if not self.ZAI_OCR_URL or not self.ZAI_OCR_URL.strip():
             missing.append("ZAI_OCR_URL")
         return missing
+
+    def require_secrets(self) -> None:
+      missing: list[str] = []
+      for name in ("POSTGRES_PASSWORD", "SECRET_KEY", "SESSION_SECRET"):
+        value = getattr(self, name, "")
+        if not isinstance(value, str) or not value.strip():
+          missing.append(name)
+
+      if missing:
+        raise RuntimeError(
+          "Missing required environment variables: " + ", ".join(missing)
+        )
 
 
 settings = Settings()

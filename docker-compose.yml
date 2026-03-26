@@ -30,7 +30,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - ./volumes/postgres:/var/lib/postgresql/data
@@ -57,12 +57,12 @@ services:
         condition: service_healthy
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_HOST: db
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
-      ADMIN_BYPASS_PASSPHRASE: ${ADMIN_BYPASS_PASSPHRASE:-}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY required}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET required}
       ADMIN_BOOTSTRAP_ENABLED: ${ADMIN_BOOTSTRAP_ENABLED:-false}
       ADMIN_BOOTSTRAP_USERNAME: ${ADMIN_BOOTSTRAP_USERNAME:-}
       ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}

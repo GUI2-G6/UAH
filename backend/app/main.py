@@ -27,15 +27,18 @@ from app.api.resume import router as resume_router
 from app.api.applicant_profile import router as profile_router
 from app.core.config import settings
 from app.db.base import Base
-from app.db.session import engine
+from app.db.session import get_engine, init_engine
 from app.services.geolocation import ensure_city_dataset
 from app.services.muse_location_index import ensure_muse_location_index
 import app.models  # noqa: F401 — ensure all models are registered
 
 logger = logging.getLogger(__name__)
 
+# Fail fast on missing critical secrets when running the backend.
+settings.require_secrets()
 
-def _ensure_users_table_columns() -> None:
+
+def _ensure_users_table_columns(engine) -> None:
     """Dev safety net: add missing columns when DB schema lags behind models.
 
     This project currently uses `Base.metadata.create_all()`, which does not
@@ -97,7 +100,7 @@ def _ensure_users_table_columns() -> None:
         logger.exception("User table schema fixup failed: %s", exc)
 
 
-def _ensure_resumes_table_columns() -> None:
+def _ensure_resumes_table_columns(engine) -> None:
     """Dev safety net: add pdf_data column to existing resumes table if missing."""
     try:
         from sqlalchemy import inspect, text
@@ -141,10 +144,13 @@ def _bootstrap_admin_user_if_enabled() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    init_engine()
+    engine = get_engine()
+
     # Create all tables on startup
     Base.metadata.create_all(bind=engine)
-    _ensure_users_table_columns()
-    _ensure_resumes_table_columns()
+    _ensure_users_table_columns(engine)
+    _ensure_resumes_table_columns(engine)
     _bootstrap_admin_user_if_enabled()
 
     geo_dataset_status = ensure_city_dataset()
@@ -185,7 +191,7 @@ app = FastAPI(
 
 app.add_middleware(
     SessionMiddleware, 
-    secret_key=os.getenv("SESSION_SECRET", "a-very-secret-random-key")
+    secret_key=settings.SESSION_SECRET
 )
 
 # ---------------------------------------------------------------------------

@@ -8,7 +8,7 @@ function parseTokenPayload(token) {
 }
 
 export function isTokenExpired(token) {
-    if (!token || token === 'local-dev-bypass') return false
+    if (!token) return true
     const payload = parseTokenPayload(token)
     if (!payload?.exp) return true
     return Date.now() / 1000 >= payload.exp

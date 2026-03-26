@@ -1579,7 +1579,9 @@ async def diagnostics():
     db_start = time.monotonic()
     try:
         from sqlalchemy import text
-        from app.db.session import engine
+        from app.db.session import get_engine
+
+        engine = get_engine()
 
         with engine.connect() as conn:
             row = conn.execute(text("SELECT version()")).fetchone()

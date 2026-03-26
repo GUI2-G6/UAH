@@ -21,9 +21,9 @@ services:
     container_name: uah-local-db
     restart: unless-stopped
     environment:
-      # These match the default values in app/core/config.py
+      # These align with backend defaults (except password, which must be set).
       POSTGRES_USER: uah
-      POSTGRES_PASSWORD: uah_dev_pass
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
       POSTGRES_DB: uah_dev
     ports:
       - "5432:5432"
