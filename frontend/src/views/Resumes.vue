@@ -1500,6 +1500,9 @@ export default {
             return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
         },
         apiErrorMessage(payload, status, fallbackLabel) {
+            if (status === 413) {
+                return 'Upload request too large at gateway. Maximum file size is 5 MB.'
+            }
             const detail = payload?.detail
             if (typeof detail === 'string' && detail.trim()) return detail
             if (detail && typeof detail === 'object') {
