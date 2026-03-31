@@ -11,7 +11,6 @@ Parses config.py using AST to catch these patterns:
 
 import ast
 import sys
-import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent.parent
@@ -33,27 +32,46 @@ def extract_env_vars_from_config(filepath: Path) -> set[str]:
             and node.func.attr in ("get",)
             and isinstance(node.func.value, ast.Attribute)
             and node.func.value.attr == "environ"
+            and isinstance(node.func.value.value, ast.Name)
+            and node.func.value.value.id == "os"
         ):
             if node.args and isinstance(node.args[0], ast.Constant):
-                found.add(node.args[0].value)
+                value = node.args[0].value
+                if isinstance(value, str):
+                    found.add(value)
 
         # os.environ["KEY"]
         if (
             isinstance(node, ast.Subscript)
             and isinstance(node.value, ast.Attribute)
             and node.value.attr == "environ"
+            and isinstance(node.value.value, ast.Name)
+            and node.value.value.id == "os"
             and isinstance(node.slice, ast.Constant)
         ):
-            found.add(node.slice.value)
+            value = node.slice.value
+            if isinstance(value, str):
+                found.add(value)
 
         # os.getenv("KEY") or os.getenv("KEY", default)
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
             and node.func.attr == "getenv"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "os"
         ):
             if node.args and isinstance(node.args[0], ast.Constant):
-                found.add(node.args[0].value)
+                value = node.args[0].value
+                if isinstance(value, str):
+                    found.add(value)
+
+        # _env_bool("KEY", default)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "_env_bool":
+            if node.args and isinstance(node.args[0], ast.Constant):
+                value = node.args[0].value
+                if isinstance(value, str):
+                    found.add(value)
 
     return found
 
@@ -65,7 +83,9 @@ def extract_keys_from_env_example(filepath: Path) -> set[str]:
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        key = line.split("=")[0].strip()
+        key = line.split("=", 1)[0].strip()
+        if key.startswith("export "):
+            key = key[len("export "):].strip()
         if key:
             keys.add(key)
     return keys
