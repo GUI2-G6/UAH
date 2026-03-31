@@ -902,7 +902,44 @@ def _extract_client_ip(request: Request) -> Optional[str]:
     return None
 
 
-@router.get("/geolocation/ip", tags=["geolocation"])
+@router.get(
+    "/geolocation/ip",
+    tags=["geolocation"],
+    response_description="Resolved IP-based geolocation payload.",
+    responses={
+        200: {
+            "description": "IP geolocation resolved successfully.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "latitude": 34.7304,
+                        "longitude": -86.5861,
+                        "city": "Huntsville",
+                        "country": "United States",
+                        "country_code": "US",
+                        "region": "Alabama",
+                        "source": "ip-api",
+                        "accuracy_km": 50,
+                    }
+                }
+            },
+        },
+        502: {
+            "description": "Upstream geolocation provider failed.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": {
+                            "code": "GEO_IP_FAILED",
+                            "message": "Could not determine location from IP.",
+                            "debug": "provider timeout",
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 async def geolocation_by_ip(request: Request):
     """
     Resolve approximate user location from request IP address.
@@ -929,7 +966,42 @@ async def geolocation_by_ip(request: Request):
         )
 
 
-@router.get("/geolocation/geocode", tags=["geolocation"])
+@router.get(
+    "/geolocation/geocode",
+    tags=["geolocation"],
+    response_description="Geocoded location candidate payload.",
+    responses={
+        200: {
+            "description": "Geocoding succeeded.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "latitude": 34.7304,
+                        "longitude": -86.5861,
+                        "display_name": "Huntsville, Alabama, United States",
+                        "city": "Huntsville",
+                        "country": "United States",
+                        "country_code": "US",
+                    }
+                }
+            },
+        },
+        404: {
+            "description": "Location could not be resolved.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": {
+                            "code": "GEO_GEOCODE_FAILED",
+                            "message": "Could not find that location. Try a city name or ZIP code.",
+                            "debug": "no candidates",
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 async def geocode_location(
     q: str = Query(
         ...,
@@ -967,7 +1039,42 @@ async def geocode_location(
         )
 
 
-@router.get("/geolocation/reverse", tags=["geolocation"])
+@router.get(
+    "/geolocation/reverse",
+    tags=["geolocation"],
+    response_description="Reverse-geocoded place payload.",
+    responses={
+        200: {
+            "description": "Reverse geocoding succeeded.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "latitude": 34.7304,
+                        "longitude": -86.5861,
+                        "city": "Huntsville",
+                        "region": "Alabama",
+                        "country": "United States",
+                        "country_code": "US",
+                    }
+                }
+            },
+        },
+        502: {
+            "description": "Reverse geocoding provider error.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": {
+                            "code": "GEO_REVERSE_FAILED",
+                            "message": "Could not resolve this coordinate into a place name.",
+                            "debug": "provider unavailable",
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 async def reverse_geocode_location(
     latitude: float = Query(..., ge=-90, le=90, description="Latitude in decimal degrees. Valid range: -90 to 90."),
     longitude: float = Query(..., ge=-180, le=180, description="Longitude in decimal degrees. Valid range: -180 to 180."),
@@ -995,7 +1102,29 @@ async def reverse_geocode_location(
         )
 
 
-@router.get("/geolocation/cities-in-radius", tags=["geolocation"])
+@router.get(
+    "/geolocation/cities-in-radius",
+    tags=["geolocation"],
+    response_description="Cities that fall within the requested radius.",
+    responses={
+        200: {
+            "description": "Radius search completed.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "cities": [
+                            {"name": "Huntsville", "state": "AL", "country_code": "US", "distance_miles": 0.0},
+                            {"name": "Madison", "state": "AL", "country_code": "US", "distance_miles": 11.2},
+                        ],
+                        "total_count": 2,
+                        "radius_miles": 25.0,
+                        "radius_km": 40.23,
+                    }
+                }
+            },
+        }
+    },
+)
 async def cities_in_radius(
     latitude: float = Query(..., ge=-90, le=90, description="Center latitude for radius search in decimal degrees."),
     longitude: float = Query(..., ge=-180, le=180, description="Center longitude for radius search in decimal degrees."),
@@ -1049,7 +1178,28 @@ async def cities_in_radius(
     }
 
 
-@router.get("/geolocation/country-cities", tags=["geolocation"])
+@router.get(
+    "/geolocation/country-cities",
+    tags=["geolocation"],
+    response_description="Known city list for the requested country code.",
+    responses={
+        200: {
+            "description": "Country-city lookup completed.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "cities": [
+                            {"name": "Huntsville", "state": "AL", "country_code": "US"},
+                            {"name": "Seattle", "state": "WA", "country_code": "US"},
+                        ],
+                        "total_count": 2,
+                        "country_code": "US",
+                    }
+                }
+            },
+        }
+    },
+)
 async def country_cities(
     country_code: str = Query(..., min_length=2, max_length=2, description="ISO country code"),
     limit: int = Query(120, ge=1, le=400, description="Maximum number of cities to include in response."),
@@ -1079,7 +1229,27 @@ async def country_cities(
     }
 
 
-@router.get("/geolocation/muse-supported-countries", tags=["geolocation"])
+@router.get(
+    "/geolocation/muse-supported-countries",
+    tags=["geolocation"],
+    response_description="Countries currently represented in the Muse location index.",
+    responses={
+        200: {
+            "description": "Supported country set returned.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "countries": [
+                            {"country_code": "US", "country_name": "United States", "location_count": 300},
+                            {"country_code": "CA", "country_name": "Canada", "location_count": 40},
+                        ],
+                        "total_count": 2,
+                    }
+                }
+            },
+        }
+    },
+)
 async def muse_supported_countries(db: Session = Depends(get_db)):
     """
     List countries currently covered by the indexed Muse location dataset.
@@ -1098,7 +1268,28 @@ async def muse_supported_countries(db: Session = Depends(get_db)):
     }
 
 
-@router.get("/geolocation/muse-supported-locations", tags=["geolocation"])
+@router.get(
+    "/geolocation/muse-supported-locations",
+    tags=["geolocation"],
+    response_description="Muse-supported location list for the selected country.",
+    responses={
+        200: {
+            "description": "Supported locations returned.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "locations": [
+                            {"location_name": "New York, NY", "country_code": "US", "active": True},
+                            {"location_name": "Seattle, WA", "country_code": "US", "active": True},
+                        ],
+                        "total_count": 2,
+                        "country_code": "US",
+                    }
+                }
+            },
+        }
+    },
+)
 async def muse_supported_locations(
     country_code: str = Query(..., min_length=2, max_length=2, description="ISO country code"),
     limit: int = Query(200, ge=1, le=500, description="Maximum number of supported locations to return for the country."),
@@ -1131,7 +1322,24 @@ async def muse_supported_locations(
     }
 
 
-@router.post("/geolocation/muse-supported-locations/refresh", tags=["geolocation"])
+@router.post(
+    "/geolocation/muse-supported-locations/refresh",
+    tags=["geolocation"],
+    response_description="Result of refresh operation plus high-level index counters.",
+    responses={
+        200: {
+            "description": "Refresh completed.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "refresh": {"status": "refreshed", "records_upserted": 347, "duration_seconds": 5.8},
+                        "countries_total": 12,
+                    }
+                }
+            },
+        }
+    },
+)
 async def refresh_muse_supported_locations(
     force: bool = Query(False, description="When true, bypass freshness checks and force a full index refresh."),
     db: Session = Depends(get_db),
@@ -1152,7 +1360,50 @@ async def refresh_muse_supported_locations(
         "countries_total": len(countries),
     }
 
-@router.get("/jobs/search", tags=["jobs"])
+@router.get(
+    "/jobs/search",
+    tags=["jobs"],
+    response_description="Filtered job results with diagnostics and pagination metadata.",
+    responses={
+        200: {
+            "description": "Job search completed successfully.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "ui_page": 1,
+                        "page_size": 10,
+                        "has_next_page": True,
+                        "total_jobs_estimated": 21,
+                        "jobs": [
+                            {
+                                "id": 12345,
+                                "name": "Software Engineer",
+                                "company": "Acme",
+                                "locations": ["Huntsville, AL"],
+                                "has_remote": False,
+                                "has_hybrid": True,
+                                "job_url": "https://www.themuse.com/jobs/acme/software-engineer",
+                            }
+                        ],
+                        "source_pages_scanned": 2,
+                        "filtered_out_count": 30,
+                        "guardrail_stop_reason": "target_reached",
+                    }
+                }
+            },
+        },
+        500: {
+            "description": "Provider fetch failed on first source page.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Failed to fetch jobs from The Muse API"
+                    }
+                }
+            },
+        },
+    },
+)
 async def search_jobs(
     page: int = Query(1, ge=1, description="UI page number (1-indexed)."),
     page_size: int = Query(
@@ -1529,7 +1780,33 @@ async def search_jobs(
     _set_jobs_cache_response(cache_signature, page, response_payload)
     return response_payload
 
-@router.post("/jobs/save", tags=["jobs"])
+@router.post(
+    "/jobs/save",
+    tags=["jobs"],
+    response_description="Confirmation payload for save operation.",
+    responses={
+        200: {
+            "description": "Job saved successfully.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "Successfully saved Software Engineer at Acme!"
+                    }
+                }
+            },
+        },
+        400: {
+            "description": "Job already exists in saved list.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Job already saved"
+                    }
+                }
+            },
+        },
+    },
+)
 async def save_job(
     # Creates an endpoint for saving a job to the user's profile with the required job data and a database session dependency.
     job_data: SaveJobRequest,
@@ -1571,7 +1848,30 @@ async def save_job(
     return {"message": f"Successfully saved  {job_data.name} at {job_data.company}!"}
 
 
-@router.get("/jobs/saved", tags=["jobs"])
+@router.get(
+    "/jobs/saved",
+    tags=["jobs"],
+    response_description="Saved jobs owned by the requested user.",
+    responses={
+        200: {
+            "description": "Saved jobs fetched successfully.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "saved_jobs": [
+                            {
+                                "id": 1,
+                                "title": "Software Engineer",
+                                "company": "Acme",
+                                "job_url": "https://www.themuse.com/jobs/acme/software-engineer",
+                            }
+                        ]
+                    }
+                }
+            },
+        }
+    },
+)
 async def get_saved_jobs(
     user_id: int = Query(..., ge=1, description="User ID whose saved jobs should be returned."),
     db: Session = Depends(get_db),
@@ -1600,7 +1900,19 @@ async def get_saved_jobs(
     # Returns the structured JSON response containing the list of saved jobs for the user.
     return {"saved_jobs": saved_job_data}
 
-@router.get("/auth/google", tags=["google auth"])
+@router.get(
+    "/auth/google",
+    tags=["google auth"],
+    response_description="Redirects browser to Google OAuth consent screen.",
+    responses={
+        307: {
+            "description": "Temporary redirect to Google OAuth endpoint."
+        },
+        302: {
+            "description": "Redirect to Google OAuth endpoint (client/ASGI dependent)."
+        },
+    },
+)
 async def google_oauth(request: Request):
     """
     Start Google OAuth authorization flow.
@@ -1634,7 +1946,45 @@ async def google_oauth(request: Request):
     
     
     
-@router.get("/auth/google/callback", response_model=TokenResponse, tags=["google auth"])
+@router.get(
+    "/auth/google/callback",
+    response_model=TokenResponse,
+    tags=["google auth"],
+    response_description="UAH token payload for authenticated Google user.",
+    responses={
+        200: {
+            "description": "Google OAuth completed and local token issued.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature",
+                        "token_type": "bearer",
+                        "user": {
+                            "id": 42,
+                            "email": "jane.doe@example.com",
+                            "username": "jane_doe",
+                            "first_name": "Jane",
+                            "last_name": "Doe",
+                            "avatar_url": "https://lh3.googleusercontent.com/a-/example",
+                            "email_verified": True,
+                            "is_active": True,
+                        },
+                    }
+                }
+            },
+        },
+        400: {
+            "description": "OAuth state mismatch or token exchange failure.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Invalid state parameter"
+                    }
+                }
+            },
+        },
+    },
+)
 async def google_oauth_callback(
     request: Request,
     code: str = Query(..., description="Authorization code returned by Google after user consent."),
@@ -1699,7 +2049,25 @@ async def google_oauth_callback(
     )
 
 
-@router.get("/status", tags=["status"])
+@router.get(
+    "/status",
+    tags=["status"],
+    response_description="Lightweight backend status payload.",
+    responses={
+        200: {
+            "description": "Backend status returned.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "ok",
+                        "environment": "dev",
+                        "message": "UAH API is running",
+                    }
+                }
+            },
+        }
+    },
+)
 async def api_status():
     """
     Lightweight status endpoint for frontend connectivity checks.
@@ -1717,7 +2085,31 @@ async def api_status():
     }
 
 
-@router.get("/diagnostics", tags=["status"])
+@router.get(
+    "/diagnostics",
+    tags=["status"],
+    response_description="Comprehensive multi-service diagnostics snapshot.",
+    responses={
+        200: {
+            "description": "Diagnostics payload returned.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "timestamp": "2026-03-31T22:12:10.421Z",
+                        "environment": "dev",
+                        "services": {
+                            "backend": {"status": "healthy", "name": "UAH", "version": "0.1.0"},
+                            "database": {"status": "healthy", "latency_ms": 5.2},
+                        },
+                    }
+                }
+            },
+        },
+        500: {
+            "description": "One or more diagnostics probes failed unexpectedly."
+        },
+    },
+)
 async def diagnostics():
     """
     Comprehensive diagnostics endpoint for operational visibility.
