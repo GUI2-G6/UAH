@@ -14,7 +14,7 @@
 
 If you discover a security issue — including but not limited to authentication bypasses, exposed credentials, injection vulnerabilities, or unauthorized data access — please report it privately:
 
-**Email:** admincontact@uahapp.com  
+**Email:** security@uahapp.com  
 **Subject line:** `[SECURITY] Brief description`
 
 Include in your report:
