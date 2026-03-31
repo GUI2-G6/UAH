@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.db.session import get_db
@@ -19,6 +19,16 @@ def list_profiles(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    List all applicant profiles owned by the authenticated user.
+
+    Returns profiles sorted by active status first, then most recently updated.
+    This endpoint powers profile selection UI where users switch between
+    tailored application personas.
+
+    Response codes:
+    - 200: Profiles returned successfully (possibly empty list).
+    """
     return (
         db.query(ApplicantProfile)
         .filter(ApplicantProfile.user_id == current_user.id)
@@ -32,6 +42,15 @@ def get_active_profile(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Retrieve the currently active applicant profile.
+
+    Returns the single profile flagged as active for the authenticated user.
+
+    Response codes:
+    - 200: Active profile returned.
+    - 404: No active profile exists for this user.
+    """
     profile = (
         db.query(ApplicantProfile)
         .filter(ApplicantProfile.user_id == current_user.id, ApplicantProfile.is_active == True)
@@ -48,6 +67,17 @@ def create_profile(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Create a new applicant profile for the authenticated user.
+
+    Profiles store reusable application data (contact info, education, work
+    history, demographics, and links). The first profile created for a user is
+    automatically marked active.
+
+    Response codes:
+    - 201: Profile created successfully.
+    - 429: User reached the maximum allowed profile count.
+    """
     count = db.query(func.count(ApplicantProfile.id)).filter(
         ApplicantProfile.user_id == current_user.id
     ).scalar()
@@ -70,10 +100,19 @@ def create_profile(
 
 @router.get("/{profile_id}", response_model=ProfileResponse)
 def get_profile(
-    profile_id: int,
+    profile_id: int = Path(..., ge=1, description="Numeric profile ID to retrieve."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Retrieve a specific applicant profile by ID.
+
+    Only profiles owned by the authenticated user are accessible.
+
+    Response codes:
+    - 200: Profile returned successfully.
+    - 404: Profile not found for this user.
+    """
     profile = db.query(ApplicantProfile).filter(
         ApplicantProfile.id == profile_id, ApplicantProfile.user_id == current_user.id
     ).first()
@@ -84,11 +123,21 @@ def get_profile(
 
 @router.put("/{profile_id}", response_model=ProfileResponse)
 def update_profile(
-    profile_id: int,
     payload: ProfileUpdate,
+    profile_id: int = Path(..., ge=1, description="Numeric profile ID to update."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Update fields on an existing applicant profile.
+
+    Applies partial updates from the request payload. Fields omitted from the
+    request remain unchanged.
+
+    Response codes:
+    - 200: Profile updated successfully.
+    - 404: Profile not found for this user.
+    """
     profile = db.query(ApplicantProfile).filter(
         ApplicantProfile.id == profile_id, ApplicantProfile.user_id == current_user.id
     ).first()
@@ -105,10 +154,20 @@ def update_profile(
 
 @router.post("/{profile_id}/activate", response_model=ProfileResponse)
 def activate_profile(
-    profile_id: int,
+    profile_id: int = Path(..., ge=1, description="Numeric profile ID to set as active."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Mark one profile as active and deactivate all others for this user.
+
+    This endpoint enforces a single-active-profile rule used by autofill flows
+    and application defaults.
+
+    Response codes:
+    - 200: Profile activated successfully.
+    - 404: Target profile not found for this user.
+    """
     profile = db.query(ApplicantProfile).filter(
         ApplicantProfile.id == profile_id, ApplicantProfile.user_id == current_user.id
     ).first()
@@ -129,10 +188,20 @@ def activate_profile(
 
 @router.delete("/{profile_id}")
 def delete_profile(
-    profile_id: int,
+    profile_id: int = Path(..., ge=1, description="Numeric profile ID to delete permanently."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Delete an applicant profile owned by the authenticated user.
+
+    If the deleted profile was active, the most recently updated remaining
+    profile is promoted to active automatically.
+
+    Response codes:
+    - 200: Profile deleted successfully.
+    - 404: Profile not found for this user.
+    """
     profile = db.query(ApplicantProfile).filter(
         ApplicantProfile.id == profile_id, ApplicantProfile.user_id == current_user.id
     ).first()

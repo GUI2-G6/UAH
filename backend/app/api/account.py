@@ -21,6 +21,17 @@ router = APIRouter(prefix="/api/account", tags=["account"])
 
 @router.post("/forgot-password", response_model=MessageResponse)
 def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Begin password reset flow for an email address.
+
+    Generates a password-reset token when the account exists and either emails
+    it (production) or returns a dev-only token string when outbound email is
+    disabled. The response is intentionally generic to reduce account enumeration.
+
+    Response codes:
+    - 200: Reset flow accepted (message always returned).
+    - 500: Email infrastructure not configured or send failure.
+    """
     user = db.query(User).filter(User.email == payload.email).first()
 
     if not user:
@@ -56,6 +67,17 @@ def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db
 
 @router.post("/reset-password", response_model=MessageResponse)
 def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Complete password reset using a verification token.
+
+    Validates a password-reset token, locates the target user, hashes the new
+    password, and persists it to the account.
+
+    Response codes:
+    - 200: Password reset completed successfully.
+    - 400: Token is invalid or expired.
+    - 404: Token is valid but target user does not exist.
+    """
     decoded = decode_verification_token(payload.token, expected_purpose="password_reset")
     if decoded is None:
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
@@ -75,6 +97,17 @@ def change_password(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Change password for the currently authenticated user.
+
+    Requires current password re-verification for local accounts before storing
+    the new password hash.
+
+    Response codes:
+    - 200: Password changed successfully.
+    - 400: Account is OAuth-only and has no local password.
+    - 401: Current password is incorrect.
+    """
     if not current_user.hashed_password:
         raise HTTPException(status_code=400, detail="Account uses OAuth login, no password to change")
 
@@ -92,6 +125,16 @@ def change_email(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Update email address for the current user.
+
+    Enforces email uniqueness across all accounts and marks the new address as
+    unverified until the verification flow is completed.
+
+    Response codes:
+    - 200: Email updated and verification required.
+    - 400: Email already belongs to another account.
+    """
     existing = db.query(User).filter(User.email == payload.new_email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already in use")
@@ -108,6 +151,16 @@ def change_username(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Update username for the current user.
+
+    Ensures the new username is unique before persisting and returning the
+    updated user profile.
+
+    Response codes:
+    - 200: Username changed successfully.
+    - 400: Username already taken by another account.
+    """
     existing = db.query(User).filter(User.username == payload.new_username).first()
     if existing and existing.id != current_user.id:
         raise HTTPException(status_code=400, detail="Username already taken")
@@ -124,6 +177,15 @@ def change_name(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Update first and/or last name for the current user.
+
+    Accepts partial updates and normalizes blank values to null. This endpoint
+    supports both local and OAuth-authenticated accounts.
+
+    Response codes:
+    - 200: Name fields updated successfully.
+    """
     # Allow users (including OAuth accounts) to update their profile name.
     current_user.first_name = payload.first_name.strip() if payload.first_name and payload.first_name.strip() else None
     current_user.last_name = payload.last_name.strip() if payload.last_name and payload.last_name.strip() else None
@@ -137,6 +199,18 @@ def send_verification_email(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Generate and send an email verification token.
+
+    If email delivery is disabled, a dev-only token is returned in the response.
+    If the account is already verified, the endpoint returns a no-op success
+    message to keep client behavior simple.
+
+    Response codes:
+    - 200: Verification flow handled successfully.
+    - 400: User has no email address configured.
+    - 500: Email configuration or delivery failure.
+    """
     if current_user.email_verified:
         return MessageResponse(message="Email is already verified")
 
@@ -172,6 +246,17 @@ def send_verification_email(
 
 @router.post("/verify-email", response_model=MessageResponse)
 def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)):
+    """
+    Verify an email address using a signed verification token.
+
+    Validates the token purpose and subject, then marks the target user's
+    `email_verified` flag as true.
+
+    Response codes:
+    - 200: Email verification completed.
+    - 400: Token is invalid, malformed, or expired.
+    - 404: Token subject user not found.
+    """
     decoded = decode_verification_token(payload.token, expected_purpose="email_verify")
     if decoded is None:
         raise HTTPException(status_code=400, detail="Invalid or expired verification token")
@@ -190,6 +275,16 @@ def delete_account(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Permanently delete the currently authenticated account.
+
+    Removes the current user record and returns a confirmation message. This is
+    a destructive action and should generally be guarded by a frontend confirm
+    dialog.
+
+    Response codes:
+    - 200: Account deleted successfully.
+    """
     db.delete(current_user)
     db.commit()
     return MessageResponse(message="Account deleted successfully")
