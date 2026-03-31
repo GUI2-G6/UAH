@@ -904,6 +904,16 @@ def _extract_client_ip(request: Request) -> Optional[str]:
 
 @router.get("/geolocation/ip", tags=["geolocation"])
 async def geolocation_by_ip(request: Request):
+    """
+    Resolve approximate user location from request IP address.
+
+    Attempts to detect a public client IP from forwarding headers and socket
+    metadata, then delegates to the geolocation provider.
+
+    Response codes:
+    - 200: IP geolocation resolved successfully.
+    - 502: Upstream geolocation provider error.
+    """
     client_ip = _extract_client_ip(request)
     try:
         payload = await resolve_ip_location(client_ip)
@@ -921,9 +931,29 @@ async def geolocation_by_ip(request: Request):
 
 @router.get("/geolocation/geocode", tags=["geolocation"])
 async def geocode_location(
-    q: str = Query(..., min_length=2, description="Zip code, city, or full location text"),
-    country_code: Optional[str] = Query(None, description="Optional ISO country code"),
+    q: str = Query(
+        ...,
+        min_length=2,
+        max_length=200,
+        description="Location search input such as city, state, postal code, or full place string.",
+    ),
+    country_code: Optional[str] = Query(
+        None,
+        min_length=2,
+        max_length=2,
+        description="Optional ISO-3166 country code to narrow geocoding candidates (for example, US, CA, GB).",
+    ),
 ):
+    """
+    Convert free-text location input into normalized coordinates and metadata.
+
+    Useful for turning user-entered location text into structured lat/lon
+    values for job filtering and nearby-city discovery.
+
+    Response codes:
+    - 200: Location resolved successfully.
+    - 404: No matching location found.
+    """
     try:
         return await geocode_query(q, country_code=country_code)
     except Exception as exc:
@@ -939,9 +969,19 @@ async def geocode_location(
 
 @router.get("/geolocation/reverse", tags=["geolocation"])
 async def reverse_geocode_location(
-    latitude: float = Query(..., ge=-90, le=90),
-    longitude: float = Query(..., ge=-180, le=180),
+    latitude: float = Query(..., ge=-90, le=90, description="Latitude in decimal degrees. Valid range: -90 to 90."),
+    longitude: float = Query(..., ge=-180, le=180, description="Longitude in decimal degrees. Valid range: -180 to 180."),
 ):
+    """
+    Convert coordinates into a human-readable place representation.
+
+    Uses reverse geocoding to map latitude/longitude to city/region/country
+    metadata for display and filtering workflows.
+
+    Response codes:
+    - 200: Reverse geocoding resolved successfully.
+    - 502: Upstream reverse geocoder failure.
+    """
     try:
         return await reverse_geocode(latitude, longitude)
     except Exception as exc:
@@ -957,13 +997,22 @@ async def reverse_geocode_location(
 
 @router.get("/geolocation/cities-in-radius", tags=["geolocation"])
 async def cities_in_radius(
-    latitude: float = Query(..., ge=-90, le=90),
-    longitude: float = Query(..., ge=-180, le=180),
+    latitude: float = Query(..., ge=-90, le=90, description="Center latitude for radius search in decimal degrees."),
+    longitude: float = Query(..., ge=-180, le=180, description="Center longitude for radius search in decimal degrees."),
     radius: float = Query(25, gt=0, description="Radius value, interpreted by the selected unit"),
-    unit: str = Query("mi", description="mi or km"),
+    unit: str = Query("mi", description="Distance unit for radius. Supported values: 'mi' (miles) or 'km' (kilometers)."),
     country_code: Optional[str] = Query(None, description="Optional ISO country code to constrain matches"),
-    limit: int = Query(200, ge=1, le=500),
+    limit: int = Query(200, ge=1, le=500, description="Maximum number of city results to return after filtering."),
 ):
+    """
+    Find known cities within a radius of a coordinate point.
+
+    Applies optional country constraints and returns both mile and kilometer
+    representations of the effective search radius.
+
+    Response codes:
+    - 200: Search completed successfully (may return empty city list).
+    """
     normalized_unit = (unit or "mi").strip().lower()
     radius_miles = km_to_miles(radius) if normalized_unit == "km" else radius
     radius_miles = min(radius_miles, 100.0)
@@ -1003,8 +1052,17 @@ async def cities_in_radius(
 @router.get("/geolocation/country-cities", tags=["geolocation"])
 async def country_cities(
     country_code: str = Query(..., min_length=2, max_length=2, description="ISO country code"),
-    limit: int = Query(120, ge=1, le=400),
+    limit: int = Query(120, ge=1, le=400, description="Maximum number of cities to include in response."),
 ):
+    """
+    List known cities for a specific country.
+
+    Useful for pre-populating location selectors and narrowing job searches to
+    specific geographies.
+
+    Response codes:
+    - 200: Country lookup completed (may return empty city list).
+    """
     cities = list_country_cities(country_code=country_code, limit=limit)
     if not cities:
         return {
@@ -1023,6 +1081,15 @@ async def country_cities(
 
 @router.get("/geolocation/muse-supported-countries", tags=["geolocation"])
 async def muse_supported_countries(db: Session = Depends(get_db)):
+    """
+    List countries currently covered by the indexed Muse location dataset.
+
+    Ensures the location index is available and returns normalized country
+    metadata used for downstream location canonicalization.
+
+    Response codes:
+    - 200: Supported countries returned successfully.
+    """
     await ensure_muse_location_index()
     countries = list_supported_countries(db)
     return {
@@ -1034,9 +1101,18 @@ async def muse_supported_countries(db: Session = Depends(get_db)):
 @router.get("/geolocation/muse-supported-locations", tags=["geolocation"])
 async def muse_supported_locations(
     country_code: str = Query(..., min_length=2, max_length=2, description="ISO country code"),
-    limit: int = Query(200, ge=1, le=500),
+    limit: int = Query(200, ge=1, le=500, description="Maximum number of supported locations to return for the country."),
     db: Session = Depends(get_db),
 ):
+    """
+    List Muse-supported locations for a given country.
+
+    Used to canonicalize user-provided location filters before querying Muse so
+    searches remain consistent and higher quality.
+
+    Response codes:
+    - 200: Locations returned successfully (may be empty for unsupported country).
+    """
     await ensure_muse_location_index()
     locations = list_supported_locations_for_country(db, country_code=country_code, limit=limit)
     if not locations:
@@ -1056,7 +1132,19 @@ async def muse_supported_locations(
 
 
 @router.post("/geolocation/muse-supported-locations/refresh", tags=["geolocation"])
-async def refresh_muse_supported_locations(force: bool = Query(False), db: Session = Depends(get_db)):
+async def refresh_muse_supported_locations(
+    force: bool = Query(False, description="When true, bypass freshness checks and force a full index refresh."),
+    db: Session = Depends(get_db),
+):
+    """
+    Refresh cached Muse location support index.
+
+    Triggers an index refresh process and returns both refresh metadata and the
+    updated count of supported countries.
+
+    Response codes:
+    - 200: Refresh completed or confirmed current index state.
+    """
     result = await refresh_muse_location_index(force=force)
     countries = list_supported_countries(db)
     return {
@@ -1066,20 +1154,62 @@ async def refresh_muse_supported_locations(force: bool = Query(False), db: Sessi
 
 @router.get("/jobs/search", tags=["jobs"])
 async def search_jobs(
-    # Creates an endpoint for each job search query with optional parameters 
-    page: int = Query(1, ge=1, description="Page number for pagination"),
-    page_size: int = Query(settings.JOBS_DEFAULT_PAGE_SIZE, ge=1, le=20, description="Number of jobs to return per UI page"),
-    category: Optional[List[str]] = Query(None, description="e.g., 'Software Engineer', 'Data Science'"),
-    catogory: Optional[List[str]] = Query(None, description="e.g., 'Software Engineer', 'Data Science'"),
-    level: Optional[List[str]] = Query(None, description="e.g., 'Internship', 'Entry', 'Senior'"),
-    location: Optional[List[str]] = Query(None, description="e.g., 'New York', 'Remote'"),
-    location_mode: Optional[str] = Query(None, description="Location mode hint: nearby/country/manual"),
-    location_country_code: Optional[str] = Query(None, min_length=2, max_length=2, description="Optional ISO country code for location canonicalization"),
-    company: Optional[List[str]] = Query(None, description="e.g., 'Google', 'Microsoft'"),
-    include_remote: bool = Query(False, description="Include fully remote roles in results"),
-    include_hybrid: bool = Query(True, description="Include hybrid roles in results"),
+    page: int = Query(1, ge=1, description="UI page number (1-indexed)."),
+    page_size: int = Query(
+        settings.JOBS_DEFAULT_PAGE_SIZE,
+        ge=1,
+        le=20,
+        description="Number of jobs to return for the requested UI page. Max 20.",
+    ),
+    category: Optional[List[str]] = Query(
+        None,
+        description="One or more category labels. Values are expanded to Muse-compatible categories.",
+    ),
+    catogory: Optional[List[str]] = Query(
+        None,
+        description="Backward-compatible misspelled alias of category retained for existing clients.",
+    ),
+    level: Optional[List[str]] = Query(
+        None,
+        description="Experience levels such as internship, entry, mid, senior. Values are normalized for Muse.",
+    ),
+    location: Optional[List[str]] = Query(
+        None,
+        description="One or more location strings (city/state/country) to canonicalize and filter against.",
+    ),
+    location_mode: Optional[str] = Query(
+        None,
+        description="Location interpretation strategy hint. Common values: nearby, country, manual.",
+    ),
+    location_country_code: Optional[str] = Query(
+        None,
+        min_length=2,
+        max_length=2,
+        description="Optional ISO-3166 country code used to constrain location canonicalization.",
+    ),
+    company: Optional[List[str]] = Query(
+        None,
+        description="One or more company names to include in provider query filters.",
+    ),
+    include_remote: bool = Query(False, description="When true, include fully remote roles that pass compatibility rules."),
+    include_hybrid: bool = Query(True, description="When true, include hybrid roles in the result set."),
     db: Session = Depends(get_db),
 ):
+    """
+    Search and filter jobs from The Muse with local compatibility guardrails.
+
+    This endpoint applies category/level/company filters, canonicalizes user
+    location input, performs adaptive multi-page provider scanning, and enforces
+    local policy preferences for remote/hybrid compatibility.
+
+    The response includes diagnostics (source pages scanned, filtered counts,
+    constraint confidence metrics, and pagination estimates) to support frontend
+    transparency and debugging.
+
+    Response codes:
+    - 200: Search completed successfully with filtered jobs and diagnostics.
+    - 500: Muse API unavailable on first fetch or unexpected internal failure.
+    """
     # Gets the list of jobs from The Muse API based on the provided query parameters 
     url = "https://www.themuse.com/api/public/jobs"
     params_base = []
@@ -1405,6 +1535,16 @@ async def save_job(
     job_data: SaveJobRequest,
     db: Session = Depends(get_db),
 ):
+    """
+    Save a job posting to a user's saved-jobs list.
+
+    Prevents duplicate saves based on `(user_id, job_id)` and stores job title,
+    company, and source URL for later retrieval.
+
+    Response codes:
+    - 200: Job saved successfully.
+    - 400: Job already saved for this user.
+    """
     # Checks if the job is already saved for the user by querying the SavedJob table in the database with the user ID and job ID.
     existing_job = db.query(SavedJob).filter(
         SavedJob.user_id == job_data.user_id,
@@ -1433,10 +1573,18 @@ async def save_job(
 
 @router.get("/jobs/saved", tags=["jobs"])
 async def get_saved_jobs(
-    # Creates an endpoint for retrieving all saved jobs for a user with a database session dependency.
-    user_id: int,
+    user_id: int = Query(..., ge=1, description="User ID whose saved jobs should be returned."),
     db: Session = Depends(get_db),
 ):
+    """
+    Retrieve all saved jobs for a specific user.
+
+    Returns a compact list of saved job records containing title, company, and
+    destination URL fields.
+
+    Response codes:
+    - 200: Saved jobs returned successfully (possibly empty list).
+    """
     # Queries the SavedJob table in the database to get all saved jobs for the specified user ID.
     saved_jobs = db.query(SavedJob).filter(SavedJob.user_id == user_id).all()
     
@@ -1454,6 +1602,15 @@ async def get_saved_jobs(
 
 @router.get("/auth/google", tags=["google auth"])
 async def google_oauth(request: Request):
+    """
+    Start Google OAuth authorization flow.
+
+    Creates a CSRF-protection state value, stores it in session, and redirects
+    the browser to Google's OAuth consent page.
+
+    Response codes:
+    - 307/302: Redirect to Google OAuth consent screen.
+    """
     # Generates a random  16 character state string to prevent attacks
     state = secrets.token_urlsafe(16)
     # Stores the state in the session for later verification when the user is redirected back
@@ -1478,7 +1635,23 @@ async def google_oauth(request: Request):
     
     
 @router.get("/auth/google/callback", response_model=TokenResponse, tags=["google auth"])
-async def google_oauth_callback(request: Request, code: str, state: str, db: Session = Depends(get_db)):
+async def google_oauth_callback(
+    request: Request,
+    code: str = Query(..., description="Authorization code returned by Google after user consent."),
+    state: str = Query(..., description="State token returned by Google; must match session value for CSRF protection."),
+    db: Session = Depends(get_db),
+):
+    """
+    Complete Google OAuth flow and issue local API token.
+
+    Validates the state token, exchanges authorization code for Google tokens,
+    fetches user profile claims, creates/loads the local user, and returns a
+    UAH bearer token.
+
+    Response codes:
+    - 200: OAuth login completed and local token returned.
+    - 400: Invalid state token or failed Google token exchange.
+    """
     # Verifies if the parameter "state" matches the one stored in the session to prevent any attacks. 
     # If they don't match, it raises an HTTP 400 error.
     if state != request.session.get("oauth_state"):
@@ -1529,10 +1702,13 @@ async def google_oauth_callback(request: Request, code: str, state: str, db: Ses
 @router.get("/status", tags=["status"])
 async def api_status():
     """
-    Status endpoint used by the frontend to verify backend connectivity.
+    Lightweight status endpoint for frontend connectivity checks.
 
-    Returns a simple JSON payload. The frontend Vue app calls this
-    on mount to confirm the /api proxy is working through Nginx.
+    Returns a minimal service health payload used by the frontend to confirm
+    `/api` proxy routing and basic backend availability.
+
+    Response codes:
+    - 200: Service is reachable.
     """
     return {
         "status": "ok",
@@ -1544,10 +1720,15 @@ async def api_status():
 @router.get("/diagnostics", tags=["status"])
 async def diagnostics():
     """
-    Comprehensive diagnostics endpoint for the status page.
+    Comprehensive diagnostics endpoint for operational visibility.
 
-    Probes every service and returns detailed information about
-    the health, configuration, and connectivity of the entire stack.
+    Probes backend runtime metadata, database connectivity, and selected
+    integration checks, returning a deep status object used by troubleshooting
+    tools and status dashboards.
+
+    Response codes:
+    - 200: Diagnostics gathered successfully.
+    - 500: One or more probes failed unexpectedly.
     """
     import time
     import platform
