@@ -61,7 +61,20 @@ def _ensure_admin_user(db: Session) -> User:
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 def register(payload: UserRegister, db: Session = Depends(get_db)):
-    """Register a new user account."""
+    """
+    Register a new user account and return an access token.
+
+    Creates a local credential-based account after validating that the submitted
+    email and username are not already in use. On success, this endpoint returns
+    a bearer token and the normalized user profile so the frontend can treat
+    registration as an authenticated session.
+
+    Response codes:
+    - 201: Account created successfully and token issued.
+    - 400: Email already registered or username already taken.
+    - 422: Request validation failed (for example, missing fields).
+    - 500: Server/database error while creating the account.
+    """
     if db.query(User).filter(User.email == payload.email).first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -97,7 +110,19 @@ def login(
     payload: UserLogin,
     db: Session = Depends(get_db),
 ):
-    """Log in with username and password."""
+    """
+    Authenticate with username and password.
+
+    Validates submitted credentials against a local account, verifies the account
+    is active, and returns a signed bearer token plus profile data. This endpoint
+    is intended for the standard app login flow.
+
+    Response codes:
+    - 200: Authentication succeeded and token issued.
+    - 401: Invalid username/password combination.
+    - 403: Account exists but is deactivated.
+    - 422: Request validation failed.
+    """
     user = db.query(User).filter(User.username == payload.username).first()
 
     if not user or not user.hashed_password or not verify_password(payload.password, user.hashed_password):
@@ -124,7 +149,19 @@ def token_login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
-    """OAuth2 password flow endpoint used by Swagger Authorize."""
+    """
+    OAuth2-compatible token endpoint for Swagger Authorize and tooling.
+
+    Accepts form-encoded credentials (`username`, `password`) using the
+    OAuth2 password grant format. This route is primarily used by Swagger UI's
+    Authorize dialog and other clients expecting the standard token payload.
+
+    Response codes:
+    - 200: Token generated successfully.
+    - 401: Invalid username/password.
+    - 403: Account is deactivated.
+    - 422: Invalid form payload.
+    """
     user = db.query(User).filter(User.username == form_data.username).first()
 
     if not user or not user.hashed_password or not verify_password(form_data.password, user.hashed_password):
@@ -151,7 +188,17 @@ def get_current_user(
     db: Session = Depends(get_db),
     token: str = Depends(oauth2_scheme),
 ):
-    """Get the currently authenticated user's profile."""
+    """
+    Retrieve the profile of the currently authenticated user.
+
+    Decodes and validates the bearer token from the Authorization header,
+    then fetches the corresponding user record from the database.
+
+    Response codes:
+    - 200: User profile returned successfully.
+    - 401: Token missing, invalid, or expired.
+    - 404: Token subject is valid but user no longer exists.
+    """
     payload = decode_access_token(token)
     if payload is None:
         raise HTTPException(

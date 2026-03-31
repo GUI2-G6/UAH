@@ -214,17 +214,28 @@ app.include_router(profile_router)
 
 @app.get("/api/", tags=["root"])
 async def root():
-    """Root endpoint — quick sanity check that the service is running."""
+    """
+    Root discovery endpoint for quick service identification.
+
+    Returns project name and version so clients and operators can verify they
+    are connected to the expected backend instance.
+
+    Response codes:
+    - 200: Service metadata returned successfully.
+    """
     return {"service": settings.PROJECT_NAME, "version": settings.VERSION}
 
 
 @app.get("/api/health", tags=["health"])
 async def health():
     """
-    Health check endpoint.
+    Basic health probe endpoint.
 
-    Used by Docker HEALTHCHECK, load balancers, and monitoring.
-    Future improvement: verify DB connectivity here.
+    Used by Docker HEALTHCHECK, load balancers, and uptime monitors to confirm
+    that the process is alive and serving requests.
+
+    Response codes:
+    - 200: Process is healthy and accepting requests.
     """
     return {"status": "healthy"}
 
