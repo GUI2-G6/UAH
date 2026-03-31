@@ -30,6 +30,7 @@ Keep branch names lowercase and hyphenated. No spaces, no uppercase.
 
 ## Pull Requests
 
+- For the full branch and PR workflow, see [WORKFLOW.md](WORKFLOW.md).
 - All changes to `dev` must come through a pull request — no direct pushes
 - Title your PR clearly: what does it do?
 - Reference the issue it closes using `Closes #XX` in the PR description
