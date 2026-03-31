@@ -3,11 +3,10 @@
 Checks that all environment variables referenced in backend config
 are documented in .env.example.
 
-Parses config.py using AST to catch all patterns:
+Parses config.py using AST to catch these patterns:
   - os.environ.get("KEY")
   - os.environ["KEY"]
   - os.getenv("KEY")
-  - Pydantic BaseSettings fields with no default (implicitly required from env)
 """
 
 import ast
