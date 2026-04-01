@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, Path
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -35,6 +35,19 @@ async def upload_resume(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Upload a resume PDF, run OCR extraction, and store parsed markdown.
+
+    Accepts a PDF file, enforces upload limits/cooldowns, calls OCR, and stores
+    both binary PDF content and OCR markdown for later parsing.
+
+    Response codes:
+    - 201: Resume uploaded and OCR text stored successfully.
+    - 400: File type invalid or file exceeds max size.
+    - 422: OCR completed but returned no usable text.
+    - 429: Upload rate or per-user resume limit exceeded.
+    - 502: Upstream OCR service failure.
+    """
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
 
@@ -106,11 +119,25 @@ async def upload_resume(
 
 @router.post("/{resume_id}/parse", response_model=ResumeResponse)
 async def parse_resume(
-    resume_id: int,
+    resume_id: int = Path(..., ge=1, description="Resume ID to parse into structured application data."),
     payload: ParseRequest = ParseRequest(),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Parse a stored resume into normalized structured fields.
+
+    Uses either the LLM-based parser or rule-based parser depending on the
+    requested method. Results are validated and persisted back to the resume.
+
+    Response codes:
+    - 200: Parse succeeded and updated resume is returned.
+    - 400: Unsupported parse method or OCR data missing.
+    - 404: Resume not found for current user.
+    - 429: Parse requested too soon after a previous parse.
+    - 500: Internal parsing failure.
+    - 502/504: Upstream parser timeout/failure represented by structured error.
+    """
     resume = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == current_user.id).first()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
@@ -159,16 +186,35 @@ def list_resumes(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    List resumes owned by the authenticated user.
+
+    Returns newest-first metadata records suitable for dashboard lists and
+    selection controls.
+
+    Response codes:
+    - 200: Resume list returned successfully (possibly empty).
+    """
     resumes = db.query(Resume).filter(Resume.user_id == current_user.id).order_by(Resume.created_at.desc()).all()
     return resumes
 
 
 @router.get("/{resume_id}", response_model=ResumeResponse)
 def get_resume(
-    resume_id: int,
+    resume_id: int = Path(..., ge=1, description="Resume ID to retrieve."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Retrieve a single resume record with parsing metadata.
+
+    Returns resume details including structured fields, parser method, and
+    readiness flags.
+
+    Response codes:
+    - 200: Resume returned successfully.
+    - 404: Resume not found for current user.
+    """
     resume = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == current_user.id).first()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
@@ -177,10 +223,20 @@ def get_resume(
 
 @router.get("/{resume_id}/pdf")
 def get_resume_pdf(
-    resume_id: int,
+    resume_id: int = Path(..., ge=1, description="Resume ID whose PDF binary should be streamed."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Stream the original uploaded resume PDF.
+
+    Returns binary PDF content with an inline Content-Disposition header so
+    browsers can preview the document.
+
+    Response codes:
+    - 200: PDF binary streamed successfully.
+    - 404: Resume not found or PDF content unavailable.
+    """
     resume = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == current_user.id).first()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
@@ -195,10 +251,21 @@ def get_resume_pdf(
 
 @router.get("/{resume_id}/portal-check", response_model=PortalCheckResponse)
 def portal_check(
-    resume_id: int,
+    resume_id: int = Path(..., ge=1, description="Resume ID to evaluate for job portal readiness."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Evaluate whether a parsed resume satisfies required portal fields.
+
+    Computes readiness booleans and missing required field names based on
+    normalized resume data.
+
+    Response codes:
+    - 200: Portal readiness computed successfully.
+    - 400: Resume exists but has not been parsed yet.
+    - 404: Resume not found for current user.
+    """
     resume = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == current_user.id).first()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
@@ -218,10 +285,19 @@ def portal_check(
 
 @router.delete("/{resume_id}")
 def delete_resume(
-    resume_id: int,
+    resume_id: int = Path(..., ge=1, description="Resume ID to permanently delete."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Delete a resume owned by the authenticated user.
+
+    Removes the resume record and associated stored document data.
+
+    Response codes:
+    - 200: Resume deleted successfully.
+    - 404: Resume not found for current user.
+    """
     resume = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == current_user.id).first()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
@@ -333,12 +409,24 @@ def _run_parse_job(job_id: int):
 
 @router.post("/{resume_id}/parse-async", response_model=ParseJobStartResponse, status_code=202)
 def start_async_parse(
-    resume_id: int,
+    resume_id: int = Path(..., ge=1, description="Resume ID to parse asynchronously in a background job."),
     payload: ParseRequest = ParseRequest(),
     background_tasks: BackgroundTasks = BackgroundTasks(),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Queue an asynchronous resume parsing job.
+
+    Creates a parse job record, prevents duplicate active jobs for the same
+    resume, and schedules the parser in FastAPI background tasks.
+
+    Response codes:
+    - 202: Parse job queued successfully.
+    - 400: Resume lacks OCR data or method is invalid.
+    - 404: Resume not found for current user.
+    - 409: Another active parse job already exists for this resume.
+    """
     resume = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == current_user.id).first()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
@@ -376,10 +464,20 @@ def start_async_parse(
 
 @router.get("/parse-job/{job_id}", response_model=ParseJobResponse)
 def get_parse_job(
-    job_id: int,
+    job_id: int = Path(..., ge=1, description="Parse job ID to poll for status, progress, and results."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Poll a parse job by ID.
+
+    Returns current parse status, progress details, and summary/error metadata
+    for asynchronous resume parsing.
+
+    Response codes:
+    - 200: Parse job returned successfully.
+    - 404: Parse job not found for current user.
+    """
     job = db.query(ParseJob).filter(ParseJob.id == job_id, ParseJob.user_id == current_user.id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Parse job not found")
@@ -388,10 +486,20 @@ def get_parse_job(
 
 @router.post("/parse-job/{job_id}/cancel")
 def cancel_parse_job(
-    job_id: int,
+    job_id: int = Path(..., ge=1, description="Parse job ID to cancel if still in a non-terminal state."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Cancel an in-progress parse job.
+
+    Marks queued/parsing/validating jobs as cancelled. If the job is already in
+    a terminal state, returns a no-op informational message.
+
+    Response codes:
+    - 200: Job cancelled or already terminal.
+    - 404: Parse job not found for current user.
+    """
     job = db.query(ParseJob).filter(ParseJob.id == job_id, ParseJob.user_id == current_user.id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Parse job not found")

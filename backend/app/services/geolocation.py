@@ -130,7 +130,8 @@ def load_city_dataset(force_reload: bool = False) -> List[Dict[str, Any]]:
         return _CITY_CACHE
 
     cities: List[Dict[str, Any]] = []
-    if CITIES_DATA_PATH.exists():
+    ignore_local_dataset = _env_bool("GEOLOCATION_IGNORE_LOCAL_DATASET", "false")
+    if CITIES_DATA_PATH.exists() and not ignore_local_dataset:
         try:
             raw = json.loads(CITIES_DATA_PATH.read_text(encoding="utf-8"))
             if isinstance(raw, list):
@@ -218,7 +219,15 @@ def ensure_city_dataset() -> Dict[str, Any]:
     - If build fails, caller can continue with fallback cities.
     """
     auto_build = _env_bool("GEOLOCATION_AUTO_BUILD_DATASET", "true")
+    ignore_local_dataset = _env_bool("GEOLOCATION_IGNORE_LOCAL_DATASET", "false")
     timeout_seconds = int(os.getenv("GEOLOCATION_DATASET_TIMEOUT_SECONDS", "90"))
+
+    if ignore_local_dataset:
+        return {
+            "status": "skipped",
+            "reason": "local dataset ignored",
+            "path": str(CITIES_DATA_PATH),
+        }
 
     if CITIES_DATA_PATH.exists():
         return {
