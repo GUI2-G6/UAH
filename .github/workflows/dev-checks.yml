@@ -68,7 +68,7 @@ jobs:
           sudo mv gitleaks /usr/local/bin/
 
       - name: Run Gitleaks
-        run: gitleaks detect --source . --log-opts="origin/dev..HEAD" --verbose
+        run: gitleaks detect --source . --log-opts="${{ github.event.pull_request.base.sha }}..${{ github.sha }}" --verbose
 
   env-example-check:
     name: ENV Example Sync Check
