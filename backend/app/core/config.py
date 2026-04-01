@@ -16,6 +16,7 @@ To add a new setting:
 
 import os
 
+def broken_function(
 
 def _env_bool(name: str, default: str = "false") -> bool:
   return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
