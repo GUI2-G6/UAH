@@ -1,0 +1,6 @@
+[allowlist]
+  commits = [
+    "3a8486170d1a7c31153a3bf57651483bae41781f",
+    "3a6aa9f90a4f47c20ebc6fc00240be60480d5502",
+    "509871127ff89d7e0c5591819dae96ca93ccd546"
+  ]
