@@ -23,6 +23,8 @@ def _env_bool(name: str, default: str = "false") -> bool:
 
 class Settings:
     """Simple settings object — swap for pydantic-settings when needed."""
+    #intentional var added
+    TEST_MISSING_VAR = os.environ.get("TEST_MISSING_VAR", "")  
     PROJECT_NAME: str = os.getenv("PROJECT_NAME", "UAH")
     VERSION: str = os.getenv("VERSION", "0.1.0")
 
