@@ -100,8 +100,15 @@ def main():
         print(f"❌ .env.example not found: {ENV_EXAMPLE}")
         sys.exit(1)
 
+    # DEBUG — add these two lines temporarily
+    print(f"📄 Scanning: {CONFIG_FILE}")
+    print(f"📄 Checking against: {ENV_EXAMPLE}")
+
     config_vars = extract_env_vars_from_config(CONFIG_FILE)
     example_keys = extract_keys_from_env_example(ENV_EXAMPLE)
+
+    # DEBUG — add this line temporarily
+    print(f"🔍 Vars found in config: {sorted(config_vars)}")
 
     # These are intentionally internal or auto-set — skip them
     skip = {
