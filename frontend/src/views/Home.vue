@@ -26,7 +26,8 @@
 
 <script>
     import Card from "../components/Card.vue";
-
+    //testing intentional bad import for scan task
+    import { SomethingThatDoesNotExist } from './does-not-exist'
     export default{
         data() {
             return {
