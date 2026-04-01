@@ -90,14 +90,16 @@ jobs:
         with:
           python-version: "3.12"
       - name: Audit Python dependencies
+        continue-on-error: true
         run: |
           pip install pip-audit --break-system-packages -q
-          pip-audit -r backend/requirements.txt --format markdown || true
+          pip-audit -r backend/requirements.txt --format markdown
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
       - name: Audit frontend dependencies
+        continue-on-error: true
         run: |
           cd frontend
-          npm audit --audit-level=high || true
+          npm audit --audit-level=high
