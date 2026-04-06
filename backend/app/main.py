@@ -73,6 +73,7 @@ def _ensure_users_table_columns(engine) -> None:
             "picture_url": "VARCHAR(255)",
             "email_verified": "BOOLEAN DEFAULT FALSE",
             "is_active": "BOOLEAN DEFAULT TRUE",
+            "is_admin": "BOOLEAN DEFAULT FALSE",
             "created_at": "TIMESTAMPTZ DEFAULT now()",
             "updated_at": "TIMESTAMPTZ DEFAULT now()",
         }
