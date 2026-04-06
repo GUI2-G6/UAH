@@ -218,7 +218,7 @@
                     </select>
                     <button class="btn-secondary btn-compact" @click="showNewProfileInput = !showNewProfileInput" title="New profile">+</button>
                     <button
-                        v-if="profiles.length > 1 && isDefaultProfile(activeProfileId)"
+                        v-if="profiles.length > 1 && !isDefaultProfile(activeProfileId)"
                         class="btn-secondary btn-compact delete-profile-btn"
                         @click="deleteProfile(activeProfileId)"
                         title="Delete current profile"
