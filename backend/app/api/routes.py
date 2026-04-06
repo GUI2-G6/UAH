@@ -52,7 +52,7 @@ import time
 from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin_user
 from app.models.user import User, SavedJob
 from app.db.session import get_db
 from app.google.service import GoogleAuthService
