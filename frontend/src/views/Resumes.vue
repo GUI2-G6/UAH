@@ -1362,7 +1362,10 @@ export default {
                 const res = await authedFetch('/api/applicant-profile/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name }),
+                    body: JSON.stringify({ 
+                        name,
+                        is_default: this.profiles.length === 0  // Makes first profile created the default profile.
+                    }),
                 })
                 if (!res.ok) {
                     const data = await res.json().catch(() => null)
