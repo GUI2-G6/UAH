@@ -52,6 +52,7 @@ import time
 from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
+from app.api.deps import require_admin_user
 from app.models.user import User, SavedJob
 from app.db.session import get_db
 from app.google.service import GoogleAuthService
@@ -2110,7 +2111,7 @@ async def api_status():
         },
     },
 )
-async def diagnostics():
+async def diagnostics(current_user: User = Depends(require_admin_user)):
     """
     Comprehensive diagnostics endpoint for operational visibility.
 
