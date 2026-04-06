@@ -13,6 +13,7 @@ class User(Base):
     hashed_password = Column(String(255), nullable=True)
     first_name = Column(String(100), nullable=True)
     last_name = Column(String(100), nullable=True)
+    is_admin = Column(Boolean, default=False)
 
     linkedIn_id = Column(String(255), unique=True, nullable=True)
     google_id = Column(String(255), unique=True, nullable=True)

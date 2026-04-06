@@ -52,6 +52,7 @@ def _ensure_admin_user(db: Session) -> User:
         first_name=admin_first_name,
         last_name=admin_last_name,
         is_active=True,
+        is_admin=True,
     )
     db.add(user)
     db.commit()
