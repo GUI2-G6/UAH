@@ -213,11 +213,16 @@ def delete_profile(
         ApplicantProfile.user_id == current_user.id
     ).scalar()
 
-    # Prevents deleting the only profile or the active/default profile.
-    if profile_count <= 1 or profile.is_active:
+    # Prevent deletion of the only profile or the active profile.
+    if profile_count <= 1:
         raise HTTPException(
             status_code=400,
             detail="Cannot delete your only profile. Create another profile first.",
+        )
+    elif profile.is_active:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete the active profile. Deactivate it first or create another profile.",
         )
 
     was_active = profile.is_active
