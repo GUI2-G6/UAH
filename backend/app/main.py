@@ -25,6 +25,7 @@ from app.api.auth import router as auth_router
 from app.api.account import router as account_router
 from app.api.resume import router as resume_router
 from app.api.applicant_profile import router as profile_router
+from app.api.apply_session import router as apply_session_router
 from app.core.config import settings
 from app.db.base import Base
 from app.db.session import get_engine, init_engine
@@ -97,8 +98,8 @@ def _ensure_users_table_columns(engine) -> None:
                 conn.execute(text(ddl))
         logger.warning("Applied dev schema fixups to users table: %s", ", ".join([s.split()[5] for s in ddl_statements]))
     except Exception as exc:
-        # Don't crash the app if the DB user lacks ALTER privileges.
         logger.exception("User table schema fixup failed: %s", exc)
+
 
 
 def _ensure_resumes_table_columns(engine) -> None:
@@ -180,13 +181,15 @@ async def lifespan(app: FastAPI):
 
     yield
 
+_is_production = os.getenv("ENVIRONMENT", "development").lower() == "production"
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description="Unified Application Hub — DEV API",
-    docs_url="/docs",       # Swagger UI
-    redoc_url="/redoc",     # ReDoc alternative
-    openapi_url="/openapi.json",
+    docs_url=None if _is_production else "/docs",
+    redoc_url=None if _is_production else "/redoc",
+    openapi_url=None if _is_production else "/openapi.json",
     lifespan=lifespan,
 )
 
@@ -207,6 +210,7 @@ app.include_router(auth_router)
 app.include_router(account_router)
 app.include_router(resume_router)
 app.include_router(profile_router)
+app.include_router(apply_session_router)
 
 
 # ---------------------------------------------------------------------------
