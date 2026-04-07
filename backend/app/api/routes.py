@@ -1809,7 +1809,6 @@ async def search_jobs(
     },
 )
 async def save_job(
-    # Creates an endpoint for saving a job to the user's profile with the required job data and a database session dependency.
     job_data: SaveJobRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -1824,17 +1823,14 @@ async def save_job(
     - 200: Job saved successfully.
     - 400: Job already saved for this user.
     """
-    # Checks if the job is already saved for the user by querying the SavedJob table in the database with the user ID and job ID.
     existing_job = db.query(SavedJob).filter(
         SavedJob.user_id == current_user.id,
         SavedJob.job_id == job_data.job_id
     ).first()
-    
-    # If the job is already saved, it raises an HTTP 400 error indicating that the job has already been saved by the user.
+
     if existing_job:
         raise HTTPException(status_code=400, detail="Job already saved")
-    
-    # If the job isnt saved, it creates a new SavedJob instance with the provided job data and adds it to the database session.
+
     new_saved_job = SavedJob(
         user_id=current_user.id,
         job_id=job_data.job_id,
@@ -1842,12 +1838,10 @@ async def save_job(
         company=job_data.company,
         url=job_data.url
     )
-    # Commits the transaction to save the new job to the database and refreshes the instance to get the updated data.
     db.add(new_saved_job)
     db.commit()
     db.refresh(new_saved_job)
-    # Tells the frontend that the job has been successfully saved to the user's profile with a success message.
-    return {"message": f"Successfully saved  {job_data.name} at {job_data.company}!"}
+    return {"message": f"Successfully saved {job_data.name} at {job_data.company}!"}
 
 
 @router.get(
@@ -1875,22 +1869,18 @@ async def save_job(
     },
 )
 async def get_saved_jobs(
-    user_id: int = Query(..., ge=1, description="User ID whose saved jobs should be returned."),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
-    Retrieve all saved jobs for a specific user.
-
-    Returns a compact list of saved job records containing title, company, and
-    destination URL fields.
+    Retrieve all saved jobs for the authenticated user.
 
     Response codes:
     - 200: Saved jobs returned successfully (possibly empty list).
     """
-    # Queries the SavedJob table in the database to get all saved jobs for the specified user ID.
-    saved_jobs = db.query(SavedJob).filter(SavedJob.user_id == user_id).all()
-    
-    # Constructs a list of saved job data with relevant information such as job ID, title, company, and job URL.
+    saved_jobs = db.query(SavedJob).filter(SavedJob.user_id == current_user.id).all()
+
+
     saved_job_data = []
     for job in saved_jobs:
         saved_job_data.append({
@@ -1899,8 +1889,24 @@ async def get_saved_jobs(
             "company": job.company,
             "job_url": job.url,
         })
-    # Returns the structured JSON response containing the list of saved jobs for the user.
     return {"saved_jobs": saved_job_data}
+
+
+@router.delete("/jobs/saved/{job_id}", tags=["jobs"])
+async def unsave_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    saved = db.query(SavedJob).filter(
+        SavedJob.id == job_id,
+        SavedJob.user_id == current_user.id
+    ).first()
+    if not saved:
+        raise HTTPException(status_code=404, detail="Saved job not found")
+    db.delete(saved)
+    db.commit()
+    return {"message": "Job removed from saved list"}
 
 @router.get(
     "/auth/google",

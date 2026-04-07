@@ -139,9 +139,48 @@ def change_email(
     if existing:
         raise HTTPException(status_code=400, detail="Email already in use")
 
+    old_email = current_user.email
+
+    if not current_user.email_verified:
+        token = create_verification_token(current_user.id, purpose="email_verify")
+        if not settings.EMAILS_ENABLED:
+            return MessageResponse(
+                message=f"You must verify your current email first. Verification token (dev only): {token}"
+            )
+        try:
+            send_email(
+                to=old_email,
+                subject="Verify your current email — UAH",
+                text=(
+                    "You requested an email change on your UAH account, but your current email "
+                    "is not yet verified. Please verify it first.\n\n"
+                    f"Verification token: {token}\n"
+                ),
+            )
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=400,
+            detail="Your current email must be verified before changing it. A verification email has been sent."
+        )
+
     current_user.email = payload.new_email
     current_user.email_verified = False
     db.commit()
+
+    if settings.EMAILS_ENABLED and old_email:
+        try:
+            send_email(
+                to=old_email,
+                subject="UAH account email changed",
+                text=(
+                    f"The email on your UAH account was just changed to {payload.new_email}.\n\n"
+                    "If you did not make this change, please contact support immediately.\n"
+                ),
+            )
+        except Exception:
+            pass
+
     return MessageResponse(message="Email updated. Please verify your new email address")
 
 

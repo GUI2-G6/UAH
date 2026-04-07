@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.db.base import Base
@@ -20,6 +20,9 @@ class User(Base):
 
     full_name = Column(String(255), nullable=True)
     picture_url = Column(String(255), nullable=True)
+
+    gmail_refresh_token = Column(Text, nullable=True)
+    gmail_email = Column(String(255), nullable=True)
 
     email_verified = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
