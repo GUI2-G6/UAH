@@ -208,6 +208,18 @@ def delete_profile(
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
 
+    # Count the current user's profiles for this delete request.
+    profile_count = db.query(func.count(ApplicantProfile.id)).filter(
+        ApplicantProfile.user_id == current_user.id
+    ).scalar()
+
+    # Prevents deleting the only profile or the active/default profile.
+    if profile_count <= 1 or profile.is_active:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete your only profile. Create another profile first.",
+        )
+
     was_active = profile.is_active
     db.delete(profile)
     db.commit()
