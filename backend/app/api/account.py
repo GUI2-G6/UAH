@@ -139,9 +139,24 @@ def change_email(
     if existing:
         raise HTTPException(status_code=400, detail="Email already in use")
 
+    old_email = current_user.email
     current_user.email = payload.new_email
     current_user.email_verified = False
     db.commit()
+
+    if settings.EMAILS_ENABLED and old_email:
+        try:
+            send_email(
+                to=old_email,
+                subject="UAH account email changed",
+                text=(
+                    f"The email on your UAH account was just changed to {payload.new_email}.\n\n"
+                    "If you did not make this change, please contact support immediately.\n"
+                ),
+            )
+        except Exception:
+            pass
+
     return MessageResponse(message="Email updated. Please verify your new email address")
 
 

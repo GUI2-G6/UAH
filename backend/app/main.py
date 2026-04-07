@@ -26,6 +26,7 @@ from app.api.account import router as account_router
 from app.api.resume import router as resume_router
 from app.api.applicant_profile import router as profile_router
 from app.api.apply_session import router as apply_session_router
+from app.api.gmail import router as gmail_router
 from app.core.config import settings
 from app.db.base import Base
 from app.db.session import get_engine, init_engine
@@ -75,6 +76,8 @@ def _ensure_users_table_columns(engine) -> None:
             "email_verified": "BOOLEAN DEFAULT FALSE",
             "is_active": "BOOLEAN DEFAULT TRUE",
             "is_admin": "BOOLEAN DEFAULT FALSE",
+            "gmail_refresh_token": "TEXT",
+            "gmail_email": "VARCHAR(255)",
             "created_at": "TIMESTAMPTZ DEFAULT now()",
             "updated_at": "TIMESTAMPTZ DEFAULT now()",
         }
@@ -211,6 +214,7 @@ app.include_router(account_router)
 app.include_router(resume_router)
 app.include_router(profile_router)
 app.include_router(apply_session_router)
+app.include_router(gmail_router)
 
 
 # ---------------------------------------------------------------------------
