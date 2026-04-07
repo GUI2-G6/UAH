@@ -1,22 +1,35 @@
 <template>
-    <transition name="fade">
-        <div v-if="visible" :class="['toast', type]">
-        {{ message }}
-        </div>
-    </transition>
+  <transition name="fade">
+    <div v-if="toastStore.visible" :class="['toast', toastStore.type]">
+      {{ toastStore.message }}
+    </div>
+  </transition>
 </template>
 
 <script>
+import { toastStore } from './toastService.js';
+
 export default {
-    props: {
-        message: { type: String, required: true },
-        type: { type: String, default: 'success' } // 'success' | 'error'
-    },
-    data() {
-        return { visible: true };
-    },
-    mounted() {
-        setTimeout(() => this.visible = false, 3000); // auto-hide after 3s
-    }
+  setup() {
+    return { toastStore };
+  }
 };
 </script>
+
+<style>
+.toast {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  top: auto;
+  left: auto;
+  padding: 1rem;
+  border-radius: 4px;
+  color: white !important;
+  z-index: 9999;
+}
+.toast.success { background-color: #4CAF50; }
+.toast.error { background-color: #F44336; }
+.fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+</style>

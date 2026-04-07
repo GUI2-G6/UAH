@@ -3,15 +3,19 @@
     <Burger v-if="showBurger" />
     <div id="main-content">
       <div id="current-page">
+        <!--<Test />-->
         <router-view />
       </div>
       <Footer @open-debug-view="openDebugView" />
     </div>
+    <Toast />
     <DebugDiagnosticModal v-if="debugViewOpen" :snapshot="debugSnapshot" @close="closeDebugView" />
   </div>
 </template>
 
 <script>
+  import Test from "./components/Test.vue";
+  import Toast from "./components/Toast.vue";
   import Burger from "./components/Burger.vue";
   import Footer from "./components/Footer.vue";
   import DebugDiagnosticModal from "./components/DebugDiagnosticModal.vue";
@@ -22,6 +26,8 @@
     components: {
       Burger,
       Footer,
+      Test,
+      Toast,
       DebugDiagnosticModal
     },
     data() {
