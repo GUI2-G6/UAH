@@ -199,9 +199,10 @@ class MessageResponse(BaseModel):
     )
 
 class SaveJobRequest(BaseModel):
-    user_id: int = Field(
+    user_id: int | None = Field(
+        default=None,
         validation_alias=AliasChoices("user_id", "userId"),
-        description="ID of the user who is saving this job listing.",
+        description="Deprecated — ignored, user is derived from JWT token.",
         examples=[42],
     )
     job_id: int = Field(
