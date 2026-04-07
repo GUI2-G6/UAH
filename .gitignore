@@ -32,6 +32,7 @@ venv/
 env/
 .pytest_cache/
 *.sqlite3
+backend/data/cities.json
 
 # ----- Node / Frontend -----
 node_modules/
