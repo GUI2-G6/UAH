@@ -1,5 +1,7 @@
 import secrets
+import base64
 import httpx
+from cryptography.fernet import Fernet
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -11,6 +13,7 @@ from app.core.config import settings
 router = APIRouter(prefix="/api/integrations/gmail", tags=["gmail"])
 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.readonly"
 
@@ -19,6 +22,19 @@ SCAN_KEYWORDS = [
     "position", "we regret", "next steps", "congratulations",
     "candidacy", "hiring", "recruitment", "selected",
 ]
+
+
+def _get_fernet():
+    key = settings.SECRET_KEY[:32].ljust(32, "0")
+    return Fernet(base64.urlsafe_b64encode(key.encode()[:32]))
+
+
+def _encrypt_token(token: str) -> str:
+    return _get_fernet().encrypt(token.encode()).decode()
+
+
+def _decrypt_token(encrypted: str) -> str:
+    return _get_fernet().decrypt(encrypted.encode()).decode()
 
 
 @router.get("/connect")
@@ -83,7 +99,7 @@ async def gmail_callback(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    user.gmail_refresh_token = refresh_token
+    user.gmail_refresh_token = _encrypt_token(refresh_token)
     user.gmail_email = gmail_email
     db.commit()
 
@@ -95,22 +111,31 @@ async def gmail_callback(
 def gmail_status(current_user: User = Depends(get_current_user)):
     return {
         "connected": current_user.gmail_refresh_token is not None,
-        "gmail_email": current_user.gmail_email,
+        "email": current_user.gmail_email,
     }
 
 
 @router.delete("/disconnect")
-def gmail_disconnect(
+async def gmail_disconnect(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.gmail_refresh_token:
+        try:
+            token = _decrypt_token(current_user.gmail_refresh_token)
+            async with httpx.AsyncClient() as client:
+                await client.post(GOOGLE_REVOKE_URL, params={"token": token})
+        except Exception:
+            pass
+
     current_user.gmail_refresh_token = None
     current_user.gmail_email = None
     db.commit()
     return {"message": "Gmail disconnected"}
 
 
-async def _get_gmail_access_token(refresh_token: str) -> str:
+async def _get_gmail_access_token(encrypted_refresh: str) -> str:
+    refresh_token = _decrypt_token(encrypted_refresh)
     async with httpx.AsyncClient() as client:
         resp = await client.post(GOOGLE_TOKEN_URL, data={
             "client_id": settings.GMAIL_CLIENT_ID,
@@ -119,10 +144,29 @@ async def _get_gmail_access_token(refresh_token: str) -> str:
             "grant_type": "refresh_token",
         })
         data = resp.json()
+
+    if data.get("error") == "invalid_grant":
+        raise HTTPException(
+            status_code=401,
+            detail="Gmail token expired or revoked. Please reconnect your Gmail account."
+        )
+
     token = data.get("access_token")
     if not token:
-        raise HTTPException(status_code=502, detail="Failed to refresh Gmail token")
+        raise HTTPException(
+            status_code=401,
+            detail="Could not refresh Gmail token. Please reconnect your Gmail account."
+        )
     return token
+
+
+def _extract_company_hint(from_header: str, subject: str) -> str | None:
+    if "@" in from_header:
+        domain_part = from_header.split("@")[-1].split(">")[0]
+        parts = domain_part.split(".")
+        if len(parts) >= 2 and parts[-2].lower() not in ("gmail", "yahoo", "outlook", "hotmail"):
+            return parts[-2].capitalize()
+    return None
 
 
 @router.post("/scan")
@@ -140,6 +184,11 @@ async def gmail_scan(current_user: User = Depends(get_current_user)):
 
     async with httpx.AsyncClient() as client:
         resp = await client.get(search_url, headers={"Authorization": f"Bearer {access_token}"})
+        if resp.status_code == 401:
+            raise HTTPException(
+                status_code=401,
+                detail="Gmail token expired or revoked. Please reconnect your Gmail account."
+            )
         if resp.status_code != 200:
             raise HTTPException(status_code=502, detail="Gmail API request failed")
         messages_data = resp.json()
@@ -159,22 +208,30 @@ async def gmail_scan(current_user: User = Depends(get_current_user)):
             msg = msg_resp.json()
             headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
             snippet = msg.get("snippet", "")
+            subject = headers.get("Subject", "")
+            from_header = headers.get("From", "")
 
             status = "unknown"
             snippet_lower = snippet.lower()
-            if any(w in snippet_lower for w in ["unfortunately", "regret", "not selected", "not moving forward"]):
+            subject_lower = subject.lower()
+            combined = snippet_lower + " " + subject_lower
+
+            if any(w in combined for w in ["unfortunately", "regret", "not selected", "not moving forward", "will not be"]):
                 status = "rejection"
-            elif any(w in snippet_lower for w in ["interview", "schedule", "meet", "next steps"]):
-                status = "interview"
-            elif any(w in snippet_lower for w in ["offer", "congratulations", "pleased to extend"]):
+            elif any(w in combined for w in ["interview", "schedule", "meet with", "next steps", "phone screen"]):
+                status = "interview_invite"
+            elif any(w in combined for w in ["offer", "congratulations", "pleased to extend", "welcome aboard"]):
                 status = "offer"
+            elif any(w in combined for w in ["received your application", "application received", "thank you for applying", "we have received"]):
+                status = "application_received"
 
             results.append({
-                "subject": headers.get("Subject", ""),
-                "from": headers.get("From", ""),
+                "subject": subject,
+                "from": from_header,
                 "date": headers.get("Date", ""),
-                "snippet": snippet,
                 "detected_status": status,
+                "company_hint": _extract_company_hint(from_header, subject),
+                "snippet": snippet,
             })
 
     return {
