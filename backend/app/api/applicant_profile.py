@@ -213,9 +213,6 @@ def delete_profile(
         ApplicantProfile.user_id == current_user.id
     ).scalar()
 
-    # Debug: print count and active status
-    print(f"User {current_user.id} has {profile_count} profiles. Deleting profile {profile_id}, is_active: {profile.is_active}")
-
     # Prevent deletion of the only profile or the active profile.
     if profile_count <= 1:
         raise HTTPException(
