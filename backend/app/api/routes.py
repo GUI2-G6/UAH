@@ -52,6 +52,7 @@ import time
 from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
+from app.api.deps import get_current_user, require_admin_user
 from app.models.user import User, SavedJob
 from app.db.session import get_db
 from app.google.service import GoogleAuthService
@@ -1811,6 +1812,7 @@ async def save_job(
     # Creates an endpoint for saving a job to the user's profile with the required job data and a database session dependency.
     job_data: SaveJobRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Save a job posting to a user's saved-jobs list.
@@ -1824,7 +1826,7 @@ async def save_job(
     """
     # Checks if the job is already saved for the user by querying the SavedJob table in the database with the user ID and job ID.
     existing_job = db.query(SavedJob).filter(
-        SavedJob.user_id == job_data.user_id,
+        SavedJob.user_id == current_user.id,
         SavedJob.job_id == job_data.job_id
     ).first()
     
@@ -1834,7 +1836,7 @@ async def save_job(
     
     # If the job isnt saved, it creates a new SavedJob instance with the provided job data and adds it to the database session.
     new_saved_job = SavedJob(
-        user_id=job_data.user_id,
+        user_id=current_user.id,
         job_id=job_data.job_id,
         title=job_data.name,
         company=job_data.company,
@@ -2110,7 +2112,7 @@ async def api_status():
         },
     },
 )
-async def diagnostics():
+async def diagnostics(current_user: User = Depends(require_admin_user)):
     """
     Comprehensive diagnostics endpoint for operational visibility.
 
