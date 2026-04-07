@@ -109,7 +109,13 @@ If TLS is enabled but cert files are missing, frontend falls back to HTTP automa
 
 If you want to run the application components on your local machine for rapid testing (without touching the remote dev server infrastructure), we have a dedicated local setup!
 
-See the **[Backend Local Development Guide](./backend/README.md)** for instructions on spinning up the local PostgreSQL database using `docker-compose.local.yml`.
+See the **[Backend Local Development Guide](./backend/README.md)** for the authoritative host-local workflow:
+
+- Local database using `docker-compose.local.yml`
+- Backend with local `uvicorn`
+- Optional frontend with `npm run dev` from `frontend/`
+
+This repository-level guide remains focused on remote dev and deployment operations and does not replace beta or non-local run methods.
 
 ---
 
