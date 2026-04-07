@@ -222,11 +222,6 @@ def delete_profile(
             status_code=400,
             detail="Cannot delete your only profile. Create another profile first.",
         )
-    elif profile.is_active:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot delete the active profile. Deactivate it first or create another profile.",
-        )
 
     else:
         was_active = profile.is_active
