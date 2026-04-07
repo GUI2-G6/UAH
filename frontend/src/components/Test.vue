@@ -5,7 +5,7 @@
 </template>
 
 <script>
-import { showToast } from './toastService.js';
+import { showToast } from '../services/toastService.js';
 
 export default {
   name: 'Test',

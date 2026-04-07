@@ -154,6 +154,7 @@ import Card from "../components/Card.vue";
 import ConfirmModal from "../components/ConfirmModal.vue";
 import SecretInput from "../components/SecretInput.vue";
 import { authedFetch, clearAuth, setCurrentUser } from "../lib/auth.js";
+import { showToast } from '@/services/toastService.js';
 
 export default {
   name: "Settings",
@@ -298,8 +299,10 @@ export default {
                 this.currentUser = data
                 setCurrentUser(data)
                 this.setActionStatus('changeName', 'success', 'Name updated')
+                showToast('Name updated successfully!', 'success');
             } catch (e) {
                 this.setActionStatus('changeName', 'error', this.formatFailure('Update name', e))
+                showToast('Failed to update name: ' + e.message, 'error');
             } finally {
                 this.working = false
             }

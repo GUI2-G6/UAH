@@ -7,7 +7,7 @@
 </template>
 
 <script>
-import { toastStore } from './toastService.js';
+import { toastStore } from '@/services/toastService.js';
 
 export default {
   setup() {
