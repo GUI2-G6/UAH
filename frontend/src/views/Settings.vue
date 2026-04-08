@@ -351,11 +351,15 @@ export default {
             const newEmail = (this.changeEmailNew || '').trim()
             const newEmailConfirm = (this.changeEmailNewConfirm || '').trim()
             if (!newEmail || !newEmailConfirm) {
-                this.setActionStatus('changeEmail', 'error', 'Please enter and confirm your new email')
+                const msg = 'Please enter and confirm your new email'
+                this.setActionStatus('changeEmail', 'error', msg)
+                showToast(msg, 'error')
                 return
             }
             if (newEmail.toLowerCase() !== newEmailConfirm.toLowerCase()) {
-                this.setActionStatus('changeEmail', 'error', 'Emails do not match')
+                const msg = 'Emails do not match'
+                this.setActionStatus('changeEmail', 'error', msg)
+                showToast(msg, 'error')
                 return
             }
             this.working = true
@@ -371,6 +375,7 @@ export default {
                 const data = await res.json().catch(() => null)
                 if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
                 this.setActionStatus('changeEmail', 'success', data?.message || 'Email updated')
+                showToast('Email updated successfully!', 'success')
                 this.changeEmailNewConfirm = ''
 
                 // Ensure client reflects reverification immediately.
@@ -386,7 +391,9 @@ export default {
 
                 await this.loadUser()
             } catch (e) {
-                this.setActionStatus('changeEmail', 'error', this.formatFailure('Update email', e))
+                const msg = this.formatFailure('Update email', e)
+                this.setActionStatus('changeEmail', 'error', msg)
+                showToast(msg, 'error')
             } finally {
                 this.working = false
             }
