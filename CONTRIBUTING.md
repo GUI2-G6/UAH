@@ -53,7 +53,8 @@ Not:
 ## Environment and Secrets
 
 - Never commit `.env` files — they are gitignored, keep it that way
-- If you add a new environment variable, add it to `.env.example` with a description and a safe placeholder value
+- If you add a new environment variable, add it to `env-examples/dev/.env.example` with a description and a safe placeholder value
+- Runtime `.env` must live at the repository root when running the app/compose (do not run from files inside `env-examples/`)
 - If you accidentally commit a secret, notify @TrentBrownUML immediately
 
 ## Questions

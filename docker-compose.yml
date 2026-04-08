@@ -44,6 +44,26 @@ services:
     # NO ports exposed — backend reaches db via service name "db"
 
   # ----------------------------------------------------------
+  # Redis 7 (parse queue)
+  # ----------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: uah-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - uah-infra
+
+  # ----------------------------------------------------------
   # FastAPI Backend
   # ----------------------------------------------------------
   backend:
@@ -87,6 +107,22 @@ services:
       ZAI_LLM_URL: ${ZAI_LLM_URL:-https://api.z.ai/api/paas/v4/chat/completions}
       ZAI_LLM_MODEL: ${ZAI_LLM_MODEL:-GLM-4.7-Flash}
 
+      # Local Ollama Pipeline (feature-flagged)
+      USE_LOCAL_PIPELINE: ${USE_LOCAL_PIPELINE:-false}
+      LOCAL_OCR_URL: ${LOCAL_OCR_URL:-http://10.8.0.8:11434}
+      LOCAL_OCR_MODEL: ${LOCAL_OCR_MODEL:-glm-ocr-hires}
+      LOCAL_LLM_URL: ${LOCAL_LLM_URL:-http://10.8.0.8:11434}
+      LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-qwen2.5:7b}
+      LOCAL_OCR_TIMEOUT: ${LOCAL_OCR_TIMEOUT:-120}
+      LOCAL_LLM_TIMEOUT: ${LOCAL_LLM_TIMEOUT:-120}
+      LOCAL_OCR_DPI: ${LOCAL_OCR_DPI:-120}
+
+      # Redis Parse Queue (feature-flagged)
+      REDIS_ENABLED: ${REDIS_ENABLED:-false}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      PARSE_QUEUE_NAME: ${PARSE_QUEUE_NAME:-uah:parse_jobs}
+      PARSE_QUEUE_MAX_RETRIES: ${PARSE_QUEUE_MAX_RETRIES:-3}
+
       # Geolocation
       GEO_IP_PROVIDER: ${GEO_IP_PROVIDER:-ipapi}
       IPSTACK_API_KEY: ${IPSTACK_API_KEY:-}
@@ -126,6 +162,9 @@ services:
 # ============================================================
 # External network — created by infrastructure, NOT by compose
 # ============================================================
+volumes:
+  redis_data:
+
 networks:
   uah-infra:
     external: true

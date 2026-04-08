@@ -60,7 +60,9 @@ When the beta environment is ready, update the following external services befor
 
 ### 2.1 Creating the Beta .env File
 
-On the beta server, create `/srv/uah/environments/beta/.env` using `.env.beta.example` (see `docs/beta-prep/.env.beta.example`) as the template.
+On the beta server, create `/srv/uah/environments/beta/.env` using `env-examples/beta/.env.example` as the template.
+
+Important: runtime expects `.env` in the deployment root (`/srv/uah/environments/beta/.env`), not inside `env-examples/`.
 
 **Variables that differ between dev and beta:**
 
@@ -99,7 +101,7 @@ The following variables must **never** appear in any committed file (including e
 - `IPSTACK_API_KEY`
 - `ADMIN_BOOTSTRAP_PASSWORD`
 
-The `.env.beta.example` file (see `docs/beta-prep/.env.beta.example`) uses placeholder values for all of these.
+The `env-examples/beta/.env.example` file uses placeholder values for all of these.
 
 ---
 
@@ -208,7 +210,7 @@ Follow these steps in order when deploying to beta for the first time.
 ### Environment Configuration
 
 - [ ] Create `/srv/uah/environments/beta/` directory on the server
-- [ ] Copy `.env.beta.example` to `/srv/uah/environments/beta/.env` and fill in all secrets
+- [ ] Copy `env-examples/beta/.env.example` to `/srv/uah/environments/beta/.env` and fill in all secrets
 - [ ] Verify `.env` file is not world-readable (`chmod 600 .env`)
 - [ ] Confirm all required variables are set (none are empty)
 
@@ -232,6 +234,6 @@ Follow these steps in order when deploying to beta for the first time.
 
 ---
 
-## Appendix: .env.beta.example
+## Appendix: Beta Env Example Template
 
-See the file at `docs/beta-prep/.env.beta.example` for the complete annotated environment variable template for the beta deployment.
+See the file at `env-examples/beta/.env.example` for the complete annotated environment variable template for the beta deployment.

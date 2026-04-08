@@ -22,7 +22,7 @@ Describe what you tested and how:
 
 ## Checklist
 - [ ] No `.env` files or secrets committed
-- [ ] If new env vars added, `.env.example` is updated
+- [ ] If new env vars added, `env-examples/dev/.env.example` is updated
 - [ ] CORS or URL changes accounted for if applicable
 - [ ] No `console.log` or debug code left in
 - [ ] PR title clearly describes the change

@@ -351,6 +351,14 @@ docker compose up -d --build
 
 All secrets live in `.env` at the project root. Docker Compose reads it automatically.
 
+Canonical templates live in:
+- `env-examples/dev/.env.example`
+- `env-examples/beta/.env.example`
+- `env-examples/prod/.env.example`
+
+The application does **not** read files directly from `env-examples/` at runtime.
+Copy the appropriate template values into a real root `.env` before running services.
+
 | Variable | Used By | Description |
 |----------|---------|-------------|
 | `POSTGRES_USER` | db, backend | Database username |
@@ -362,15 +370,3 @@ All secrets live in `.env` at the project root. Docker Compose reads it automati
 | `DEV_DOMAIN` | reference | Domain for dev access |
 
 > **Never commit `.env` to git.** It contains credentials.
-
-## License
-
-UAH is licensed under AGPL-3.0 with Commons Clause.
-
-- ✅ Free for personal, educational, and non-commercial use
-- ✅ Modifications must be open sourced under the same license  
-- ✅ Self-hosting for non-commercial purposes is permitted
-- ❌ Commercial use, resale, or monetization requires explicit written 
-     permission from the project maintainers
-
-Contact: admincontact@uahapp.com for commercial licensing inquiries.

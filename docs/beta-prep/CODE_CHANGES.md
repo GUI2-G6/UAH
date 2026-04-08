@@ -6,7 +6,7 @@ This document lists every specific file and change needed to support the beta de
 
 ## 1. `.env` (Not Committed — Per-Environment File)
 
-These are not code changes but are the most critical configuration changes. See `docs/beta-prep/.env.beta.example` for the full template.
+These are not code changes but are the most critical configuration changes. See `env-examples/beta/.env.example` for the full template.
 
 | Variable | Dev Value | Beta Value | Why |
 |----------|----------|-----------|-----|
@@ -299,11 +299,11 @@ If the fix in §4.1 above disables these URLs at the FastAPI level (returning 40
 
 ---
 
-## 6. `.env.example` — Documentation Improvements
+## 6. `env-examples/dev/.env.example` — Documentation Improvements
 
 These changes improve the developer experience but do not affect beta deployment directly.
 
-**File:** `.env.example`  
+**File:** `env-examples/dev/.env.example`  
 **Changes:** Add descriptions to undocumented variables.
 
 ```bash
@@ -341,4 +341,4 @@ ENVIRONMENT=development
 | 🔴 Critical | `backend/app/api/routes.py` or `nginx.http.conf` | Gate or block `/api/diagnostics` |
 | 🟡 High | `backend/app/main.py` | Disable `/docs`, `/redoc`, `/openapi.json` when `ENVIRONMENT=production` |
 | 🟠 Medium | `docker-compose.beta.yml` (new) | Remove hot-reload, add ports, remove VPN network mode, add resource limits |
-| 🟢 Low | `.env.example` | Add descriptions for undocumented variables, add `ENVIRONMENT` variable |
+| 🟢 Low | `env-examples/dev/.env.example` | Add descriptions for undocumented variables, add `ENVIRONMENT` variable |

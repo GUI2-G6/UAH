@@ -1,4 +1,4 @@
-# Task: Sync .env.example with config.py
+# Task: Sync env-examples/dev/.env.example with config.py
 
 ## Trigger
 Run this task when the `ENV Example Sync Check` status check fails on a PR.
@@ -10,7 +10,7 @@ Run this task when the `ENV Example Sync Check` status check fails on a PR.
    python .github/scripts/check_env_sync.py --suggest
 ```
 
-2. For each missing variable, add a documented entry to `.env.example`:
+2. For each missing variable, add a documented entry to `env-examples/dev/.env.example`:
    - Add a `# comment` above it explaining what the variable does
    - Use an empty value or a safe placeholder (never a real secret)
    - Match the style of existing entries in the file
@@ -22,7 +22,7 @@ Run this task when the `ENV Example Sync Check` status check fails on a PR.
    - What service or feature it configures
 
 4. Commit the change with message:
-   `docs: add missing env vars to .env.example`
+   `docs: add missing env vars to env-examples/dev/.env.example`
 
 ## What NOT to do
 - Do not add real secret values

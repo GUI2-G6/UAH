@@ -80,7 +80,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Check .env.example is in sync with config.py
+      - name: Check env-examples/dev/.env.example is in sync with config.py
         run: python .github/scripts/check_env_sync.py
 
   dependency-audit:
