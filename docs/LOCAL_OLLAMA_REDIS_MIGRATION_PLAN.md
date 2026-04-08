@@ -14,14 +14,14 @@ Migrate resume OCR and parsing from ZAI cloud APIs to a feature-flagged local Ol
 - [x] Add Redis dependency to backend/requirements.txt
 - [x] Install poppler-utils in backend/Dockerfile for pdftoppm
 - [x] Add Local Ollama + Redis queue env block to root .env
-- [x] Add Local Ollama + Redis queue env block to env-examples/beta/.env.example
+- [x] Add Local Ollama + Redis queue env block to docs/beta-prep/.env.beta.example
 - [x] Add backend environment passthrough defaults for new vars in docker-compose.yml
 - [x] Validate Phase 1 file changes
 
 ### Phase 2 - Configuration Surface
-- [ ] Add local pipeline settings to backend/app/core/config.py
-- [ ] Add Redis queue settings to backend/app/core/config.py
-- [ ] Keep ZAI settings unchanged and default feature flags off
+- [x] Add local pipeline settings to backend/app/core/config.py
+- [x] Add Redis queue settings to backend/app/core/config.py
+- [x] Keep ZAI settings unchanged and default feature flags off
 
 ### Phase 3 - Resume Parser Local Adapters
 - [ ] Add ocr_pdf_local(pdf_bytes) to backend/app/services/resume_parser.py
@@ -65,5 +65,6 @@ Migrate resume OCR and parsing from ZAI cloud APIs to a feature-flagged local Ol
 - 2026-04-08: Added poppler-utils install layer to backend/Dockerfile.
 - 2026-04-08: Added Local Ollama and Redis queue environment passthrough defaults to backend service in docker-compose.yml.
 - 2026-04-08: Added Local Ollama and Redis queue feature-flag blocks to root .env.
-- 2026-04-08: Added Local Ollama and Redis queue feature-flag blocks to env-examples/beta/.env.example.
+- 2026-04-08: Added Local Ollama and Redis queue feature-flag blocks to docs/beta-prep/.env.beta.example.
 - 2026-04-08: Validated Phase 1 file set (compose config rendered successfully; file-level diagnostics clean).
+- 2026-04-08: Completed Phase 2 configuration settings in backend/app/core/config.py (local pipeline + Redis queue flags/settings; ZAI defaults unchanged).
