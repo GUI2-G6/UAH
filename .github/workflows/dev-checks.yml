@@ -81,7 +81,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Check env-examples/dev/.env.example is in sync with config.py
-        run: python .github/scripts/check_env_sync.py
+        run: python .github/scripts/check_env_sync.py --template dev
+      - name: Check env-examples/beta/.env.example is in sync with config.py
+        run: python .github/scripts/check_env_sync.py --template beta
 
   dependency-audit:
     name: Dependency Vulnerability Audit

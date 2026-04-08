@@ -10,13 +10,16 @@ Parses config.py using AST to catch these patterns:
 """
 
 import ast
+import argparse
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 CONFIG_FILE = REPO_ROOT / "backend" / "app" / "core" / "config.py"
-ENV_EXAMPLE = REPO_ROOT / "env-examples" / "dev" / ".env.example"
-ENV_EXAMPLE_DISPLAY = "env-examples/dev/.env.example"
+ENV_EXAMPLES = {
+    "dev": REPO_ROOT / "env-examples" / "dev" / ".env.example",
+    "beta": REPO_ROOT / "env-examples" / "beta" / ".env.example",
+}
 
 
 def extract_env_vars_from_config(filepath: Path) -> set[str]:
@@ -92,20 +95,40 @@ def extract_keys_from_env_example(filepath: Path) -> set[str]:
     return keys
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Check env example sync with backend config env usage.")
+    parser.add_argument(
+        "--template",
+        choices=sorted(ENV_EXAMPLES.keys()),
+        default="dev",
+        help="Template to validate (default: dev).",
+    )
+    parser.add_argument(
+        "--suggest",
+        action="store_true",
+        help="Print suggested placeholder lines for missing keys.",
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+    env_example = ENV_EXAMPLES[args.template]
+    env_example_display = f"env-examples/{args.template}/.env.example"
+
     if not CONFIG_FILE.exists():
         print(f"❌ Config file not found: {CONFIG_FILE}")
         sys.exit(1)
 
-    if not ENV_EXAMPLE.exists():
-        print(f"❌ {ENV_EXAMPLE_DISPLAY} not found: {ENV_EXAMPLE}")
+    if not env_example.exists():
+        print(f"❌ {env_example_display} not found: {env_example}")
         sys.exit(1)
 
     print(f"📄 Scanning: {CONFIG_FILE}")
-    print(f"📄 Checking against: {ENV_EXAMPLE}")
+    print(f"📄 Checking against: {env_example}")
 
     config_vars = extract_env_vars_from_config(CONFIG_FILE)
-    example_keys = extract_keys_from_env_example(ENV_EXAMPLE)
+    example_keys = extract_keys_from_env_example(env_example)
 
     print(f"🔍 Vars found in config: {sorted(config_vars)}")
 
@@ -119,19 +142,19 @@ def main():
     missing = config_vars - example_keys
 
     if missing:
-        print(f"❌ The following env vars are used in config.py but missing from {ENV_EXAMPLE_DISPLAY}:\n")
+        print(f"❌ The following env vars are used in config.py but missing from {env_example_display}:\n")
         for key in sorted(missing):
             print(f"  - {key}")
-        print(f"\nAdd them to {ENV_EXAMPLE_DISPLAY} with a description before merging.")
+        print(f"\nAdd them to {env_example_display} with a description before merging.")
         print("Run with --suggest to see placeholder lines you can copy.")
-        if "--suggest" in sys.argv:
-            print(f"\nSuggested additions for {ENV_EXAMPLE_DISPLAY}:")
+        if args.suggest:
+            print(f"\nSuggested additions for {env_example_display}:")
             for key in sorted(missing):
                 print(f"\n# TODO: Add description for {key}")
                 print(f"{key}=")
         sys.exit(1)
     else:
-        print(f"✅ {ENV_EXAMPLE_DISPLAY} is in sync ({len(config_vars)} env vars checked)")
+        print(f"✅ {env_example_display} is in sync ({len(config_vars)} env vars checked)")
         sys.exit(0)
 
 
