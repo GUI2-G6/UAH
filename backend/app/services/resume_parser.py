@@ -1,7 +1,10 @@
+import asyncio
 import re
 import json
 import base64
 import logging
+from pathlib import Path
+import tempfile
 import httpx
 from app.core.config import settings
 
@@ -277,6 +280,223 @@ async def categorize_with_llm(md_text: str) -> dict:
             "error_code": "LLM_INVALID_JSON",
             "message": "AI returned malformed data. Please try again.",
         }
+
+
+async def ocr_pdf_local(pdf_bytes: bytes) -> dict:
+    """
+    Local OCR replacement for ocr_pdf().
+    Converts PDF to PNG via pdftoppm at LOCAL_OCR_DPI,
+    sends each page image to GLM-OCR-hires on LOCAL_OCR_URL,
+    returns dict with same shape as ocr_pdf() — key 'md_results' contains extracted text.
+
+    PDF conversion uses subprocess pdftoppm (must be installed: apt install poppler-utils).
+    Image encoding is base64, sent to /api/generate endpoint.
+    Prompt is exactly "Text Recognition" — do not change this, it is GLM-OCR's fixed prompt.
+    Clean up temp PNG files after each page.
+    """
+    endpoint = f"{settings.LOCAL_OCR_URL.rstrip('/')}/api/generate"
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="uah-ocr-") as temp_dir:
+            temp_path = Path(temp_dir)
+            pdf_path = temp_path / "resume.pdf"
+            pdf_path.write_bytes(pdf_bytes)
+            output_prefix = temp_path / "page"
+
+            proc = await asyncio.create_subprocess_exec(
+                "pdftoppm",
+                "-png",
+                "-r",
+                str(settings.LOCAL_OCR_DPI),
+                str(pdf_path),
+                str(output_prefix),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                logger.error("pdftoppm failed with return code %d: %s", proc.returncode, stderr.decode("utf-8", errors="ignore")[:200])
+                return {
+                    "ok": False,
+                    "error_code": "OCR_PDF_CONVERSION_FAILED",
+                    "status_code": 422,
+                    "response_excerpt": stderr.decode("utf-8", errors="ignore")[:200],
+                }
+
+            page_paths = sorted(temp_path.glob("page-*.png"))
+            if not page_paths:
+                logger.error("pdftoppm produced no PNG pages")
+                return {
+                    "ok": False,
+                    "error_code": "OCR_EMPTY_RESULTS",
+                    "status_code": 422,
+                    "response_excerpt": "No pages were extracted from PDF",
+                }
+
+            page_markdown: list[str] = []
+            async with httpx.AsyncClient(timeout=settings.LOCAL_OCR_TIMEOUT) as client:
+                for page_path in page_paths:
+                    image_b64 = base64.b64encode(page_path.read_bytes()).decode("utf-8")
+                    request_body = {
+                        "model": settings.LOCAL_OCR_MODEL,
+                        "prompt": "Text Recognition",
+                        "images": [image_b64],
+                        "stream": False,
+                    }
+                    resp = await client.post(endpoint, json=request_body)
+
+                    # Remove each page PNG after it has been processed.
+                    page_path.unlink(missing_ok=True)
+
+                    if resp.status_code != 200:
+                        logger.error("Local OCR API error: status=%d, body=%s", resp.status_code, resp.text[:200])
+                        return {
+                            "ok": False,
+                            "error_code": "OCR_API_STATUS",
+                            "status_code": resp.status_code,
+                            "response_excerpt": (resp.text or "")[:200],
+                        }
+
+                    payload = resp.json()
+                    page_text = (payload.get("response") or "").strip()
+                    if page_text:
+                        page_markdown.append(page_text)
+
+            combined = "\n\n".join(page_markdown).strip()
+            if not combined:
+                return {
+                    "ok": False,
+                    "error_code": "OCR_EMPTY_RESULTS",
+                    "status_code": 422,
+                    "response_excerpt": "OCR returned no text",
+                }
+
+            return {
+                "ok": True,
+                "md_results": combined,
+            }
+    except FileNotFoundError as e:
+        logger.error("pdftoppm executable not found: %s", str(e))
+        return {
+            "ok": False,
+            "error_code": "OCR_DEPENDENCY_MISSING",
+            "status_code": 500,
+            "response_excerpt": "pdftoppm not found; install poppler-utils",
+        }
+    except httpx.TimeoutException as e:
+        logger.error("Local OCR request timed out: %s", str(e))
+        return {
+            "ok": False,
+            "error_code": "OCR_TIMEOUT",
+            "status_code": 504,
+            "exception_type": type(e).__name__,
+            "exception_message": str(e),
+        }
+    except httpx.HTTPError as e:
+        logger.error("Local OCR request failed: %s: %s", type(e).__name__, str(e))
+        return {
+            "ok": False,
+            "error_code": "OCR_REQUEST_EXCEPTION",
+            "status_code": 502,
+            "exception_type": type(e).__name__,
+            "exception_message": str(e),
+        }
+    except Exception as e:
+        logger.error("Local OCR processing failed: %s: %s", type(e).__name__, str(e))
+        return {
+            "ok": False,
+            "error_code": "OCR_REQUEST_EXCEPTION",
+            "status_code": 502,
+            "exception_type": type(e).__name__,
+            "exception_message": str(e),
+        }
+
+
+async def categorize_with_local_llm(md_text: str) -> dict:
+    """
+    Local LLM replacement for categorize_with_llm().
+    Sends CATEGORIZE_PROMPT + md_text to qwen2.5:7b on LOCAL_LLM_URL.
+    Uses /api/generate endpoint with stream=false, temperature=0.
+    Returns same dict shape as categorize_with_llm() — structured JSON or error dict with 'ok': False.
+    Strip markdown fences from response before JSON parse.
+    """
+    endpoint = f"{settings.LOCAL_LLM_URL.rstrip('/')}/api/generate"
+    request_body = {
+        "model": settings.LOCAL_LLM_MODEL,
+        "prompt": CATEGORIZE_PROMPT + md_text,
+        "stream": False,
+        "options": {
+            "temperature": 0,
+        },
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=settings.LOCAL_LLM_TIMEOUT) as client:
+            resp = await client.post(endpoint, json=request_body)
+    except httpx.TimeoutException as e:
+        logger.error("Local LLM request timed out: %s", str(e))
+        return {
+            "ok": False,
+            "error_code": "LLM_TIMEOUT",
+            "message": "AI parsing timed out. Try again or use rules-based parsing.",
+        }
+    except httpx.HTTPError as e:
+        logger.error("Local LLM request failed: %s: %s", type(e).__name__, str(e))
+        return {
+            "ok": False,
+            "error_code": "LLM_REQUEST_FAILED",
+            "message": "Could not reach the AI parsing service. Please try again.",
+        }
+
+    if resp.status_code != 200:
+        logger.error("Local LLM API error: status=%d, body=%s", resp.status_code, resp.text[:200])
+        return {
+            "ok": False,
+            "error_code": "LLM_API_ERROR",
+            "message": f"AI service returned status {resp.status_code}. Please retry.",
+        }
+
+    payload = resp.json()
+    raw_content = (payload.get("response") or "").strip()
+    if not raw_content:
+        return {
+            "ok": False,
+            "error_code": "LLM_EMPTY_RESPONSE",
+            "message": "AI returned no structured data. Try again or use rules-based parsing.",
+        }
+
+    cleaned = raw_content.strip()
+    if cleaned.startswith("```json"):
+        cleaned = cleaned[7:]
+    elif cleaned.startswith("```"):
+        cleaned = cleaned[3:]
+    if cleaned.endswith("```"):
+        cleaned = cleaned[:-3]
+    cleaned = cleaned.strip()
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        logger.error("Local LLM returned invalid JSON: %s", cleaned[:200])
+        return {
+            "ok": False,
+            "error_code": "LLM_INVALID_JSON",
+            "message": "AI returned malformed data. Please try again.",
+        }
+
+
+async def ocr_pdf_dispatch(pdf_bytes: bytes) -> dict:
+    """Route to local or cloud OCR based on USE_LOCAL_PIPELINE flag."""
+    if settings.USE_LOCAL_PIPELINE:
+        return await ocr_pdf_local(pdf_bytes)
+    return await ocr_pdf(pdf_bytes)
+
+
+async def categorize_dispatch(md_text: str) -> dict:
+    """Route to local or cloud LLM based on USE_LOCAL_PIPELINE flag."""
+    if settings.USE_LOCAL_PIPELINE:
+        return await categorize_with_local_llm(md_text)
+    return await categorize_with_llm(md_text)
 
 
 def parse_with_rules(md_text: str) -> dict:

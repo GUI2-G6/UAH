@@ -24,10 +24,10 @@ Migrate resume OCR and parsing from ZAI cloud APIs to a feature-flagged local Ol
 - [x] Keep ZAI settings unchanged and default feature flags off
 
 ### Phase 3 - Resume Parser Local Adapters
-- [ ] Add ocr_pdf_local(pdf_bytes) to backend/app/services/resume_parser.py
-- [ ] Add categorize_with_local_llm(md_text) to backend/app/services/resume_parser.py
-- [ ] Add ocr_pdf_dispatch(pdf_bytes)
-- [ ] Add categorize_dispatch(md_text)
+- [x] Add ocr_pdf_local(pdf_bytes) to backend/app/services/resume_parser.py
+- [x] Add categorize_with_local_llm(md_text) to backend/app/services/resume_parser.py
+- [x] Add ocr_pdf_dispatch(pdf_bytes)
+- [x] Add categorize_dispatch(md_text)
 
 ### Phase 4 - API Dispatch Integration
 - [ ] Replace OCR call with ocr_pdf_dispatch in backend/app/api/resume.py
@@ -68,3 +68,4 @@ Migrate resume OCR and parsing from ZAI cloud APIs to a feature-flagged local Ol
 - 2026-04-08: Added Local Ollama and Redis queue feature-flag blocks to docs/beta-prep/.env.beta.example.
 - 2026-04-08: Validated Phase 1 file set (compose config rendered successfully; file-level diagnostics clean).
 - 2026-04-08: Completed Phase 2 configuration settings in backend/app/core/config.py (local pipeline + Redis queue flags/settings; ZAI defaults unchanged).
+- 2026-04-08: Completed Phase 3 parser adapters in backend/app/services/resume_parser.py (local OCR via pdftoppm + Ollama, local LLM parser, and feature-flag dispatch functions).
