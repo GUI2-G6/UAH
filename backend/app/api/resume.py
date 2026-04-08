@@ -5,18 +5,26 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Backgro
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from app.db.session import get_db, SessionLocal
+from app.db.session import get_db
 from app.models.user import User
 from app.models.resume import Resume
 from app.models.parse_job import ParseJob
 from app.api.deps import get_current_user
+from app.core.config import settings
 from app.schemas.resume import (
     ResumeUploadResponse, ResumeResponse, ResumeListItem,
     PortalCheckResponse, ParseRequest,
     ParseJobResponse, ParseJobStartResponse,
 )
+from app.services.parse_job_runner import run_parse_job
+from app.services.parse_queue import (
+    enqueue_parse_job,
+    get_job_redis_status,
+    get_queue_depth,
+    get_worker_status,
+)
 from app.services.resume_parser import (
-    ocr_pdf, categorize_with_llm, parse_with_rules, validate_and_fix,
+    ocr_pdf_dispatch, categorize_dispatch, parse_with_rules, validate_and_fix,
     check_portal_required,
 )
 
@@ -70,7 +78,7 @@ async def upload_resume(
     if len(pdf_bytes) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File too large, max 5MB")
 
-    ocr_result = await ocr_pdf(pdf_bytes)
+    ocr_result = await ocr_pdf_dispatch(pdf_bytes)
     if not ocr_result.get("ok"):
         error_code = ocr_result.get("error_code") or "OCR_EXTRACTION_FAILED"
         status_code = int(ocr_result.get("status_code") or 502)
@@ -151,7 +159,7 @@ async def parse_resume(
             raise HTTPException(status_code=429, detail="This resume was just parsed, wait a bit")
 
     if payload.method == "llm":
-        structured = await categorize_with_llm(resume.raw_markdown)
+        structured = await categorize_dispatch(resume.raw_markdown)
     elif payload.method == "rules":
         structured = parse_with_rules(resume.raw_markdown)
     else:
@@ -328,105 +336,18 @@ def delete_resume(
 # ── Async parse job endpoints ─────────────────────────────────────────────
 
 def _run_parse_job(job_id: int):
-    """Background task: run parse, update job status in DB."""
-    db = SessionLocal()
+    """Sync wrapper for async parse job runner used by FastAPI BackgroundTasks."""
+    loop = asyncio.new_event_loop()
     try:
-        job = db.query(ParseJob).filter(ParseJob.id == job_id).first()
-        if not job or job.status == "cancelled":
-            return
-
-        resume = db.query(Resume).filter(Resume.id == job.resume_id).first()
-        if not resume or not resume.raw_markdown:
-            job.status = "failed"
-            job.error_code = "NO_DATA"
-            job.error_message = "Resume has no OCR data to parse."
-            db.commit()
-            return
-
-        # Stage: parsing
-        job.status = "parsing"
-        job.progress_stage = "AI parsing…" if job.method == "llm" else "Rules-based parsing…"
-        db.commit()
-
-        # Check if cancelled before the expensive call
-        db.refresh(job)
-        if job.status == "cancelled":
-            return
-
-        # Run the actual parse (synchronous wrapper for async functions)
-        loop = asyncio.new_event_loop()
-        try:
-            if job.method == "llm":
-                structured = loop.run_until_complete(categorize_with_llm(resume.raw_markdown))
-            else:
-                structured = parse_with_rules(resume.raw_markdown)
-        finally:
-            loop.close()
-
-        # Check for errors from parser
-        if isinstance(structured, dict) and structured.get("ok") is False:
-            job.status = "failed"
-            job.error_code = structured.get("error_code", "PARSE_FAILED")
-            job.error_message = structured.get("message", "Parsing failed")
-            db.commit()
-            return
-
-        if structured is None:
-            job.status = "failed"
-            job.error_code = "PARSE_EMPTY"
-            job.error_message = "Parsing produced no results."
-            db.commit()
-            return
-
-        # Check cancelled again
-        db.refresh(job)
-        if job.status == "cancelled":
-            return
-
-        # Stage: validating
-        job.status = "validating"
-        job.progress_stage = "Validating and fixing data…"
-        db.commit()
-
-        structured = validate_and_fix(structured)
-
-        # Save to resume
-        resume.structured_data = structured
-        resume.parse_method = job.method
-        resume.portal_ready = structured.get("_validation", {}).get("portal_ready", False)
-
-        # Build result summary for polling
-        validation = structured.get("_validation", {})
-        job.status = "success"
-        job.progress_stage = "Complete"
-        job.result_summary = {
-            "portal_ready": validation.get("portal_ready", False),
-            "has_name": validation.get("has_name", False),
-            "has_email": validation.get("has_email", False),
-            "education_count": validation.get("education_count", 0),
-            "experience_count": validation.get("experience_count", 0),
-            "skills_count": validation.get("skills_count", 0),
-            "missing_count": len(validation.get("missing_required", [])),
-        }
-        db.commit()
-
+        loop.run_until_complete(run_parse_job(job_id))
     except Exception as e:
-        logger.exception("Parse job %d failed: %s", job_id, e)
-        try:
-            job = db.query(ParseJob).filter(ParseJob.id == job_id).first()
-            if job and job.status not in ("cancelled", "success"):
-                job.status = "failed"
-                job.error_code = "INTERNAL_ERROR"
-                job.error_message = "An unexpected error occurred during parsing."
-                db.commit()
-        except Exception:
-            pass
+        logger.exception("Parse job wrapper %d failed: %s", job_id, e)
     finally:
-        db.close()
+        loop.close()
 
 
 @router.post("/{resume_id}/parse-async", response_model=ParseJobStartResponse, status_code=202)
-def start_async_parse(
+async def start_async_parse(
     resume_id: int = Path(..., ge=1, description="Resume ID to parse asynchronously in a background job."),
     payload: ParseRequest = ParseRequest(),
     background_tasks: BackgroundTasks = BackgroundTasks(),
@@ -475,9 +396,62 @@ def start_async_parse(
     db.commit()
     db.refresh(job)
 
-    background_tasks.add_task(_run_parse_job, job.id)
+    if settings.REDIS_ENABLED:
+        queued = await enqueue_parse_job(job.id, resume_id, current_user.id, payload.method)
+        if not queued:
+            background_tasks.add_task(_run_parse_job, job.id)
+    else:
+        background_tasks.add_task(_run_parse_job, job.id)
 
     return ParseJobStartResponse(job_id=job.id, status="queued")
+
+
+@router.get("/queue/status")
+async def get_queue_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Returns current queue depth and worker status."""
+    active_statuses = ["queued", "parsing", "validating"]
+    active_count = db.query(func.count(ParseJob.id)).filter(
+        ParseJob.user_id == current_user.id,
+        ParseJob.status.in_(active_statuses),
+    ).scalar() or 0
+
+    recent_jobs = db.query(ParseJob).filter(
+        ParseJob.user_id == current_user.id,
+    ).order_by(ParseJob.updated_at.desc()).limit(5).all()
+
+    queue_depth = await get_queue_depth() if settings.REDIS_ENABLED else 0
+    worker_status = get_worker_status()
+
+    latest_active_job = db.query(ParseJob).filter(
+        ParseJob.user_id == current_user.id,
+        ParseJob.status.in_(active_statuses),
+    ).order_by(ParseJob.updated_at.desc()).first()
+
+    latest_active_job_redis_status = None
+    if settings.REDIS_ENABLED and latest_active_job:
+        latest_active_job_redis_status = await get_job_redis_status(latest_active_job.id)
+
+    return {
+        "redis_enabled": settings.REDIS_ENABLED,
+        "queue_depth": int(queue_depth),
+        "worker_status": worker_status,
+        "current_user": {
+            "active_jobs": int(active_count),
+            "recent_jobs": [
+                {
+                    "id": job.id,
+                    "status": job.status,
+                    "progress_stage": job.progress_stage,
+                    "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+                }
+                for job in recent_jobs
+            ],
+        },
+        "latest_active_job_redis_status": latest_active_job_redis_status,
+    }
 
 
 @router.get("/parse-job/{job_id}", response_model=ParseJobResponse)

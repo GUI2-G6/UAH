@@ -30,26 +30,27 @@ Migrate resume OCR and parsing from ZAI cloud APIs to a feature-flagged local Ol
 - [x] Add categorize_dispatch(md_text)
 
 ### Phase 4 - API Dispatch Integration
-- [ ] Replace OCR call with ocr_pdf_dispatch in backend/app/api/resume.py
-- [ ] Replace LLM call with categorize_dispatch in backend/app/api/resume.py
-- [ ] Update imports for dispatch functions
-- [ ] Apply to sync parse and async parse worker paths
+- [x] Replace OCR call with ocr_pdf_dispatch in backend/app/api/resume.py
+- [x] Replace LLM call with categorize_dispatch in backend/app/api/resume.py
+- [x] Update imports for dispatch functions
+- [x] Apply to sync parse and async parse worker paths
 
 ### Phase 5 - Redis Queue Service
-- [ ] Create backend/app/services/parse_queue.py
-- [ ] Add enqueue_parse_job(job_id, resume_id, user_id, method)
-- [ ] Add get_queue_depth()
-- [ ] Add get_job_redis_status(job_id)
-- [ ] Add start_queue_worker()
-- [ ] Add _process_job(job_data)
-- [ ] Add _worker_loop()
-- [ ] Add sequential processing and retry/backoff
-- [ ] Add Redis-unavailable fallback behavior
+- [x] Create backend/app/services/parse_queue.py
+- [x] Create backend/app/services/parse_job_runner.py shared job runner
+- [x] Add enqueue_parse_job(job_id, resume_id, user_id, method)
+- [x] Add get_queue_depth()
+- [x] Add get_job_redis_status(job_id)
+- [x] Add start_queue_worker()
+- [x] Add _process_job(job_data)
+- [x] Add _worker_loop()
+- [x] Add sequential processing and retry/backoff
+- [x] Add Redis-unavailable fallback behavior
 
 ### Phase 6 - Startup and Endpoint Wiring
-- [ ] Start queue worker in backend/app/main.py lifespan when REDIS_ENABLED=true
-- [ ] Add resume async enqueue path with fallback in backend/app/api/resume.py
-- [ ] Add authenticated queue status endpoint in backend/app/api/resume.py
+- [x] Start queue worker in backend/app/main.py lifespan when REDIS_ENABLED=true
+- [x] Add resume async enqueue path with fallback in backend/app/api/resume.py
+- [x] Add authenticated queue status endpoint in backend/app/api/resume.py
 
 ### Phase 7 - Verification
 - [ ] Verify docker compose syntax
@@ -69,3 +70,7 @@ Migrate resume OCR and parsing from ZAI cloud APIs to a feature-flagged local Ol
 - 2026-04-08: Validated Phase 1 file set (compose config rendered successfully; file-level diagnostics clean).
 - 2026-04-08: Completed Phase 2 configuration settings in backend/app/core/config.py (local pipeline + Redis queue flags/settings; ZAI defaults unchanged).
 - 2026-04-08: Completed Phase 3 parser adapters in backend/app/services/resume_parser.py (local OCR via pdftoppm + Ollama, local LLM parser, and feature-flag dispatch functions).
+- 2026-04-08: Completed Phase 4 API dispatch integration in backend/app/api/resume.py (upload/parse paths and async job wrapper now route through dispatchers).
+- 2026-04-08: Completed Phase 5 Redis queue service in backend/app/services/parse_queue.py with sequential worker loop, retry/backoff, and Redis-unavailable fallback behavior.
+- 2026-04-08: Added backend/app/services/parse_job_runner.py to centralize parse execution logic for both BackgroundTasks and Redis worker processing.
+- 2026-04-08: Completed Phase 6 wiring in backend/app/main.py and backend/app/api/resume.py (worker startup/shutdown, Redis enqueue branch, queue status endpoint).
