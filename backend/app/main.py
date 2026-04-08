@@ -32,6 +32,7 @@ from app.db.base import Base
 from app.db.session import get_engine, init_engine
 from app.services.geolocation import ensure_city_dataset
 from app.services.muse_location_index import ensure_muse_location_index
+from app.services.parse_queue import start_queue_worker, stop_queue_worker
 import app.models  # noqa: F401 — ensure all models are registered
 
 logger = logging.getLogger(__name__)
@@ -182,7 +183,15 @@ async def lifespan(app: FastAPI):
     muse_index_status = await ensure_muse_location_index()
     logger.info("Muse location index startup status: %s", muse_index_status)
 
+    if settings.REDIS_ENABLED:
+        await start_queue_worker()
+        logger.info("Redis parse queue worker startup requested")
+
     yield
+
+    if settings.REDIS_ENABLED:
+        await stop_queue_worker()
+        logger.info("Redis parse queue worker stopped")
 
 _is_production = os.getenv("ENVIRONMENT", "development").lower() == "production"
 
