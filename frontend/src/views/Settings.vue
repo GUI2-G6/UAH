@@ -362,6 +362,13 @@ export default {
                 showToast(msg, 'error')
                 return
             }
+            const emailRegex = "/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i"
+            if (!emailRegex.test(newEmail)) {
+                const msg = 'Please enter a valid email address'
+                this.setActionStatus('changeEmail', 'error', msg)
+                showToast(msg, 'error')
+                return
+            }
             this.working = true
             this.setActionStatus('changeEmail', 'working', 'Updating…')
             try {
