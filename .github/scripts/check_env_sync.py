@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Checks that all environment variables referenced in backend config
-are documented in .env.example.
+are documented in env-examples/dev/.env.example.
 
 Parses config.py using AST to catch these patterns:
   - os.environ.get("KEY")
@@ -15,7 +15,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 CONFIG_FILE = REPO_ROOT / "backend" / "app" / "core" / "config.py"
-ENV_EXAMPLE = REPO_ROOT / ".env.example"
+ENV_EXAMPLE = REPO_ROOT / "env-examples" / "dev" / ".env.example"
+ENV_EXAMPLE_DISPLAY = "env-examples/dev/.env.example"
 
 
 def extract_env_vars_from_config(filepath: Path) -> set[str]:
@@ -77,7 +78,7 @@ def extract_env_vars_from_config(filepath: Path) -> set[str]:
 
 
 def extract_keys_from_env_example(filepath: Path) -> set[str]:
-    """Extract all documented variable names from .env.example."""
+    """Extract all documented variable names from env example template."""
     keys = set()
     for line in filepath.read_text(encoding="utf-8").splitlines():
         line = line.strip()
@@ -97,17 +98,15 @@ def main():
         sys.exit(1)
 
     if not ENV_EXAMPLE.exists():
-        print(f"❌ .env.example not found: {ENV_EXAMPLE}")
+        print(f"❌ {ENV_EXAMPLE_DISPLAY} not found: {ENV_EXAMPLE}")
         sys.exit(1)
 
-    # DEBUG — add these two lines temporarily
     print(f"📄 Scanning: {CONFIG_FILE}")
     print(f"📄 Checking against: {ENV_EXAMPLE}")
 
     config_vars = extract_env_vars_from_config(CONFIG_FILE)
     example_keys = extract_keys_from_env_example(ENV_EXAMPLE)
 
-    # DEBUG — add this line temporarily
     print(f"🔍 Vars found in config: {sorted(config_vars)}")
 
     # These are intentionally internal or auto-set — skip them
@@ -120,19 +119,19 @@ def main():
     missing = config_vars - example_keys
 
     if missing:
-        print("❌ The following env vars are used in config.py but missing from .env.example:\n")
+        print(f"❌ The following env vars are used in config.py but missing from {ENV_EXAMPLE_DISPLAY}:\n")
         for key in sorted(missing):
             print(f"  - {key}")
-        print("\nAdd them to .env.example with a description before merging.")
+        print(f"\nAdd them to {ENV_EXAMPLE_DISPLAY} with a description before merging.")
         print("Run with --suggest to see placeholder lines you can copy.")
         if "--suggest" in sys.argv:
-            print("\nSuggested additions for .env.example:")
+            print(f"\nSuggested additions for {ENV_EXAMPLE_DISPLAY}:")
             for key in sorted(missing):
                 print(f"\n# TODO: Add description for {key}")
                 print(f"{key}=")
         sys.exit(1)
     else:
-        print(f"✅ .env.example is in sync ({len(config_vars)} env vars checked)")
+        print(f"✅ {ENV_EXAMPLE_DISPLAY} is in sync ({len(config_vars)} env vars checked)")
         sys.exit(0)
 
 

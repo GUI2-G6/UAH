@@ -61,7 +61,7 @@ Keep it lowercase and hyphenated. Short and descriptive.
 ```bash
   git push origin fix/pdf-viewer-auth
 ```
-- **Never commit `.env` files.** If you add a new env var, add it to `.env.example` with a description.
+- **Never commit `.env` files.** If you add a new env var, add it to `env-examples/dev/.env.example` with a description.
 
 ---
 
@@ -130,7 +130,7 @@ Don't leave the description blank — this tells the reviewer what to look for.
 - [x] Linked to the correct issue above
 ```
 Go through this honestly before opening the PR. 
-If you added a new env var, check `.env.example` is updated before checking that box.
+If you added a new env var, check `env-examples/dev/.env.example` is updated before checking that box.
 
 ---
 ```markdown

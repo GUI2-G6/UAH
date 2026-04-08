@@ -22,4 +22,5 @@ python-multipart==0.0.22
 
 # Utilities
 python-dotenv==1.0.1
+redis==5.0.1
 
