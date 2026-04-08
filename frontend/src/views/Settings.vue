@@ -282,6 +282,12 @@ export default {
         },
 
         async changeName() {
+            if (!this.firstName || !this.lastName) {
+                this.setActionStatus('changeName', 'error', 'First and last name are required');
+                showToast('Please fill out all required fields', 'error');
+                return;
+            }
+
             this.working = true
             this.setActionStatus('changeName', 'working', 'Updating…')
             try {
