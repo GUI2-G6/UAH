@@ -78,6 +78,9 @@ class Settings:
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     REDIS_ENABLED: bool = _env_bool("REDIS_ENABLED", "false")
     PARSE_QUEUE_NAME: str = os.getenv("PARSE_QUEUE_NAME", "uah:parse_jobs")
+    PARSE_QUEUE_NAME_CLOUD: str = os.getenv("PARSE_QUEUE_NAME_CLOUD", "uah:parse_jobs:cloud")
+    PARSE_QUEUE_NAME_LOCAL: str = os.getenv("PARSE_QUEUE_NAME_LOCAL", "uah:parse_jobs:local")
+    PARSE_QUEUE_NAME_RULES: str = os.getenv("PARSE_QUEUE_NAME_RULES", "uah:parse_jobs:rules")
     PARSE_QUEUE_MAX_RETRIES: int = int(os.getenv("PARSE_QUEUE_MAX_RETRIES", "3"))
 
     # Muse jobs API guardrails
@@ -125,6 +128,22 @@ class Settings:
         if not self.ZAI_OCR_URL or not self.ZAI_OCR_URL.strip():
             missing.append("ZAI_OCR_URL")
         return missing
+
+    def parse_queue_name_for_method(self, method: str | None) -> str:
+        normalized = (method or "").strip().lower()
+        if normalized == "cloud":
+            return self.PARSE_QUEUE_NAME_CLOUD
+        if normalized == "rules":
+            return self.PARSE_QUEUE_NAME_RULES
+        return self.PARSE_QUEUE_NAME_LOCAL
+
+    @property
+    def parse_queue_name_by_method(self) -> dict[str, str]:
+        return {
+            "cloud": self.PARSE_QUEUE_NAME_CLOUD,
+            "local": self.PARSE_QUEUE_NAME_LOCAL,
+            "rules": self.PARSE_QUEUE_NAME_RULES,
+        }
 
     def require_secrets(self) -> None:
       missing: list[str] = []

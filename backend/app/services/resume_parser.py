@@ -3,6 +3,7 @@ import re
 import json
 import base64
 import logging
+from io import BytesIO
 from pathlib import Path
 import tempfile
 import httpx
@@ -11,6 +12,17 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 SUPPORTED_PARSE_METHODS = ("cloud", "local", "rules")
+PLACEHOLDER_VALUES = {
+    "null",
+    "none",
+    "n/a",
+    "na",
+    "unknown",
+    "not provided",
+    "not available",
+    "-",
+    "--",
+}
 
 PORTAL_REQUIRED_FIELDS = {
     "personal_info.first_name": "First Name",
@@ -541,6 +553,99 @@ async def parse_markdown_by_method(md_text: str, method: str) -> dict:
     return await categorize_with_llm(md_text)
 
 
+def _method_input_message(method: str) -> str:
+    if method == "cloud":
+        return "Cloud OCR could not extract text from this PDF. Please retry or switch pipelines."
+    if method == "local":
+        return "Local OCR could not extract text from this PDF. Please retry or switch pipelines."
+    return "Rules mode requires embedded PDF text and does not use OCR. Please choose Local AI or Cloud AI for scanned resumes."
+
+
+def extract_embedded_pdf_text(pdf_bytes: bytes) -> dict:
+    """Extract deterministic embedded text from a PDF without OCR/model inference."""
+    try:
+        from pypdf import PdfReader
+    except Exception as exc:
+        logger.error("pypdf dependency is unavailable for rules parsing: %s", exc)
+        return {
+            "ok": False,
+            "error_code": "RULES_TEXT_EXTRACTOR_UNAVAILABLE",
+            "status_code": 500,
+            "message": "Rules parser is unavailable because PDF text extraction dependency is missing.",
+        }
+
+    try:
+        reader = PdfReader(BytesIO(pdf_bytes))
+        fragments: list[str] = []
+        for page in reader.pages:
+            page_text = (page.extract_text() or "").strip()
+            if page_text:
+                fragments.append(page_text)
+
+        text = "\n\n".join(fragments).strip()
+        dense_length = len(re.sub(r"\s+", "", text))
+        if dense_length < 40:
+            return {
+                "ok": False,
+                "error_code": "RULES_EMBEDDED_TEXT_EMPTY",
+                "status_code": 422,
+                "message": "Rules parser needs embedded PDF text. This file appears scanned/image-based. Use Local AI or Cloud AI for OCR-driven parsing.",
+            }
+
+        return {
+            "ok": True,
+            "text": text,
+            "source": "rules_embedded_pdf_text",
+        }
+    except Exception as exc:
+        logger.error("Embedded PDF text extraction failed: %s: %s", type(exc).__name__, exc)
+        return {
+            "ok": False,
+            "error_code": "RULES_TEXT_EXTRACTION_FAILED",
+            "status_code": 422,
+            "message": "Rules parser could not read embedded PDF text. Use Local AI or Cloud AI for OCR-driven parsing.",
+        }
+
+
+async def get_parse_input_text(pdf_bytes: bytes, method: str) -> dict:
+    """Resolve parsing input text by selected method and return normalized payload."""
+    normalized = normalize_parse_method(method)
+    if normalized is None:
+        return {
+            "ok": False,
+            "error_code": "PARSE_METHOD_INVALID",
+            "status_code": 400,
+            "message": f"Method must be one of: {', '.join(SUPPORTED_PARSE_METHODS)}",
+        }
+
+    if normalized == "rules":
+        return extract_embedded_pdf_text(pdf_bytes)
+
+    ocr_result = await (ocr_pdf(pdf_bytes) if normalized == "cloud" else ocr_pdf_local(pdf_bytes))
+    if not ocr_result.get("ok"):
+        return {
+            "ok": False,
+            "error_code": ocr_result.get("error_code") or "OCR_EXTRACTION_FAILED",
+            "status_code": int(ocr_result.get("status_code") or 502),
+            "message": _method_input_message(normalized),
+        }
+
+    md_text = (ocr_result.get("md_results") or "").strip()
+    if not md_text:
+        return {
+            "ok": False,
+            "error_code": "OCR_EMPTY_RESULTS",
+            "status_code": 422,
+            "message": _method_input_message(normalized),
+        }
+
+    return {
+        "ok": True,
+        "text": md_text,
+        "source": f"{normalized}_ocr",
+    }
+
+
 def parse_with_rules(md_text: str) -> dict:
     """Parse resume text with rules engine. Returns dict with 'ok' key on failure."""
     try:
@@ -567,6 +672,43 @@ def parse_with_rules(md_text: str) -> dict:
             "error_code": "RULES_PARSE_FAILED",
             "message": "Rules-based parsing encountered an error. Try AI parsing instead.",
         }
+
+
+def _normalize_string(value: str) -> str | None:
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if cleaned.lower() in PLACEHOLDER_VALUES:
+        return None
+    return cleaned
+
+
+def _sanitize_value(value):
+    if isinstance(value, str):
+        return _normalize_string(value)
+    if isinstance(value, list):
+        sanitized = []
+        for item in value:
+            cleaned = _sanitize_value(item)
+            if cleaned is None:
+                continue
+            sanitized.append(cleaned)
+        return sanitized
+    if isinstance(value, dict):
+        return {k: _sanitize_value(v) for k, v in value.items()}
+    return value
+
+
+def _is_meaningful(value) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return _normalize_string(value) is not None
+    if isinstance(value, list):
+        return any(_is_meaningful(item) for item in value)
+    if isinstance(value, dict):
+        return any(_is_meaningful(item) for item in value.values())
+    return bool(value)
 
 
 def _resolve_field(structured, dotpath):
@@ -596,12 +738,16 @@ def check_portal_required(structured):
     missing = []
     for dotpath, label in PORTAL_REQUIRED_FIELDS.items():
         value = _resolve_field(structured, dotpath)
-        if not value or (isinstance(value, str) and not value.strip()):
+        if not _is_meaningful(value):
             missing.append(f"{label} ({dotpath})")
     return len(missing) == 0, missing
 
 
 def validate_and_fix(structured):
+    if not isinstance(structured, dict):
+        structured = {}
+
+    structured = _sanitize_value(structured) or {}
     fixes_applied = []
     info = structured.get("personal_info", {})
 
@@ -642,9 +788,9 @@ def validate_and_fix(structured):
 
     structured["_validation"] = {
         "fixes_applied": fixes_applied,
-        "has_name": bool(info.get("first_name")),
-        "has_email": bool(info.get("email")),
-        "has_phone": bool(info.get("phone")),
+        "has_name": _is_meaningful(info.get("first_name")) and _is_meaningful(info.get("last_name")),
+        "has_email": _is_meaningful(info.get("email")),
+        "has_phone": _is_meaningful(info.get("phone")),
         "education_count": len(structured.get("education", [])),
         "experience_count": len(structured.get("work_experience", [])),
         "skills_count": sum(len(v) for v in structured.get("skills", {}).values() if isinstance(v, list)),

@@ -5,7 +5,7 @@
         <div class="greeting">
             <div class="greeting-left">
                 <h1>Resumes</h1>
-                <p>Manage your resumes and application information</p>
+                <p>Manage UAH resumes and application information</p>
             </div>
             <button v-if="activeTab === 'imported'" class="btn-primary" @click="openUploadModal">
                 + Import New Resume
@@ -35,7 +35,7 @@
 
             <div ref="inlineImportSection" class="appinfo-card inline-import-card">
                 <h3>Import Resume</h3>
-                <p class="subtitle import-subtitle">Upload your resume PDF and follow the staged flow: Select file, Confirm settings, Parse, then review readiness.</p>
+                <p class="subtitle import-subtitle">Upload a UAH resume PDF and follow the staged flow: Select file, Confirm settings, Parse, then review readiness.</p>
 
                 <div class="upload-stage-row" v-if="activeTab === 'imported'">
                     <span :class="['stage-pill', uploadStep === 'select' ? 'active' : '']">1. Select</span>
@@ -54,8 +54,8 @@
                     @drop.prevent="onFileDrop"
                 >
                     <div class="drop-icon" aria-hidden="true">PDF</div>
-                    <p>Upload your resume</p>
-                    <p class="drop-hint">Drag and drop your PDF file here, or click to browse</p>
+                    <p>Upload resume PDF</p>
+                    <p class="drop-hint">Drag and drop a PDF file here, or click to browse</p>
                     <button class="btn-primary" @click.stop="triggerFileInput">Choose PDF File</button>
                     <p class="drop-hint">PDF files only, max 5MB</p>
                 </div>
@@ -77,27 +77,28 @@
                         <button class="clear-btn" @click="clearFile" title="Remove file">&#x2715;</button>
                     </div>
 
-                    <div class="import-options import-options-spaced">
-                        <h4>Import Options</h4>
+                    <div class="pipeline-guardrails import-options-spaced">
+                        <h4>Pipeline Guarantees</h4>
+                        <p class="pipeline-ordering-note">UAH parser order (highest reliability/accuracy to lowest): Local AI, Cloud AI, Rules-based.</p>
                         <div class="import-option-row">
                             <div class="check-circle" aria-hidden="true"></div>
                             <div class="option-text">
-                                <strong>Extract contact information</strong>
-                                <span>Name, email, phone number, and location</span>
+                                <strong>Local AI uses isolated local infrastructure</strong>
+                                <span>Local OCR plus local LLM processing, with method-specific local queue metrics.</span>
                             </div>
                         </div>
                         <div class="import-option-row">
                             <div class="check-circle" aria-hidden="true"></div>
                             <div class="option-text">
-                                <strong>Parse education and work history</strong>
-                                <span>School and employment details used in applications</span>
+                                <strong>Cloud AI uses web ZAI OCR and GLM-4.7-Flash</strong>
+                                <span>Cloud throughput is concurrency-limited; provider-side waiting queue is not exposed.</span>
                             </div>
                         </div>
                         <div class="import-option-row">
                             <div class="check-circle" aria-hidden="true"></div>
                             <div class="option-text">
-                                <strong>Identify skills, links, and certifications</strong>
-                                <span>Technical skills and profile-ready metadata</span>
+                                <strong>Rules-based parsing is deterministic and isolated</strong>
+                                <span>Rules mode reads embedded PDF text only and does not use OCR/model queues.</span>
                             </div>
                         </div>
                     </div>
@@ -108,8 +109,8 @@
                             <button class="btn-secondary btn-compact" type="button" @click="showPipelineDetails = true">View Details</button>
                         </div>
                         <div class="method-toggle method-toggle-3">
-                            <button :class="{ active: parseMethod === 'cloud' }" @click="parseMethod = 'cloud'">Cloud AI (ZAI)</button>
                             <button :class="{ active: parseMethod === 'local' }" @click="parseMethod = 'local'">Local AI</button>
+                            <button :class="{ active: parseMethod === 'cloud' }" @click="parseMethod = 'cloud'">Cloud AI (ZAI)</button>
                             <button :class="{ active: parseMethod === 'rules' }" @click="parseMethod = 'rules'">Rules-based</button>
                         </div>
                         <p class="parse-method-summary">{{ selectedParseMethodDescription }}</p>
@@ -170,7 +171,7 @@
                 <div class="queue-panel-header">
                     <div>
                         <h4>Parse Queue</h4>
-                        <p>Track your parse position and worker activity in real time.</p>
+                        <p>Track UAH queue load, method-level activity, and current parse position in real time.</p>
                     </div>
                     <div class="queue-scope-toggle">
                         <button :class="{ active: queueScope === 'user' }" @click="setQueueScope('user')">My Queue</button>
@@ -189,19 +190,35 @@
                 <template v-else-if="queueStatus">
                     <div class="queue-metrics-grid">
                         <div class="queue-metric-card">
-                            <span class="queue-metric-label">Your Active Jobs</span>
+                            <span class="queue-metric-label">Global Load</span>
+                            <span class="queue-metric-value">{{ queueStatus.global_metrics?.load_total ?? 0 }}</span>
+                        </div>
+                        <div class="queue-metric-card">
+                            <span class="queue-metric-label">Queued Total</span>
+                            <span class="queue-metric-value">{{ queueStatus.queue_depth_total ?? queueStatus.queue_depth ?? 0 }}</span>
+                        </div>
+                        <div class="queue-metric-card">
+                            <span class="queue-metric-label">UAH Active Jobs</span>
                             <span class="queue-metric-value">{{ queueStatus.current_user?.active_jobs ?? 0 }}</span>
                         </div>
                         <div class="queue-metric-card">
-                            <span class="queue-metric-label">Your Position</span>
+                            <span class="queue-metric-label">UAH Position</span>
                             <span class="queue-metric-value">
                                 {{ queueStatus.current_user?.active_job_position ?? '—' }}
                                 <small v-if="queueStatus.current_user?.active_job_total">/ {{ queueStatus.current_user.active_job_total }}</small>
                             </span>
                         </div>
                         <div class="queue-metric-card">
-                            <span class="queue-metric-label">Queue Depth</span>
-                            <span class="queue-metric-value">{{ queueStatus.queue_depth }}</span>
+                            <span class="queue-metric-label">Local Queue</span>
+                            <span class="queue-metric-value">{{ queueStatus.queue_depth_by_method?.local ?? 0 }}</span>
+                        </div>
+                        <div class="queue-metric-card">
+                            <span class="queue-metric-label">Cloud Queue</span>
+                            <span class="queue-metric-value">{{ queueStatus.queue_depth_by_method?.cloud ?? 0 }}</span>
+                        </div>
+                        <div class="queue-metric-card">
+                            <span class="queue-metric-label">Rules Queue</span>
+                            <span class="queue-metric-value">{{ queueStatus.queue_depth_by_method?.rules ?? 0 }}</span>
                         </div>
                         <div class="queue-metric-card">
                             <span class="queue-metric-label">Worker Mode</span>
@@ -212,6 +229,8 @@
                     <p class="queue-stage-text" v-if="queueStatus.current_user?.latest_active_job_status">
                         Active job: {{ parseMethodTagLabel(queueStatus.current_user?.latest_active_job_method) }} · {{ queueStatus.current_user?.latest_active_job_status }}
                     </p>
+                    <p class="queue-stage-text queue-note">{{ queueStatus.local_queue_note }}</p>
+                    <p class="queue-stage-text queue-note" v-if="queueStatus.cloud_behavior?.description">{{ queueStatus.cloud_behavior.description }}</p>
 
                     <div v-if="queueScope === 'global' && queueStatus.global_queue" class="queue-global-list">
                         <p class="queue-global-title">Global Active Queue ({{ queueStatus.global_queue.active_count }})</p>
@@ -242,7 +261,7 @@
                     </div>
                     <div class="resume-badges">
                         <span :class="['badge', badgeClass(r)]">{{ badgeText(r) }}</span>
-                        <span v-if="r.parse_method" class="badge parse-method-badge">{{ parseMethodTagLabel(r.parse_method) }}</span>
+                        <span v-if="r.parse_method" :class="['badge', 'parse-method-badge', parseMethodToneClass(r.parse_method)]">{{ parseMethodTagLabel(r.parse_method) }}</span>
                     </div>
                     <div class="resume-actions">
                         <button title="View parsed data" @click="viewResume(r.id)">View</button>
@@ -693,32 +712,32 @@
                                 </div>
                                 <div class="view-field">
                                     <label>Email</label>
-                                    <p>{{ viewingResume.structured_data.personal_info.email || '—' }}</p>
+                                    <p>{{ displayValue(viewingResume.structured_data.personal_info.email) }}</p>
                                 </div>
                                 <div class="view-field">
                                     <label>Phone</label>
-                                    <p>{{ viewingResume.structured_data.personal_info.phone || '—' }}</p>
+                                    <p>{{ displayValue(viewingResume.structured_data.personal_info.phone) }}</p>
                                 </div>
                                 <div class="view-field">
                                     <label>Location</label>
-                                    <p>{{ locationStr(viewingResume.structured_data.personal_info) || '—' }}</p>
+                                    <p>{{ displayValue(locationStr(viewingResume.structured_data.personal_info)) }}</p>
                                 </div>
-                                <div v-if="viewingResume.structured_data.personal_info.linkedin" class="view-field">
+                                <div v-if="!isPlaceholderValue(viewingResume.structured_data.personal_info.linkedin)" class="view-field">
                                     <label>LinkedIn</label>
-                                    <p>{{ viewingResume.structured_data.personal_info.linkedin }}</p>
+                                    <p>{{ displayValue(viewingResume.structured_data.personal_info.linkedin) }}</p>
                                 </div>
-                                <div v-if="viewingResume.structured_data.personal_info.website" class="view-field">
+                                <div v-if="!isPlaceholderValue(viewingResume.structured_data.personal_info.website)" class="view-field">
                                     <label>Website</label>
-                                    <p>{{ viewingResume.structured_data.personal_info.website }}</p>
+                                    <p>{{ displayValue(viewingResume.structured_data.personal_info.website) }}</p>
                                 </div>
                             </div>
                         </div>
 
                         <!-- Summary -->
-                        <div v-if="viewingResume.structured_data.summary" class="view-section">
+                        <div v-if="!isPlaceholderValue(viewingResume.structured_data.summary)" class="view-section">
                             <h4>Summary</h4>
                             <p class="summary-text">
-                                {{ viewingResume.structured_data.summary }}
+                                {{ displayValue(viewingResume.structured_data.summary) }}
                             </p>
                         </div>
 
@@ -802,21 +821,21 @@
                     <h2>Resume Parsing Pipelines</h2>
                     <button class="btn-secondary btn-compact" @click="showPipelineDetails = false">Close</button>
                 </div>
-                <p class="subtitle">Choose the parser that best matches your privacy, speed, and consistency needs.</p>
+                <p class="subtitle">UAH parser order (highest reliability/accuracy to lowest): Local AI, Cloud AI, Rules-based.</p>
                 <div class="pipeline-cards">
-                    <article class="pipeline-card" :class="{ selected: parseMethod === 'cloud' }">
-                        <h4>Cloud AI (ZAI)</h4>
-                        <p>Uses hosted ZAI models for extraction and categorization. Best for broad generalization when local resources are constrained.</p>
-                        <span class="pipeline-meta">Network: external · Latency: medium · Privacy: lower</span>
-                    </article>
                     <article class="pipeline-card" :class="{ selected: parseMethod === 'local' }">
                         <h4>Local AI</h4>
-                        <p>Uses your local Ollama stack for OCR + parsing. Best for privacy-preserving workflows and controlled beta infrastructure.</p>
+                        <p>Uses UAH local Ollama OCR and local parsing models. Best for isolated processing and method-specific local queue visibility.</p>
                         <span class="pipeline-meta">Network: internal/VPN · Latency: variable · Privacy: higher</span>
+                    </article>
+                    <article class="pipeline-card" :class="{ selected: parseMethod === 'cloud' }">
+                        <h4>Cloud AI (ZAI)</h4>
+                        <p>Uses web ZAI OCR (glm-ocr) and GLM-4.7-Flash parsing. Cloud throughput is concurrency-limited and does not expose a provider-side waiting queue.</p>
+                        <span class="pipeline-meta">Network: external · Latency: medium · Privacy: lower</span>
                     </article>
                     <article class="pipeline-card" :class="{ selected: parseMethod === 'rules' }">
                         <h4>Rules-based</h4>
-                        <p>Deterministic parser with no model inference. Best for predictable outputs and fallback during model outages.</p>
+                        <p>Deterministic parser using embedded PDF text only. Rules mode is isolated from OCR/model queues and may fail on scanned image-only PDFs.</p>
                         <span class="pipeline-meta">Network: none · Latency: low · Privacy: highest</span>
                     </article>
                 </div>
@@ -960,12 +979,12 @@ export default {
         parseProgressHint() {
             const activeMethod = this.parseJobMethod || this.parseMethod
             const map = {
-                queued: 'Preparing to parse your resume…',
+                queued: 'Preparing to parse the selected UAH resume…',
                 parsing: activeMethod === 'rules'
-                    ? 'Rules engine is extracting data…'
+                    ? 'Rules engine is reading embedded PDF text…'
                     : activeMethod === 'cloud'
-                        ? 'Cloud AI is analyzing your resume…'
-                        : 'Local AI is analyzing your resume…',
+                        ? 'Cloud AI (ZAI OCR + GLM-4.7-Flash) is analyzing the resume…'
+                        : 'Local AI is analyzing the resume…',
                 validating: 'Validating and normalizing extracted fields…',
                 success: 'Parsing complete!',
                 failed: 'Parsing failed.',
@@ -975,9 +994,9 @@ export default {
         },
         selectedParseMethodDescription() {
             const map = {
-                cloud: 'Cloud AI (ZAI) runs parsing with hosted models.',
-                local: 'Local AI uses your Ollama endpoint for OCR + parsing.',
-                rules: 'Rules-based parsing uses deterministic extraction only.',
+                local: 'Local AI uses UAH local OCR + local parsing with isolated queue visibility.',
+                cloud: 'Cloud AI uses web ZAI OCR and GLM-4.7-Flash with concurrency-limited throughput.',
+                rules: 'Rules-based parsing is deterministic from embedded PDF text only (no OCR fallback).',
             }
             return map[this.parseMethod] || ''
         },
@@ -1005,6 +1024,11 @@ export default {
             }
             this.stopQueuePolling()
         },
+        parseMethod() {
+            if (this.activeTab === 'imported') {
+                this.loadQueueStatus()
+            }
+        },
     },
 
     beforeUnmount() {
@@ -1017,20 +1041,46 @@ export default {
     },
 
     methods: {
+        isPlaceholderValue(value) {
+            if (value === null || value === undefined) return true
+            if (typeof value !== 'string') return false
+            const cleaned = value.trim().toLowerCase()
+            if (!cleaned) return true
+            return ['null', 'none', 'n/a', 'na', 'unknown', 'not provided', 'not available', '-', '--'].includes(cleaned)
+        },
+
+        cleanTextValue(value) {
+            if (value === null || value === undefined) return ''
+            if (typeof value !== 'string') return value
+            return this.isPlaceholderValue(value) ? '' : value.trim()
+        },
+
+        displayValue(value) {
+            const cleaned = this.cleanTextValue(value)
+            return cleaned || '—'
+        },
+
         parseMethodTagLabel(method) {
             const map = {
-                cloud: 'Cloud AI',
-                cloud_ai: 'Cloud AI',
-                cloud_llm: 'Cloud AI',
-                zai: 'Cloud AI',
-                local: 'Local AI',
-                local_ai: 'Local AI',
-                local_llm: 'Local AI',
-                rules: 'Rules',
-                llm: 'AI (Auto)',
+                cloud: 'CLOUD | ZAI',
+                cloud_ai: 'CLOUD | ZAI',
+                cloud_llm: 'CLOUD | ZAI',
+                zai: 'CLOUD | ZAI',
+                local: 'LOCAL | OLLAMA',
+                local_ai: 'LOCAL | OLLAMA',
+                local_llm: 'LOCAL | OLLAMA',
+                rules: 'RULES | DETERMINISTIC',
+                llm: 'AI | AUTO',
             }
             const key = (method || '').toLowerCase()
             return map[key] || method || 'Unknown'
+        },
+
+        parseMethodToneClass(method) {
+            const normalized = (method || '').toLowerCase()
+            if (['cloud', 'cloud_ai', 'cloud_llm', 'zai'].includes(normalized)) return 'method-cloud'
+            if (['rules'].includes(normalized)) return 'method-rules'
+            return 'method-local'
         },
 
         stopQueuePolling() {
@@ -1047,7 +1097,7 @@ export default {
             const tick = async () => {
                 await this.loadQueueStatus()
                 if (this.activeTab === 'imported') {
-                    this._queueTimer = setTimeout(tick, 3000)
+                    this._queueTimer = setTimeout(tick, 5000)
                 }
             }
 
@@ -1060,7 +1110,8 @@ export default {
             this.queueLoading = true
             this.queueError = null
             try {
-                const res = await authedFetch(`/api/resume/queue/status?scope=${encodeURIComponent(this.queueScope)}`)
+                const focusMethod = encodeURIComponent(this.parseJobMethod || this.parseMethod || 'local')
+                const res = await authedFetch(`/api/resume/queue/status?scope=${encodeURIComponent(this.queueScope)}&focus_method=${focusMethod}`)
                 if (!res.ok) throw new Error(`HTTP ${res.status}`)
                 this.queueStatus = await res.json()
 
@@ -1226,14 +1277,24 @@ export default {
         },
 
         fullName(pi) {
-            return [pi.first_name, pi.last_name].filter(Boolean).join(' ')
+            const first = this.cleanTextValue(pi.first_name)
+            const last = this.cleanTextValue(pi.last_name)
+            return [first, last].filter(Boolean).join(' ')
         },
         locationStr(pi) {
-            return [pi.city, pi.state].filter(Boolean).join(', ')
+            const city = this.cleanTextValue(pi.city)
+            const state = this.cleanTextValue(pi.state)
+            return [city, state].filter(Boolean).join(', ')
         },
         hasSkills(skills) {
             if (!skills) return false
-            return !!(skills.technical?.length || skills.languages?.length || skills.tools?.length || skills.soft_skills?.length)
+            const validCount = (arr) => (Array.isArray(arr) ? arr.filter((item) => !this.isPlaceholderValue(item)).length : 0)
+            return !!(
+                validCount(skills.technical)
+                || validCount(skills.languages)
+                || validCount(skills.tools)
+                || validCount(skills.soft_skills)
+            )
         },
         missingRequiredList(r) {
             const list = r?.structured_data?._validation?.missing_required
@@ -1250,7 +1311,7 @@ export default {
                 edu.institution, edu.degree, edu.field_of_study, edu.start_date, edu.end_date,
                 work.company, work.title, work.start_date, work.end_date,
             ]
-            return fields.filter(Boolean).length
+            return fields.filter((value) => !this.isPlaceholderValue(value)).length
         },
         portalPercent(r) {
             return Math.round((this.portalFilledCount(r) / 15) * 100)
@@ -1368,9 +1429,13 @@ export default {
         async pollParseJob() {
             if (!this.parseJobId) return
             try {
-                const res = await authedFetch(`/api/resume/parse-job/${this.parseJobId}`)
+                const res = await authedFetch(`/api/resume/parse-job/${this.parseJobId}?include_queue=true`)
                 if (!res.ok) throw new Error(`HTTP ${res.status}`)
                 const job = await res.json()
+
+                if (job.queue_snapshot && this.queueScope !== 'global') {
+                    this.queueStatus = job.queue_snapshot
+                }
 
                 this.parseStatus = job.status
                 this.parseStageLabel = job.progress_stage || this.parseStageLabel
@@ -1399,7 +1464,7 @@ export default {
                 }
 
                 // Still running — poll again
-                this._pollTimer = setTimeout(() => this.pollParseJob(), 1500)
+                this._pollTimer = setTimeout(() => this.pollParseJob(), 1800)
             } catch (e) {
                 this.uploadError = 'Lost connection while checking parse status.'
                 this.uploadStep = 'confirm'

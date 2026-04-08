@@ -232,9 +232,28 @@
 }
 
 .parse-method-badge {
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.parse-method-badge.method-local {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #047857;
+}
+
+.parse-method-badge.method-cloud {
   background: rgba(37, 99, 235, 0.1);
-  border: 1px solid rgba(37, 99, 235, 0.25);
-  color: var(--color-primary-700);
+  border: 1px solid rgba(37, 99, 235, 0.3);
+  color: #1d4ed8;
+}
+
+.parse-method-badge.method-rules {
+  background: rgba(217, 119, 6, 0.12);
+  border: 1px solid rgba(217, 119, 6, 0.35);
+  color: #92400e;
 }
 
 .resume-actions button {
@@ -477,10 +496,20 @@
   color: #1a1a2e;
 }
 
-.import-options h4 {
+.pipeline-guardrails h4 {
   margin: 0 0 10px 0;
   font-size: 0.9rem;
   color: #1a1a2e;
+}
+
+.pipeline-ordering-note {
+  margin: 0 0 10px 0;
+  font-size: 0.78rem;
+  color: #1e3a8a;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 8px;
+  padding: 8px 10px;
 }
 
 .import-subtitle {
@@ -1167,6 +1196,10 @@
   margin: 10px 0 0 0;
   font-size: 0.8rem;
   color: #475569;
+}
+
+.queue-note {
+  color: #334155;
 }
 
 .queue-global-list {

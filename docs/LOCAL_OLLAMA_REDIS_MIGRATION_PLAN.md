@@ -81,6 +81,20 @@ Migrate resume OCR and parsing from ZAI cloud APIs to a feature-flagged local Ol
 - [x] Remove requests dependency from connectivity helper script
 - [x] Update routing runbook and beta env example notes for new behavior
 
+### Phase 10 - Method-Isolated Queue and Data Quality Hardening
+- [x] Enforce method-specific parse input acquisition in sync and async parse paths
+- [x] Guarantee Cloud mode uses web ZAI OCR (glm-ocr) + GLM-4.7-Flash parsing
+- [x] Guarantee Rules mode uses deterministic embedded PDF text only (no OCR fallback)
+- [x] Add explicit Rules-mode guidance when embedded text is insufficient
+- [x] Split Redis queue into cloud/local/rules method queues
+- [x] Add fair rotating scheduler while preserving FIFO within each method queue
+- [x] Add queue depth metrics by method and global load totals
+- [x] Add method-focused queue position support in queue status API
+- [x] Add parse-job polling queue snapshot option to reduce queue polling pressure
+- [x] Harden portal readiness validation against placeholder null-like values
+- [x] Recompute/correct stale portal_ready flags when resumes are read
+- [x] Update Imported Resumes copy/order/tags and queue messaging for beta semantics
+
 ## Change Log
 - 2026-04-08: Created plan document and initial checklist.
 - 2026-04-08: Added Redis service, healthcheck, and redis_data volume in docker-compose.yml.
@@ -105,3 +119,10 @@ Migrate resume OCR and parsing from ZAI cloud APIs to a feature-flagged local Ol
 - 2026-04-08: Added always-visible queue panel with user position data and dev-only global queue scope.
 - 2026-04-08: Expanded parse selection UI to Cloud AI / Local AI / Rules with pipeline details popup; added parse method tags to resume rows.
 - 2026-04-08: Hardened network helper scripts (backend /32 source scope, read-only sysctl handling, stdlib connectivity check) and updated routing runbook.
+- 2026-04-08: Implemented method-specific parse input routing so cloud/local/rules behavior is explicit in both sync and async parsing.
+- 2026-04-08: Added deterministic rules embedded-PDF-text extraction path with clear failover messaging to Local AI/Cloud AI for scanned PDFs.
+- 2026-04-08: Refactored Redis worker to split queues by method (cloud/local/rules) with fair rotating queue polling and per-method depth metrics.
+- 2026-04-08: Expanded queue status payload with global load totals, per-method queued/active counts, cloud behavior metadata, and method-focused user position.
+- 2026-04-08: Added parse-job include_queue snapshot support and reduced frontend queue polling cadence.
+- 2026-04-08: Fixed false portal-ready scenarios by sanitizing null-like placeholder values during validation and backfilling stale readiness flags on resume reads.
+- 2026-04-08: Updated Imported Resumes UX wording/order, pipeline detail ordering, queue panel metrics, and stronger method tags.

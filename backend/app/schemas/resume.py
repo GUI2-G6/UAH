@@ -173,6 +173,11 @@ class ParseJobResponse(BaseModel):
         description="Compact outcome metrics when parsing succeeds (portal readiness, missing counts, extracted sections).",
         examples=[{"portal_ready": True, "skills_count": 14, "missing_count": 0}],
     )
+    queue_snapshot: dict | None = Field(
+        default=None,
+        description="Optional queue status snapshot included when polling with include_queue=true.",
+        examples=[{"current_user": {"active_jobs": 1, "active_job_position": 2}, "queue_depth_total": 4}],
+    )
     created_at: datetime = Field(
         ...,
         description="UTC timestamp when the parse job was created.",

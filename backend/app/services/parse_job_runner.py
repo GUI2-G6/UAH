@@ -3,7 +3,12 @@ import logging
 from app.db.session import SessionLocal
 from app.models.parse_job import ParseJob
 from app.models.resume import Resume
-from app.services.resume_parser import normalize_parse_method, parse_markdown_by_method, validate_and_fix
+from app.services.resume_parser import (
+    normalize_parse_method,
+    parse_markdown_by_method,
+    validate_and_fix,
+    get_parse_input_text,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +22,10 @@ async def run_parse_job(job_id: int) -> bool:
             return True
 
         resume = db.query(Resume).filter(Resume.id == job.resume_id).first()
-        if not resume or not resume.raw_markdown:
+        if not resume or not resume.pdf_data:
             job.status = "failed"
             job.error_code = "NO_DATA"
-            job.error_message = "Resume has no OCR data to parse."
+            job.error_message = "Resume PDF is not available for parsing."
             db.commit()
             return False
 
@@ -45,7 +50,23 @@ async def run_parse_job(job_id: int) -> bool:
         if job.status == "cancelled":
             return True
 
-        structured = await parse_markdown_by_method(resume.raw_markdown, method)
+        input_payload = await get_parse_input_text(resume.pdf_data, method)
+        if input_payload.get("ok") is False:
+            job.status = "failed"
+            job.error_code = input_payload.get("error_code", "PARSE_INPUT_FAILED")
+            job.error_message = input_payload.get("message", "Could not prepare parse input text.")
+            db.commit()
+            return False
+
+        parse_text = input_payload.get("text") or ""
+        if not parse_text:
+            job.status = "failed"
+            job.error_code = "PARSE_INPUT_EMPTY"
+            job.error_message = "Could not prepare parse input text."
+            db.commit()
+            return False
+
+        structured = await parse_markdown_by_method(parse_text, method)
 
         if isinstance(structured, dict) and structured.get("ok") is False:
             job.status = "failed"
@@ -71,6 +92,7 @@ async def run_parse_job(job_id: int) -> bool:
 
         structured = validate_and_fix(structured)
 
+        resume.raw_markdown = parse_text
         resume.structured_data = structured
         resume.parse_method = method
         resume.portal_ready = structured.get("_validation", {}).get("portal_ready", False)
