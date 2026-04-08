@@ -64,6 +64,22 @@ class Settings:
     ZAI_LLM_URL: str = os.getenv("ZAI_LLM_URL", "https://api.z.ai/api/paas/v4/chat/completions")
     ZAI_LLM_MODEL: str = os.getenv("ZAI_LLM_MODEL", "GLM-4.7-Flash")
 
+    # Local Ollama pipeline (replaces ZAI when USE_LOCAL_PIPELINE=true)
+    USE_LOCAL_PIPELINE: bool = _env_bool("USE_LOCAL_PIPELINE", "false")
+    LOCAL_OCR_URL: str = os.getenv("LOCAL_OCR_URL", "http://10.8.0.8:11434")
+    LOCAL_OCR_MODEL: str = os.getenv("LOCAL_OCR_MODEL", "glm-ocr-hires")
+    LOCAL_LLM_URL: str = os.getenv("LOCAL_LLM_URL", "http://10.8.0.8:11434")
+    LOCAL_LLM_MODEL: str = os.getenv("LOCAL_LLM_MODEL", "qwen2.5:7b")
+    LOCAL_OCR_TIMEOUT: float = float(os.getenv("LOCAL_OCR_TIMEOUT", "120"))
+    LOCAL_LLM_TIMEOUT: float = float(os.getenv("LOCAL_LLM_TIMEOUT", "120"))
+    LOCAL_OCR_DPI: int = int(os.getenv("LOCAL_OCR_DPI", "120"))
+
+    # Redis parse queue
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    REDIS_ENABLED: bool = _env_bool("REDIS_ENABLED", "false")
+    PARSE_QUEUE_NAME: str = os.getenv("PARSE_QUEUE_NAME", "uah:parse_jobs")
+    PARSE_QUEUE_MAX_RETRIES: int = int(os.getenv("PARSE_QUEUE_MAX_RETRIES", "3"))
+
     # Muse jobs API guardrails
     MUSE_PAGE_CHASE_ENABLED: bool = _env_bool("MUSE_PAGE_CHASE_ENABLED", "true")
     MUSE_PAGE_CHASE_MAX_PAGES: int = int(os.getenv("MUSE_PAGE_CHASE_MAX_PAGES", "3"))
