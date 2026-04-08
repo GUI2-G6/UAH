@@ -13,7 +13,7 @@ Queue entry format:
   "job_id": int,
   "resume_id": int,
   "user_id": int,
-  "method": "llm" | "rules",
+    "method": "cloud" | "local" | "rules",
   "enqueued_at": ISO timestamp,
   "attempt": int
 }

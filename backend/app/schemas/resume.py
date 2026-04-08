@@ -45,8 +45,8 @@ class ResumeResponse(BaseModel):
     )
     parse_method: str | None = Field(
         default=None,
-        description="Parser mode used most recently for this resume. Supported values: 'llm' or 'rules'.",
-        examples=["llm"],
+        description="Parser mode used most recently for this resume. Supported values: 'cloud', 'local', or 'rules'.",
+        examples=["local"],
     )
     has_pdf: bool = Field(
         default=False,
@@ -86,7 +86,7 @@ class ResumeListItem(BaseModel):
     parse_method: str | None = Field(
         default=None,
         description="Most recent parse engine used for this resume.",
-        examples=["rules"],
+        examples=["cloud"],
     )
     has_pdf: bool = Field(
         default=False,
@@ -126,9 +126,9 @@ class PortalCheckResponse(BaseModel):
 
 class ParseRequest(BaseModel):
     method: str = Field(
-        default="llm",
-        description="Parsing strategy. Use 'llm' for AI extraction or 'rules' for deterministic pattern parsing.",
-        examples=["llm"],
+        default="local",
+        description="Parsing strategy. Supported values: 'cloud' (ZAI), 'local' (Ollama), or 'rules' (deterministic parser).",
+        examples=["local"],
     )
 
 
@@ -145,8 +145,8 @@ class ParseJobResponse(BaseModel):
     )
     method: str = Field(
         ...,
-        description="Parsing engine selected when the job was queued.",
-        examples=["llm"],
+        description="Parsing engine selected when the job was queued: cloud, local, or rules.",
+        examples=["cloud"],
     )
     status: str = Field(
         ...,

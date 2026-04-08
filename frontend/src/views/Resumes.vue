@@ -103,11 +103,16 @@
                     </div>
 
                     <div class="parse-method-group">
-                        <label class="parse-method-label">Parse method</label>
-                        <div class="method-toggle">
-                            <button :class="{ active: parseMethod === 'llm' }" @click="parseMethod = 'llm'">AI (LLM)</button>
+                        <div class="parse-method-header">
+                            <label class="parse-method-label">Parse Pipeline</label>
+                            <button class="btn-secondary btn-compact" type="button" @click="showPipelineDetails = true">View Details</button>
+                        </div>
+                        <div class="method-toggle method-toggle-3">
+                            <button :class="{ active: parseMethod === 'cloud' }" @click="parseMethod = 'cloud'">Cloud AI (ZAI)</button>
+                            <button :class="{ active: parseMethod === 'local' }" @click="parseMethod = 'local'">Local AI</button>
                             <button :class="{ active: parseMethod === 'rules' }" @click="parseMethod = 'rules'">Rules-based</button>
                         </div>
+                        <p class="parse-method-summary">{{ selectedParseMethodDescription }}</p>
                     </div>
 
                     <div class="modal-actions inline-actions">
@@ -161,6 +166,64 @@
                 </div>
             </div>
 
+            <div class="queue-panel-card">
+                <div class="queue-panel-header">
+                    <div>
+                        <h4>Parse Queue</h4>
+                        <p>Track your parse position and worker activity in real time.</p>
+                    </div>
+                    <div class="queue-scope-toggle">
+                        <button :class="{ active: queueScope === 'user' }" @click="setQueueScope('user')">My Queue</button>
+                        <button
+                            v-if="canViewGlobalQueue"
+                            :class="{ active: queueScope === 'global' }"
+                            @click="setQueueScope('global')"
+                        >Global Queue</button>
+                    </div>
+                </div>
+
+                <div v-if="queueLoading && !queueStatus" class="loading-row queue-loading-row">
+                    <div class="spinner"></div> Loading queue status...
+                </div>
+                <div v-else-if="queueError" class="upload-error">{{ queueError }}</div>
+                <template v-else-if="queueStatus">
+                    <div class="queue-metrics-grid">
+                        <div class="queue-metric-card">
+                            <span class="queue-metric-label">Your Active Jobs</span>
+                            <span class="queue-metric-value">{{ queueStatus.current_user?.active_jobs ?? 0 }}</span>
+                        </div>
+                        <div class="queue-metric-card">
+                            <span class="queue-metric-label">Your Position</span>
+                            <span class="queue-metric-value">
+                                {{ queueStatus.current_user?.active_job_position ?? '—' }}
+                                <small v-if="queueStatus.current_user?.active_job_total">/ {{ queueStatus.current_user.active_job_total }}</small>
+                            </span>
+                        </div>
+                        <div class="queue-metric-card">
+                            <span class="queue-metric-label">Queue Depth</span>
+                            <span class="queue-metric-value">{{ queueStatus.queue_depth }}</span>
+                        </div>
+                        <div class="queue-metric-card">
+                            <span class="queue-metric-label">Worker Mode</span>
+                            <span class="queue-metric-value queue-metric-value-small">{{ queueStatus.worker_status?.mode || 'unknown' }}</span>
+                        </div>
+                    </div>
+
+                    <p class="queue-stage-text" v-if="queueStatus.current_user?.latest_active_job_status">
+                        Active job: {{ parseMethodTagLabel(queueStatus.current_user?.latest_active_job_method) }} · {{ queueStatus.current_user?.latest_active_job_status }}
+                    </p>
+
+                    <div v-if="queueScope === 'global' && queueStatus.global_queue" class="queue-global-list">
+                        <p class="queue-global-title">Global Active Queue ({{ queueStatus.global_queue.active_count }})</p>
+                        <div class="queue-global-entry" v-for="entry in queueStatus.global_queue.entries" :key="entry.job_id">
+                            <span class="entry-position">#{{ entry.position }}</span>
+                            <span class="entry-method">{{ parseMethodTagLabel(entry.method) }}</span>
+                            <span class="entry-status">{{ entry.status }}</span>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
             <!-- Loading -->
             <div v-if="resumesLoading" class="loading-row">
                 <div class="spinner"></div> Loading resumes…
@@ -177,7 +240,10 @@
                         <p class="resume-name">{{ r.file_name }}</p>
                         <p class="resume-date">Uploaded {{ formatDate(r.created_at) }}</p>
                     </div>
-                    <span :class="['badge', badgeClass(r)]">{{ badgeText(r) }}</span>
+                    <div class="resume-badges">
+                        <span :class="['badge', badgeClass(r)]">{{ badgeText(r) }}</span>
+                        <span v-if="r.parse_method" class="badge parse-method-badge">{{ parseMethodTagLabel(r.parse_method) }}</span>
+                    </div>
                     <div class="resume-actions">
                         <button title="View parsed data" @click="viewResume(r.id)">View</button>
                         <button
@@ -534,11 +600,11 @@
         <!-- ════════════════════════════════════════════════════
              VIEW RESUME MODAL
         ═════════════════════════════════════════════════════ -->
-        <div v-if="showViewModal" class="modal-overlay" @click.self="showViewModal = false">
+        <div v-if="showViewModal" class="modal-overlay" @click.self="closeViewModal">
             <div class="modal-box view-modal-box" v-draggable-modal="{ handle: '.modal-drag-header' }">
                 <div class="modal-drag-header drag-handle view-modal-header-row">
                     <h2>{{ viewingResume ? viewingResume.file_name : 'Resume' }}</h2>
-                    <button class="btn-secondary btn-compact" @click="showViewModal = false">Close</button>
+                    <button class="btn-secondary btn-compact" @click="closeViewModal">Close</button>
                 </div>
 
                 <div v-if="viewLoading" class="loading-row">
@@ -551,22 +617,31 @@
                         <button
                             v-if="viewingResume.has_pdf"
                             :class="{ active: viewSubTab === 'pdf' }"
-                            @click="viewSubTab = 'pdf'"
+                            @click="activateViewSubTab('pdf')"
                         >PDF Document</button>
                         <button
                             v-if="viewingResume.structured_data"
                             :class="{ active: viewSubTab === 'parsed' }"
-                            @click="viewSubTab = 'parsed'"
+                            @click="activateViewSubTab('parsed')"
                         >Parsed Data</button>
                     </nav>
 
                     <!-- PDF sub-tab -->
                     <div v-if="viewSubTab === 'pdf' && viewingResume.has_pdf" class="view-pdf-container">
+                        <div v-if="pdfLoading" class="loading-row queue-loading-row">
+                            <div class="spinner"></div> Loading PDF preview...
+                        </div>
+                        <div v-else-if="pdfLoadError" class="view-error-state">
+                            <p class="view-error-text">{{ pdfLoadError }}</p>
+                            <button class="btn-secondary" @click="loadPdfForView">Retry PDF</button>
+                        </div>
                         <iframe
+                            v-else-if="pdfViewUrl"
                             :src="pdfViewUrl"
                             class="pdf-iframe"
                             title="Resume PDF"
                         ></iframe>
+                        <p v-else class="not-parsed-message">Preparing PDF preview...</p>
                     </div>
 
                     <!-- Parsed data sub-tab -->
@@ -721,6 +796,33 @@
             </div>
         </div>
 
+        <div v-if="showPipelineDetails" class="modal-overlay" @click.self="showPipelineDetails = false">
+            <div class="modal-box pipeline-details-modal" v-draggable-modal="{ handle: '.modal-drag-header' }">
+                <div class="modal-drag-header drag-handle view-modal-header-row">
+                    <h2>Resume Parsing Pipelines</h2>
+                    <button class="btn-secondary btn-compact" @click="showPipelineDetails = false">Close</button>
+                </div>
+                <p class="subtitle">Choose the parser that best matches your privacy, speed, and consistency needs.</p>
+                <div class="pipeline-cards">
+                    <article class="pipeline-card" :class="{ selected: parseMethod === 'cloud' }">
+                        <h4>Cloud AI (ZAI)</h4>
+                        <p>Uses hosted ZAI models for extraction and categorization. Best for broad generalization when local resources are constrained.</p>
+                        <span class="pipeline-meta">Network: external · Latency: medium · Privacy: lower</span>
+                    </article>
+                    <article class="pipeline-card" :class="{ selected: parseMethod === 'local' }">
+                        <h4>Local AI</h4>
+                        <p>Uses your local Ollama stack for OCR + parsing. Best for privacy-preserving workflows and controlled beta infrastructure.</p>
+                        <span class="pipeline-meta">Network: internal/VPN · Latency: variable · Privacy: higher</span>
+                    </article>
+                    <article class="pipeline-card" :class="{ selected: parseMethod === 'rules' }">
+                        <h4>Rules-based</h4>
+                        <p>Deterministic parser with no model inference. Best for predictable outputs and fallback during model outages.</p>
+                        <span class="pipeline-meta">Network: none · Latency: low · Privacy: highest</span>
+                    </article>
+                </div>
+            </div>
+        </div>
+
     </div><!-- /.page -->
 </template>
 
@@ -747,7 +849,7 @@ export default {
             // Inline upload
             uploadStep: 'select',   // 'select' | 'confirm'
             pendingFile: null,
-            parseMethod: 'llm',
+            parseMethod: 'local',
             uploading: false,
             uploadError: null,
             isDragOver: false,
@@ -758,6 +860,14 @@ export default {
             parseStageLabel: '',
             parseError: null,
             _pollTimer: null,
+            parseJobMethod: null,
+
+            // Queue panel
+            queueScope: 'user',
+            queueStatus: null,
+            queueLoading: false,
+            queueError: null,
+            _queueTimer: null,
 
             // View modal
             showViewModal: false,
@@ -766,6 +876,12 @@ export default {
             viewError: null,
             viewSubTab: 'pdf',   // 'pdf' | 'parsed'
             _viewResumeId: null,
+            pdfObjectUrl: '',
+            pdfLoading: false,
+            pdfLoadError: null,
+
+            // Parse details popup
+            showPipelineDetails: false,
 
             // ── Applicant Information tab ───────────────────
             currentUser: null,
@@ -842,9 +958,14 @@ export default {
             return map[this.parseStatus] ?? 0
         },
         parseProgressHint() {
+            const activeMethod = this.parseJobMethod || this.parseMethod
             const map = {
                 queued: 'Preparing to parse your resume…',
-                parsing: this.parseMethod === 'llm' ? 'AI is analyzing your resume — this may take up to a minute.' : 'Rules engine is extracting data…',
+                parsing: activeMethod === 'rules'
+                    ? 'Rules engine is extracting data…'
+                    : activeMethod === 'cloud'
+                        ? 'Cloud AI is analyzing your resume…'
+                        : 'Local AI is analyzing your resume…',
                 validating: 'Validating and normalizing extracted fields…',
                 success: 'Parsing complete!',
                 failed: 'Parsing failed.',
@@ -852,26 +973,162 @@ export default {
             }
             return map[this.parseStatus] ?? ''
         },
+        selectedParseMethodDescription() {
+            const map = {
+                cloud: 'Cloud AI (ZAI) runs parsing with hosted models.',
+                local: 'Local AI uses your Ollama endpoint for OCR + parsing.',
+                rules: 'Rules-based parsing uses deterministic extraction only.',
+            }
+            return map[this.parseMethod] || ''
+        },
+        canViewGlobalQueue() {
+            return !!this.queueStatus?.can_view_global
+        },
         pdfViewUrl() {
-            if (!this.viewingResume?.id) return ''
-            return `/api/resume/${this.viewingResume.id}/pdf`
+            return this.pdfObjectUrl || ''
         },
     },
 
     async mounted() {
         await this.loadResumes()
         await this.loadProfiles()
+        await this.loadQueueStatus()
+        this.startQueuePolling()
         this.publishDebugState('mounted')
+    },
+
+    watch: {
+        activeTab(nextTab) {
+            if (nextTab === 'imported') {
+                this.startQueuePolling()
+                return
+            }
+            this.stopQueuePolling()
+        },
     },
 
     beforeUnmount() {
         if (this._saveTimer) clearTimeout(this._saveTimer)
         if (this._jobInfoTimer) clearTimeout(this._jobInfoTimer)
         if (this._pollTimer) clearTimeout(this._pollTimer)
+        this.stopQueuePolling()
+        this.cleanupPdfObjectUrl()
         clearCurrentPageDiagnostics()
     },
 
     methods: {
+        parseMethodTagLabel(method) {
+            const map = {
+                cloud: 'Cloud AI',
+                cloud_ai: 'Cloud AI',
+                cloud_llm: 'Cloud AI',
+                zai: 'Cloud AI',
+                local: 'Local AI',
+                local_ai: 'Local AI',
+                local_llm: 'Local AI',
+                rules: 'Rules',
+                llm: 'AI (Auto)',
+            }
+            const key = (method || '').toLowerCase()
+            return map[key] || method || 'Unknown'
+        },
+
+        stopQueuePolling() {
+            if (this._queueTimer) {
+                clearTimeout(this._queueTimer)
+                this._queueTimer = null
+            }
+        },
+
+        startQueuePolling() {
+            this.stopQueuePolling()
+            if (this.activeTab !== 'imported') return
+
+            const tick = async () => {
+                await this.loadQueueStatus()
+                if (this.activeTab === 'imported') {
+                    this._queueTimer = setTimeout(tick, 3000)
+                }
+            }
+
+            tick()
+        },
+
+        async loadQueueStatus() {
+            if (this.activeTab !== 'imported') return
+
+            this.queueLoading = true
+            this.queueError = null
+            try {
+                const res = await authedFetch(`/api/resume/queue/status?scope=${encodeURIComponent(this.queueScope)}`)
+                if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                this.queueStatus = await res.json()
+
+                if (!this.queueStatus?.can_view_global && this.queueScope === 'global') {
+                    this.queueScope = 'user'
+                }
+            } catch (e) {
+                if (e.message === 'Session expired' || e.message === 'Not authenticated') {
+                    this.$router.push('/login')
+                    return
+                }
+                this.queueError = 'Failed to load queue status.'
+            } finally {
+                this.queueLoading = false
+            }
+        },
+
+        setQueueScope(scope) {
+            if (scope === this.queueScope) return
+            this.queueScope = scope
+            this.loadQueueStatus()
+        },
+
+        cleanupPdfObjectUrl() {
+            if (this.pdfObjectUrl) {
+                URL.revokeObjectURL(this.pdfObjectUrl)
+                this.pdfObjectUrl = ''
+            }
+        },
+
+        closeViewModal() {
+            this.showViewModal = false
+            this.cleanupPdfObjectUrl()
+            this.pdfLoading = false
+            this.pdfLoadError = null
+        },
+
+        activateViewSubTab(tab) {
+            this.viewSubTab = tab
+            if (tab === 'pdf' && this.viewingResume?.has_pdf && !this.pdfObjectUrl && !this.pdfLoading) {
+                this.loadPdfForView()
+            }
+        },
+
+        async loadPdfForView() {
+            if (!this.viewingResume?.id || !this.viewingResume?.has_pdf) return
+
+            this.pdfLoading = true
+            this.pdfLoadError = null
+            this.cleanupPdfObjectUrl()
+
+            try {
+                const res = await authedFetch(`/api/resume/${this.viewingResume.id}/pdf`)
+                if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+                const blob = await res.blob()
+                this.pdfObjectUrl = URL.createObjectURL(blob)
+            } catch (e) {
+                if (e.message === 'Session expired' || e.message === 'Not authenticated') {
+                    this.$router.push('/login')
+                    return
+                }
+                this.pdfLoadError = 'Failed to load PDF preview.'
+            } finally {
+                this.pdfLoading = false
+            }
+        },
+
         publishDebugState(reason = 'state-update') {
             publishCurrentPageDiagnostics({
                 reason,
@@ -946,6 +1203,9 @@ export default {
             this.viewLoading = true
             this.viewingResume = null
             this.viewError = null
+            this.pdfLoadError = null
+            this.pdfLoading = false
+            this.cleanupPdfObjectUrl()
             this.publishDebugState('view-open')
             try {
                 const res = await authedFetch(`/api/resume/${id}`)
@@ -953,6 +1213,9 @@ export default {
                 this.viewingResume = await res.json()
                 // Default to PDF tab if available, else parsed data
                 this.viewSubTab = this.viewingResume.has_pdf ? 'pdf' : 'parsed'
+                if (this.viewSubTab === 'pdf') {
+                    await this.loadPdfForView()
+                }
                 this.publishDebugState('view-loaded')
             } catch (e) {
                 this.viewError = 'Failed to load resume data. Please try again.'
@@ -993,7 +1256,7 @@ export default {
             return Math.round((this.portalFilledCount(r) / 15) * 100)
         },
         goToApplicantInfo() {
-            this.showViewModal = false
+            this.closeViewModal()
             this.activeTab = 'applicant'
             this.publishDebugState('navigate-to-applicant-from-readiness')
         },
@@ -1002,7 +1265,7 @@ export default {
         openUploadModal() {
             this.uploadStep = 'select'
             this.pendingFile = null
-            this.parseMethod = 'llm'
+            this.parseMethod = 'local'
             this.uploadError = null
             this.isDragOver = false
             this.$nextTick(() => {
@@ -1020,6 +1283,7 @@ export default {
             this.parseStatus = null
             this.parseStageLabel = ''
             this.parseError = null
+            this.parseJobMethod = null
             if (this._pollTimer) clearTimeout(this._pollTimer)
         },
         triggerFileInput() {
@@ -1087,6 +1351,7 @@ export default {
                 this.parseStatus = 'queued'
                 this.parseStageLabel = 'Queued…'
                 this.parseError = null
+                this.parseJobMethod = this.parseMethod
                 this.uploadStep = 'parsing'
                 this.uploading = false
                 this.publishDebugState('parse-started')
@@ -1113,6 +1378,7 @@ export default {
                 if (job.status === 'success') {
                     this.resetUploadFlow()
                     await this.loadResumes()
+                    await this.loadQueueStatus()
                     this.publishDebugState('parse-success')
                     return
                 }
@@ -1120,12 +1386,14 @@ export default {
                     this.uploadError = job.error_message || 'Parsing failed.'
                     this.uploadStep = 'confirm'
                     this.parseJobId = null
+                    this.parseJobMethod = null
                     this.publishDebugState('parse-failed')
                     return
                 }
                 if (job.status === 'cancelled') {
                     this.uploadStep = 'confirm'
                     this.parseJobId = null
+                    this.parseJobMethod = null
                     this.publishDebugState('parse-cancelled')
                     return
                 }
@@ -1149,6 +1417,7 @@ export default {
             this.parseStatus = 'cancelled'
             this.uploadStep = 'confirm'
             this.parseJobId = null
+            this.parseJobMethod = null
             this.publishDebugState('parse-cancelled-by-user')
         },
 

@@ -9,7 +9,7 @@ class ParseJob(Base):
     id = Column(Integer, primary_key=True, index=True)
     resume_id = Column(Integer, ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    method = Column(String(50), nullable=False)  # 'llm' or 'rules'
+    method = Column(String(50), nullable=False)  # cloud|local|rules (legacy llm values may exist)
     status = Column(String(50), nullable=False, default="queued")  # queued|parsing|validating|success|failed|cancelled
     progress_stage = Column(String(100), nullable=True)  # human-readable stage label
     error_code = Column(String(100), nullable=True)

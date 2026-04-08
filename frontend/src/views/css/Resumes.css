@@ -224,6 +224,19 @@
   flex-shrink: 0;
 }
 
+.resume-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 8px;
+}
+
+.parse-method-badge {
+  background: rgba(37, 99, 235, 0.1);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  color: var(--color-primary-700);
+}
+
 .resume-actions button {
   width: 32px;
   height: 32px;
@@ -558,6 +571,17 @@
   gap: 8px;
 }
 
+.method-toggle-3 button {
+  flex: 1;
+}
+
+.parse-method-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .method-toggle button {
   flex: 1;
   padding: 8px;
@@ -588,6 +612,12 @@
   color: #8a94a6;
   display: block;
   margin-bottom: 6px;
+}
+
+.parse-method-summary {
+  margin: 8px 0 0 0;
+  font-size: 0.8rem;
+  color: #64748b;
 }
 
 .inline-actions {
@@ -1028,6 +1058,157 @@
   font-size: 0.9rem;
 }
 
+.queue-loading-row {
+  padding: 12px 0;
+}
+
+.queue-panel-card {
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-soft);
+  padding: 16px 18px;
+}
+
+.queue-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.queue-panel-header h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #1a1a2e;
+}
+
+.queue-panel-header p {
+  margin: 4px 0 0 0;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.queue-scope-toggle {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.queue-scope-toggle button {
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: #fff;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  color: #64748b;
+}
+
+.queue-scope-toggle button.active {
+  color: var(--color-primary-700);
+  border-color: rgba(37, 99, 235, 0.35);
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.queue-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 760px) {
+  .queue-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 460px) {
+  .queue-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.queue-metric-card {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.7);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.queue-metric-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+}
+
+.queue-metric-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.queue-metric-value small {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.queue-metric-value-small {
+  font-size: 0.9rem;
+}
+
+.queue-stage-text {
+  margin: 10px 0 0 0;
+  font-size: 0.8rem;
+  color: #475569;
+}
+
+.queue-global-list {
+  margin-top: 10px;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  padding-top: 10px;
+}
+
+.queue-global-title {
+  margin: 0 0 8px 0;
+  font-size: 0.8rem;
+  color: #475569;
+  font-weight: 600;
+}
+
+.queue-global-entry {
+  display: grid;
+  grid-template-columns: 52px 120px 1fr;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 8px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  font-size: 0.78rem;
+}
+
+.entry-position {
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.entry-method {
+  color: #334155;
+  font-weight: 600;
+}
+
+.entry-status {
+  color: #0f172a;
+  text-transform: capitalize;
+}
+
 .spinner {
   width: 20px;
   height: 20px;
@@ -1132,6 +1313,58 @@
   color: var(--color-danger-600);
   font-size: 0.9rem;
   margin: 0;
+}
+
+.pipeline-details-modal {
+  max-width: 760px;
+}
+
+.pipeline-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 760px) {
+  .pipeline-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pipeline-card {
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 10px;
+  padding: 12px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pipeline-card.selected {
+  border-color: rgba(37, 99, 235, 0.45);
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.pipeline-card h4 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #1e293b;
+}
+
+.pipeline-card p {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: #475569;
+}
+
+.pipeline-meta {
+  margin-top: auto;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
 }
 
 /* ── Profile switcher ───────────────────────────────────── */

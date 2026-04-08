@@ -10,6 +10,8 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+SUPPORTED_PARSE_METHODS = ("cloud", "local", "rules")
+
 PORTAL_REQUIRED_FIELDS = {
     "personal_info.first_name": "First Name",
     "personal_info.last_name": "Last Name",
@@ -495,6 +497,46 @@ async def ocr_pdf_dispatch(pdf_bytes: bytes) -> dict:
 async def categorize_dispatch(md_text: str) -> dict:
     """Route to local or cloud LLM based on USE_LOCAL_PIPELINE flag."""
     if settings.USE_LOCAL_PIPELINE:
+        return await categorize_with_local_llm(md_text)
+    return await categorize_with_llm(md_text)
+
+
+def normalize_parse_method(method: str | None) -> str | None:
+    """Normalize frontend/backend parse method aliases to canonical values."""
+    if not method:
+        return None
+
+    normalized = method.strip().lower()
+    aliases = {
+        "rules": "rules",
+        "local": "local",
+        "local_ai": "local",
+        "local_llm": "local",
+        "cloud": "cloud",
+        "cloud_ai": "cloud",
+        "cloud_llm": "cloud",
+        "zai": "cloud",
+    }
+
+    if normalized == "llm":
+        return "local" if settings.USE_LOCAL_PIPELINE else "cloud"
+
+    return aliases.get(normalized)
+
+
+async def parse_markdown_by_method(md_text: str, method: str) -> dict:
+    """Parse markdown using explicit source method: cloud, local, or rules."""
+    normalized = normalize_parse_method(method)
+    if normalized is None:
+        return {
+            "ok": False,
+            "error_code": "PARSE_METHOD_INVALID",
+            "message": f"Method must be one of: {', '.join(SUPPORTED_PARSE_METHODS)}",
+        }
+
+    if normalized == "rules":
+        return parse_with_rules(md_text)
+    if normalized == "local":
         return await categorize_with_local_llm(md_text)
     return await categorize_with_llm(md_text)
 

@@ -1,7 +1,8 @@
 import asyncio
 import logging
+import os
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, Path
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, Path, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -24,7 +25,7 @@ from app.services.parse_queue import (
     get_worker_status,
 )
 from app.services.resume_parser import (
-    ocr_pdf_dispatch, categorize_dispatch, parse_with_rules, validate_and_fix,
+    ocr_pdf_dispatch, normalize_parse_method, parse_markdown_by_method, validate_and_fix,
     check_portal_required,
 )
 
@@ -35,6 +36,12 @@ router = APIRouter(prefix="/api/resume", tags=["resume"])
 MAX_RESUMES_PER_USER = 10
 MAX_FILE_SIZE = 5 * 1024 * 1024
 UPLOAD_COOLDOWN_SECONDS = 30
+
+
+def _is_development_env() -> bool:
+    env = (settings.ENVIRONMENT or "").strip().lower()
+    env_alias = (os.getenv("ENV", "") or "").strip().lower()
+    return env in {"development", "dev", "local"} or env_alias in {"development", "dev", "local"}
 
 
 @router.post("/upload", response_model=ResumeUploadResponse, status_code=201)
@@ -135,8 +142,8 @@ async def parse_resume(
     """
     Parse a stored resume into normalized structured fields.
 
-    Uses either the LLM-based parser or rule-based parser depending on the
-    requested method. Results are validated and persisted back to the resume.
+    Uses cloud AI, local AI, or rules-based parsing depending on the requested
+    method. Results are validated and persisted back to the resume.
 
     Response codes:
     - 200: Parse succeeded and updated resume is returned.
@@ -158,12 +165,11 @@ async def parse_resume(
         if time_since < timedelta(seconds=10):
             raise HTTPException(status_code=429, detail="This resume was just parsed, wait a bit")
 
-    if payload.method == "llm":
-        structured = await categorize_dispatch(resume.raw_markdown)
-    elif payload.method == "rules":
-        structured = parse_with_rules(resume.raw_markdown)
-    else:
-        raise HTTPException(status_code=400, detail="Method must be 'llm' or 'rules'")
+    method = normalize_parse_method(payload.method)
+    if method is None:
+        raise HTTPException(status_code=400, detail="Method must be one of: cloud, local, rules")
+
+    structured = await parse_markdown_by_method(resume.raw_markdown, method)
 
     if structured is None:
         raise HTTPException(status_code=500, detail="Parsing failed")
@@ -181,7 +187,7 @@ async def parse_resume(
     structured = validate_and_fix(structured)
 
     resume.structured_data = structured
-    resume.parse_method = payload.method
+    resume.parse_method = method
     resume.portal_ready = structured.get("_validation", {}).get("portal_ready", False)
     db.commit()
     db.refresh(resume)
@@ -291,24 +297,6 @@ def portal_check(
     )
 
 
-@router.get("/{resume_id}/pdf")
-def get_resume_pdf(
-    resume_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    resume = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == current_user.id).first()
-    if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
-    if not resume.pdf_data:
-        raise HTTPException(status_code=404, detail="PDF not available for this resume")
-    return Response(
-        content=resume.pdf_data,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"inline; filename={resume.file_name}"},
-    )
-
-
 @router.delete("/{resume_id}")
 def delete_resume(
     resume_id: int = Path(..., ge=1, description="Resume ID to permanently delete."),
@@ -373,8 +361,9 @@ async def start_async_parse(
     if not resume.raw_markdown:
         raise HTTPException(status_code=400, detail="No OCR data to parse, upload the resume first")
 
-    if payload.method not in ("llm", "rules"):
-        raise HTTPException(status_code=400, detail="Method must be 'llm' or 'rules'")
+    method = normalize_parse_method(payload.method)
+    if method is None:
+        raise HTTPException(status_code=400, detail="Method must be one of: cloud, local, rules")
 
     # Prevent duplicate active jobs for the same resume
     active = db.query(ParseJob).filter(
@@ -388,7 +377,7 @@ async def start_async_parse(
     job = ParseJob(
         resume_id=resume_id,
         user_id=current_user.id,
-        method=payload.method,
+        method=method,
         status="queued",
         progress_stage="Queued…",
     )
@@ -397,7 +386,7 @@ async def start_async_parse(
     db.refresh(job)
 
     if settings.REDIS_ENABLED:
-        queued = await enqueue_parse_job(job.id, resume_id, current_user.id, payload.method)
+        queued = await enqueue_parse_job(job.id, resume_id, current_user.id, method)
         if not queued:
             background_tasks.add_task(_run_parse_job, job.id)
     else:
@@ -408,10 +397,11 @@ async def start_async_parse(
 
 @router.get("/queue/status")
 async def get_queue_status(
+    scope: str = Query(default="user", description="Queue scope: user or global."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Returns current queue depth and worker status."""
+    """Returns queue status for current user with optional global details in development."""
     active_statuses = ["queued", "parsing", "validating"]
     active_count = db.query(func.count(ParseJob.id)).filter(
         ParseJob.user_id == current_user.id,
@@ -425,24 +415,66 @@ async def get_queue_status(
     queue_depth = await get_queue_depth() if settings.REDIS_ENABLED else 0
     worker_status = get_worker_status()
 
-    latest_active_job = db.query(ParseJob).filter(
-        ParseJob.user_id == current_user.id,
+    ordered_active_jobs = db.query(ParseJob).filter(
         ParseJob.status.in_(active_statuses),
-    ).order_by(ParseJob.updated_at.desc()).first()
+    ).order_by(ParseJob.created_at.asc(), ParseJob.id.asc()).all()
+
+    user_active_jobs = [job for job in ordered_active_jobs if job.user_id == current_user.id]
+    latest_user_active_job = user_active_jobs[0] if user_active_jobs else None
+
+    user_position = None
+    if latest_user_active_job:
+        for idx, job in enumerate(ordered_active_jobs, start=1):
+            if job.id == latest_user_active_job.id:
+                user_position = idx
+                break
 
     latest_active_job_redis_status = None
-    if settings.REDIS_ENABLED and latest_active_job:
-        latest_active_job_redis_status = await get_job_redis_status(latest_active_job.id)
+    if settings.REDIS_ENABLED and latest_user_active_job:
+        latest_active_job_redis_status = await get_job_redis_status(latest_user_active_job.id)
+
+    requested_scope = (scope or "user").strip().lower()
+    can_view_global = _is_development_env()
+    effective_scope = "global" if requested_scope == "global" and can_view_global else "user"
+
+    global_queue = None
+    if effective_scope == "global":
+        global_queue = {
+            "active_count": len(ordered_active_jobs),
+            "entries": [
+                {
+                    "position": idx,
+                    "job_id": job.id,
+                    "user_id": job.user_id,
+                    "resume_id": job.resume_id,
+                    "method": job.method,
+                    "status": job.status,
+                    "progress_stage": job.progress_stage,
+                    "created_at": job.created_at.isoformat() if job.created_at else None,
+                    "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+                }
+                for idx, job in enumerate(ordered_active_jobs[:25], start=1)
+            ],
+        }
 
     return {
+        "scope": effective_scope,
+        "requested_scope": requested_scope,
+        "can_view_global": can_view_global,
         "redis_enabled": settings.REDIS_ENABLED,
         "queue_depth": int(queue_depth),
         "worker_status": worker_status,
         "current_user": {
             "active_jobs": int(active_count),
+            "active_job_position": user_position,
+            "active_job_total": len(ordered_active_jobs),
+            "latest_active_job_id": latest_user_active_job.id if latest_user_active_job else None,
+            "latest_active_job_method": latest_user_active_job.method if latest_user_active_job else None,
+            "latest_active_job_status": latest_user_active_job.status if latest_user_active_job else None,
             "recent_jobs": [
                 {
                     "id": job.id,
+                    "method": job.method,
                     "status": job.status,
                     "progress_stage": job.progress_stage,
                     "updated_at": job.updated_at.isoformat() if job.updated_at else None,
@@ -450,6 +482,7 @@ async def get_queue_status(
                 for job in recent_jobs
             ],
         },
+        "global_queue": global_queue,
         "latest_active_job_redis_status": latest_active_job_redis_status,
     }
 

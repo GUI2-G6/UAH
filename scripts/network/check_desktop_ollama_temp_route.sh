@@ -23,15 +23,15 @@ curl -sS --max-time 8 "http://${DESKTOP_IP}:${DESKTOP_PORT}/api/tags" | head -c 
 
 echo "[3/3] Backend container -> desktop Ollama"
 docker exec -e DESKTOP_IP="$DESKTOP_IP" -e DESKTOP_PORT="$DESKTOP_PORT" "$BACKEND_CONTAINER" python - <<'PY'
-import requests
-import sys
 import os
+import sys
+import urllib.request
 
 url = f"http://{os.environ['DESKTOP_IP']}:{os.environ['DESKTOP_PORT']}/api/tags"
 try:
-    r = requests.get(url, timeout=8)
-    print("status=", r.status_code)
-    print(r.text[:400])
+    with urllib.request.urlopen(url, timeout=8) as resp:
+        print("status=", resp.getcode())
+        print(resp.read(400).decode("utf-8", "ignore"))
 except Exception as exc:
     print("backend request failed:", type(exc).__name__, str(exc))
     sys.exit(1)

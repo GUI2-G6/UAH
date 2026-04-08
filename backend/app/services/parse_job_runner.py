@@ -3,7 +3,7 @@ import logging
 from app.db.session import SessionLocal
 from app.models.parse_job import ParseJob
 from app.models.resume import Resume
-from app.services.resume_parser import categorize_dispatch, parse_with_rules, validate_and_fix
+from app.services.resume_parser import normalize_parse_method, parse_markdown_by_method, validate_and_fix
 
 logger = logging.getLogger(__name__)
 
@@ -24,18 +24,28 @@ async def run_parse_job(job_id: int) -> bool:
             db.commit()
             return False
 
+        method = normalize_parse_method(job.method)
+        if method is None:
+            job.status = "failed"
+            job.error_code = "PARSE_METHOD_INVALID"
+            job.error_message = f"Unsupported parse method: {job.method}"
+            db.commit()
+            return False
+
         job.status = "parsing"
-        job.progress_stage = "AI parsing..." if job.method == "llm" else "Rules-based parsing..."
+        stage_by_method = {
+            "cloud": "Cloud AI parsing...",
+            "local": "Local AI parsing...",
+            "rules": "Rules-based parsing...",
+        }
+        job.progress_stage = stage_by_method.get(method, "Parsing...")
         db.commit()
 
         db.refresh(job)
         if job.status == "cancelled":
             return True
 
-        if job.method == "llm":
-            structured = await categorize_dispatch(resume.raw_markdown)
-        else:
-            structured = parse_with_rules(resume.raw_markdown)
+        structured = await parse_markdown_by_method(resume.raw_markdown, method)
 
         if isinstance(structured, dict) and structured.get("ok") is False:
             job.status = "failed"
@@ -62,7 +72,7 @@ async def run_parse_job(job_id: int) -> bool:
         structured = validate_and_fix(structured)
 
         resume.structured_data = structured
-        resume.parse_method = job.method
+        resume.parse_method = method
         resume.portal_ready = structured.get("_validation", {}).get("portal_ready", False)
 
         validation = structured.get("_validation", {})
