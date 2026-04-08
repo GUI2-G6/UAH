@@ -396,11 +396,15 @@ export default {
             const newUsername = (this.changeUsernameNew || '').trim()
             const newUsernameConfirm = (this.changeUsernameNewConfirm || '').trim()
             if (!newUsername || !newUsernameConfirm) {
-                this.setActionStatus('changeUsername', 'error', 'Please enter and confirm your new username')
+                const msg = 'Please enter and confirm your new username'
+                this.setActionStatus('changeUsername', 'error', msg)
+                showToast(msg, 'error')
                 return
             }
             if (newUsername !== newUsernameConfirm) {
-                this.setActionStatus('changeUsername', 'error', 'Usernames do not match')
+                const msg = 'Usernames do not match'
+                this.setActionStatus('changeUsername', 'error', msg)
+                showToast(msg, 'error')
                 return
             }
             this.working = true
@@ -420,9 +424,12 @@ export default {
                 this.currentUser = data
                 setCurrentUser(data)
                 this.setActionStatus('changeUsername', 'success', 'Username updated')
+                showToast('Username updated successfully!', 'success')
                 this.changeUsernameNewConfirm = ''
             } catch (e) {
-                this.setActionStatus('changeUsername', 'error', this.formatFailure('Update username', e))
+                const msg = this.formatFailure('Update username', e)
+                this.setActionStatus('changeUsername', 'error', msg)
+                showToast(msg, 'error') // ✅ add
             } finally {
                 this.working = false
             }
