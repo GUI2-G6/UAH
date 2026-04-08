@@ -53,11 +53,19 @@ Migrate resume OCR and parsing from ZAI cloud APIs to a feature-flagged local Ol
 - [x] Add authenticated queue status endpoint in backend/app/api/resume.py
 
 ### Phase 7 - Verification
-- [ ] Verify docker compose syntax
-- [ ] Verify backend dependency and Dockerfile build assumptions
+- [x] Verify docker compose syntax
+- [x] Verify backend dependency and Dockerfile build assumptions
 - [ ] Smoke test with feature flags off
 - [ ] Smoke test local pipeline on
 - [ ] Smoke test Redis queue on
+
+### Phase 8 - Temporary Secure Desktop Routing
+- [x] Add scoped temporary route apply script for desktop Ollama endpoint
+- [x] Add scoped route verification script (host + backend container)
+- [x] Add rollback script for route and NAT cleanup
+- [x] Add docs runbook under docs/beta-prep for apply/verify/rollback flow
+- [ ] Execute apply/verify/rollback scripts on target VM
+- [ ] Validate end-to-end upload/parse with desktop endpoint and Redis enabled
 
 ## Change Log
 - 2026-04-08: Created plan document and initial checklist.
@@ -74,3 +82,6 @@ Migrate resume OCR and parsing from ZAI cloud APIs to a feature-flagged local Ol
 - 2026-04-08: Completed Phase 5 Redis queue service in backend/app/services/parse_queue.py with sequential worker loop, retry/backoff, and Redis-unavailable fallback behavior.
 - 2026-04-08: Added backend/app/services/parse_job_runner.py to centralize parse execution logic for both BackgroundTasks and Redis worker processing.
 - 2026-04-08: Completed Phase 6 wiring in backend/app/main.py and backend/app/api/resume.py (worker startup/shutdown, Redis enqueue branch, queue status endpoint).
+- 2026-04-08: Marked Phase 7 static checks complete (compose renders, dependency/build assumptions validated from committed files).
+- 2026-04-08: Added temporary secure desktop routing scripts under scripts/network (apply/check/rollback).
+- 2026-04-08: Added docs/beta-prep/TEMP_DESKTOP_OLLAMA_ROUTING_RUNBOOK.md for operator run flow.
