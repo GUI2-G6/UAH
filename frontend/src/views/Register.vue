@@ -67,6 +67,11 @@ export default {
         const username = (this.username || '').trim()
         const confirmUsername = (this.confirmUsername || '').trim()
 
+
+        const emailRegex = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i
+        if (!emailRegex.test(email)) {
+          throw new Error('Please enter a valid email address')
+        }
         if (!email || !confirmEmail || email.toLowerCase() !== confirmEmail.toLowerCase()) {
           throw new Error('Emails do not match')
         }
