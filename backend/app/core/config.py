@@ -75,13 +75,22 @@ class Settings:
     LOCAL_OCR_DPI: int = int(os.getenv("LOCAL_OCR_DPI", "120"))
 
     # Redis parse queue
-    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
     REDIS_ENABLED: bool = _env_bool("REDIS_ENABLED", "false")
     PARSE_QUEUE_NAME: str = os.getenv("PARSE_QUEUE_NAME", "uah:parse_jobs")
     PARSE_QUEUE_NAME_CLOUD: str = os.getenv("PARSE_QUEUE_NAME_CLOUD", "uah:parse_jobs:cloud")
     PARSE_QUEUE_NAME_LOCAL: str = os.getenv("PARSE_QUEUE_NAME_LOCAL", "uah:parse_jobs:local")
     PARSE_QUEUE_NAME_RULES: str = os.getenv("PARSE_QUEUE_NAME_RULES", "uah:parse_jobs:rules")
     PARSE_QUEUE_MAX_RETRIES: int = int(os.getenv("PARSE_QUEUE_MAX_RETRIES", "3"))
+    PARSE_QUEUE_MAX_RETRIES_CLOUD: int = int(os.getenv("PARSE_QUEUE_MAX_RETRIES_CLOUD", "-1"))
+    PARSE_QUEUE_MAX_RETRIES_LOCAL: int = int(os.getenv("PARSE_QUEUE_MAX_RETRIES_LOCAL", "-1"))
+    PARSE_QUEUE_MAX_RETRIES_RULES: int = int(os.getenv("PARSE_QUEUE_MAX_RETRIES_RULES", "0"))
+    PARSE_QUEUE_CONCURRENCY_CLOUD: int = int(os.getenv("PARSE_QUEUE_CONCURRENCY_CLOUD", "1"))
+    PARSE_QUEUE_CONCURRENCY_LOCAL: int = int(os.getenv("PARSE_QUEUE_CONCURRENCY_LOCAL", "2"))
+    PARSE_QUEUE_CONCURRENCY_RULES: int = int(os.getenv("PARSE_QUEUE_CONCURRENCY_RULES", "2"))
+    PARSE_QUEUE_CLAIM_TTL_SECONDS: int = int(os.getenv("PARSE_QUEUE_CLAIM_TTL_SECONDS", "1800"))
+    PARSE_QUEUE_SHUTDOWN_DRAIN_SECONDS: int = int(os.getenv("PARSE_QUEUE_SHUTDOWN_DRAIN_SECONDS", "30"))
+    PARSE_QUEUE_STALE_JOB_MINUTES: int = int(os.getenv("PARSE_QUEUE_STALE_JOB_MINUTES", "20"))
 
     # Muse jobs API guardrails
     MUSE_PAGE_CHASE_ENABLED: bool = _env_bool("MUSE_PAGE_CHASE_ENABLED", "true")

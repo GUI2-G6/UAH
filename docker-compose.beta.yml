@@ -1,0 +1,52 @@
+# ============================================================
+# UAH BETA — Docker Compose Override
+# ============================================================
+services:
+  db:
+    container_name: uah-beta-db
+    volumes:
+      - ./volumes/postgres:/var/lib/postgresql/data
+    networks:
+      uah-beta-infra: {}
+      uah-infra: null
+
+  backend:
+    container_name: uah-beta-backend
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-beta}
+      ENV: ${ENV:-beta}
+    volumes:
+      - ./backend:/app
+    networks:
+      uah-beta-infra: {}
+      uah-infra: null
+
+  redis:
+    container_name: uah-beta-redis
+    networks:
+      uah-beta-infra: {}
+      uah-infra: null
+
+  frontend:
+    container_name: uah-beta-frontend
+    environment:
+      DEV_DOMAIN: ${DEV_DOMAIN:-beta.uahapp.com}
+      DEV_TLS_ENABLED: "false"
+    volumes:
+      - ./volumes/certs/beta:/etc/nginx/certs:ro
+    network_mode: "service:cloudflared"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: uah-beta-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_BETA_TUNNEL_TOKEN}
+    networks:
+      uah-beta-infra: {}
+      uah-infra: null
+
+networks:
+  uah-beta-infra:
+    external: true
+  uah-infra:
+    external: true

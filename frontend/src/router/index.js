@@ -3,13 +3,7 @@ import { getAccessToken } from '@/lib/auth'
 
 const modules = import.meta.glob('../views/*.vue')
 
-function isLocalDev() {
-  const host = window.location.hostname
-  return host === 'localhost' || host === '127.0.0.1' || host === '::1'
-}
-
 function isAuthenticated() {
-  if (isLocalDev()) return true
   return Boolean(getAccessToken())
 }
 
@@ -50,8 +44,6 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  if (isLocalDev()) return true
-
   const publicPaths = new Set(['/login', '/register', '/status', '/forgot-password', '/reset-password'])
   const authed = isAuthenticated()
 
