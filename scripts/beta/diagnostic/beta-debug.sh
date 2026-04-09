@@ -4,6 +4,8 @@
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 SCRIPTS_BETA_DIR="$ROOT_DIR/scripts/beta"
 COMPOSE="docker compose --env-file $ROOT_DIR/.env -f $ROOT_DIR/docker-compose.yml -f $ROOT_DIR/docker-compose.beta.yml"
+BACKEND_INTERNAL_URL="${BACKEND_INTERNAL_URL:-http://localhost:8000}"
+BACKEND_INTERNAL_URL="${BACKEND_INTERNAL_URL%/}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -293,7 +295,7 @@ menu_queue() {
 import httpx, json
 method = '$method'
 try:
-    r = httpx.post('http://localhost:8000/api/internal/test-parse',
+    r = httpx.post('${BACKEND_INTERNAL_URL}/api/internal/test-parse',
         json={'method': method}, timeout=60)
     print('  STATUS:', r.status_code)
     print('  RESPONSE:', json.dumps(r.json(), indent=2)[:500])

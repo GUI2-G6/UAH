@@ -4,6 +4,313 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+BUILD_MODE="none"
+FLAG_NO_BUILD=false
+FLAG_BUILD_ALL=false
+BUILD_SERVICES=()
+
+append_unique_build_service() {
+  local service_name="$1"
+  local existing
+
+  for existing in "${BUILD_SERVICES[@]}"; do
+    if [[ "$existing" == "$service_name" ]]; then
+      return
+    fi
+  done
+
+  BUILD_SERVICES+=("$service_name")
+}
+
+validate_and_add_build_service() {
+  local service_name="$1"
+
+  if [[ -z "$service_name" ]]; then
+    echo "Build service cannot be empty." >&2
+    exit 1
+  fi
+
+  if [[ ! "$service_name" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
+    echo "Invalid service name for build option: '$service_name'." >&2
+    exit 1
+  fi
+
+  append_unique_build_service "$service_name"
+}
+
+resolve_build_mode() {
+  if [[ "$FLAG_NO_BUILD" == true ]] && ([[ "$FLAG_BUILD_ALL" == true ]] || [[ ${#BUILD_SERVICES[@]} -gt 0 ]]); then
+    echo "Cannot combine --no-build with build flags." >&2
+    exit 1
+  fi
+
+  if [[ "$FLAG_BUILD_ALL" == true ]] && [[ ${#BUILD_SERVICES[@]} -gt 0 ]]; then
+    echo "Cannot combine --build-all with service-specific build flags." >&2
+    exit 1
+  fi
+
+  if [[ "$FLAG_BUILD_ALL" == true ]]; then
+    BUILD_MODE="all"
+    return
+  fi
+
+  if [[ ${#BUILD_SERVICES[@]} -gt 0 ]]; then
+    BUILD_MODE="services"
+    return
+  fi
+
+  BUILD_MODE="none"
+}
+
+build_mode_label() {
+  case "$BUILD_MODE" in
+    none)
+      echo "no rebuild"
+      ;;
+    all)
+      echo "rebuild all services"
+      ;;
+    services)
+      echo "rebuild services: ${BUILD_SERVICES[*]}"
+      ;;
+    *)
+      echo "unknown build mode"
+      ;;
+  esac
+}
+
+validate_build_mode_for_action() {
+  local action="$1"
+
+  if [[ "$BUILD_MODE" == "none" ]]; then
+    return
+  fi
+
+  case "$action" in
+    start|restart|sync)
+      ;;
+    *)
+      echo "Build flags are only supported with start, restart, or sync actions." >&2
+      exit 1
+      ;;
+  esac
+}
+
+get_env_value_or_default() {
+  local key="$1"
+  local default_value="$2"
+  local value="${!key:-}"
+
+  if [[ -z "$value" && -f "$ROOT_DIR/.env" ]]; then
+    value=$(awk -F= -v key="$key" '
+      /^[[:space:]]*#/ { next }
+      NF >= 2 {
+        k=$1
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", k)
+        if (k == key) {
+          v=substr($0, index($0, "=") + 1)
+          gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+          print v
+        }
+      }
+    ' "$ROOT_DIR/.env" | tail -n1)
+  fi
+
+  if [[ -z "$value" ]]; then
+    value="$default_value"
+  fi
+
+  value="${value%\"}"
+  value="${value#\"}"
+  value="${value%\'}"
+  value="${value#\'}"
+
+  echo "$value"
+}
+
+is_container_running() {
+  local container_name="$1"
+  local state
+
+  state=$(docker inspect -f '{{.State.Running}}' "$container_name" 2>/dev/null || true)
+  [[ "$state" == "true" ]]
+}
+
+require_external_network() {
+  local network_name="$1"
+
+  if ! docker network inspect "$network_name" >/dev/null 2>&1; then
+    echo "Required Docker network '$network_name' was not found." >&2
+    echo "Create it with: docker network create $network_name" >&2
+    exit 1
+  fi
+}
+
+require_running_container() {
+  local container_name="$1"
+
+  if ! is_container_running "$container_name"; then
+    echo "Required container '$container_name' is not running." >&2
+    echo "Start the infrastructure stack first, then retry." >&2
+    exit 1
+  fi
+}
+
+is_tcp_port_in_use() {
+  local port="$1"
+
+  if command -v ss >/dev/null 2>&1; then
+    ss -H -ltn "sport = :$port" 2>/dev/null | grep -q .
+    return
+  fi
+
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+    return
+  fi
+
+  if command -v netstat >/dev/null 2>&1; then
+    netstat -tln 2>/dev/null | awk '{print $4}' | grep -Eq "(^|:)$port$"
+    return
+  fi
+
+  return 2
+}
+
+require_available_host_port() {
+  local port="$1"
+  local expected_container="$2"
+  local label="$3"
+  local port_check_status
+
+  if ! [[ "$port" =~ ^[0-9]+$ ]] || ((port < 1 || port > 65535)); then
+    echo "Invalid port '$port' for $label." >&2
+    exit 1
+  fi
+
+  if is_container_running "$expected_container"; then
+    return
+  fi
+
+  is_tcp_port_in_use "$port"
+  port_check_status=$?
+
+  if [[ $port_check_status -eq 0 ]]; then
+    echo "$label requires host port $port, but it is already in use." >&2
+    echo "Free the port or change the environment variable in .env." >&2
+    exit 1
+  fi
+
+  if [[ $port_check_status -eq 2 ]]; then
+    echo "Could not verify whether port $port is in use (ss/lsof/netstat unavailable). Continuing." >&2
+  fi
+}
+
+preflight_startup() {
+  local env_name="$1"
+  local redis_port
+
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker CLI is required but was not found in PATH." >&2
+    exit 1
+  fi
+
+  if ! docker compose version >/dev/null 2>&1; then
+    echo "Docker Compose plugin is required but not available." >&2
+    exit 1
+  fi
+
+  case "$env_name" in
+    dev)
+      require_external_network "uah-infra"
+      require_running_container "uah-dev-vpn"
+      redis_port="$(get_env_value_or_default REDIS_HOST_PORT 6379)"
+      require_available_host_port "$redis_port" "uah-redis" "Dev Redis"
+      ;;
+    beta)
+      require_external_network "uah-infra"
+      require_external_network "uah-beta-infra"
+      require_running_container "uah-dev-vpn"
+      redis_port="$(get_env_value_or_default BETA_REDIS_HOST_PORT 6380)"
+      require_available_host_port "$redis_port" "uah-beta-redis" "Beta Redis"
+      ;;
+    *)
+      ;;
+  esac
+}
+
+run_compose_up_with_build_mode() {
+  local env_name="$1"
+
+  case "$BUILD_MODE" in
+    none)
+      run_compose "$env_name" up -d
+      ;;
+    all)
+      run_compose "$env_name" up -d --build
+      ;;
+    services)
+      run_compose "$env_name" up -d --build "${BUILD_SERVICES[@]}"
+      # Ensure all services are up after targeted rebuilds.
+      run_compose "$env_name" up -d
+      ;;
+    *)
+      echo "Unknown build mode '$BUILD_MODE'." >&2
+      exit 1
+      ;;
+  esac
+}
+
+run_sync_rebuild_if_requested() {
+  local env_name="$1"
+
+  if [[ "$BUILD_MODE" == "none" ]]; then
+    echo "No rebuild requested after sync."
+    return
+  fi
+
+  echo "Running post-sync compose update ($(build_mode_label))..."
+  preflight_startup "$env_name"
+  run_compose_up_with_build_mode "$env_name"
+}
+
+print_usage() {
+  cat <<'EOF'
+UAH lifecycle command suite
+
+Usage:
+  bash scripts/uah.sh <environment> <action> [options]
+  bash scripts/uah.sh --help
+
+Environments:
+  dev | beta | prod
+
+Actions:
+  start | stop | restart | debug | sync | cert-sync | audit
+
+Build options (for start, restart, sync only):
+  --no-build
+  --build | --build-all
+  --build-frontend
+  --build-backend
+  --build-db
+  --build-redis
+  --build-cloudflared
+  --build-service <name>
+  --build-service=<name>
+
+Sync mode:
+  beta sync [safe|hard]
+
+Examples:
+  bash scripts/uah.sh dev start
+  bash scripts/uah.sh dev restart --build-frontend --build-backend
+  bash scripts/uah.sh beta restart --build-all
+  bash scripts/uah.sh dev sync --build-all
+  bash scripts/uah.sh beta sync safe --build-frontend
+EOF
+}
+
 choose_environment() {
   if [[ ! -t 0 ]]; then
     echo "Environment argument required in non-interactive mode: dev|beta|prod" >&2
@@ -90,18 +397,21 @@ sync_dev_cert() {
 dev_start() {
   echo "=== UAH Dev Start ==="
 
-  echo "[1/4] Starting containers..."
-  run_compose dev up -d
+  echo "[1/5] Running preflight checks..."
+  preflight_startup dev
 
-  echo "[2/4] Waiting for backend to be ready..."
+  echo "[2/5] Starting containers ($(build_mode_label))..."
+  run_compose_up_with_build_mode dev
+
+  echo "[3/5] Waiting for backend to be ready..."
   sleep 12
 
-  echo "[3/4] Syncing cert to frontend..."
+  echo "[4/5] Syncing cert to frontend..."
   if ! sync_dev_cert; then
     echo "Cert sync skipped."
   fi
 
-  echo "[4/4] Connectivity check..."
+  echo "[5/5] Connectivity check..."
   docker exec uah-dev-backend python3 -c "
 import httpx
 try:
@@ -140,7 +450,7 @@ dev_stop() {
 }
 
 dev_restart() {
-  echo "=== UAH Dev Restart ==="
+  echo "=== UAH Dev Restart ($(build_mode_label)) ==="
   dev_stop
   echo ""
   sleep 3
@@ -155,20 +465,23 @@ beta_start() {
 
   echo "=== UAH Beta Start ==="
 
-  echo "[1/5] Starting containers..."
-  run_compose beta up -d
+  echo "[1/6] Running preflight checks..."
+  preflight_startup beta
 
-  echo "[2/5] Waiting for backend to be ready..."
+  echo "[2/6] Starting containers ($(build_mode_label))..."
+  run_compose_up_with_build_mode beta
+
+  echo "[3/6] Waiting for backend to be ready..."
   sleep 12
 
-  echo "[3/5] Applying WireGuard host route..."
+  echo "[4/6] Applying WireGuard host route..."
   VPN_CONTAINER=uah-dev-vpn \
   BACKEND_CONTAINER=uah-beta-backend \
   NETWORK_NAME=uah-infra \
   SOURCE_CIDR=172.18.0.0/16 \
   bash "$ROOT_DIR/scripts/beta/network/apply_desktop_ollama_temp_route.sh"
 
-  echo "[4/5] Allowing cross-bridge Docker traffic..."
+  echo "[5/6] Allowing cross-bridge Docker traffic..."
   local beta_bridge
   local infra_bridge
   local beta_br
@@ -185,7 +498,7 @@ beta_start() {
   sudo iptables -C DOCKER-USER -i "$infra_br" -o "$beta_br" -j ACCEPT 2>/dev/null || \
     sudo iptables -I DOCKER-USER -i "$infra_br" -o "$beta_br" -j ACCEPT
 
-  echo "[5/5] Connectivity check..."
+  echo "[6/6] Connectivity check..."
   docker exec uah-beta-backend python3 -c "
 import httpx
 try:
@@ -243,7 +556,7 @@ beta_stop() {
 }
 
 beta_restart() {
-  echo "=== UAH Beta Restart ==="
+  echo "=== UAH Beta Restart ($(build_mode_label)) ==="
   beta_stop
   echo ""
   sleep 3
@@ -340,9 +653,53 @@ run_audit() {
 ENV_NAME=""
 ACTION=""
 EXTRA_ARGS=()
+SHOW_HELP=false
 
 while (($#)); do
   case "$1" in
+    -h|--help|help)
+      SHOW_HELP=true
+      ;;
+    --no-build)
+      FLAG_NO_BUILD=true
+      ;;
+    --build|--build-all)
+      FLAG_BUILD_ALL=true
+      ;;
+    --build-backend)
+      validate_and_add_build_service "backend"
+      ;;
+    --build-frontend)
+      validate_and_add_build_service "frontend"
+      ;;
+    --build-db)
+      validate_and_add_build_service "db"
+      ;;
+    --build-redis)
+      validate_and_add_build_service "redis"
+      ;;
+    --build-cloudflared)
+      validate_and_add_build_service "cloudflared"
+      ;;
+    --build-service)
+      shift
+      if (($# == 0)); then
+        echo "--build-service requires a service name." >&2
+        exit 1
+      fi
+      validate_and_add_build_service "$1"
+      ;;
+    --build-service=*)
+      validate_and_add_build_service "${1#*=}"
+      ;;
+    --)
+      shift
+      while (($#)); do
+        EXTRA_ARGS+=("$1")
+        shift
+      done
+      break
+      ;;
     dev|beta|prod)
       if [[ -z "$ENV_NAME" ]]; then
         ENV_NAME="$1"
@@ -357,12 +714,21 @@ while (($#)); do
         EXTRA_ARGS+=("$1")
       fi
       ;;
+    -*)
+      echo "Unknown option '$1'. Use --help for usage." >&2
+      exit 1
+      ;;
     *)
       EXTRA_ARGS+=("$1")
       ;;
   esac
   shift
 done
+
+if [[ "$SHOW_HELP" == true ]]; then
+  print_usage
+  exit 0
+fi
 
 if [[ -z "$ENV_NAME" ]]; then
   ENV_NAME="$(choose_environment)"
@@ -371,6 +737,9 @@ fi
 if [[ -z "$ACTION" ]]; then
   ACTION="$(choose_action)"
 fi
+
+resolve_build_mode
+validate_build_mode_for_action "$ACTION"
 
 if [[ "$ENV_NAME" == "prod" && "$ACTION" != "audit" ]]; then
   prod_scaffold "$ACTION"
@@ -411,11 +780,13 @@ case "$ACTION" in
   sync)
     if [[ "$ENV_NAME" == "beta" ]]; then
       beta_sync "${EXTRA_ARGS[0]:-}"
+      run_sync_rebuild_if_requested beta
     elif [[ "$ENV_NAME" == "dev" ]]; then
       echo "Dev sync uses fast-forward only."
       git -C "$ROOT_DIR" fetch origin
       git -C "$ROOT_DIR" checkout dev
       git -C "$ROOT_DIR" pull --ff-only origin dev
+      run_sync_rebuild_if_requested dev
     else
       prod_scaffold "sync"
     fi

@@ -3,6 +3,8 @@
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 COMPOSE="docker compose --env-file $ROOT_DIR/.env -f $ROOT_DIR/docker-compose.yml"
+BACKEND_INTERNAL_URL="${BACKEND_INTERNAL_URL:-http://localhost:8000}"
+BACKEND_INTERNAL_URL="${BACKEND_INTERNAL_URL%/}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -60,7 +62,7 @@ menu_connectivity() {
         docker exec uah-dev-backend python3 -c "
 import httpx
 try:
-    r = httpx.get('http://localhost:8000/api/', timeout=5)
+    r = httpx.get('${BACKEND_INTERNAL_URL}/api/', timeout=5)
     print('  ✓ STATUS:', r.status_code)
 except Exception as e:
     print('  ✗ FAILED:', type(e).__name__, str(e))
@@ -89,7 +91,7 @@ except Exception as e:
         docker exec uah-dev-backend python3 -c "
 import httpx
 try:
-    r = httpx.get('http://localhost:8000/api/', timeout=5)
+    r = httpx.get('${BACKEND_INTERNAL_URL}/api/', timeout=5)
     print('  STATUS:', r.status_code)
     print('  BODY:', r.text[:200])
 except Exception as e:
