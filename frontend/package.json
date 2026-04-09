@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --mode mock",
+    "dev:mock": "vite --mode mock",
+    "dev:backend": "vite --mode backend",
     "build": "vite build",
     "preview": "vite preview"
   },

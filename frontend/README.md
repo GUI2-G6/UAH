@@ -31,11 +31,22 @@ npm install
 
 ### Compile and Hot-Reload for Development
 
-If you are running the backend locally for testing, the local Vite server (`npm run dev`) is configured to automatically proxy requests to `http://localhost:8000` to match how Nginx works in production. 
+Mock-first mode (default) renders the app without requiring backend services:
 
 ```sh
 npm run dev
 ```
+
+Backend passthrough mode proxies `/api`, `/docs`, and `/openapi.json` to local backend:
+
+```sh
+npm run dev:backend
+```
+
+Security notes:
+
+- Local dev server binds to `127.0.0.1` by default.
+- Backend mode only allows loopback targets unless you explicitly set `VITE_ALLOW_REMOTE_API=true`.
 
 ### Compile and Minify for Production
 

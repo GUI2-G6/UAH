@@ -1,6 +1,6 @@
 # UAH Backend - Local Development Guide
 
-This guide explains how to run the FastAPI backend locally for testing purposes on your own machine. We use a separate `docker-compose` file just for spinning up a local PostgreSQL database, then run the Python app directly on your host machine to make debugging easy.
+This guide explains how to run the FastAPI backend locally for testing purposes on your own machine. We use `docker-compose.local.yml` for a localhost-only database and optional localhost-only backend profile, then run either host `uvicorn` or backend passthrough mode for frontend integration.
 
 **Note:** This setup will run the database on your local machine and will not touch or break the dev server infrastructure.
 
@@ -8,7 +8,8 @@ This guide explains how to run the FastAPI backend locally for testing purposes 
 
 Use one of these paths depending on what you are testing:
 
-- Host Development (recommended): database in `docker-compose.local.yml`, backend via `uvicorn`, frontend via `npm run dev`.
+- Host Development (recommended): database in `docker-compose.local.yml`, backend via `uvicorn`, frontend via `npm run dev:backend`.
+- Backend Compose Profile (optional): database + backend via `docker-compose.local.yml --profile backend`, frontend via `npm run dev:backend`.
 - Full Docker Dev Stack: all services via `docker-compose.yml` for VPN-networked dev environment behavior.
 
 This document is the source of truth for Host Development and is intentionally isolated from the remote dev and beta deployment workflows.
@@ -40,10 +41,16 @@ python -c "import secrets; print(secrets.token_hex(32))"
 From the **root of the repository** (where the `docker-compose.local.yml` file is located), start the PostgreSQL container:
 
 ```bash
-docker compose -f docker-compose.local.yml up -d
+docker compose -f docker-compose.local.yml up -d db-local
 ```
 
 This will automatically create a database container running on `localhost:5432` with the correct default user, password, and database variables.
+
+Optional: run local backend in Docker as well (still localhost-only):
+
+```bash
+docker compose -f docker-compose.local.yml --profile backend up -d db-local backend-local
+```
 
 ## Step 2: Set Up Python Virtual Environment
 
@@ -133,10 +140,12 @@ Optional frontend dev flow (separate terminal from repository `frontend/` direct
 
 ```bash
 npm install
-npm run dev
+npm run dev:backend
 ```
 
 Then open [http://localhost:5173](http://localhost:5173). The Vite dev server proxies `/api`, `/docs`, and `/openapi.json` to `http://localhost:8000`.
+
+If you want frontend-only renderability without backend dependency, use `npm run dev` instead (mock mode).
 
 ## Teardown
 

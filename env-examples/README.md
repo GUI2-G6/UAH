@@ -28,6 +28,11 @@ Copy the relevant template values into root `.env` before starting services.
   - Placeholder production stub.
   - Tracks required production fields without storing real credentials.
 
+- `env-examples/local/.env.example`
+  - Frontend-first local template with secure defaults.
+  - Supports mock-only frontend mode and optional local backend profile.
+  - Keeps localhost-only host bindings and admin bootstrap disabled by default.
+
 ## Security Notes
 
 - Never commit real `.env` files.
