@@ -15,6 +15,11 @@ services:
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-beta}
       ENV: ${ENV:-beta}
+      REDIS_URL: ${BETA_REDIS_URL:-redis://uah-beta-redis:6379/0}
+      PARSE_QUEUE_NAME: ${BETA_PARSE_QUEUE_NAME:-uah:beta:parse_jobs}
+      PARSE_QUEUE_NAME_CLOUD: ${BETA_PARSE_QUEUE_NAME_CLOUD:-uah:beta:parse_jobs:cloud}
+      PARSE_QUEUE_NAME_LOCAL: ${BETA_PARSE_QUEUE_NAME_LOCAL:-uah:beta:parse_jobs:local}
+      PARSE_QUEUE_NAME_RULES: ${BETA_PARSE_QUEUE_NAME_RULES:-uah:beta:parse_jobs:rules}
     volumes:
       - ./backend:/app
     networks:
@@ -23,9 +28,10 @@ services:
 
   redis:
     container_name: uah-beta-redis
+    ports:
+      - "127.0.0.1:${BETA_REDIS_HOST_PORT:-6380}:6379"
     networks:
       uah-beta-infra: {}
-      uah-infra: null
 
   frontend:
     container_name: uah-beta-frontend

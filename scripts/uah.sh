@@ -10,10 +10,10 @@ choose_environment() {
     exit 1
   fi
 
-  echo "Select environment:"
-  echo "  1) dev"
-  echo "  2) beta"
-  echo "  3) prod"
+  echo "Select environment:" >&2
+  echo "  1) dev" >&2
+  echo "  2) beta" >&2
+  echo "  3) prod" >&2
   read -rp "Choice [1-3]: " choice
   case "$choice" in
     1) echo "dev" ;;
@@ -28,18 +28,19 @@ choose_environment() {
 
 choose_action() {
   if [[ ! -t 0 ]]; then
-    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync" >&2
+    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync|audit" >&2
     exit 1
   fi
 
-  echo "Select action:"
-  echo "  1) start"
-  echo "  2) stop"
-  echo "  3) restart"
-  echo "  4) debug"
-  echo "  5) sync"
-  echo "  6) cert-sync"
-  read -rp "Choice [1-6]: " choice
+  echo "Select action:" >&2
+  echo "  1) start" >&2
+  echo "  2) stop" >&2
+  echo "  3) restart" >&2
+  echo "  4) debug" >&2
+  echo "  5) sync" >&2
+  echo "  6) cert-sync" >&2
+  echo "  7) audit" >&2
+  read -rp "Choice [1-7]: " choice
   case "$choice" in
     1) echo "start" ;;
     2) echo "stop" ;;
@@ -47,6 +48,7 @@ choose_action() {
     4) echo "debug" ;;
     5) echo "sync" ;;
     6) echo "cert-sync" ;;
+    7) echo "audit" ;;
     *)
       echo "Invalid action selection." >&2
       exit 1
@@ -64,7 +66,8 @@ run_compose() {
   fi
 
   if [[ "$env_name" == "beta" ]]; then
-    docker compose --env-file "$ROOT_DIR/.env" -f "$ROOT_DIR/docker-compose.yml" -f "$ROOT_DIR/docker-compose.beta.yml" "$@"
+    REDIS_HOST_PORT="${BETA_REDIS_HOST_PORT:-6380}" \
+      docker compose --env-file "$ROOT_DIR/.env" -f "$ROOT_DIR/docker-compose.yml" -f "$ROOT_DIR/docker-compose.beta.yml" "$@"
     return
   fi
 
@@ -317,6 +320,23 @@ run_debug() {
   prod_scaffold "debug"
 }
 
+run_audit() {
+  local env_name="$1"
+  shift
+
+  if [[ "$env_name" == "dev" ]]; then
+    bash "$ROOT_DIR/scripts/dev/diagnostic/dev-security-audit.sh" "$@"
+    return
+  fi
+
+  if [[ "$env_name" == "beta" ]]; then
+    bash "$ROOT_DIR/scripts/beta/diagnostic/beta-security-audit.sh" "$@"
+    return
+  fi
+
+  bash "$ROOT_DIR/scripts/prod/prod-security-audit.sh" "$@"
+}
+
 ENV_NAME=""
 ACTION=""
 EXTRA_ARGS=()
@@ -330,7 +350,7 @@ while (($#)); do
         EXTRA_ARGS+=("$1")
       fi
       ;;
-    start|stop|restart|debug|sync|cert-sync)
+    start|stop|restart|debug|sync|cert-sync|audit)
       if [[ -z "$ACTION" ]]; then
         ACTION="$1"
       else
@@ -352,7 +372,7 @@ if [[ -z "$ACTION" ]]; then
   ACTION="$(choose_action)"
 fi
 
-if [[ "$ENV_NAME" == "prod" ]]; then
+if [[ "$ENV_NAME" == "prod" && "$ACTION" != "audit" ]]; then
   prod_scaffold "$ACTION"
 fi
 
@@ -399,6 +419,9 @@ case "$ACTION" in
     else
       prod_scaffold "sync"
     fi
+    ;;
+  audit)
+    run_audit "$ENV_NAME" "${EXTRA_ARGS[@]}"
     ;;
   *)
     echo "Unknown action '$ACTION'." >&2
