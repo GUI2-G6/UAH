@@ -151,37 +151,119 @@ This repository-level guide remains focused on remote dev and deployment operati
 ## Quick Start
 
 ```bash
-# Build and start all services
+# Start dev stack (default: no rebuild)
+bash scripts/uah.sh dev start
+
+# Rebuild only frontend and start stack
+bash scripts/uah.sh dev start --build-frontend
+
+# Restart beta stack with full rebuild
+bash scripts/uah.sh beta restart --build-all
 ```
 
 ---
 
 ## Syncing Dev from GitHub
 
-A helper script (`sync-dev.sh`) is included in the `environments/dev` directory to pull the latest code from the `dev` branch and rebuild all services automatically.
+Use the lifecycle entrypoint in this repo instead of legacy `sync-dev.sh` references.
 
 ### Usage
 
 ```bash
-# Make sure the script is executable (only needed once)
-chmod +x /srv/uah/environments/dev/sync-dev.sh
+# Dev sync (fast-forward only)
+bash scripts/uah.sh dev sync
 
-# Run the sync
-./sync-dev.sh
+# Dev sync + full rebuild after sync
+bash scripts/uah.sh dev sync --build-all
+
+# Beta sync modes + optional rebuild
+bash scripts/uah.sh beta sync safe --build-frontend
+bash scripts/uah.sh beta sync hard --build-all
 ```
 
 ### What it does
 
-1. Changes directory to `/srv/uah/environments/dev`
-2. Fetches the latest refs from `origin`
-3. Checks out the `dev` branch and pulls the latest changes
-4. Rebuilds and restarts all Docker services with `docker compose up -d --build`
+1. Fetches latest refs from `origin`
+2. Checks out `dev` and syncs branch state
+3. For beta, supports `safe` (`pull --ff-only`) and `hard` (`reset --hard origin/dev`) modes
+4. Optionally runs post-sync compose startup with rebuild flags when provided
 
-> **Note:** Run this script any time you want the dev server to reflect the latest pushed changes on the `dev` branch. It must be run from the server (SSH into Proxmox first).
+> **Note:** Default sync behavior is git-only. Rebuilds only occur when a build flag is passed.
 
 ---
 
-## Service-Specific Commands
+## Lifecycle Script Commands
+
+`scripts/uah.sh` is the canonical command entrypoint for dev/beta lifecycle operations.
+
+```bash
+# Show full CLI help and flag reference
+bash scripts/uah.sh --help
+```
+
+Wrapper scripts under `scripts/dev/lifecycle/` and `scripts/beta/lifecycle/` pass all arguments through to `scripts/uah.sh`, so rebuild flags work there too.
+
+### Command reference
+
+| Scope | Command |
+|-------|---------|
+| Dev start | `bash scripts/uah.sh dev start` |
+| Dev restart | `bash scripts/uah.sh dev restart` |
+| Dev stop | `bash scripts/uah.sh dev stop` |
+| Dev sync | `bash scripts/uah.sh dev sync` |
+| Beta start | `bash scripts/uah.sh beta start` |
+| Beta restart | `bash scripts/uah.sh beta restart` |
+| Beta stop | `bash scripts/uah.sh beta stop` |
+| Beta sync (safe/hard) | `bash scripts/uah.sh beta sync safe` / `bash scripts/uah.sh beta sync hard` |
+| Dev wrapper examples | `bash scripts/dev/lifecycle/dev-start.sh` / `bash scripts/dev/lifecycle/dev-restart.sh` |
+| Beta wrapper examples | `bash scripts/beta/lifecycle/beta-start.sh` / `bash scripts/beta/lifecycle/beta-restart.sh` |
+
+### Rebuild flags
+
+Use these flags with `start`, `restart`, or `sync`:
+
+- `--no-build` (default behavior)
+- `--build` or `--build-all`
+- `--build-frontend`
+- `--build-backend`
+- `--build-db`
+- `--build-redis`
+- `--build-cloudflared`
+- `--build-service <name>` or `--build-service=<name>`
+
+When service-specific build flags are used, scripts rebuild selected services first and then bring the full stack up.
+
+### Examples
+
+```bash
+# Default start (no rebuild)
+bash scripts/uah.sh dev start
+
+# Rebuild backend only, then start full stack
+bash scripts/uah.sh dev start --build-backend
+
+# Rebuild frontend + backend on restart
+bash scripts/uah.sh dev restart --build-frontend --build-backend
+
+# Full rebuild on beta restart
+bash scripts/uah.sh beta restart --build-all
+
+# Beta wrapper usage (same options)
+bash scripts/beta/lifecycle/beta-restart.sh --build-all
+```
+
+### Startup preflight checks
+
+On `start`, `restart`, and `sync` with rebuild flags, scripts validate:
+
+1. Docker CLI and Docker Compose plugin are available
+2. Required external networks exist (`uah-infra`, and `uah-beta-infra` for beta)
+3. Required infrastructure container `uah-dev-vpn` is running
+4. Redis host ports are available before startup (`REDIS_HOST_PORT` for dev, `BETA_REDIS_HOST_PORT` for beta)
+
+---
+
+## Direct Docker Compose Commands
 
 ### Rebuild a single service (does NOT affect others)
 
