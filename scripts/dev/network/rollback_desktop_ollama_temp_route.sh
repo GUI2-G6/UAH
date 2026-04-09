@@ -4,8 +4,8 @@ set -euo pipefail
 DESKTOP_IP="${DESKTOP_IP:-10.8.0.8}"
 DESKTOP_PORT="${DESKTOP_PORT:-11434}"
 VPN_CONTAINER="${VPN_CONTAINER:-uah-dev-vpn}"
-BACKEND_CONTAINER="${BACKEND_CONTAINER:-uah-beta-backend}"
-ROUTE_OWNER="${ROUTE_OWNER:-beta}"
+BACKEND_CONTAINER="${BACKEND_CONTAINER:-uah-dev-backend}"
+ROUTE_OWNER="${ROUTE_OWNER:-dev}"
 BACKEND_CONTAINERS_PRESERVE="${BACKEND_CONTAINERS_PRESERVE:-uah-dev-backend uah-beta-backend}"
 
 is_backend_running() {
@@ -62,7 +62,7 @@ else
   done
 
   if [[ "${ALLOW_LEGACY_BROAD_RULE_CLEANUP:-false}" == "true" ]]; then
-    # Optional legacy cleanup for pre-owner-tagged rules.
+    # Optional cleanup for rules from old script versions.
     docker exec "$VPN_CONTAINER" sh -lc "iptables -D FORWARD -i eth0 -o wg0 -p tcp -d ${DESKTOP_IP}/32 --dport ${DESKTOP_PORT} -j ACCEPT" || true
     docker exec "$VPN_CONTAINER" sh -lc "iptables -D FORWARD -i wg0 -o eth0 -p tcp -s ${DESKTOP_IP}/32 --sport ${DESKTOP_PORT} -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT" || true
   fi

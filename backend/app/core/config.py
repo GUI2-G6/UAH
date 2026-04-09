@@ -21,6 +21,12 @@ def _env_bool(name: str, default: str = "false") -> bool:
   return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _env_slug(value: str) -> str:
+  cleaned = "".join(ch if ch.isalnum() else "_" for ch in (value or ""))
+  cleaned = cleaned.strip("_").lower()
+  return cleaned or "dev"
+
+
 class Settings:
     """Simple settings object — swap for pydantic-settings when needed."""
     PROJECT_NAME: str = os.getenv("PROJECT_NAME", "UAH")
@@ -36,6 +42,14 @@ class Settings:
     # Auth / JWT
     SECRET_KEY: str = os.getenv("SECRET_KEY", "")
     SESSION_SECRET: str = os.getenv("SESSION_SECRET", "")
+    AUTH_NAMESPACE: str = _env_slug(os.getenv("AUTH_NAMESPACE", os.getenv("ENVIRONMENT", "development")))
+    SESSION_COOKIE_NAME: str = os.getenv("SESSION_COOKIE_NAME", f"uah_session_{AUTH_NAMESPACE}")
+    SESSION_COOKIE_SAMESITE: str = os.getenv("SESSION_COOKIE_SAMESITE", "lax").strip().lower()
+    SESSION_COOKIE_PATH: str = os.getenv("SESSION_COOKIE_PATH", "/")
+    SESSION_COOKIE_HTTPS_ONLY: bool = _env_bool(
+      "SESSION_COOKIE_HTTPS_ONLY",
+      "true" if AUTH_NAMESPACE in {"prod", "production"} else "false",
+    )
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 
@@ -165,6 +179,32 @@ class Settings:
         raise RuntimeError(
           "Missing required environment variables: " + ", ".join(missing)
         )
+
+      if self.SECRET_KEY.strip() == self.SESSION_SECRET.strip():
+        raise RuntimeError("SECRET_KEY and SESSION_SECRET must be different values.")
+
+      if not isinstance(self.SESSION_COOKIE_NAME, str) or not self.SESSION_COOKIE_NAME.strip():
+        raise RuntimeError("SESSION_COOKIE_NAME must be configured.")
+
+      if self.SESSION_COOKIE_NAME.strip().lower() == "session":
+        raise RuntimeError("SESSION_COOKIE_NAME='session' is not allowed; use an environment-scoped cookie name.")
+
+      allowed_samesite = {"lax", "strict", "none"}
+      if self.SESSION_COOKIE_SAMESITE not in allowed_samesite:
+        raise RuntimeError("SESSION_COOKIE_SAMESITE must be one of: lax, strict, none.")
+
+      if self.SESSION_COOKIE_SAMESITE == "none" and not self.SESSION_COOKIE_HTTPS_ONLY:
+        raise RuntimeError("SESSION_COOKIE_SAMESITE=none requires SESSION_COOKIE_HTTPS_ONLY=true.")
+
+      if not isinstance(self.AUTH_NAMESPACE, str) or not self.AUTH_NAMESPACE.strip():
+        raise RuntimeError("AUTH_NAMESPACE must be configured.")
+
+      env_slug = _env_slug(self.ENVIRONMENT)
+      if env_slug in {"beta", "prod", "production"}:
+        lower_secret = self.SECRET_KEY.lower()
+        lower_session_secret = self.SESSION_SECRET.lower()
+        if "placeholder" in lower_secret or "placeholder" in lower_session_secret:
+          raise RuntimeError("Placeholder auth secrets are not allowed in beta/prod environments.")
 
 
 settings = Settings()

@@ -611,21 +611,28 @@ sync_dev_cert() {
 dev_start() {
   echo "=== UAH Dev Start ==="
 
-  echo "[1/5] Running preflight checks..."
+  echo "[1/6] Running preflight checks..."
   preflight_startup dev
 
-  echo "[2/5] Starting containers ($(build_mode_label))..."
+  echo "[2/6] Applying WireGuard host route..."
+  VPN_CONTAINER=uah-dev-vpn \
+  BACKEND_CONTAINER=uah-dev-backend \
+  NETWORK_NAME=uah-infra \
+  ROUTE_OWNER=dev \
+  bash "$ROOT_DIR/scripts/dev/network/apply_desktop_ollama_temp_route.sh"
+
+  echo "[3/6] Starting containers ($(build_mode_label))..."
   run_compose_up_with_build_mode dev
 
-  echo "[3/5] Waiting for backend to be ready..."
+  echo "[4/6] Waiting for backend to be ready..."
   sleep 12
 
-  echo "[4/5] Syncing cert to frontend..."
+  echo "[5/6] Syncing cert to frontend..."
   if ! sync_dev_cert; then
     echo "Cert sync skipped."
   fi
 
-  echo "[5/5] Connectivity check..."
+  echo "[6/6] Connectivity check..."
   docker exec uah-dev-backend python3 -c "
 import httpx
 try:
@@ -645,17 +652,24 @@ except Exception as e:
 dev_stop() {
   echo "=== UAH Dev Stop ==="
 
-  echo "[1/3] Clearing stuck DB jobs..."
+  echo "[1/4] Clearing stuck DB jobs..."
   docker exec uah-dev-db psql -U uah -d uah_dev -c "
   UPDATE parse_jobs
   SET status='failed', error_message='Cleared on shutdown', updated_at=now()
   WHERE status IN ('queued','parsing','validating');
 " 2>/dev/null || echo "DB not running, skipping."
 
-  echo "[2/3] Clearing Redis..."
+  echo "[2/4] Clearing Redis..."
   docker exec uah-redis redis-cli FLUSHDB 2>/dev/null || echo "Redis not running, skipping."
 
-  echo "[3/3] Stopping containers..."
+  echo "[3/4] Rolling back dev WireGuard route rules..."
+  VPN_CONTAINER=uah-dev-vpn \
+  BACKEND_CONTAINER=uah-dev-backend \
+  NETWORK_NAME=uah-infra \
+  ROUTE_OWNER=dev \
+  bash "$ROOT_DIR/scripts/dev/network/rollback_desktop_ollama_temp_route.sh" 2>/dev/null || echo "Rollback script not available or nothing to rollback."
+
+  echo "[4/4] Stopping containers..."
   run_compose dev down
 
   echo ""
@@ -693,6 +707,7 @@ beta_start() {
   BACKEND_CONTAINER=uah-beta-backend \
   NETWORK_NAME=uah-infra \
   SOURCE_CIDR=172.18.0.0/16 \
+  ROUTE_OWNER=beta \
   bash "$ROOT_DIR/scripts/beta/network/apply_desktop_ollama_temp_route.sh"
 
   echo "[5/6] Allowing cross-bridge Docker traffic..."
@@ -742,6 +757,11 @@ beta_stop() {
 " 2>/dev/null || echo "DB not running, skipping."
 
   echo "[2/4] Rolling back WireGuard iptables rules..."
+  VPN_CONTAINER=uah-dev-vpn \
+  BACKEND_CONTAINER=uah-beta-backend \
+  NETWORK_NAME=uah-infra \
+  SOURCE_CIDR=172.18.0.0/16 \
+  ROUTE_OWNER=beta \
   bash "$ROOT_DIR/scripts/beta/network/rollback_desktop_ollama_temp_route.sh" 2>/dev/null || echo "Rollback script not available or nothing to rollback."
 
   echo "[3/4] Removing cross-bridge Docker rules..."

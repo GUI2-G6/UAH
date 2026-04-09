@@ -1,5 +1,17 @@
-const ACCESS_TOKEN_KEY = 'uah_access_token'
-const CURRENT_USER_KEY = 'uah_current_user'
+function normalizeNamespace(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_.-]/g, '_')
+}
+
+const DEFAULT_NAMESPACE = normalizeNamespace(window?.location?.hostname || 'dev') || 'dev'
+const AUTH_NAMESPACE = normalizeNamespace(import.meta?.env?.VITE_AUTH_NAMESPACE) || DEFAULT_NAMESPACE
+
+const LEGACY_ACCESS_TOKEN_KEY = 'uah_access_token'
+const LEGACY_CURRENT_USER_KEY = 'uah_current_user'
+const ACCESS_TOKEN_KEY = `uah_access_token:${AUTH_NAMESPACE}`
+const CURRENT_USER_KEY = `uah_current_user:${AUTH_NAMESPACE}`
 
 function parseTokenPayload(token) {
     try {
@@ -15,7 +27,15 @@ export function isTokenExpired(token) {
 }
 
 export function getAccessToken() {
-    const token = localStorage.getItem(ACCESS_TOKEN_KEY)
+    let token = localStorage.getItem(ACCESS_TOKEN_KEY)
+    if (!token) {
+        const legacy = localStorage.getItem(LEGACY_ACCESS_TOKEN_KEY)
+        if (legacy) {
+            token = legacy
+            localStorage.setItem(ACCESS_TOKEN_KEY, legacy)
+            localStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY)
+        }
+    }
     if (token && isTokenExpired(token)) {
         clearAuth()
         return null
@@ -30,7 +50,15 @@ export function setAccessToken(token) {
 
 export function getCurrentUser() {
     try {
-        const raw = localStorage.getItem(CURRENT_USER_KEY)
+        let raw = localStorage.getItem(CURRENT_USER_KEY)
+        if (!raw) {
+            const legacy = localStorage.getItem(LEGACY_CURRENT_USER_KEY)
+            if (legacy) {
+                raw = legacy
+                localStorage.setItem(CURRENT_USER_KEY, legacy)
+                localStorage.removeItem(LEGACY_CURRENT_USER_KEY)
+            }
+        }
         return raw ? JSON.parse(raw) : null
     } catch {
         return null
@@ -53,6 +81,8 @@ export function setAuth({ access_token, user } = {}) {
 export function clearAuth() {
     localStorage.removeItem(ACCESS_TOKEN_KEY)
     localStorage.removeItem(CURRENT_USER_KEY)
+    localStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY)
+    localStorage.removeItem(LEGACY_CURRENT_USER_KEY)
     window.dispatchEvent(new Event('uah-user-updated'))
 }
 

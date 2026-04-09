@@ -147,6 +147,19 @@ async def _build_queue_status_payload(
     requested_scope = (scope or "user").strip().lower()
     can_view_global = _is_development_env()
     effective_scope = "global" if requested_scope == "global" and can_view_global else "user"
+    environment_raw = (settings.ENVIRONMENT or "").strip().lower()
+    if environment_raw in {"development", "dev", "local"}:
+        environment_key = "dev"
+        environment_label = "Dev"
+    elif environment_raw in {"beta", "staging"}:
+        environment_key = "beta"
+        environment_label = "Beta"
+    elif environment_raw in {"production", "prod"}:
+        environment_key = "prod"
+        environment_label = "Prod"
+    else:
+        environment_key = environment_raw or "unknown"
+        environment_label = environment_key.upper() if environment_key != "unknown" else "Unknown"
 
     global_queue = None
     if effective_scope == "global":
@@ -174,9 +187,12 @@ async def _build_queue_status_payload(
         "scope": effective_scope,
         "requested_scope": requested_scope,
         "can_view_global": can_view_global,
+        "environment": environment_key,
+        "environment_label": environment_label,
         "redis_enabled": settings.REDIS_ENABLED,
         "queue_depth": queue_depth_total,
         "queue_depth_total": queue_depth_total,
+        "queue_namespace": settings.parse_queue_name_for_method(focus_method_normalized),
         "queue_depth_by_method": {
             "cloud": int(queue_depths.get("cloud", 0)),
             "local": int(queue_depths.get("local", 0)),
@@ -196,6 +212,7 @@ async def _build_queue_status_payload(
             "focus_method": focus_method_normalized,
             "active_job_position": user_position,
             "active_job_total": len(active_in_focus_method),
+            "position_scope_label": f"{environment_label} {focus_method_normalized} queue",
             "latest_active_job_id": latest_user_active_job.id if latest_user_active_job else None,
             "latest_active_job_method": _method_or_default(latest_user_active_job.method) if latest_user_active_job else None,
             "latest_active_job_status": latest_user_active_job.status if latest_user_active_job else None,
