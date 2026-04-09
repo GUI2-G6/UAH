@@ -197,56 +197,56 @@
                 <template v-else-if="queueStatus">
                     <div class="queue-metrics-grid">
                         <div class="queue-metric-card">
-                            <span class="queue-metric-label">Global Load</span>
-                            <span class="queue-metric-value">{{ queueStatus.global_metrics?.load_total ?? 0 }}</span>
-                        </div>
-                        <div class="queue-metric-card">
-                            <span class="queue-metric-label">Queued Total</span>
-                            <span class="queue-metric-value">{{ queueStatus.queue_depth_total ?? queueStatus.queue_depth ?? 0 }}</span>
-                        </div>
-                        <div class="queue-metric-card">
-                            <span class="queue-metric-label">UAH Active Jobs</span>
-                            <span class="queue-metric-value">{{ queueStatus.current_user?.active_jobs ?? 0 }}</span>
-                        </div>
-                        <div class="queue-metric-card">
-                            <span class="queue-metric-label">UAH Position</span>
+                            <span class="queue-metric-label">Your Position</span>
                             <span class="queue-metric-value">
                                 {{ queueStatus.current_user?.active_job_position ?? '—' }}
                                 <small v-if="queueStatus.current_user?.active_job_total">/ {{ queueStatus.current_user.active_job_total }}</small>
                             </span>
+                            <span class="queue-metric-sub">
+                                {{ parseMethodTagLabel(queueStatus.current_user?.focus_method || parseMethod || 'local') }} pipeline
+                            </span>
                         </div>
                         <div class="queue-metric-card">
-                            <span class="queue-metric-label">Local Queue</span>
-                            <span class="queue-metric-value">{{ queueStatus.queue_depth_by_method?.local ?? 0 }}</span>
+                            <span class="queue-metric-label">System Load</span>
+                            <span class="queue-metric-value">{{ queueStatus.global_metrics?.load_total ?? 0 }}</span>
+                            <span class="queue-metric-sub">
+                                Active {{ queueStatus.global_metrics?.active_total ?? 0 }} · Queued {{ queueStatus.queue_depth_total ?? queueStatus.queue_depth ?? 0 }}
+                            </span>
                         </div>
                         <div class="queue-metric-card">
-                            <span class="queue-metric-label">Cloud Queue</span>
-                            <span class="queue-metric-value">{{ queueStatus.queue_depth_by_method?.cloud ?? 0 }}</span>
-                        </div>
-                        <div class="queue-metric-card">
-                            <span class="queue-metric-label">Rules Queue</span>
-                            <span class="queue-metric-value">{{ queueStatus.queue_depth_by_method?.rules ?? 0 }}</span>
-                        </div>
-                        <div class="queue-metric-card">
-                            <span class="queue-metric-label">Worker Mode</span>
-                            <span class="queue-metric-value queue-metric-value-small">{{ queueStatus.worker_status?.mode || 'unknown' }}</span>
+                            <span class="queue-metric-label">Queues By Method</span>
+                            <span class="queue-metric-value">{{ queueStatus.queue_depth_total ?? queueStatus.queue_depth ?? 0 }}</span>
+                            <span class="queue-metric-sub queue-method-inline">
+                                <span>Local {{ queueStatus.queue_depth_by_method?.local ?? 0 }}</span>
+                                <span>Cloud {{ queueStatus.queue_depth_by_method?.cloud ?? 0 }}</span>
+                                <span>Rules {{ queueStatus.queue_depth_by_method?.rules ?? 0 }}</span>
+                            </span>
                         </div>
                     </div>
 
                     <p class="queue-stage-text" v-if="queueStatus.current_user?.latest_active_job_status">
                         Active job: {{ parseMethodTagLabel(queueStatus.current_user?.latest_active_job_method) }} · {{ queueStatus.current_user?.latest_active_job_status }}
                     </p>
-                    <p class="queue-stage-text queue-note">{{ queueStatus.local_queue_note }}</p>
-                    <p class="queue-stage-text queue-note" v-if="queueStatus.cloud_behavior?.description">{{ queueStatus.cloud_behavior.description }}</p>
 
-                    <div v-if="queueScope === 'global' && queueStatus.global_queue" class="queue-global-list">
-                        <p class="queue-global-title">Global Active Queue ({{ queueStatus.global_queue.active_count }})</p>
-                        <div class="queue-global-entry" v-for="entry in queueStatus.global_queue.entries" :key="entry.job_id">
-                            <span class="entry-position">#{{ entry.position }}</span>
-                            <span class="entry-method">{{ parseMethodTagLabel(entry.method) }}</span>
-                            <span class="entry-status">{{ entry.status }}</span>
+                    <details class="queue-details">
+                        <summary>Queue details</summary>
+                        <div class="queue-details-body">
+                            <p class="queue-details-line">Worker mode: {{ queueStatus.worker_status?.mode || 'unknown' }}</p>
+                            <p class="queue-details-line" v-if="queueStatus.local_queue_note">{{ queueStatus.local_queue_note }}</p>
+                            <p class="queue-details-line" v-if="queueStatus.cloud_behavior?.description">{{ queueStatus.cloud_behavior.description }}</p>
                         </div>
-                    </div>
+                    </details>
+
+                    <details v-if="queueScope === 'global' && queueStatus.global_queue" class="queue-details queue-details-global">
+                        <summary>Global active queue ({{ queueStatus.global_queue.active_count }})</summary>
+                        <div class="queue-global-list">
+                            <div class="queue-global-entry" v-for="entry in queueStatus.global_queue.entries" :key="entry.job_id">
+                                <span class="entry-position">#{{ entry.position }}</span>
+                                <span class="entry-method">{{ parseMethodTagLabel(entry.method) }}</span>
+                                <span class="entry-status">{{ entry.status }}</span>
+                            </div>
+                        </div>
+                    </details>
                 </template>
             </div>
 

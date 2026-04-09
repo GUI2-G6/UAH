@@ -173,6 +173,9 @@ Use the lifecycle entrypoint in this repo instead of legacy `sync-dev.sh` refere
 # Dev sync (fast-forward only)
 bash scripts/uah.sh dev sync
 
+# Dev hard sync (discard local changes)
+bash scripts/uah.sh dev sync hard
+
 # Dev sync + full rebuild after sync
 bash scripts/uah.sh dev sync --build-all
 
@@ -185,8 +188,14 @@ bash scripts/uah.sh beta sync hard --build-all
 
 1. Fetches latest refs from `origin`
 2. Checks out `dev` and syncs branch state
-3. For beta, supports `safe` (`pull --ff-only`) and `hard` (`reset --hard origin/dev`) modes
+3. Supports `safe` (`pull --ff-only`) and `hard` (`reset --hard origin/dev`) sync modes
 4. Optionally runs post-sync compose startup with rebuild flags when provided
+
+If safe sync detects blockers (local file changes, local commits, or non-fast-forward state):
+
+1. It prints the detected issues
+2. In interactive shells, it prompts to abort or force hard sync
+3. In non-interactive mode, safe sync exits with an error and does not modify the working tree
 
 > **Note:** Default sync behavior is git-only. Rebuilds only occur when a build flag is passed.
 
@@ -210,7 +219,7 @@ Wrapper scripts under `scripts/dev/lifecycle/` and `scripts/beta/lifecycle/` pas
 | Dev start | `bash scripts/uah.sh dev start` |
 | Dev restart | `bash scripts/uah.sh dev restart` |
 | Dev stop | `bash scripts/uah.sh dev stop` |
-| Dev sync | `bash scripts/uah.sh dev sync` |
+| Dev sync (safe/hard) | `bash scripts/uah.sh dev sync` / `bash scripts/uah.sh dev sync hard` |
 | Beta start | `bash scripts/uah.sh beta start` |
 | Beta restart | `bash scripts/uah.sh beta restart` |
 | Beta stop | `bash scripts/uah.sh beta stop` |
@@ -232,6 +241,15 @@ Use these flags with `start`, `restart`, or `sync`:
 - `--build-service <name>` or `--build-service=<name>`
 
 When service-specific build flags are used, scripts rebuild selected services first and then bring the full stack up.
+
+### Sync blocker prompts
+
+When safe sync is blocked in an interactive shell, the script shows detected issues and prompts for:
+
+- `abort` to stop safely with no git reset
+- `force` to run hard sync (`reset --hard origin/dev`) after confirmation
+- `status` to inspect full git status
+- `diff` to inspect diff summary
 
 ### Examples
 

@@ -9,6 +9,11 @@ FLAG_NO_BUILD=false
 FLAG_BUILD_ALL=false
 BUILD_SERVICES=()
 
+SYNC_BLOCKER_STATUS=""
+SYNC_BLOCKER_AHEAD=0
+SYNC_BLOCKER_BEHIND=0
+SYNC_CAN_FAST_FORWARD=true
+
 append_unique_build_service() {
   local service_name="$1"
   local existing
@@ -274,6 +279,206 @@ run_sync_rebuild_if_requested() {
   run_compose_up_with_build_mode "$env_name"
 }
 
+prepare_sync_branch() {
+  git -C "$ROOT_DIR" fetch origin
+  git -C "$ROOT_DIR" checkout dev
+}
+
+refresh_sync_blocker_snapshot() {
+  local ahead_count
+  local behind_count
+
+  SYNC_BLOCKER_STATUS="$(git -C "$ROOT_DIR" status --porcelain --untracked-files=all || true)"
+
+  ahead_count="$(git -C "$ROOT_DIR" rev-list --count origin/dev..dev 2>/dev/null || echo 0)"
+  behind_count="$(git -C "$ROOT_DIR" rev-list --count dev..origin/dev 2>/dev/null || echo 0)"
+
+  if [[ "$ahead_count" =~ ^[0-9]+$ ]]; then
+    SYNC_BLOCKER_AHEAD=$ahead_count
+  else
+    SYNC_BLOCKER_AHEAD=0
+  fi
+
+  if [[ "$behind_count" =~ ^[0-9]+$ ]]; then
+    SYNC_BLOCKER_BEHIND=$behind_count
+  else
+    SYNC_BLOCKER_BEHIND=0
+  fi
+
+  if git -C "$ROOT_DIR" merge-base --is-ancestor dev origin/dev >/dev/null 2>&1; then
+    SYNC_CAN_FAST_FORWARD=true
+  else
+    SYNC_CAN_FAST_FORWARD=false
+  fi
+}
+
+sync_blockers_detected() {
+  refresh_sync_blocker_snapshot
+
+  if [[ -n "$SYNC_BLOCKER_STATUS" ]]; then
+    return 0
+  fi
+
+  if [[ "$SYNC_CAN_FAST_FORWARD" != "true" ]]; then
+    return 0
+  fi
+
+  return 1
+}
+
+print_sync_blocker_report() {
+  local preview_limit=25
+  local total_lines=0
+
+  echo ""
+  echo "Sync blocker detected. Safe sync cannot continue."
+  echo "Repository: $ROOT_DIR"
+  echo ""
+
+  if [[ -n "$SYNC_BLOCKER_STATUS" ]]; then
+    total_lines=$(printf '%s\n' "$SYNC_BLOCKER_STATUS" | sed '/^$/d' | wc -l | tr -d ' ')
+    echo "Local changes ($total_lines):"
+    printf '%s\n' "$SYNC_BLOCKER_STATUS" | sed -n "1,${preview_limit}p" | sed 's/^/  /'
+    if ((total_lines > preview_limit)); then
+      echo "  ... and $((total_lines - preview_limit)) more"
+    fi
+    echo ""
+  fi
+
+  if ((SYNC_BLOCKER_AHEAD > 0)); then
+    echo "Local branch is ahead of origin/dev by $SYNC_BLOCKER_AHEAD commit(s):"
+    git -C "$ROOT_DIR" --no-pager log --oneline --decorate -n 5 origin/dev..dev | sed 's/^/  /'
+    if ((SYNC_BLOCKER_AHEAD > 5)); then
+      echo "  ... and $((SYNC_BLOCKER_AHEAD - 5)) more"
+    fi
+    echo ""
+  fi
+
+  if [[ "$SYNC_CAN_FAST_FORWARD" != "true" ]]; then
+    if ((SYNC_BLOCKER_AHEAD > 0 && SYNC_BLOCKER_BEHIND > 0)); then
+      echo "Branch state: diverged from origin/dev (ahead $SYNC_BLOCKER_AHEAD, behind $SYNC_BLOCKER_BEHIND)."
+    elif ((SYNC_BLOCKER_AHEAD > 0)); then
+      echo "Branch state: local dev has commits not on origin/dev (ahead $SYNC_BLOCKER_AHEAD)."
+    else
+      echo "Branch state: fast-forward check failed."
+    fi
+    echo ""
+  fi
+}
+
+confirm_hard_sync() {
+  if [[ -t 0 ]]; then
+    echo "This will discard local changes and local commits in $ROOT_DIR."
+    read -rp "Type RESET to continue: " confirmation
+    if [[ "$confirmation" != "RESET" ]]; then
+      echo "Hard sync cancelled."
+      return 1
+    fi
+  fi
+
+  return 0
+}
+
+run_hard_sync_reset() {
+  echo "[$(date -u)] Running hard sync (reset --hard origin/dev)..."
+  git -C "$ROOT_DIR" reset --hard origin/dev
+}
+
+run_hard_sync_flow() {
+  local show_snapshot="${1:-true}"
+
+  prepare_sync_branch
+  refresh_sync_blocker_snapshot
+
+  if [[ "$show_snapshot" == "true" ]] && ([[ -n "$SYNC_BLOCKER_STATUS" ]] || ((SYNC_BLOCKER_AHEAD > 0)) || [[ "$SYNC_CAN_FAST_FORWARD" != "true" ]]); then
+    print_sync_blocker_report
+  fi
+
+  if ! confirm_hard_sync; then
+    return 1
+  fi
+
+  run_hard_sync_reset
+}
+
+prompt_sync_blocker_resolution() {
+  while true; do
+    echo "Choose next step:"
+    echo "  1) abort  - exit without syncing"
+    echo "  2) force  - hard sync (reset --hard origin/dev)"
+    echo "  3) status - show full git status"
+    echo "  4) diff   - show diff summary"
+    read -rp "Choice [1-4]: " choice
+
+    case "${choice,,}" in
+      1|a|abort)
+        echo "Sync aborted."
+        return 1
+        ;;
+      2|f|force|hard)
+        if run_hard_sync_flow false; then
+          return 0
+        fi
+        ;;
+      3|s|status)
+        git -C "$ROOT_DIR" status -sb
+        ;;
+      4|d|diff)
+        echo "--- Unstaged diff summary ---"
+        git -C "$ROOT_DIR" --no-pager diff --stat || true
+        echo "--- Staged diff summary ---"
+        git -C "$ROOT_DIR" --no-pager diff --stat --cached || true
+        ;;
+      *)
+        echo "Invalid selection."
+        ;;
+    esac
+
+    echo ""
+  done
+}
+
+run_safe_sync_flow() {
+  local env_name="$1"
+
+  echo "[$(date -u)] Running safe sync (fast-forward only)..."
+  prepare_sync_branch
+
+  if sync_blockers_detected; then
+    print_sync_blocker_report
+
+    if [[ -t 0 ]]; then
+      if prompt_sync_blocker_resolution; then
+        return 0
+      fi
+      return 1
+    fi
+
+    echo "Safe sync aborted in non-interactive mode due to blockers."
+    echo "Run '$0 $env_name sync hard' for an explicit hard reset."
+    return 1
+  fi
+
+  git -C "$ROOT_DIR" pull --ff-only origin dev
+}
+
+dev_sync() {
+  local mode="${1:-safe}"
+
+  case "$mode" in
+    safe|ff|fast-forward)
+      run_safe_sync_flow dev
+      ;;
+    hard|reset)
+      run_hard_sync_flow true
+      ;;
+    *)
+      echo "Unknown sync mode '$mode'. Use safe or hard." >&2
+      exit 1
+      ;;
+  esac
+}
+
 print_usage() {
   cat <<'EOF'
 UAH lifecycle command suite
@@ -300,12 +505,18 @@ Build options (for start, restart, sync only):
   --build-service=<name>
 
 Sync mode:
+  dev sync [safe|hard]
   beta sync [safe|hard]
+
+Safe sync behavior:
+  Detects local blockers before pull (dirty files, local commits, diverged state).
+  In interactive mode, you'll be prompted to abort or force hard sync.
 
 Examples:
   bash scripts/uah.sh dev start
   bash scripts/uah.sh dev restart --build-frontend --build-backend
   bash scripts/uah.sh beta restart --build-all
+  bash scripts/uah.sh dev sync hard
   bash scripts/uah.sh dev sync --build-all
   bash scripts/uah.sh beta sync safe --build-frontend
 EOF
@@ -594,24 +805,10 @@ beta_sync() {
 
   case "$mode" in
     safe|ff|fast-forward)
-      echo "[$(date -u)] Running safe sync (fast-forward only)..."
-      git -C "$ROOT_DIR" fetch origin
-      git -C "$ROOT_DIR" checkout dev
-      git -C "$ROOT_DIR" pull --ff-only origin dev
+      run_safe_sync_flow beta
       ;;
     hard|reset)
-      if [[ -t 0 ]]; then
-        echo "This will discard local changes in $ROOT_DIR."
-        read -rp "Type RESET to continue: " confirmation
-        if [[ "$confirmation" != "RESET" ]]; then
-          echo "Hard sync cancelled."
-          return
-        fi
-      fi
-      echo "[$(date -u)] Running hard sync (reset --hard origin/dev)..."
-      git -C "$ROOT_DIR" fetch origin
-      git -C "$ROOT_DIR" checkout dev
-      git -C "$ROOT_DIR" reset --hard origin/dev
+      run_hard_sync_flow true
       ;;
     *)
       echo "Unknown sync mode '$mode'. Use safe or hard." >&2
@@ -782,10 +979,7 @@ case "$ACTION" in
       beta_sync "${EXTRA_ARGS[0]:-}"
       run_sync_rebuild_if_requested beta
     elif [[ "$ENV_NAME" == "dev" ]]; then
-      echo "Dev sync uses fast-forward only."
-      git -C "$ROOT_DIR" fetch origin
-      git -C "$ROOT_DIR" checkout dev
-      git -C "$ROOT_DIR" pull --ff-only origin dev
+      dev_sync "${EXTRA_ARGS[0]:-safe}"
       run_sync_rebuild_if_requested dev
     else
       prod_scaffold "sync"
