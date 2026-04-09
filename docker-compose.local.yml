@@ -1,17 +1,18 @@
 # ============================================================
-# UAH DEV — Local Database for Backend Testing
+# UAH LOCAL — Frontend-Focused Development Compose
 # ============================================================
 #
-# Use this file to spin up just the PostgreSQL database for 
-# local testing of the FastAPI backend. It exposes port 5432
-# to your host machine so your locally running Python code
-# can connect to it.
+# Modes:
+# 1) DB-only (default)
+#    docker compose -f docker-compose.local.yml up -d db-local
 #
-# Usage:
-#   docker compose -f docker-compose.local.yml up -d
+# 2) Optional local backend profile
+#    docker compose -f docker-compose.local.yml --profile backend up -d db-local backend-local
 #
-# To stop:
-#   docker compose -f docker-compose.local.yml down
+# Security defaults:
+# - Host ports bind to 127.0.0.1 only.
+# - Local backend profile is opt-in.
+# - Admin bootstrap defaults to disabled in this path.
 #
 # ============================================================
 
@@ -21,11 +22,134 @@ services:
     container_name: uah-local-db
     restart: unless-stopped
     environment:
-      # These align with backend defaults (except password, which must be set).
-      POSTGRES_USER: uah
+      POSTGRES_USER: ${POSTGRES_USER:-uah}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
-      POSTGRES_DB: uah_dev
+      POSTGRES_DB: ${POSTGRES_DB:-uah_dev}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${LOCAL_DB_HOST_PORT:-5432}:5432"
     volumes:
       - ./volumes/postgres-local:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-uah} -d ${POSTGRES_DB:-uah_dev}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - uah-local
+
+  backend-local:
+    profiles: ["backend"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: uah-local-backend
+    restart: unless-stopped
+    depends_on:
+      db-local:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-uah}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+      POSTGRES_DB: ${POSTGRES_DB:-uah_dev}
+      POSTGRES_HOST: db-local
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+
+      ENVIRONMENT: ${ENVIRONMENT:-local}
+      ENV: ${ENV:-local}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY required}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET required}
+
+      ADMIN_BOOTSTRAP_ENABLED: ${ADMIN_BOOTSTRAP_ENABLED:-false}
+      ADMIN_BOOTSTRAP_USERNAME: ${ADMIN_BOOTSTRAP_USERNAME:-}
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
+      ADMIN_BOOTSTRAP_FIRST_NAME: ${ADMIN_BOOTSTRAP_FIRST_NAME:-}
+      ADMIN_BOOTSTRAP_LAST_NAME: ${ADMIN_BOOTSTRAP_LAST_NAME:-}
+
+      EMAILS_ENABLED: ${EMAILS_ENABLED:-false}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:5173}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
+      SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-20}
+
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      GMAIL_CLIENT_ID: ${GMAIL_CLIENT_ID:-}
+      GMAIL_CLIENT_SECRET: ${GMAIL_CLIENT_SECRET:-}
+      GMAIL_REDIRECT_URI: ${GMAIL_REDIRECT_URI:-}
+
+      MUSE_API_KEY: ${MUSE_API_KEY:-}
+      ZAI_API_KEY: ${ZAI_API_KEY:-}
+      ZAI_OCR_URL: ${ZAI_OCR_URL:-https://api.z.ai/api/paas/v4/layout_parsing}
+      ZAI_LLM_URL: ${ZAI_LLM_URL:-https://api.z.ai/api/paas/v4/chat/completions}
+      ZAI_LLM_MODEL: ${ZAI_LLM_MODEL:-GLM-4.7-Flash}
+
+      USE_LOCAL_PIPELINE: ${USE_LOCAL_PIPELINE:-false}
+      LOCAL_OCR_URL: ${LOCAL_OCR_URL:-http://localhost:11434}
+      LOCAL_OCR_MODEL: ${LOCAL_OCR_MODEL:-glm-ocr-hires}
+      LOCAL_LLM_URL: ${LOCAL_LLM_URL:-http://localhost:11434}
+      LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-qwen2.5:7b}
+      LOCAL_OCR_TIMEOUT: ${LOCAL_OCR_TIMEOUT:-120}
+      LOCAL_LLM_TIMEOUT: ${LOCAL_LLM_TIMEOUT:-120}
+      LOCAL_OCR_DPI: ${LOCAL_OCR_DPI:-120}
+
+      REDIS_ENABLED: ${REDIS_ENABLED:-false}
+      REDIS_URL: ${REDIS_URL:-redis://localhost:6379/0}
+      PARSE_QUEUE_NAME: ${PARSE_QUEUE_NAME:-uah:parse_jobs}
+      PARSE_QUEUE_NAME_CLOUD: ${PARSE_QUEUE_NAME_CLOUD:-uah:parse_jobs:cloud}
+      PARSE_QUEUE_NAME_LOCAL: ${PARSE_QUEUE_NAME_LOCAL:-uah:parse_jobs:local}
+      PARSE_QUEUE_NAME_RULES: ${PARSE_QUEUE_NAME_RULES:-uah:parse_jobs:rules}
+      PARSE_QUEUE_MAX_RETRIES: ${PARSE_QUEUE_MAX_RETRIES:-3}
+      PARSE_QUEUE_MAX_RETRIES_CLOUD: ${PARSE_QUEUE_MAX_RETRIES_CLOUD:-1}
+      PARSE_QUEUE_MAX_RETRIES_LOCAL: ${PARSE_QUEUE_MAX_RETRIES_LOCAL:-1}
+      PARSE_QUEUE_MAX_RETRIES_RULES: ${PARSE_QUEUE_MAX_RETRIES_RULES:-0}
+      PARSE_QUEUE_CONCURRENCY_CLOUD: ${PARSE_QUEUE_CONCURRENCY_CLOUD:-1}
+      PARSE_QUEUE_CONCURRENCY_LOCAL: ${PARSE_QUEUE_CONCURRENCY_LOCAL:-2}
+      PARSE_QUEUE_CONCURRENCY_RULES: ${PARSE_QUEUE_CONCURRENCY_RULES:-2}
+      PARSE_QUEUE_CLAIM_TTL_SECONDS: ${PARSE_QUEUE_CLAIM_TTL_SECONDS:-1800}
+      PARSE_QUEUE_SHUTDOWN_DRAIN_SECONDS: ${PARSE_QUEUE_SHUTDOWN_DRAIN_SECONDS:-30}
+      PARSE_QUEUE_STALE_JOB_MINUTES: ${PARSE_QUEUE_STALE_JOB_MINUTES:-20}
+
+      MUSE_PAGE_CHASE_ENABLED: ${MUSE_PAGE_CHASE_ENABLED:-true}
+      MUSE_PAGE_CHASE_MAX_PAGES: ${MUSE_PAGE_CHASE_MAX_PAGES:-3}
+      MUSE_PAGE_CHASE_MAX_API_CALLS_PER_REQUEST: ${MUSE_PAGE_CHASE_MAX_API_CALLS_PER_REQUEST:-3}
+      MUSE_PAGE_CHASE_TARGET_ACCEPTED_RESULTS: ${MUSE_PAGE_CHASE_TARGET_ACCEPTED_RESULTS:-20}
+      MUSE_PAGE_CHASE_MIN_FILTERED_RATIO: ${MUSE_PAGE_CHASE_MIN_FILTERED_RATIO:-0.4}
+      MUSE_PAGE_CHASE_TIMEOUT_SECONDS: ${MUSE_PAGE_CHASE_TIMEOUT_SECONDS:-8}
+      MUSE_ADAPTIVE_PAGE_CHASE_ENABLED: ${MUSE_ADAPTIVE_PAGE_CHASE_ENABLED:-true}
+      MUSE_ADAPTIVE_PAGE_CHASE_EXTRA_PAGES: ${MUSE_ADAPTIVE_PAGE_CHASE_EXTRA_PAGES:-2}
+      MUSE_ADAPTIVE_PAGE_CHASE_BREADTH_THRESHOLD: ${MUSE_ADAPTIVE_PAGE_CHASE_BREADTH_THRESHOLD:-45}
+      MUSE_ADAPTIVE_PAGE_CHASE_MIN_FILTERED_RATIO: ${MUSE_ADAPTIVE_PAGE_CHASE_MIN_FILTERED_RATIO:-0.2}
+      MUSE_LOCATION_PARAM_CAP: ${MUSE_LOCATION_PARAM_CAP:-60}
+      CONSTRAINT_FILTER_MIN_CONFIDENCE: ${CONSTRAINT_FILTER_MIN_CONFIDENCE:-high}
+      CONSTRAINT_COMPATIBILITY_ENABLED: ${CONSTRAINT_COMPATIBILITY_ENABLED:-true}
+      JOBS_DEFAULT_PAGE_SIZE: ${JOBS_DEFAULT_PAGE_SIZE:-10}
+      JOBS_CACHE_ENABLED: ${JOBS_CACHE_ENABLED:-true}
+      JOBS_CACHE_TTL_SECONDS: ${JOBS_CACHE_TTL_SECONDS:-45}
+      JOBS_CACHE_MAX_KEYS: ${JOBS_CACHE_MAX_KEYS:-250}
+      MUSE_LOCATION_INDEX_ENABLED: ${MUSE_LOCATION_INDEX_ENABLED:-true}
+      MUSE_LOCATION_INDEX_REFRESH_HOURS: ${MUSE_LOCATION_INDEX_REFRESH_HOURS:-24}
+      MUSE_LOCATION_INDEX_SCAN_MAX_PAGES: ${MUSE_LOCATION_INDEX_SCAN_MAX_PAGES:-25}
+      MUSE_LOCATION_INDEX_TIMEOUT_SECONDS: ${MUSE_LOCATION_INDEX_TIMEOUT_SECONDS:-10}
+      MUSE_LOCATION_INDEX_RETENTION_DAYS: ${MUSE_LOCATION_INDEX_RETENTION_DAYS:-45}
+      GEO_IP_PROVIDER: ${GEO_IP_PROVIDER:-ipapi}
+      IPSTACK_API_KEY: ${IPSTACK_API_KEY:-}
+      GEOLOCATION_AUTO_BUILD_DATASET: ${GEOLOCATION_AUTO_BUILD_DATASET:-true}
+      GEOLOCATION_IGNORE_LOCAL_DATASET: ${GEOLOCATION_IGNORE_LOCAL_DATASET:-false}
+      GEOLOCATION_DATASET_TIMEOUT_SECONDS: ${GEOLOCATION_DATASET_TIMEOUT_SECONDS:-90}
+      NOMINATIM_USER_AGENT: ${NOMINATIM_USER_AGENT:-UAH-JobBoard-Geolocation/1.0}
+    volumes:
+      - ./backend:/app
+    ports:
+      - "127.0.0.1:${LOCAL_BACKEND_HOST_PORT:-8000}:8000"
+    networks:
+      - uah-local
+
+networks:
+  uah-local:
+    name: uah-local

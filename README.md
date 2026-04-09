@@ -107,15 +107,44 @@ If TLS is enabled but cert files are missing, frontend falls back to HTTP automa
 
 ## Local Development
 
-If you want to run the application components on your local machine for rapid testing (without touching the remote dev server infrastructure), we have a dedicated local setup!
+The local path is now frontend-first and mock-first so you can render all modules without starting backend services.
 
-See the **[Backend Local Development Guide](./backend/README.md)** for the authoritative host-local workflow:
+### Fast path (frontend mock mode)
 
-- Local database using `docker-compose.local.yml`
-- Backend with local `uvicorn`
-- Optional frontend with `npm run dev` from `frontend/`
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-This repository-level guide remains focused on remote dev and deployment operations and does not replace beta or non-local run methods.
+Open `http://127.0.0.1:5173`.
+
+- `npm run dev` defaults to mock mode.
+- API calls are handled by an in-browser mock API layer.
+- This path is isolated from dev/beta/prod infrastructure.
+
+### Optional local backend passthrough mode
+
+```bash
+# from repo root
+docker compose -f docker-compose.local.yml --profile backend up -d db-local backend-local
+
+# in a second terminal
+cd frontend
+npm run dev:backend
+```
+
+Notes:
+
+- Local compose binds backend and db to localhost only (`127.0.0.1`).
+- Backend mode refuses non-local API targets by default.
+- To intentionally target a non-local API in backend mode, set `VITE_ALLOW_REMOTE_API=true`.
+
+### Environment template
+
+- Use `env-examples/local/.env.example` as the starting point for local root `.env` values.
+
+For host-run backend workflows (`uvicorn` outside Docker), continue using the **[Backend Local Development Guide](./backend/README.md)**.
 
 ---
 
