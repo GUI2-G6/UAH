@@ -28,11 +28,17 @@ This checklist captures environment variables that must exist on server-side `.e
 ## Required When Queue Is Enabled
 
 - `REDIS_ENABLED=true`
-- `REDIS_URL=redis://redis:6379/0`
+- `REDIS_URL=redis://uah-redis:6379/0` (dev default)
 - `PARSE_QUEUE_NAME`
 - `PARSE_QUEUE_NAME_CLOUD`
 - `PARSE_QUEUE_NAME_LOCAL`
 - `PARSE_QUEUE_NAME_RULES`
+- `BETA_REDIS_URL=redis://uah-beta-redis:6379/0` (beta compose override default)
+- `BETA_PARSE_QUEUE_NAME`
+- `BETA_PARSE_QUEUE_NAME_CLOUD`
+- `BETA_PARSE_QUEUE_NAME_LOCAL`
+- `BETA_PARSE_QUEUE_NAME_RULES`
+- `BETA_REDIS_HOST_PORT=6380` (when dev and beta run on the same host)
 
 ## Recommended Parse Queue Controls
 
@@ -65,5 +71,8 @@ This checklist captures environment variables that must exist on server-side `.e
 ## Operational Notes
 
 - Runtime script entrypoint is `scripts/uah.sh`.
+- Security audit entrypoint is `scripts/uah.sh <dev|beta|prod> audit`.
 - Dev cert sync hook is `scripts/dev/certbot-sync-dev-cert.sh`.
 - Password reset script reads `.env` from repo root by default and supports override via `UAH_ENV_FILE`.
+- Concurrent dev and beta on one host require distinct Redis host ports (`REDIS_HOST_PORT=6379`, `BETA_REDIS_HOST_PORT=6380`).
+- Beta queue defaults should use the `uah:beta:*` namespace to avoid cross-environment key overlap.

@@ -79,6 +79,9 @@ Important: runtime expects `.env` in the deployment root (`/srv/uah/environments
 | `GOOGLE_REDIRECT_URI` | `https://dev.uahapp.com/api/auth/google/callback` | `https://beta.uahapp.com/api/auth/google/callback` | Must be registered in GCP |
 | `PUBLIC_APP_URL` | `https://dev.uahapp.com` | `https://beta.uahapp.com` | Used in email links |
 | `EMAILS_ENABLED` | `false` | `true` | Enable real email sending |
+| `BETA_REDIS_HOST_PORT` | n/a | `6380` | Prevents localhost Redis port collisions when dev and beta run together |
+| `BETA_REDIS_URL` | n/a | `redis://uah-beta-redis:6379/0` | Pins beta backend to the beta Redis container |
+| `BETA_PARSE_QUEUE_NAME*` | n/a | `uah:beta:parse_jobs*` | Keeps beta queue keys isolated from dev |
 | `ADMIN_BOOTSTRAP_ENABLED` | `false` | `false` | Keep disabled unless you need to create an admin |
 | `DEV_TLS_ENABLED` | `false` | `false` | TLS is handled by Cloudflare, not the container |
 
@@ -87,6 +90,8 @@ Important: runtime expects `.env` in the deployment root (`/srv/uah/environments
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — same GCP project, unless you create a separate beta OAuth client
 - `ZAI_API_KEY` — reuse dev key or provision a separate key depending on usage/quota
 - `SMTP_*` — same SMTP provider, sender address should be `noreply@uahapp.com`
+
+If you are running dev and beta from the same checkout on one host, keep `REDIS_HOST_PORT=6379` for dev and set `BETA_REDIS_HOST_PORT=6380` for beta.
 
 ### 2.2 Variables That Must Never Be Committed
 
