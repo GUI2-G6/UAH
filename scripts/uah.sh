@@ -197,8 +197,11 @@ require_available_host_port() {
     return
   fi
 
-  is_tcp_port_in_use "$port"
-  port_check_status=$?
+  if is_tcp_port_in_use "$port"; then
+    port_check_status=0
+  else
+    port_check_status=$?
+  fi
 
   if [[ $port_check_status -eq 0 ]]; then
     echo "$label requires host port $port, but it is already in use." >&2
