@@ -91,4 +91,4 @@ docker exec "$VPN_CONTAINER" sh -lc "iptables -t nat -C POSTROUTING -s ${SOURCE_
 
 echo "Done. Route + scoped NAT/forward rules are active."
 echo "Source scope: ${SOURCE_CIDR}"
-echo "Use scripts/network/check_desktop_ollama_temp_route.sh to verify connectivity."
+echo "Use scripts/beta/network/check_desktop_ollama_temp_route.sh to verify connectivity."

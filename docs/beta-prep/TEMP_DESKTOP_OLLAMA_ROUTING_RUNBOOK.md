@@ -25,20 +25,20 @@ This does **not** replace permanent infrastructure routing. It is an operational
 Run from repo root on the VM host:
 
 ```bash
-chmod +x scripts/network/*.sh
-./scripts/network/apply_desktop_ollama_temp_route.sh
+chmod +x scripts/beta/network/*.sh
+./scripts/beta/network/apply_desktop_ollama_temp_route.sh
 ```
 
 Optional overrides:
 
 ```bash
-DESKTOP_IP=10.8.0.8 DESKTOP_PORT=11434 VPN_CONTAINER=uah-dev-vpn ./scripts/network/apply_desktop_ollama_temp_route.sh
+DESKTOP_IP=10.8.0.8 DESKTOP_PORT=11434 VPN_CONTAINER=uah-dev-vpn ./scripts/beta/network/apply_desktop_ollama_temp_route.sh
 ```
 
 ## Verify Connectivity
 
 ```bash
-./scripts/network/check_desktop_ollama_temp_route.sh
+./scripts/beta/network/check_desktop_ollama_temp_route.sh
 ```
 
 Expected:
@@ -71,7 +71,7 @@ curl -s http://dev.uahapp.com/api/resume/queue/status
 ## Rollback
 
 ```bash
-./scripts/network/rollback_desktop_ollama_temp_route.sh
+./scripts/beta/network/rollback_desktop_ollama_temp_route.sh
 ```
 
 This removes the host route and temporary iptables rules from the VPN container.

@@ -111,7 +111,7 @@ Migrate resume OCR and parsing from ZAI cloud APIs to a feature-flagged local Ol
 - 2026-04-08: Added backend/app/services/parse_job_runner.py to centralize parse execution logic for both BackgroundTasks and Redis worker processing.
 - 2026-04-08: Completed Phase 6 wiring in backend/app/main.py and backend/app/api/resume.py (worker startup/shutdown, Redis enqueue branch, queue status endpoint).
 - 2026-04-08: Marked Phase 7 static checks complete (compose renders, dependency/build assumptions validated from committed files).
-- 2026-04-08: Added temporary secure desktop routing scripts under scripts/network (apply/check/rollback).
+- 2026-04-08: Added temporary secure desktop routing scripts under scripts/beta/network (apply/check/rollback).
 - 2026-04-08: Added docs/beta-prep/TEMP_DESKTOP_OLLAMA_ROUTING_RUNBOOK.md for operator run flow.
 - 2026-04-08: Completed VM-side temporary route validation and confirmed backend reachability to desktop Ollama endpoint (10.8.0.8:11434).
 - 2026-04-08: Added explicit cloud/local/rules parse source support across sync and async parse paths.
