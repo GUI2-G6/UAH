@@ -15,6 +15,11 @@
   overflow-x: hidden;
   background: #fff;
   z-index: 10;
+  transition: width 0.3s ease;
+}
+
+#burger.active {
+  width:220px;
 }
 
 .burger-button {
@@ -25,6 +30,8 @@
   display: block;
   margin: 0 auto;
   padding: 0;
+  margin-top: 10px;
+  margin-bottom: 10px;
 }
 
 .burger-bar {
@@ -75,7 +82,11 @@
   align-items: center;
   width: 100%;
   padding-bottom: 16px;
-  margin-top: 12px;
+}
+
+.menu:not(.expanded) .label {
+  opacity:0;
+  pointer-events:none;
 }
 
 .burger-bottom {
