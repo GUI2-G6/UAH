@@ -316,6 +316,44 @@ On `start`, `restart`, and `sync` with rebuild flags, scripts validate:
 3. Required infrastructure container `uah-dev-vpn` is running
 4. Redis host ports are available before startup (`REDIS_HOST_PORT` for dev, `BETA_REDIS_HOST_PORT` for beta)
 
+### Concurrent Dev + Beta OCR Routing
+
+When both environments run on the same host, route ownership is now managed explicitly:
+
+- `dev start` applies dev-owned WireGuard route and VPN forwarding rules for desktop Ollama.
+- `dev stop` removes only dev-owned rules.
+- `beta start` applies beta-owned route/rules.
+- `beta stop` removes only beta-owned rules and preserves the shared host route when a sibling backend is still running.
+
+Route scripts:
+
+- `scripts/dev/network/apply_desktop_ollama_temp_route.sh`
+- `scripts/dev/network/rollback_desktop_ollama_temp_route.sh`
+- `scripts/beta/network/apply_desktop_ollama_temp_route.sh`
+- `scripts/beta/network/rollback_desktop_ollama_temp_route.sh`
+
+### Debug Console Scope
+
+Dev debug console is now near-parity with beta for operational checks:
+
+- Ollama reachability status in the header.
+- Queue management menu in dev debug.
+- Networking diagnostics in dev debug.
+- Frontend/Nginx logs sourced from compose logs (not in-container log files).
+
+Entry points:
+
+- `bash scripts/uah.sh dev debug`
+- `bash scripts/uah.sh beta debug`
+
+### Queue Scope Interpretation
+
+Queue execution remains isolated by environment (separate Redis containers and queue namespaces).
+
+- Dev queue position is scoped to dev.
+- Beta queue position is scoped to beta.
+- UI now labels queue scope/environment to avoid cross-environment ambiguity when both show position `1`.
+
 ---
 
 ## Direct Docker Compose Commands
@@ -504,7 +542,20 @@ Copy the appropriate template values into a real root `.env` before running serv
 | `POSTGRES_PORT` | backend | Database port (default: 5432) |
 | `COMPOSE_PROJECT_NAME` | docker compose | Project namespace |
 | `ENV` | reference | Current environment |
+| `AUTH_NAMESPACE` | backend, frontend build | Environment auth namespace (`dev`, `beta`, `prod`) |
+| `SESSION_COOKIE_NAME` | backend | Environment-scoped session cookie name (must not be `session`) |
+| `SESSION_COOKIE_SAMESITE` | backend | Session cookie SameSite policy (`lax`, `strict`, `none`) |
+| `SESSION_COOKIE_PATH` | backend | Session cookie path (usually `/`) |
+| `SESSION_COOKIE_HTTPS_ONLY` | backend | Use secure-only session cookie flag |
+| `VITE_AUTH_NAMESPACE` | frontend build | Frontend auth storage namespace key suffix |
 | `DEV_DOMAIN` | reference | Domain for dev access |
+
+Compose now requires `AUTH_NAMESPACE` and `SESSION_COOKIE_NAME` for backend startup.
+Use environment-scoped values such as:
+
+- Dev: `AUTH_NAMESPACE=dev`, `SESSION_COOKIE_NAME=uah_session_dev`
+- Beta: `AUTH_NAMESPACE=beta`, `SESSION_COOKIE_NAME=uah_session_beta`
+- Prod: `AUTH_NAMESPACE=prod`, `SESSION_COOKIE_NAME=uah_session_prod`
 
 > **Never commit `.env` to git.** It contains credentials.
 

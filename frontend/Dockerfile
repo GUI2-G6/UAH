@@ -17,6 +17,8 @@ RUN npm ci
 
 # Copy source and build
 COPY . .
+ARG VITE_AUTH_NAMESPACE
+ENV VITE_AUTH_NAMESPACE=${VITE_AUTH_NAMESPACE}
 RUN npm run build
 
 # --- Stage 2: Serve ---
