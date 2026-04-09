@@ -1,0 +1,4 @@
+# Normalize shell scripts across platforms
+*.sh text eol=lf
+scripts/** text eol=lf
+frontend/docker-entrypoint.d/*.sh text eol=lf

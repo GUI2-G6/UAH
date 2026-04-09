@@ -251,6 +251,14 @@ When safe sync is blocked in an interactive shell, the script shows detected iss
 - `status` to inspect full git status
 - `diff` to inspect diff summary
 
+### Shell script permissions
+
+Shell scripts in this repository are tracked as executable by default.
+
+- `.sh` files are normalized with `.gitattributes` to keep LF line endings.
+- You should not need recurring `chmod +x` sweeps after pulling the normalization commit.
+- If sync still reports blockers, use the `status` and `diff` prompt options to confirm whether blockers are real content edits.
+
 ### Examples
 
 ```bash
