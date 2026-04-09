@@ -178,6 +178,36 @@ class ParseJobResponse(BaseModel):
         description="Optional queue status snapshot included when polling with include_queue=true.",
         examples=[{"current_user": {"active_jobs": 1, "active_job_position": 2}, "queue_depth_total": 4}],
     )
+    started_at: datetime | None = Field(
+        default=None,
+        description="UTC timestamp when worker execution started for this job.",
+        examples=["2026-03-31T14:30:02.100000Z"],
+    )
+    completed_at: datetime | None = Field(
+        default=None,
+        description="UTC timestamp when this job reached a terminal state.",
+        examples=["2026-03-31T14:30:09.300000Z"],
+    )
+    elapsed_seconds: int | None = Field(
+        default=None,
+        description="Elapsed time in seconds from enqueue/start to current or terminal state.",
+        examples=[7],
+    )
+    attempt: int | None = Field(
+        default=None,
+        description="Current retry attempt number tracked by the queue worker.",
+        examples=[0],
+    )
+    queue_position: int | None = Field(
+        default=None,
+        description="Position of the current user's active job in the focused method queue.",
+        examples=[2],
+    )
+    queue_total: int | None = Field(
+        default=None,
+        description="Total active jobs in the focused method queue.",
+        examples=[6],
+    )
     created_at: datetime = Field(
         ...,
         description="UTC timestamp when the parse job was created.",

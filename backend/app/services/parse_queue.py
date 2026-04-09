@@ -23,13 +23,15 @@ Status hash fields: status, progress_stage, error_code, error_message,
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import importlib
 import json
 import logging
 from typing import Any
 
 from app.core.config import settings
+from app.db.session import SessionLocal
+from app.models.parse_job import ParseJob
 from app.services.parse_job_runner import run_parse_job
 from app.services.resume_parser import normalize_parse_method
 
@@ -37,15 +39,18 @@ logger = logging.getLogger(__name__)
 
 _redis_client: Any | None = None
 _worker_task: asyncio.Task | None = None
+_in_flight_tasks: set[asyncio.Task] = set()
 
 QUEUE_METHODS = ("cloud", "local", "rules")
 _QUEUE_NAMES = settings.parse_queue_name_by_method
 _QUEUE_NAME_TO_METHOD = {name: method for method, name in _QUEUE_NAMES.items()}
+_CLAIM_KEY_PREFIX = f"{settings.PARSE_QUEUE_NAME}:claim"
 _DEPTH_KEY_TOTAL = f"{settings.PARSE_QUEUE_NAME}:depth:total"
 _DEPTH_KEY_BY_METHOD = {
     method: f"{settings.PARSE_QUEUE_NAME}:depth:{method}"
     for method in QUEUE_METHODS
 }
+_IN_FLIGHT_BY_METHOD: dict[str, int] = {method: 0 for method in QUEUE_METHODS}
 
 _worker_state: dict[str, Any] = {
     "enabled": False,
@@ -54,6 +59,8 @@ _worker_state: dict[str, Any] = {
     "redis_connected": False,
     "last_heartbeat": None,
     "last_queue_method": None,
+    "in_flight_total": 0,
+    "in_flight_by_method": {method: 0 for method in QUEUE_METHODS},
 }
 
 
@@ -87,8 +94,64 @@ async def _get_redis_client() -> Any | None:
         return _redis_client
     except Exception as exc:
         _worker_state["redis_connected"] = False
+        _redis_client = None
         logger.warning("Redis unavailable at %s: %s", settings.REDIS_URL, exc)
         return None
+
+
+def _concurrency_for_method(method: str) -> int:
+    method_key = normalize_parse_method(method) or "local"
+    attr = f"PARSE_QUEUE_CONCURRENCY_{method_key.upper()}"
+    raw = getattr(settings, attr, 1)
+    return max(int(raw), 1)
+
+
+def _max_retries_for_method(method: str) -> int:
+    method_key = normalize_parse_method(method) or "local"
+    attr = f"PARSE_QUEUE_MAX_RETRIES_{method_key.upper()}"
+    override = int(getattr(settings, attr, -1))
+    if override >= 0:
+        return override
+    return max(int(settings.PARSE_QUEUE_MAX_RETRIES), 0)
+
+
+def _retry_delay_seconds(method: str, next_attempt: int) -> int:
+    method_key = normalize_parse_method(method) or "local"
+    if method_key == "rules":
+        return 0
+    if method_key == "local":
+        return max(2 * next_attempt, 1)
+    return max(2 ** next_attempt, 1)
+
+
+def _claim_key(job_id: int) -> str:
+    return f"{_CLAIM_KEY_PREFIX}:{job_id}"
+
+
+def _set_worker_inflight_state() -> None:
+    _worker_state["in_flight_total"] = len(_in_flight_tasks)
+    _worker_state["in_flight_by_method"] = {
+        method: _IN_FLIGHT_BY_METHOD.get(method, 0) for method in QUEUE_METHODS
+    }
+
+
+async def _acquire_job_claim(client: Any, job_id: int) -> bool:
+    try:
+        claim_ttl = max(int(getattr(settings, "PARSE_QUEUE_CLAIM_TTL_SECONDS", 1800)), 60)
+        claimed = await client.set(_claim_key(job_id), _now_iso(), ex=claim_ttl, nx=True)
+        return bool(claimed)
+    except Exception as exc:
+        logger.warning("Failed to claim parse job %s: %s", job_id, exc)
+        return False
+
+
+async def _release_job_claim(client: Any | None, job_id: int) -> None:
+    if client is None:
+        return
+    try:
+        await client.delete(_claim_key(job_id))
+    except Exception as exc:
+        logger.debug("Failed to release claim for parse job %s: %s", job_id, exc)
 
 
 async def _set_queue_depth(client: Any) -> int:
@@ -150,6 +213,7 @@ async def enqueue_parse_job(job_id: int, resume_id: int, user_id: int, method: s
                 "method": normalized_method,
                 "enqueued_at": payload["enqueued_at"],
                 "attempt": 0,
+                "queue_name": _queue_name_for_method(normalized_method),
             },
         )
         return True
@@ -223,18 +287,59 @@ async def start_queue_worker() -> None:
 async def stop_queue_worker() -> None:
     global _worker_task
 
-    if _worker_task is None:
-        return
+    if _worker_task is not None:
+        _worker_task.cancel()
+        try:
+            await _worker_task
+        except asyncio.CancelledError:
+            pass
+        finally:
+            _worker_task = None
 
-    _worker_task.cancel()
+    drain_seconds = max(int(getattr(settings, "PARSE_QUEUE_SHUTDOWN_DRAIN_SECONDS", 30)), 0)
+    if _in_flight_tasks:
+        done, pending = await asyncio.wait(_in_flight_tasks, timeout=drain_seconds)
+        if pending:
+            logger.warning("Cancelling %d in-flight parse tasks after drain timeout", len(pending))
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    _worker_state["running"] = False
+    _worker_state["mode"] = "stopped"
+    _set_worker_inflight_state()
+
+
+async def reconcile_stale_parse_jobs() -> dict[str, int]:
+    """Mark stale in-progress parse jobs as failed after worker restart."""
+    db = SessionLocal()
     try:
-        await _worker_task
-    except asyncio.CancelledError:
-        pass
+        stale_minutes = max(int(getattr(settings, "PARSE_QUEUE_STALE_JOB_MINUTES", 20)), 1)
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=stale_minutes)
+        stale_jobs = db.query(ParseJob).filter(
+            ParseJob.status.in_(["parsing", "validating"]),
+            ParseJob.updated_at < cutoff,
+        ).all()
+
+        for job in stale_jobs:
+            job.status = "failed"
+            job.error_code = "RECOVERED_AFTER_RESTART"
+            job.error_message = "Job was recovered after worker restart and marked failed."
+            job.progress_stage = "Failed"
+
+        if stale_jobs:
+            db.commit()
+
+        return {
+            "stale_marked_failed": len(stale_jobs),
+        }
+    except Exception as exc:
+        logger.exception("Failed to reconcile stale parse jobs: %s", exc)
+        return {
+            "stale_marked_failed": 0,
+        }
     finally:
-        _worker_task = None
-        _worker_state["running"] = False
-        _worker_state["mode"] = "stopped"
+        db.close()
 
 
 async def _process_job(job_data: dict, queue_method: str | None = None) -> None:
@@ -244,7 +349,16 @@ async def _process_job(job_data: dict, queue_method: str | None = None) -> None:
     job_data["method"] = method
 
     client = await _get_redis_client()
-    if client is not None:
+    if client is None:
+        logger.warning("Skipping parse job %s because Redis is unavailable", job_id)
+        return
+
+    claimed = await _acquire_job_claim(client, job_id)
+    if not claimed:
+        logger.info("Skipping parse job %s because claim is already held", job_id)
+        return
+
+    try:
         await _set_job_status(
             client,
             job_id,
@@ -257,9 +371,8 @@ async def _process_job(job_data: dict, queue_method: str | None = None) -> None:
             },
         )
 
-    ok = await run_parse_job(job_id)
-    if ok:
-        if client is not None:
+        ok = await run_parse_job(job_id)
+        if ok:
             await _set_job_status(
                 client,
                 job_id,
@@ -270,14 +383,14 @@ async def _process_job(job_data: dict, queue_method: str | None = None) -> None:
                     "attempt": attempt,
                 },
             )
-        return
+            return
 
-    if attempt < settings.PARSE_QUEUE_MAX_RETRIES:
-        next_attempt = attempt + 1
-        delay_seconds = 2 ** next_attempt
-        job_data["attempt"] = next_attempt
+        max_retries = _max_retries_for_method(method)
+        if attempt < max_retries:
+            next_attempt = attempt + 1
+            delay_seconds = _retry_delay_seconds(method, next_attempt)
+            job_data["attempt"] = next_attempt
 
-        if client is not None:
             await _set_job_status(
                 client,
                 job_id,
@@ -290,28 +403,29 @@ async def _process_job(job_data: dict, queue_method: str | None = None) -> None:
                 },
             )
 
-        await asyncio.sleep(delay_seconds)
+            if delay_seconds > 0:
+                await asyncio.sleep(delay_seconds)
 
-        client = await _get_redis_client()
-        if client is None:
-            logger.warning("Retry enqueue skipped for job %s because Redis is unavailable", job_id)
+            client = await _get_redis_client()
+            if client is None:
+                logger.warning("Retry enqueue skipped for job %s because Redis is unavailable", job_id)
+                return
+
+            await client.rpush(_queue_name_for_method(method), json.dumps(job_data))
+            await _set_queue_depths(client)
+            await _set_job_status(
+                client,
+                job_id,
+                {
+                    "status": "queued",
+                    "progress_stage": "Queued for retry",
+                    "method": method,
+                    "attempt": next_attempt,
+                    "queue_name": _queue_name_for_method(method),
+                },
+            )
             return
 
-        await client.rpush(_queue_name_for_method(method), json.dumps(job_data))
-        await _set_queue_depths(client)
-        await _set_job_status(
-            client,
-            job_id,
-            {
-                "status": "queued",
-                "progress_stage": "Queued for retry",
-                "method": method,
-                "attempt": next_attempt,
-            },
-        )
-        return
-
-    if client is not None:
         await _set_job_status(
             client,
             job_id,
@@ -324,6 +438,30 @@ async def _process_job(job_data: dict, queue_method: str | None = None) -> None:
                 "attempt": attempt,
             },
         )
+    finally:
+        current_client = await _get_redis_client()
+        await _release_job_claim(current_client, job_id)
+
+
+def _dispatch_job(job_data: dict, queue_method: str) -> None:
+    async def _runner() -> None:
+        _IN_FLIGHT_BY_METHOD[queue_method] = _IN_FLIGHT_BY_METHOD.get(queue_method, 0) + 1
+        _set_worker_inflight_state()
+        try:
+            await _process_job(job_data, queue_method=queue_method)
+        finally:
+            _IN_FLIGHT_BY_METHOD[queue_method] = max(_IN_FLIGHT_BY_METHOD.get(queue_method, 1) - 1, 0)
+            _set_worker_inflight_state()
+
+    task = asyncio.create_task(_runner(), name=f"uah-parse-job-{job_data.get('job_id')}")
+    _in_flight_tasks.add(task)
+    _set_worker_inflight_state()
+
+    def _done_callback(done_task: asyncio.Task) -> None:
+        _in_flight_tasks.discard(done_task)
+        _set_worker_inflight_state()
+
+    task.add_done_callback(_done_callback)
 
 
 async def _worker_loop() -> None:
@@ -339,27 +477,32 @@ async def _worker_loop() -> None:
             continue
 
         _worker_state["mode"] = "active"
+        dispatched = False
         rotated_methods = list(QUEUE_METHODS[method_cursor:]) + list(QUEUE_METHODS[:method_cursor])
-        queue_keys = [_QUEUE_NAMES[method] for method in rotated_methods]
-        item = await client.blpop(queue_keys, timeout=5)
+
+        for method in rotated_methods:
+            if _IN_FLIGHT_BY_METHOD.get(method, 0) >= _concurrency_for_method(method):
+                continue
+
+            queue_name = _QUEUE_NAMES[method]
+            raw_payload = await client.lpop(queue_name)
+            if not raw_payload:
+                continue
+
+            _worker_state["last_queue_method"] = method
+            try:
+                job_data = json.loads(raw_payload)
+            except json.JSONDecodeError:
+                logger.warning("Skipping invalid queue payload from %s: %s", queue_name, raw_payload)
+                continue
+
+            _dispatch_job(job_data, queue_method=method)
+            dispatched = True
+
         method_cursor = (method_cursor + 1) % len(QUEUE_METHODS)
-
-        if not item:
-            await _set_queue_depths(client)
-            continue
-
-        queue_name, raw_payload = item
-        queue_method = _QUEUE_NAME_TO_METHOD.get(queue_name)
-        _worker_state["last_queue_method"] = queue_method
         await _set_queue_depths(client)
-
-        try:
-            job_data = json.loads(raw_payload)
-        except json.JSONDecodeError:
-            logger.warning("Skipping invalid queue payload: %s", raw_payload)
-            continue
-
-        await _process_job(job_data, queue_method=queue_method)
+        if not dispatched:
+            await asyncio.sleep(1)
 
 
 async def _worker_supervisor() -> None:

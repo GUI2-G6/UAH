@@ -142,6 +142,13 @@
                             ></div>
                         </div>
                         <p class="parse-progress-hint">{{ parseProgressHint }}</p>
+                        <p class="parse-progress-hint" v-if="parseAttemptLabel || parseElapsedLabel">
+                            <span v-if="parseAttemptLabel">{{ parseAttemptLabel }}</span>
+                            <span v-if="parseAttemptLabel && parseElapsedLabel"> · </span>
+                            <span v-if="parseElapsedLabel">{{ parseElapsedLabel }}</span>
+                            <span v-if="parseQueuePosition && parseQueueTotal"> · Queue {{ parseQueuePosition }}/{{ parseQueueTotal }}</span>
+                        </p>
+                        <p class="parse-progress-hint" v-if="parseErrorCode">Code: {{ parseErrorCode }}</p>
                         <button class="btn-secondary" @click="cancelParse" :disabled="parseStatus === 'cancelled'">
                             Cancel
                         </button>
@@ -849,6 +856,7 @@
 <script>
 import { authedFetch, getCurrentUser, setCurrentUser } from '../lib/auth.js'
 import { publishCurrentPageDiagnostics, clearCurrentPageDiagnostics } from '../lib/debugDiagnostics'
+import { showToast } from '../services/toastService.js'
 
 const APPINFO_KEY = 'uah_applicant_info'
 
@@ -880,6 +888,11 @@ export default {
             parseError: null,
             _pollTimer: null,
             parseJobMethod: null,
+            parseAttempt: null,
+            parseElapsedSeconds: null,
+            parseQueuePosition: null,
+            parseQueueTotal: null,
+            parseErrorCode: null,
 
             // Queue panel
             queueScope: 'user',
@@ -973,11 +986,21 @@ export default {
             return this.formatDate(this.resumes[0].created_at)
         },
         parseProgressPercent() {
-            const map = { queued: 10, parsing: 50, validating: 85, success: 100, failed: 0, cancelled: 0 }
+            if (this.parseStatus === 'queued' && this.parseQueuePosition && this.parseQueueTotal) {
+                const queueFraction = (this.parseQueuePosition - 1) / Math.max(this.parseQueueTotal, 1)
+                const queuedPercent = Math.round(30 - (queueFraction * 20))
+                return Math.min(Math.max(queuedPercent, 10), 35)
+            }
+
+            const map = { queued: 15, parsing: 55, validating: 85, success: 100, failed: 0, cancelled: 0 }
             return map[this.parseStatus] ?? 0
         },
         parseProgressHint() {
             const activeMethod = this.parseJobMethod || this.parseMethod
+            if (this.parseStatus === 'queued' && this.parseQueuePosition && this.parseQueueTotal) {
+                return `Queued #${this.parseQueuePosition} of ${this.parseQueueTotal} in ${activeMethod} pipeline…`
+            }
+
             const map = {
                 queued: 'Preparing to parse the selected UAH resume…',
                 parsing: activeMethod === 'rules'
@@ -991,6 +1014,18 @@ export default {
                 cancelled: 'Cancelled.',
             }
             return map[this.parseStatus] ?? ''
+        },
+        parseElapsedLabel() {
+            if (this.parseElapsedSeconds === null || this.parseElapsedSeconds === undefined) return ''
+            if (this.parseElapsedSeconds < 60) return `${this.parseElapsedSeconds}s elapsed`
+            const mins = Math.floor(this.parseElapsedSeconds / 60)
+            const secs = this.parseElapsedSeconds % 60
+            return `${mins}m ${secs}s elapsed`
+        },
+        parseAttemptLabel() {
+            if (this.parseAttempt === null || this.parseAttempt === undefined) return ''
+            if (this.parseAttempt <= 0) return 'Attempt 1'
+            return `Retry ${this.parseAttempt}`
         },
         selectedParseMethodDescription() {
             const map = {
@@ -1345,6 +1380,11 @@ export default {
             this.parseStageLabel = ''
             this.parseError = null
             this.parseJobMethod = null
+            this.parseAttempt = null
+            this.parseElapsedSeconds = null
+            this.parseQueuePosition = null
+            this.parseQueueTotal = null
+            this.parseErrorCode = null
             if (this._pollTimer) clearTimeout(this._pollTimer)
         },
         triggerFileInput() {
@@ -1439,8 +1479,16 @@ export default {
 
                 this.parseStatus = job.status
                 this.parseStageLabel = job.progress_stage || this.parseStageLabel
+                this.parseAttempt = job.attempt
+                this.parseElapsedSeconds = job.elapsed_seconds
+                this.parseQueuePosition = job.queue_position
+                this.parseQueueTotal = job.queue_total
+                this.parseErrorCode = job.error_code || null
 
                 if (job.status === 'success') {
+                    const summary = job.result_summary || {}
+                    const readiness = summary.portal_ready ? 'Portal-ready' : 'Needs additional fields'
+                    showToast(`Parse complete. ${readiness}.`, 'success')
                     this.resetUploadFlow()
                     await this.loadResumes()
                     await this.loadQueueStatus()
@@ -1448,7 +1496,9 @@ export default {
                     return
                 }
                 if (job.status === 'failed') {
-                    this.uploadError = job.error_message || 'Parsing failed.'
+                    const details = job.error_code ? `[${job.error_code}] ${job.error_message || 'Parsing failed.'}` : (job.error_message || 'Parsing failed.')
+                    this.uploadError = details
+                    showToast('Parse failed. Review the error and retry.', 'error')
                     this.uploadStep = 'confirm'
                     this.parseJobId = null
                     this.parseJobMethod = null
@@ -1456,6 +1506,7 @@ export default {
                     return
                 }
                 if (job.status === 'cancelled') {
+                    showToast('Parse cancelled.', 'success')
                     this.uploadStep = 'confirm'
                     this.parseJobId = null
                     this.parseJobMethod = null
@@ -1483,6 +1534,7 @@ export default {
             this.uploadStep = 'confirm'
             this.parseJobId = null
             this.parseJobMethod = null
+            showToast('Parse cancelled.', 'success')
             this.publishDebugState('parse-cancelled-by-user')
         },
 

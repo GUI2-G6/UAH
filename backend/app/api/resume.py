@@ -48,6 +48,32 @@ def _method_or_default(value: str | None) -> str:
     return normalize_parse_method(value) or "local"
 
 
+def _parse_iso_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        normalized = value.replace("Z", "+00:00")
+        return datetime.fromisoformat(normalized)
+    except Exception:
+        return None
+
+
+def _compute_elapsed_seconds(
+    created_at: datetime | None,
+    started_at: datetime | None,
+    completed_at: datetime | None,
+) -> int | None:
+    start = started_at or created_at
+    end = completed_at or datetime.now(timezone.utc)
+    if start is None:
+        return None
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+    return max(int((end - start).total_seconds()), 0)
+
+
 def _refresh_resume_validation_if_needed(resume: Resume) -> bool:
     if not isinstance(resume.structured_data, dict):
         return False
@@ -620,13 +646,39 @@ async def get_parse_job(
         raise HTTPException(status_code=404, detail="Parse job not found")
 
     response = ParseJobResponse.model_validate(job).model_dump()
+    redis_status = await get_job_redis_status(job.id) if settings.REDIS_ENABLED else None
+
+    attempt = None
+    started_at = None
+    completed_at = None
+    if redis_status:
+        try:
+            attempt = int(redis_status.get("attempt")) if redis_status.get("attempt") is not None else None
+        except Exception:
+            attempt = None
+        started_at = _parse_iso_datetime(redis_status.get("started_at"))
+        completed_at = _parse_iso_datetime(redis_status.get("completed_at"))
+
+    if job.status in ("success", "failed", "cancelled") and completed_at is None:
+        completed_at = job.updated_at
+
+    response["attempt"] = attempt
+    response["started_at"] = started_at
+    response["completed_at"] = completed_at
+    response["elapsed_seconds"] = _compute_elapsed_seconds(job.created_at, started_at, completed_at)
+    response["queue_position"] = None
+    response["queue_total"] = None
+
     if include_queue:
-        response["queue_snapshot"] = await _build_queue_status_payload(
+        queue_snapshot = await _build_queue_status_payload(
             db=db,
             current_user=current_user,
             scope="user",
             focus_method=job.method,
         )
+        response["queue_snapshot"] = queue_snapshot
+        response["queue_position"] = queue_snapshot.get("current_user", {}).get("active_job_position")
+        response["queue_total"] = queue_snapshot.get("current_user", {}).get("active_job_total")
     return response
 
 
