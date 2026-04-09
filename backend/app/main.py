@@ -208,8 +208,12 @@ app = FastAPI(
 )
 
 app.add_middleware(
-    SessionMiddleware, 
-    secret_key=settings.SESSION_SECRET
+    SessionMiddleware,
+    secret_key=settings.SESSION_SECRET,
+    session_cookie=settings.SESSION_COOKIE_NAME,
+    same_site=settings.SESSION_COOKIE_SAMESITE,
+    https_only=settings.SESSION_COOKIE_HTTPS_ONLY,
+    path=settings.SESSION_COOKIE_PATH,
 )
 
 # ---------------------------------------------------------------------------

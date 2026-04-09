@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Temporary scoped route/NAT for backend -> desktop Ollama over WireGuard.
-# This runs on the VM host, not inside a container.
+# Scoped route/NAT for dev backend -> desktop Ollama over WireGuard.
+# Runs on host, not inside a container namespace.
 
 DESKTOP_IP="${DESKTOP_IP:-10.8.0.8}"
 DESKTOP_PORT="${DESKTOP_PORT:-11434}"
 VPN_CONTAINER="${VPN_CONTAINER:-uah-dev-vpn}"
-BACKEND_CONTAINER="${BACKEND_CONTAINER:-uah-beta-backend}"
-ROUTE_OWNER="${ROUTE_OWNER:-beta}"
+BACKEND_CONTAINER="${BACKEND_CONTAINER:-uah-dev-backend}"
+ROUTE_OWNER="${ROUTE_OWNER:-dev}"
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -93,4 +93,3 @@ docker exec "$VPN_CONTAINER" sh -lc "iptables -t nat -C POSTROUTING -s ${SOURCE_
 echo "Done. Route + scoped NAT/forward rules are active."
 echo "Source scope: ${SOURCE_CIDR}"
 echo "Route owner: ${ROUTE_OWNER}"
-echo "Use scripts/beta/network/check_desktop_ollama_temp_route.sh to verify connectivity."

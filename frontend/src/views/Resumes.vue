@@ -80,27 +80,20 @@
                     <div class="pipeline-guardrails import-options-spaced">
                         <h4>Pipeline Guarantees</h4>
                         <p class="pipeline-ordering-note">UAH parser order (highest reliability/accuracy to lowest): Local AI, Cloud AI, Rules-based.</p>
-                        <div class="import-option-row">
-                            <div class="check-circle" aria-hidden="true"></div>
-                            <div class="option-text">
-                                <strong>Local AI uses isolated local infrastructure</strong>
+                        <ul class="pipeline-guarantee-list" role="list">
+                            <li class="pipeline-guarantee-item" role="listitem">
+                                <strong>Local AI uses isolated local infrastructure.</strong>
                                 <span>Local OCR plus local LLM processing, with method-specific local queue metrics.</span>
-                            </div>
-                        </div>
-                        <div class="import-option-row">
-                            <div class="check-circle" aria-hidden="true"></div>
-                            <div class="option-text">
-                                <strong>Cloud AI uses web ZAI OCR and GLM-4.7-Flash</strong>
+                            </li>
+                            <li class="pipeline-guarantee-item" role="listitem">
+                                <strong>Cloud AI uses web ZAI OCR and GLM-4.7-Flash.</strong>
                                 <span>Cloud throughput is concurrency-limited; provider-side waiting queue is not exposed.</span>
-                            </div>
-                        </div>
-                        <div class="import-option-row">
-                            <div class="check-circle" aria-hidden="true"></div>
-                            <div class="option-text">
-                                <strong>Rules-based parsing is deterministic and isolated</strong>
+                            </li>
+                            <li class="pipeline-guarantee-item" role="listitem">
+                                <strong>Rules-based parsing is deterministic and isolated.</strong>
                                 <span>Rules mode reads embedded PDF text only and does not use OCR/model queues.</span>
-                            </div>
-                        </div>
+                            </li>
+                        </ul>
                     </div>
 
                     <div class="parse-method-group">
@@ -146,7 +139,7 @@
                             <span v-if="parseAttemptLabel">{{ parseAttemptLabel }}</span>
                             <span v-if="parseAttemptLabel && parseElapsedLabel"> · </span>
                             <span v-if="parseElapsedLabel">{{ parseElapsedLabel }}</span>
-                            <span v-if="parseQueuePosition && parseQueueTotal"> · Queue {{ parseQueuePosition }}/{{ parseQueueTotal }}</span>
+                            <span v-if="parseQueuePosition && parseQueueTotal"> · Queue {{ parseQueuePosition }}/{{ parseQueueTotal }} ({{ queueEnvironmentLabel }} scope)</span>
                         </p>
                         <p class="parse-progress-hint" v-if="parseErrorCode">Code: {{ parseErrorCode }}</p>
                         <button class="btn-secondary" @click="cancelParse" :disabled="parseStatus === 'cancelled'">
@@ -178,7 +171,7 @@
                 <div class="queue-panel-header">
                     <div>
                         <h4>Parse Queue</h4>
-                        <p>Track UAH queue load, method-level activity, and current parse position in real time.</p>
+                        <p>Track queue load, method-level activity, and your environment-scoped parse position in real time.</p>
                     </div>
                     <div class="queue-scope-toggle">
                         <button :class="{ active: queueScope === 'user' }" @click="setQueueScope('user')">My Queue</button>
@@ -203,7 +196,7 @@
                                 <small v-if="queueStatus.current_user?.active_job_total">/ {{ queueStatus.current_user.active_job_total }}</small>
                             </span>
                             <span class="queue-metric-sub">
-                                {{ parseMethodTagLabel(queueStatus.current_user?.focus_method || parseMethod || 'local') }} pipeline
+                                {{ parseMethodTagLabel(queueStatus.current_user?.focus_method || parseMethod || 'local') }} · {{ queueEnvironmentLabel }} scope
                             </span>
                         </div>
                         <div class="queue-metric-card">
@@ -225,13 +218,15 @@
                     </div>
 
                     <p class="queue-stage-text" v-if="queueStatus.current_user?.latest_active_job_status">
-                        Active job: {{ parseMethodTagLabel(queueStatus.current_user?.latest_active_job_method) }} · {{ queueStatus.current_user?.latest_active_job_status }}
+                        Active job: {{ parseMethodTagLabel(queueStatus.current_user?.latest_active_job_method) }} · {{ queueStatus.current_user?.latest_active_job_status }} · {{ queueEnvironmentLabel }}
                     </p>
 
                     <details class="queue-details">
                         <summary>Queue details</summary>
                         <div class="queue-details-body">
                             <p class="queue-details-line">Worker mode: {{ queueStatus.worker_status?.mode || 'unknown' }}</p>
+                            <p class="queue-details-line" v-if="queueStatus.current_user?.position_scope_label">Position scope: {{ queueStatus.current_user.position_scope_label }}</p>
+                            <p class="queue-details-line" v-if="queueStatus.queue_namespace">Queue namespace: {{ queueStatus.queue_namespace }}</p>
                             <p class="queue-details-line" v-if="queueStatus.local_queue_note">{{ queueStatus.local_queue_note }}</p>
                             <p class="queue-details-line" v-if="queueStatus.cloud_behavior?.description">{{ queueStatus.cloud_behavior.description }}</p>
                         </div>
@@ -1037,6 +1032,20 @@ export default {
         },
         canViewGlobalQueue() {
             return !!this.queueStatus?.can_view_global
+        },
+        queueEnvironmentLabel() {
+            const explicit = (this.queueStatus?.environment_label || '').trim()
+            if (explicit) return explicit
+
+            const env = (this.queueStatus?.environment || '').trim().toLowerCase()
+            if (env === 'dev' || env === 'development' || env === 'local') return 'Dev'
+            if (env === 'beta' || env === 'staging') return 'Beta'
+            if (env === 'prod' || env === 'production') return 'Prod'
+
+            const host = (window?.location?.hostname || '').toLowerCase()
+            if (host.startsWith('beta.')) return 'Beta'
+            if (host.startsWith('dev.')) return 'Dev'
+            return 'Current Environment'
         },
         pdfViewUrl() {
             return this.pdfObjectUrl || ''
