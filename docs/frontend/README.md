@@ -47,6 +47,7 @@ Security notes:
 
 - Local dev server binds to `127.0.0.1` by default.
 - Backend mode only allows loopback targets unless you explicitly set `VITE_ALLOW_REMOTE_API=true`.
+- Keep `VITE_AUTH_NAMESPACE=dev` for local workflows to avoid auth storage collisions with other environments.
 
 ### Compile and Minify for Production
 

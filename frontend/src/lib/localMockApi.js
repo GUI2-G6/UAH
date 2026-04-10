@@ -1,6 +1,6 @@
+import { getAccessToken, getCurrentUser, setAuth } from './auth.js'
+
 const MOCK_STATE_KEY = 'uah_mock_state_v1'
-const ACCESS_TOKEN_KEY = 'uah_access_token'
-const CURRENT_USER_KEY = 'uah_current_user'
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 
@@ -445,30 +445,25 @@ function saveState(state) {
 }
 
 function getAuthUserFromStorage(state) {
-  const token = localStorage.getItem(ACCESS_TOKEN_KEY)
+  const token = getAccessToken()
   if (!token) return null
 
-  try {
-    const raw = localStorage.getItem(CURRENT_USER_KEY)
-    if (raw) return JSON.parse(raw)
-  } catch {
-    return state.user || null
-  }
+  const currentUser = getCurrentUser()
+  if (currentUser) return currentUser
 
   return state.user || null
 }
 
 function setAuthStorage(user) {
   const token = makeMockToken(user)
-  localStorage.setItem(ACCESS_TOKEN_KEY, token)
-  localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user))
+  setAuth({ access_token: token, user })
 }
 
 function maybeBootstrapAutoLogin(state) {
   const autoLogin = parseBoolean(import.meta.env.VITE_LOCAL_AUTO_LOGIN, false)
   if (!autoLogin) return
 
-  if (!localStorage.getItem(ACCESS_TOKEN_KEY)) {
+  if (!getAccessToken()) {
     setAuthStorage(state.user)
   }
 }

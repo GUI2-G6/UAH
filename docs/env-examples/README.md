@@ -38,3 +38,11 @@ Copy the relevant template values into root `.env` before starting services.
 - Never commit real `.env` files.
 - Never paste real credentials into any `*.env.example` file.
 - Placeholders are intentionally non-secret strings so scanners do not treat them as leaked keys.
+
+## Sync Notes
+
+- CI validates that `backend/app/core/config.py` env usage is represented in:
+  - `env-examples/dev/.env.example`
+  - `env-examples/beta/.env.example`
+- Keep variables present even when a feature is disabled in that environment.
+  - Example: beta keeps `DEV_AUTH_TEST_*` keys documented with empty values while `DEV_AUTH_TEST_ACCOUNT_ENABLED=false`.

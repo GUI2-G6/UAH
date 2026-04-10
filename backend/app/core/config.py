@@ -55,6 +55,14 @@ class Settings:
 
     # Environment
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    DEV_AUTH_TEST_ACCOUNT_ENABLED: bool = _env_bool("DEV_AUTH_TEST_ACCOUNT_ENABLED", "false")
+    DEV_AUTH_TEST_USERNAME: str = os.getenv("DEV_AUTH_TEST_USERNAME", "")
+    DEV_AUTH_TEST_PASSWORD: str = os.getenv("DEV_AUTH_TEST_PASSWORD", "")
+    DEV_AUTH_TEST_EMAIL: str = os.getenv("DEV_AUTH_TEST_EMAIL", "")
+    DEV_AUTH_TEST_FIRST_NAME: str = os.getenv("DEV_AUTH_TEST_FIRST_NAME", "Dev")
+    DEV_AUTH_TEST_LAST_NAME: str = os.getenv("DEV_AUTH_TEST_LAST_NAME", "Tester")
+    DEV_AUTH_TEST_IS_ADMIN: bool = _env_bool("DEV_AUTH_TEST_IS_ADMIN", "false")
+    DEV_AUTH_TEST_ROTATE_PASSWORD: bool = _env_bool("DEV_AUTH_TEST_ROTATE_PASSWORD", "true")
 
     # Email (SMTP)
     EMAILS_ENABLED: bool = _env_bool("EMAILS_ENABLED", "false")
@@ -205,6 +213,15 @@ class Settings:
         lower_session_secret = self.SESSION_SECRET.lower()
         if "placeholder" in lower_secret or "placeholder" in lower_session_secret:
           raise RuntimeError("Placeholder auth secrets are not allowed in beta/prod environments.")
+
+      if self.DEV_AUTH_TEST_ACCOUNT_ENABLED and env_slug not in {"dev", "development", "local"}:
+        raise RuntimeError("DEV_AUTH_TEST_ACCOUNT_ENABLED is only allowed in development/local environments.")
+
+      if self.DEV_AUTH_TEST_ACCOUNT_ENABLED:
+        if not self.DEV_AUTH_TEST_USERNAME.strip():
+          raise RuntimeError("DEV_AUTH_TEST_USERNAME is required when DEV_AUTH_TEST_ACCOUNT_ENABLED=true.")
+        if not self.DEV_AUTH_TEST_PASSWORD.strip():
+          raise RuntimeError("DEV_AUTH_TEST_PASSWORD is required when DEV_AUTH_TEST_ACCOUNT_ENABLED=true.")
 
 
 settings = Settings()

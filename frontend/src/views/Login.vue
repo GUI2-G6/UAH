@@ -42,6 +42,7 @@
 
 <script>
     import SecretInput from "../components/SecretInput.vue";
+    import { setAuth } from "../lib/auth.js";
 
     export default{
         name: "Login",
@@ -58,12 +59,7 @@
         },
         methods: {
             storeAuth(data) {
-                if (data?.access_token) {
-                    localStorage.setItem('uah_access_token', data.access_token)
-                }
-                if (data?.user) {
-                    localStorage.setItem('uah_current_user', JSON.stringify(data.user))
-                }
+                setAuth(data)
             },
             async login() {
                 this.loading = true

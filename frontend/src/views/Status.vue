@@ -212,6 +212,8 @@
 </template>
 
 <script>
+import { getAccessToken } from '../lib/auth.js'
+
 export default {
   name: 'Status',
   data() {
@@ -237,7 +239,7 @@ export default {
         return
       }
 
-      const token = localStorage.getItem('uah_access_token')
+      const token = getAccessToken()
       this.$router.push(token ? '/home' : '/login')
     },
     async fetchDiagnostics() {

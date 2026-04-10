@@ -30,6 +30,24 @@ The backend validates required secrets on startup. Set these before launching `u
 
 Recommended: load these from the repository root `.env` file instead of typing placeholder values manually.
 
+### Optional: Dev Test Account Bootstrap
+
+The backend supports a dev/local-only seeded test account via env flags:
+
+- `DEV_AUTH_TEST_ACCOUNT_ENABLED`
+- `DEV_AUTH_TEST_USERNAME`
+- `DEV_AUTH_TEST_PASSWORD`
+- `DEV_AUTH_TEST_EMAIL`
+- `DEV_AUTH_TEST_FIRST_NAME`
+- `DEV_AUTH_TEST_LAST_NAME`
+- `DEV_AUTH_TEST_IS_ADMIN`
+- `DEV_AUTH_TEST_ROTATE_PASSWORD`
+
+Behavior:
+
+- If `DEV_AUTH_TEST_ACCOUNT_ENABLED=true`, username and password must be set.
+- This feature is blocked in beta/prod and should remain disabled there.
+
 You can generate secrets with:
 
 ```bash

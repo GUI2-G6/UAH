@@ -153,7 +153,7 @@
 import Card from "../components/Card.vue";
 import ConfirmModal from "../components/ConfirmModal.vue";
 import SecretInput from "../components/SecretInput.vue";
-import { authedFetch, clearAuth, setCurrentUser } from "../lib/auth.js";
+import { authedFetch, clearAuth, getCurrentUser, setCurrentUser } from "../lib/auth.js";
 import { showToast } from '@/services/toastService.js';
 
 export default {
@@ -247,12 +247,7 @@ export default {
             return `${label} failed: ${msg}`
         },
         async loadUser() {
-            try {
-                const raw = localStorage.getItem('uah_current_user')
-                this.currentUser = raw ? JSON.parse(raw) : null
-            } catch {
-                this.currentUser = null
-            }
+            this.currentUser = getCurrentUser()
 
             if (this.currentUser) {
                 this.firstName = this.currentUser.first_name || this.currentUser.firstName || ''
@@ -269,7 +264,7 @@ export default {
                 if (!res.ok) return
                 const user = await res.json()
                 this.currentUser = user
-                localStorage.setItem('uah_current_user', JSON.stringify(user))
+                setCurrentUser(user)
 
                 this.firstName = user.first_name || user.firstName || this.firstName
                 this.lastName = user.last_name || user.lastName || this.lastName
