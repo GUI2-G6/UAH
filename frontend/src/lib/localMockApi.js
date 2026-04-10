@@ -37,6 +37,83 @@ const CITY_FIXTURES = {
   ],
 }
 
+const MOCK_LOCATION_PARAM_CAP = 60
+const MUSE_LEVEL_OPTIONS = ['Internship', 'Entry Level', 'Mid Level', 'Senior Level', 'Management']
+const CATEGORY_GROUPS = [
+  {
+    key: 'tech',
+    name: 'Tech',
+    muse_categories: [
+      'Software Engineer',
+      'Software Engineering',
+      'Computer and IT',
+      'IT',
+      'Data and Analytics',
+      'Data Science',
+      'Design and UX',
+      'UX',
+      'Science and Engineering',
+    ],
+  },
+  {
+    key: 'finance',
+    name: 'Finance',
+    muse_categories: ['Accounting', 'Accounting and Finance', 'Finance', 'Real Estate'],
+  },
+  {
+    key: 'product',
+    name: 'Product',
+    muse_categories: ['Product', 'Product Management', 'Project Management'],
+  },
+  {
+    key: 'people',
+    name: 'People',
+    muse_categories: ['HR', 'Human Resources and Recruitment', 'Recruiting', 'Social Services'],
+  },
+  {
+    key: 'business and operations',
+    name: 'Business and Operations',
+    muse_categories: ['Business Operations', 'Corporate', 'Operations', 'Office Administration', 'Administration and Office'],
+  },
+  {
+    key: 'sales and marketing',
+    name: 'Sales and Marketing',
+    muse_categories: [
+      'Sales',
+      'Marketing',
+      'Advertising and Marketing',
+      'Public Relations',
+      'Media, PR, and Communications',
+      'Account Management',
+      'Account Management/Customer Success',
+    ],
+  },
+  {
+    key: 'customer and support',
+    name: 'Customer and Support',
+    muse_categories: ['Customer Service', 'Education', 'Legal Services'],
+  },
+]
+const CATEGORY_ALIAS = {
+  technology: 'Tech',
+  engineering: 'Tech',
+  tech: 'Tech',
+  fintech: 'Finance',
+  finance: 'Finance',
+  product: 'Product',
+  people: 'People',
+  hr: 'People',
+  operations: 'Business and Operations',
+  business: 'Business and Operations',
+  sales: 'Sales and Marketing',
+  marketing: 'Sales and Marketing',
+  support: 'Customer and Support',
+}
+const CATEGORY_GROUP_BY_NAME = CATEGORY_GROUPS.reduce((acc, group) => {
+  acc[group.name.toLowerCase()] = group
+  return acc
+}, {})
+
 const JOB_FIXTURES = [
   {
     id: 'mock-job-1001',
@@ -515,6 +592,79 @@ function normalizeTextLower(value) {
   return normalizeText(value).toLowerCase()
 }
 
+function normalizeIsoDate(value) {
+  const raw = normalizeText(value)
+  if (!raw) return ''
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toISOString()
+}
+
+function simpleHash(value) {
+  let hash = 0
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(i)
+    hash |= 0
+  }
+  return `mock-${Math.abs(hash)}`
+}
+
+function buildMockFilterMetadata() {
+  const payload = {
+    category_groups: CATEGORY_GROUPS.map((group) => ({
+      key: group.key,
+      name: group.name,
+      muse_categories: [...group.muse_categories],
+    })),
+    category_aliases: { ...CATEGORY_ALIAS },
+    levels: [...MUSE_LEVEL_OPTIONS],
+    location_param_cap: MOCK_LOCATION_PARAM_CAP,
+  }
+  const core = JSON.stringify(payload)
+  return {
+    ...payload,
+    metadata_version: 'jobs-filter-v1',
+    metadata_hash: simpleHash(core),
+  }
+}
+
+function expandCategoriesForMock(values) {
+  const expanded = []
+  const seen = new Set()
+
+  for (const rawValue of values || []) {
+    const value = normalizeText(rawValue)
+    if (!value) continue
+
+    const lower = value.toLowerCase()
+    const aliased = CATEGORY_ALIAS[lower] || value
+    const group = CATEGORY_GROUP_BY_NAME[normalizeTextLower(aliased)]
+    const candidates = group ? group.muse_categories : [value]
+
+    for (const candidate of candidates) {
+      const key = normalizeTextLower(candidate)
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      expanded.push(candidate)
+    }
+  }
+
+  return expanded
+}
+
+function parsePostedAfter(rawValue) {
+  const iso = normalizeIsoDate(rawValue)
+  if (!iso) return null
+  return new Date(iso)
+}
+
+function matchesPostedAfter(job, postedAfter) {
+  if (!postedAfter) return true
+  const publicationDate = new Date(job.publication_date || '')
+  if (Number.isNaN(publicationDate.getTime())) return false
+  return publicationDate >= postedAfter
+}
+
 function haversineMiles(lat1, lon1, lat2, lon2) {
   const toRad = (deg) => (deg * Math.PI) / 180
   const earthRadiusMiles = 3958.7613
@@ -725,13 +875,128 @@ function queryValues(params, key) {
   return params.getAll(key).map((value) => normalizeText(value)).filter(Boolean)
 }
 
-function applyJobSearchFilters(baseJobs, params) {
+function cityToMuseLocationName(city) {
+  const name = normalizeText(city?.name)
+  if (!name) return ''
+
+  const admin = normalizeText(city?.admin1)
+  const countryCode = normalizeTextUpper(city?.country_code)
+  if (admin && countryCode === 'US') {
+    return `${name}, ${admin}`
+  }
+  if (admin && countryCode && normalizeTextUpper(admin) !== countryCode) {
+    return `${name}, ${admin}, ${countryCode}`
+  }
+  if (countryCode) {
+    return `${name}, ${countryCode}`
+  }
+  return name
+}
+
+function buildObservedRankLookup(countryCode) {
+  const lookup = new Map()
+  const cities = ensureArray(CITY_FIXTURES[countryCode], [])
+
+  for (const [index, city] of cities.entries()) {
+    const variants = [
+      normalizeTextLower(cityToMuseLocationName(city)),
+      normalizeTextLower(city?.name),
+      normalizeTextLower(`${normalizeText(city?.name)}, ${normalizeTextUpper(city?.country_code)}`),
+    ]
+
+    for (const variant of variants) {
+      if (!variant || lookup.has(variant)) continue
+      lookup.set(variant, index)
+    }
+  }
+
+  return lookup
+}
+
+function buildMockLocationSelection(params) {
+  const mode = normalizeTextLower(params.get('location_mode'))
+  const countryCode = normalizeTextUpper(params.get('location_country_code'))
+  const rawLocationSelections = queryValues(params, 'location')
+  const uniqueLocationSelections = []
+  const seenLocations = new Set()
+
+  for (const [index, location] of rawLocationSelections.entries()) {
+    const key = normalizeTextLower(location)
+    if (!key || seenLocations.has(key)) continue
+    seenLocations.add(key)
+    uniqueLocationSelections.push({
+      value: location,
+      key,
+      raw_index: index,
+    })
+  }
+
+  let strategy = 'none'
+  let orderedSelections = [...uniqueLocationSelections]
+
+  if (mode === 'country' && orderedSelections.length) {
+    strategy = 'muse-index-country-aware'
+    const observedRankLookup = buildObservedRankLookup(countryCode)
+    orderedSelections.sort((a, b) => {
+      const aRank = observedRankLookup.has(a.key) ? observedRankLookup.get(a.key) : Number.MAX_SAFE_INTEGER
+      const bRank = observedRankLookup.has(b.key) ? observedRankLookup.get(b.key) : Number.MAX_SAFE_INTEGER
+      if (aRank !== bRank) return aRank - bRank
+      return a.raw_index - b.raw_index
+    })
+  } else if ((mode === 'nearby' || mode === 'manual') && orderedSelections.length) {
+    strategy = countryCode === 'US'
+      ? 'muse-index-country-aware-nearby-state-locked'
+      : (countryCode ? 'muse-index-country-aware' : 'muse-index-global')
+    orderedSelections.sort((a, b) => a.raw_index - b.raw_index)
+  } else if (orderedSelections.length) {
+    strategy = countryCode ? 'muse-index-country-aware' : 'muse-index-global'
+  }
+
+  const selectedRows = orderedSelections.slice(0, MOCK_LOCATION_PARAM_CAP)
+  const droppedRows = orderedSelections.slice(MOCK_LOCATION_PARAM_CAP)
+  const selectedLocations = selectedRows.map((row) => row.value)
+  const droppedLocations = droppedRows.map((row) => row.value)
+
+  return {
+    mode,
+    countryCode,
+    strategy,
+    requestedLocationCount: uniqueLocationSelections.length,
+    selectedLocations,
+    droppedLocations,
+    locationParamsTruncated: droppedLocations.length > 0,
+    requestedLocationsSample: uniqueLocationSelections.slice(0, 12).map((row) => row.value),
+    selectedLocationsSample: selectedRows.slice(0, 12).map((row) => row.value),
+  }
+}
+
+function isFlexibleOrRemoteLocationName(name) {
+  const normalized = normalizeTextLower(name)
+  if (!normalized) return false
+  return normalized.includes('remote') || normalized.includes('hybrid') || normalized.includes('flexible')
+}
+
+function hasConcreteLocationMatch(jobLocations, selectedLocations) {
+  if (!selectedLocations.length) return true
+  const lowerLocations = (jobLocations || []).map(normalizeTextLower)
+
+  for (const location of lowerLocations) {
+    if (isFlexibleOrRemoteLocationName(location)) continue
+    const matched = selectedLocations.some((selected) => location.includes(selected) || selected.includes(location))
+    if (matched) return true
+  }
+  return false
+}
+
+function applyJobSearchFilters(baseJobs, params, selectedLocations) {
   let jobs = [...baseJobs]
 
-  const categories = queryValues(params, 'category').map(normalizeTextLower)
+  const categories = expandCategoriesForMock(queryValues(params, 'category')).map(normalizeTextLower)
   const levels = queryValues(params, 'level').map(normalizeTextLower)
   const companies = queryValues(params, 'company').map(normalizeTextLower)
-  const locations = queryValues(params, 'location').map(normalizeTextLower)
+  const locations = (selectedLocations || []).map(normalizeTextLower)
+  const keyword = normalizeTextLower(params.get('q'))
+  const postedAfter = parsePostedAfter(params.get('posted_after'))
 
   const includeRemote = normalizeTextLower(params.get('include_remote')) === 'true'
   const includeHybrid = normalizeTextLower(params.get('include_hybrid')) !== 'false'
@@ -748,23 +1013,81 @@ function applyJobSearchFilters(baseJobs, params) {
     jobs = jobs.filter((job) => companies.includes(normalizeTextLower(job.company)))
   }
 
-  if (locations.length) {
+  if (keyword) {
     jobs = jobs.filter((job) => {
-      const lowerLocations = (job.locations || []).map(normalizeTextLower)
-      return locations.some((selected) => lowerLocations.some((candidate) => candidate.includes(selected)))
+      const haystack = [
+        job.name,
+        job.short_name,
+        job.company,
+        ...(job.locations || []),
+        ...(job.categories || []),
+        ...(job.levels || []),
+        ...(job.tags || []),
+        job.contents || '',
+      ].join(' ').toLowerCase()
+      return haystack.includes(keyword)
     })
   }
 
-  jobs = jobs.filter((job) => {
-    if (!includeHybrid && job.has_hybrid) return false
+  if (postedAfter) {
+    jobs = jobs.filter((job) => matchesPostedAfter(job, postedAfter))
+  }
 
-    const remoteOnly = job.has_remote === true && job.has_hybrid !== true
-    if (!includeRemote && remoteOnly && job.is_local_compatible_remote !== true) return false
+  let acceptedByConcreteLocation = 0
+  let acceptedByRemoteOverride = 0
+  let acceptedByHybridOverride = 0
+  let acceptedByConstraintOverlap = 0
 
-    return true
-  })
+  const allowedJobs = []
+  for (const job of jobs) {
+    const hasRemote = job.has_remote === true
+    const hasHybrid = job.has_hybrid === true
+    const remoteOnly = hasRemote && !hasHybrid
+    const allowLocalCompatibleRemote = !includeRemote && job.is_local_compatible_remote === true
 
-  return jobs
+    const concreteLocationMatch = hasConcreteLocationMatch(job.locations || [], locations)
+    let allowReason = locations.length ? 'concrete_location' : 'no-location-filter'
+
+    if (locations.length && !concreteLocationMatch) {
+      if (includeRemote && hasRemote) {
+        allowReason = 'remote_override'
+      } else if (includeHybrid && hasHybrid) {
+        allowReason = 'hybrid_override'
+      } else if (allowLocalCompatibleRemote && hasRemote) {
+        allowReason = 'constraint_overlap'
+      } else {
+        continue
+      }
+    }
+
+    if (!includeHybrid && hasHybrid) {
+      continue
+    }
+    if (!includeRemote && remoteOnly && !allowLocalCompatibleRemote) {
+      continue
+    }
+
+    if (allowReason === 'concrete_location') acceptedByConcreteLocation += 1
+    if (allowReason === 'remote_override') acceptedByRemoteOverride += 1
+    if (allowReason === 'hybrid_override') acceptedByHybridOverride += 1
+    if (allowReason === 'constraint_overlap') acceptedByConstraintOverlap += 1
+
+    allowedJobs.push(job)
+  }
+
+  return {
+    jobs: allowedJobs,
+    diagnostics: {
+      acceptedByConcreteLocation,
+      acceptedByRemoteOverride,
+      acceptedByHybridOverride,
+      acceptedByConstraintOverlap,
+      filteredOutCount: Math.max(0, baseJobs.length - allowedJobs.length),
+      constraintParseHighConfidence: jobs.length,
+      constraintParseMediumConfidence: 0,
+      constraintParseLowConfidence: 0,
+    },
+  }
 }
 
 async function parseJsonBody(request) {
@@ -788,6 +1111,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
       },
       paths: {
         '/api/auth/login': {},
+        '/api/jobs/filter-metadata': {},
         '/api/jobs/search': {},
       },
     })
@@ -1227,7 +1551,11 @@ async function handleMockApiRequest(request, requestUrl, state) {
   }
 
   if (pathname === '/api/geolocation/muse-supported-countries' && method === 'GET') {
-    return toJsonResponse({ countries: COUNTRY_FIXTURES })
+    return toJsonResponse({ countries: COUNTRY_FIXTURES, total_count: COUNTRY_FIXTURES.length })
+  }
+
+  if (pathname === '/api/jobs/filter-metadata' && method === 'GET') {
+    return toJsonResponse(buildMockFilterMetadata())
   }
 
   if (pathname === '/api/geolocation/ip' && method === 'GET') {
@@ -1288,8 +1616,20 @@ async function handleMockApiRequest(request, requestUrl, state) {
 
   if (pathname === '/api/geolocation/muse-supported-locations' && method === 'GET') {
     const countryCode = normalizeTextUpper(requestUrl.searchParams.get('country_code')) || 'US'
-    const locations = ensureArray(CITY_FIXTURES[countryCode], []).map((city) => ({ ...city }))
-    return toJsonResponse({ locations })
+    const limit = Math.max(1, Math.min(500, parseInteger(requestUrl.searchParams.get('limit'), 200)))
+    const locations = ensureArray(CITY_FIXTURES[countryCode], [])
+      .map((city, index) => ({
+        name: cityToMuseLocationName(city),
+        admin1: city.admin1,
+        country: city.country,
+        country_code: city.country_code,
+        latitude: city.latitude,
+        longitude: city.longitude,
+        observed_count: Math.max(1, 1000 - index * 50),
+      }))
+      .sort((a, b) => Number(b.observed_count || 0) - Number(a.observed_count || 0))
+      .slice(0, limit)
+    return toJsonResponse({ locations, total_count: locations.length, country_code: countryCode })
   }
 
   if (pathname === '/api/geolocation/country-cities' && method === 'GET') {
@@ -1320,14 +1660,21 @@ async function handleMockApiRequest(request, requestUrl, state) {
   if (pathname === '/api/jobs/search' && method === 'GET') {
     const page = Math.max(1, parseInteger(requestUrl.searchParams.get('page'), 1))
     const pageSize = Math.max(1, Math.min(50, parseInteger(requestUrl.searchParams.get('page_size'), 10)))
+    const locationSelection = buildMockLocationSelection(requestUrl.searchParams)
+    const selectedLocations = locationSelection.selectedLocations
+    const droppedLocations = locationSelection.droppedLocations
+    const locationParamsTruncated = locationSelection.locationParamsTruncated
 
-    const filtered = applyJobSearchFilters(JOB_FIXTURES, requestUrl.searchParams)
+    const filteredResult = applyJobSearchFilters(JOB_FIXTURES, requestUrl.searchParams, selectedLocations)
+    const filtered = filteredResult.jobs
+    const diagnostics = filteredResult.diagnostics || {}
     const totalJobs = filtered.length
     const totalPages = Math.max(1, Math.ceil(totalJobs / pageSize))
     const start = (page - 1) * pageSize
     const jobs = filtered.slice(start, start + pageSize)
-
-    const locationSelections = queryValues(requestUrl.searchParams, 'location')
+    const keywordQuery = normalizeTextLower(requestUrl.searchParams.get('q'))
+    const postedAfter = normalizeIsoDate(requestUrl.searchParams.get('posted_after'))
+    const metadata = buildMockFilterMetadata()
 
     return toJsonResponse({
       jobs,
@@ -1340,37 +1687,53 @@ async function handleMockApiRequest(request, requestUrl, state) {
       total_estimate_strategy: 'exact-mock',
       guardrail_stop_reason: '',
       source_pages_scanned: 1,
-      filtered_out_count: Math.max(0, JOB_FIXTURES.length - totalJobs),
-      requested_location_count: locationSelections.length,
-      used_location_count: locationSelections.length,
-      location_params_used: locationSelections.length,
-      location_params_truncated: false,
+      filtered_out_count: Number(diagnostics.filteredOutCount || 0),
+      requested_location_count: locationSelection.requestedLocationCount,
+      used_location_count: selectedLocations.length,
+      location_params_used: selectedLocations.length,
+      location_params_truncated: locationParamsTruncated,
+      dropped_location_count: droppedLocations.length,
+      dropped_locations_sample: droppedLocations.slice(0, 12),
+      location_mode: locationSelection.mode,
+      location_country_code: locationSelection.countryCode,
       has_next_page_possible_raw: page < totalPages,
       has_more_source_pages: page < totalPages,
       source_page_count: totalPages,
       window_start_page: page,
       window_size: 1,
-      location_selection_strategy: 'mock',
-      canonicalized_location_count: locationSelections.length,
-      transformed_location_count: locationSelections.length,
+      location_selection_strategy: locationSelection.strategy,
+      canonicalized_location_count: selectedLocations.length,
+      transformed_location_count: 0,
       unmatched_location_count: 0,
       strict_state_blocked_count: 0,
-      selected_state_diversity_count: 1,
-      accepted_by_concrete_location: totalJobs,
-      accepted_by_remote_override: 0,
-      accepted_by_hybrid_override: 0,
-      accepted_by_constraint_overlap: 0,
-      constraint_parse_high_confidence: totalJobs,
-      constraint_parse_medium_confidence: 0,
-      constraint_parse_low_confidence: 0,
+      selected_state_diversity_count: new Set(
+        selectedLocations
+          .map((location) => {
+            const match = String(location || '').match(/,\s*([A-Z]{2})(?:\s*,|\s*$)/)
+            return match ? match[1] : ''
+          })
+          .filter(Boolean)
+      ).size,
+      accepted_by_concrete_location: Number(diagnostics.acceptedByConcreteLocation || 0),
+      accepted_by_remote_override: Number(diagnostics.acceptedByRemoteOverride || 0),
+      accepted_by_hybrid_override: Number(diagnostics.acceptedByHybridOverride || 0),
+      accepted_by_constraint_overlap: Number(diagnostics.acceptedByConstraintOverlap || 0),
+      constraint_parse_high_confidence: Number(diagnostics.constraintParseHighConfidence || 0),
+      constraint_parse_medium_confidence: Number(diagnostics.constraintParseMediumConfidence || 0),
+      constraint_parse_low_confidence: Number(diagnostics.constraintParseLowConfidence || 0),
+      constraint_policy_remote_off: 'allow-if-overlap',
       constraint_compatibility_enabled: true,
       constraint_filter_min_confidence: 'high',
       adaptive_chase_enabled: false,
       adaptive_chase_extra_pages: 0,
       effective_max_pages: 1,
       effective_min_filtered_ratio: 0,
-      requested_locations_sample: locationSelections.slice(0, 5),
-      selected_locations_sample: locationSelections.slice(0, 5),
+      requested_locations_sample: locationSelection.requestedLocationsSample,
+      selected_locations_sample: locationSelection.selectedLocationsSample,
+      keyword_query: keywordQuery,
+      posted_after: postedAfter,
+      jobs_filter_metadata_version: metadata.metadata_version,
+      jobs_filter_metadata_hash: metadata.metadata_hash,
       cache_hit: false,
     })
   }
