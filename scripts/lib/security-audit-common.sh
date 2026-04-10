@@ -42,6 +42,23 @@ _audit_has_cmd() {
   command -v "$1" >/dev/null 2>&1
 }
 
+_audit_python_cmd() {
+  local candidate
+
+  for candidate in python3 python; do
+    if ! _audit_has_cmd "$candidate"; then
+      continue
+    fi
+
+    if "$candidate" -c "import sys" >/dev/null 2>&1; then
+      printf "%s" "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 _audit_capture() {
   local __outvar="$1"
   shift
@@ -576,6 +593,9 @@ _audit_check_dependency_vulnerabilities() {
 
   local backend_req="$AUDIT_ROOT_DIR/backend/requirements.txt"
   local frontend_dir="$AUDIT_ROOT_DIR/frontend"
+  local py_cmd
+
+  py_cmd="$(_audit_python_cmd 2>/dev/null || true)"
 
   if [[ -f "$backend_req" ]]; then
     if _audit_has_cmd pip-audit; then
@@ -583,6 +603,7 @@ _audit_check_dependency_vulnerabilities() {
       local pip_err
       local pip_rc
       local pip_count
+      local parse_rc
 
       pip_json="$(mktemp)"
       pip_err="$(mktemp)"
@@ -592,8 +613,9 @@ _audit_check_dependency_vulnerabilities() {
       pip_rc=$?
       set -e
 
-      if _audit_has_cmd python3; then
-        pip_count="$(python3 - "$pip_json" <<'PY'
+      if [[ -n "$py_cmd" ]]; then
+        set +e
+        pip_count="$("$py_cmd" - "$pip_json" <<'PY'
 import json
 import sys
 
@@ -617,6 +639,11 @@ for dep in deps:
 print(count)
 PY
         )"
+        parse_rc=$?
+        set -e
+        if [[ "$parse_rc" -ne 0 ]]; then
+          pip_count="parse_error"
+        fi
       else
         pip_count="parse_error"
       fi
@@ -651,6 +678,7 @@ PY
       local npm_err
       local npm_rc
       local npm_counts
+      local parse_rc
 
       npm_json="$(mktemp)"
       npm_err="$(mktemp)"
@@ -660,8 +688,9 @@ PY
       npm_rc=$?
       set -e
 
-      if _audit_has_cmd python3; then
-        npm_counts="$(python3 - "$npm_json" <<'PY'
+      if [[ -n "$py_cmd" ]]; then
+        set +e
+        npm_counts="$("$py_cmd" - "$npm_json" <<'PY'
 import json
 import sys
 
@@ -678,6 +707,11 @@ critical = int(meta.get("critical", 0) or 0)
 print(f"{high}|{critical}")
 PY
         )"
+        parse_rc=$?
+        set -e
+        if [[ "$parse_rc" -ne 0 ]]; then
+          npm_counts="parse_error"
+        fi
       else
         npm_counts="parse_error"
       fi
@@ -1033,6 +1067,9 @@ _audit_check_host_firewall_ufw() {
 
 _audit_check_image_vulnerabilities() {
   _audit_set_section "image-vulnerabilities"
+  local py_cmd
+
+  py_cmd="$(_audit_python_cmd 2>/dev/null || true)"
 
   if ! _audit_mode_allows_docker; then
     _audit_add_result skip image_vuln_skipped "Image vulnerability checks skipped by mode." "mode=$AUDIT_MODE"
@@ -1044,8 +1081,8 @@ _audit_check_image_vulnerabilities() {
     return
   fi
 
-  if ! _audit_has_cmd python3; then
-    _audit_add_result warn image_vuln_python_missing "python3 is not installed; trivy JSON parsing is unavailable."
+  if [[ -z "$py_cmd" ]]; then
+    _audit_add_result warn image_vuln_python_missing "No runnable Python interpreter found; trivy JSON parsing is unavailable."
     return
   fi
 
@@ -1082,6 +1119,7 @@ _audit_check_image_vulnerabilities() {
     local trivy_json
     local trivy_rc
     local vuln_count
+    local parse_rc
 
     trivy_json="$(mktemp)"
     set +e
@@ -1095,7 +1133,8 @@ _audit_check_image_vulnerabilities() {
       continue
     fi
 
-    vuln_count="$(python3 - "$trivy_json" <<'PY'
+    set +e
+    vuln_count="$("$py_cmd" - "$trivy_json" <<'PY'
 import json
 import sys
 
@@ -1115,6 +1154,11 @@ for result in data.get("Results", []):
 print(count)
 PY
 )"
+    parse_rc=$?
+    set -e
+    if [[ "$parse_rc" -ne 0 ]]; then
+      vuln_count="parse_error"
+    fi
 
     if [[ "$vuln_count" =~ ^[0-9]+$ ]]; then
       if [[ "$vuln_count" -gt 0 ]]; then
@@ -1152,12 +1196,16 @@ _audit_print_results() {
 }
 
 _audit_write_json() {
+  local py_cmd
+  local py_rc
+
   if [[ -z "$AUDIT_JSON_PATH" ]]; then
     return
   fi
 
-  if ! _audit_has_cmd python3; then
-    echo "[WARN] (reporting) json_output_skipped - python3 not available; JSON report was not written."
+  py_cmd="$(_audit_python_cmd 2>/dev/null || true)"
+  if [[ -z "$py_cmd" ]]; then
+    echo "[WARN] (reporting) json_output_skipped - no runnable Python interpreter available; JSON report was not written."
     return
   fi
 
@@ -1169,7 +1217,8 @@ _audit_write_json() {
     printf "%s\n" "$rec" >> "$temp_file"
   done
 
-  python3 - "$temp_file" "$AUDIT_JSON_PATH" "$AUDIT_ENV" "$AUDIT_ENV_FILE" "$AUDIT_MODE" "$AUDIT_FIX" "$AUDIT_START_TS" <<'PY'
+  set +e
+  "$py_cmd" - "$temp_file" "$AUDIT_JSON_PATH" "$AUDIT_ENV" "$AUDIT_ENV_FILE" "$AUDIT_MODE" "$AUDIT_FIX" "$AUDIT_START_TS" <<'PY'
 import json
 import sys
 from datetime import datetime, timezone
@@ -1245,8 +1294,15 @@ report = {
 with open(output_path, "w", encoding="utf-8") as f:
     json.dump(report, f, indent=2)
 PY
+  py_rc=$?
+  set -e
 
   rm -f "$temp_file"
+  if [[ "$py_rc" -ne 0 ]]; then
+    echo "[WARN] (reporting) json_output_failed - Python failed to write JSON report."
+    return
+  fi
+
   echo "[INFO] (reporting) audit_json_written - $AUDIT_JSON_PATH"
 }
 
@@ -1316,5 +1372,9 @@ audit_run() {
     return 0
   fi
 
-  return $?
+  if ((AUDIT_FAIL_COUNT > 0)); then
+    return 2
+  fi
+
+  return 1
 }

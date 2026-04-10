@@ -38,6 +38,7 @@ declare -A ENV_POLICY_RECOMMENDED_VALUES=()
 declare -A ENV_POLICY_FINDING_LEVEL=()
 declare -A ENV_POLICY_PENDING_VALUES=()
 declare -a ENV_POLICY_MESSAGES=()
+declare -a ENV_POLICY_MISMATCHED_KEYS=()
 
 if [[ -t 1 ]]; then
   RED='\033[0;31m'
@@ -149,6 +150,255 @@ validate_build_mode_for_action() {
       exit 1
       ;;
   esac
+}
+
+build_mode_refresh_from_flags_relaxed() {
+  if [[ "$FLAG_BUILD_ALL" == true ]]; then
+    BUILD_MODE="all"
+    return
+  fi
+
+  if [[ ${#BUILD_SERVICES[@]} -gt 0 ]]; then
+    BUILD_MODE="services"
+    return
+  fi
+
+  BUILD_MODE="none"
+}
+
+build_mode_reset_selection() {
+  FLAG_NO_BUILD=false
+  FLAG_BUILD_ALL=false
+  BUILD_SERVICES=()
+  BUILD_MODE="none"
+}
+
+build_mode_set_all_selection() {
+  FLAG_NO_BUILD=false
+  FLAG_BUILD_ALL=true
+  BUILD_SERVICES=()
+  BUILD_MODE="all"
+}
+
+build_mode_set_services_selection() {
+  FLAG_NO_BUILD=false
+  FLAG_BUILD_ALL=false
+  if [[ ${#BUILD_SERVICES[@]} -gt 0 ]]; then
+    BUILD_MODE="services"
+  else
+    BUILD_MODE="none"
+  fi
+}
+
+build_mode_is_service_selected() {
+  local service_name="$1"
+  local existing
+
+  for existing in "${BUILD_SERVICES[@]}"; do
+    if [[ "$existing" == "$service_name" ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+build_mode_remove_service() {
+  local service_name="$1"
+  local existing
+  local -a updated_services=()
+
+  for existing in "${BUILD_SERVICES[@]}"; do
+    if [[ "$existing" == "$service_name" ]]; then
+      continue
+    fi
+    updated_services+=("$existing")
+  done
+
+  BUILD_SERVICES=("${updated_services[@]}")
+}
+
+build_mode_default_service_list() {
+  local env_name="$1"
+
+  case "$env_name" in
+    beta)
+      echo "backend frontend db redis cloudflared"
+      ;;
+    *)
+      echo "backend frontend db redis"
+      ;;
+  esac
+}
+
+build_mode_print_selected_services() {
+  local service
+
+  if [[ ${#BUILD_SERVICES[@]} -eq 0 ]]; then
+    echo "<none>"
+    return
+  fi
+
+  for service in "${BUILD_SERVICES[@]}"; do
+    printf "%s " "$service"
+  done
+  echo ""
+}
+
+build_mode_select_services_interactive() {
+  local env_name="$1"
+  local action_name="$2"
+  local choice
+  local custom_service
+  local marker
+  local service
+  local index
+  local -a default_services=()
+  local -a original_services=("${BUILD_SERVICES[@]}")
+  local original_mode="$BUILD_MODE"
+  local original_flag_no_build="$FLAG_NO_BUILD"
+  local original_flag_build_all="$FLAG_BUILD_ALL"
+
+  read -r -a default_services <<< "$(build_mode_default_service_list "$env_name")"
+
+  while true; do
+    debug_header "$env_name" "Rebuild :: $action_name :: Services"
+    debug_print_section "Toggle services by number"
+
+    for index in "${!default_services[@]}"; do
+      service="${default_services[$index]}"
+      if build_mode_is_service_selected "$service"; then
+        marker="x"
+      else
+        marker=" "
+      fi
+      printf "  %2d) [%s] %s\n" "$((index + 1))" "$marker" "$service"
+    done
+
+    echo ""
+    echo "  Selected services: $(build_mode_print_selected_services)"
+    echo ""
+    echo "  Actions"
+    echo "    c) add custom service"
+    echo "    r) reset selected services"
+    echo "    a) apply service selection"
+    echo "    b) back"
+    read -rp "  Choice: " choice
+
+    case "${choice,,}" in
+      a|apply)
+        if [[ ${#BUILD_SERVICES[@]} -eq 0 ]]; then
+          debug_print_warn "Select at least one service before applying services mode."
+          debug_press_enter
+          continue
+        fi
+        build_mode_set_services_selection
+        return 0
+        ;;
+      b|back)
+        BUILD_SERVICES=("${original_services[@]}")
+        BUILD_MODE="$original_mode"
+        FLAG_NO_BUILD="$original_flag_no_build"
+        FLAG_BUILD_ALL="$original_flag_build_all"
+        return 1
+        ;;
+      c|custom)
+        read -rp "  Custom service name: " custom_service
+        if [[ -z "$custom_service" ]]; then
+          debug_print_warn "Service name cannot be empty."
+          debug_press_enter
+          continue
+        fi
+        if [[ ! "$custom_service" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
+          debug_print_warn "Invalid service name '$custom_service'."
+          debug_press_enter
+          continue
+        fi
+        if build_mode_is_service_selected "$custom_service"; then
+          build_mode_remove_service "$custom_service"
+        else
+          append_unique_build_service "$custom_service"
+        fi
+        ;;
+      r|reset)
+        BUILD_SERVICES=()
+        ;;
+      *)
+        if [[ "$choice" =~ ^[0-9]+$ ]]; then
+          index=$((choice - 1))
+          if (( index < 0 || index >= ${#default_services[@]} )); then
+            debug_print_warn "Invalid service number."
+            debug_press_enter
+            continue
+          fi
+
+          service="${default_services[$index]}"
+          if build_mode_is_service_selected "$service"; then
+            build_mode_remove_service "$service"
+          else
+            append_unique_build_service "$service"
+          fi
+          continue
+        fi
+
+        debug_print_warn "Invalid selection."
+        debug_press_enter
+        ;;
+    esac
+  done
+}
+
+configure_rebuild_ui_for_action() {
+  local env_name="$1"
+  local action_name="$2"
+  local choice
+
+  build_mode_refresh_from_flags_relaxed
+
+  while true; do
+    debug_header "$env_name" "Rebuild :: ${action_name^^}"
+    debug_print_section "Current rebuild selection"
+    startup_status_chip "ok" "Mode: $(build_mode_label)"
+
+    if [[ "$BUILD_MODE" == "services" ]]; then
+      startup_status_chip "ok" "Services: $(build_mode_print_selected_services)"
+    fi
+
+    echo ""
+    echo "  Choose rebuild behavior:"
+    echo "    1) Keep current selection"
+    echo "    2) No rebuild"
+    echo "    3) Rebuild all services"
+    echo "    4) Select services to rebuild"
+    echo "    0) Back"
+    read -rp "  Choice [1-4/0]: " choice
+
+    case "$choice" in
+      1)
+        return 0
+        ;;
+      2)
+        build_mode_reset_selection
+        return 0
+        ;;
+      3)
+        build_mode_set_all_selection
+        return 0
+        ;;
+      4)
+        if build_mode_select_services_interactive "$env_name" "$action_name"; then
+          return 0
+        fi
+        ;;
+      0)
+        return 1
+        ;;
+      *)
+        debug_print_warn "Invalid selection."
+        debug_press_enter
+        ;;
+    esac
+  done
 }
 
 get_env_value_or_default() {
@@ -973,22 +1223,99 @@ env_policy_print_findings() {
   done
 }
 
+env_policy_key_description() {
+  local env_name="$1"
+  local key="$2"
+
+  case "$key" in
+    VITE_LOCAL_MODE)
+      echo "Controls frontend data source mode. backend uses real APIs; mock enables fake local data."
+      ;;
+    DEV_AUTH_TEST_ACCOUNT_ENABLED)
+      if [[ "$env_name" == "dev" ]]; then
+        echo "Allows a seeded dev auth account for local testing. Keep disabled unless intentionally using test login."
+      else
+        echo "Must stay disabled outside dev to prevent test-account auth paths in $env_name."
+      fi
+      ;;
+    VITE_AUTH_NAMESPACE)
+      echo "Sets browser auth storage namespace. Must match the active environment to avoid cross-env auth leakage."
+      ;;
+    USE_LOCAL_PIPELINE)
+      echo "Routes parsing/LLM calls to local desktop pipeline endpoints over VPN when enabled."
+      ;;
+    LOCAL_OCR_URL)
+      echo "Desktop OCR endpoint used only when USE_LOCAL_PIPELINE is enabled."
+      ;;
+    LOCAL_LLM_URL)
+      echo "Desktop LLM endpoint used only when USE_LOCAL_PIPELINE is enabled."
+      ;;
+    REDIS_ENABLED)
+      echo "Enables Redis-backed queue and worker coordination behavior."
+      ;;
+    REDIS_URL)
+      echo "Redis connection string used by queueing and background parse job processing."
+      ;;
+    ENVIRONMENT)
+      echo "Primary runtime environment label for backend safety checks and config gating."
+      ;;
+    ENV)
+      echo "Script-facing shorthand environment label. Keep aligned with ENVIRONMENT and compose context."
+      ;;
+    COMPOSE_PROJECT_NAME)
+      echo "Docker compose namespace controlling container/network names and environment isolation."
+      ;;
+    *)
+      echo ""
+      ;;
+  esac
+}
+
+env_policy_effective_value() {
+  local key="$1"
+
+  if [[ -n "${ENV_POLICY_PENDING_VALUES[$key]+set}" ]]; then
+    echo "${ENV_POLICY_PENDING_VALUES[$key]-}"
+    return
+  fi
+
+  echo "${ENV_POLICY_CURRENT_VALUES[$key]-}"
+}
+
+env_policy_pending_count() {
+  local key
+  local count=0
+
+  for key in "${ENV_POLICY_KEYS[@]}"; do
+    if [[ -n "${ENV_POLICY_PENDING_VALUES[$key]+set}" ]]; then
+      count=$((count + 1))
+    fi
+  done
+
+  echo "$count"
+}
+
 env_policy_print_matrix() {
+  local env_name="$1"
   local key
   local current
   local recommended
   local level
   local marker
+  local impact
+  local index=1
 
-  printf "  %-28s %-24s %-24s %-7s\n" "Key" "Current" "Suggested" "State"
-  printf "  %-28s %-24s %-24s %-7s\n" "----------------------------" "------------------------" "------------------------" "-------"
+  printf "  %-3s %-28s %-20s %-20s %-7s %-34s\n" "#" "Key" "Current" "Suggested" "State" "Impact"
+  printf "  %-3s %-28s %-20s %-20s %-7s %-34s\n" "---" "----------------------------" "--------------------" "--------------------" "-------" "----------------------------------"
 
   for key in "${ENV_POLICY_KEYS[@]}"; do
     current="$(display_env_value "${ENV_POLICY_CURRENT_VALUES[$key]-}")"
     recommended="$(display_env_value "${ENV_POLICY_RECOMMENDED_VALUES[$key]-}")"
     level="${ENV_POLICY_FINDING_LEVEL[$key]-ok}"
     marker="$level"
-    printf "  %-28s %-24s %-24s %-7s\n" "$key" "$(clip_text "$current" 24)" "$(clip_text "$recommended" 24)" "$marker"
+    impact="$(env_policy_key_description "$env_name" "$key")"
+    printf "  %-3s %-28s %-20s %-20s %-7s %-34s\n" "$index" "$key" "$(clip_text "$current" 20)" "$(clip_text "$recommended" 20)" "$marker" "$(clip_text "$impact" 34)"
+    index=$((index + 1))
   done
 }
 
@@ -1019,111 +1346,12 @@ env_policy_collect_autofix_values() {
   done
 }
 
-env_policy_prompt_manual_value() {
-  local env_name="$1"
-  local key="$2"
-  local current="$3"
-  local recommended="$4"
-  local choice
-  local selected_value=""
-
-  echo ""
-  echo "  Key: $key"
-  echo "    current   : $(display_env_value "$current")"
-  echo "    suggested : $(display_env_value "$recommended")"
-  echo "    1) keep current"
-  echo "    2) use suggested"
-
-  case "$key" in
-    VITE_LOCAL_MODE)
-      echo "    3) backend"
-      echo "    4) mock"
-      ;;
-    DEV_AUTH_TEST_ACCOUNT_ENABLED|USE_LOCAL_PIPELINE|REDIS_ENABLED)
-      echo "    3) true"
-      echo "    4) false"
-      ;;
-    VITE_AUTH_NAMESPACE)
-      echo "    3) dev"
-      echo "    4) beta"
-      echo "    5) prod"
-      ;;
-    *)
-      echo "    3) enter custom value"
-      ;;
-  esac
-  echo "    0) cancel manual review"
-  read -rp "    choice: " choice
-
-  case "$key" in
-    VITE_LOCAL_MODE)
-      case "$choice" in
-        1) echo "__KEEP__" ; return ;;
-        2) echo "$recommended" ; return ;;
-        3) echo "backend" ; return ;;
-        4) echo "mock" ; return ;;
-        0) echo "__ABORT__" ; return ;;
-        *) echo "__INVALID__" ; return ;;
-      esac
-      ;;
-    DEV_AUTH_TEST_ACCOUNT_ENABLED|USE_LOCAL_PIPELINE|REDIS_ENABLED)
-      case "$choice" in
-        1) echo "__KEEP__" ; return ;;
-        2) echo "$recommended" ; return ;;
-        3) echo "true" ; return ;;
-        4) echo "false" ; return ;;
-        0) echo "__ABORT__" ; return ;;
-        *) echo "__INVALID__" ; return ;;
-      esac
-      ;;
-    VITE_AUTH_NAMESPACE)
-      case "$choice" in
-        1) echo "__KEEP__" ; return ;;
-        2) echo "$recommended" ; return ;;
-        3) echo "dev" ; return ;;
-        4) echo "beta" ; return ;;
-        5) echo "prod" ; return ;;
-        0) echo "__ABORT__" ; return ;;
-        *) echo "__INVALID__" ; return ;;
-      esac
-      ;;
-    *)
-      case "$choice" in
-        1)
-          echo "__KEEP__"
-          return
-          ;;
-        2)
-          echo "$recommended"
-          return
-          ;;
-        3)
-          read -rp "    custom value: " selected_value
-          echo "$selected_value"
-          return
-          ;;
-        0)
-          echo "__ABORT__"
-          return
-          ;;
-        *)
-          echo "__INVALID__"
-          return
-          ;;
-      esac
-      ;;
-  esac
-
-}
-
-env_policy_manual_review() {
-  local env_name="$1"
+env_policy_collect_mismatched_keys() {
   local key
   local current
   local recommended
-  local selected
 
-  ENV_POLICY_PENDING_VALUES=()
+  ENV_POLICY_MISMATCHED_KEYS=()
 
   for key in "${ENV_POLICY_KEYS[@]}"; do
     current="${ENV_POLICY_CURRENT_VALUES[$key]-}"
@@ -1133,24 +1361,439 @@ env_policy_manual_review() {
       continue
     fi
 
-    selected="$(env_policy_prompt_manual_value "$env_name" "$key" "$current" "$recommended")"
-    if [[ "$selected" == "__ABORT__" ]]; then
-      echo "Manual review cancelled."
-      return 1
-    fi
-    if [[ "$selected" == "__INVALID__" ]]; then
-      echo "Invalid choice for $key."
-      return 1
-    fi
-    if [[ "$selected" == "__KEEP__" ]]; then
+    ENV_POLICY_MISMATCHED_KEYS+=("$key")
+  done
+}
+
+env_policy_print_key_findings() {
+  local key="$1"
+  local finding
+  local severity
+  local finding_key
+  local message
+  local found=0
+
+  for finding in "${ENV_POLICY_MESSAGES[@]}"; do
+    severity="${finding%%|*}"
+    finding_key="${finding#*|}"
+    finding_key="${finding_key%%|*}"
+    message="${finding#*|*|}"
+
+    if [[ "$finding_key" != "$key" ]]; then
       continue
     fi
-    if [[ "$selected" != "$current" ]]; then
-      env_policy_set_pending_value "$key" "$selected"
+
+    found=1
+    case "$severity" in
+      error)
+        debug_print_error "$message"
+        ;;
+      warn)
+        debug_print_warn "$message"
+        ;;
+      *)
+        debug_print_section "$message"
+        ;;
+    esac
+  done
+
+  if (( found == 0 )); then
+    echo "  (No active findings for this key.)"
+  fi
+}
+
+env_policy_print_pending_summary() {
+  local env_name="$1"
+  local key
+  local index=1
+  local current
+  local pending
+  local impact
+
+  printf "  %-3s %-28s %-20s %-20s %-32s\n" "#" "Key" "Current" "Pending" "Impact"
+  printf "  %-3s %-28s %-20s %-20s %-32s\n" "---" "----------------------------" "--------------------" "--------------------" "--------------------------------"
+
+  for key in "${ENV_POLICY_KEYS[@]}"; do
+    if [[ -z "${ENV_POLICY_PENDING_VALUES[$key]+set}" ]]; then
+      continue
+    fi
+
+    current="$(display_env_value "${ENV_POLICY_CURRENT_VALUES[$key]-}")"
+    pending="$(display_env_value "${ENV_POLICY_PENDING_VALUES[$key]-}")"
+    impact="$(env_policy_key_description "$env_name" "$key")"
+    printf "  %-3s %-28s %-20s %-20s %-32s\n" "$index" "$key" "$(clip_text "$current" 20)" "$(clip_text "$pending" 20)" "$(clip_text "$impact" 32)"
+    index=$((index + 1))
+  done
+
+  if (( index == 1 )); then
+    echo "  (No staged env updates.)"
+  fi
+}
+
+env_policy_print_manual_key_menu() {
+  local env_name="$1"
+  local key
+  local current
+  local recommended
+  local pending
+  local impact
+  local marker
+  local index=1
+
+  for key in "${ENV_POLICY_MISMATCHED_KEYS[@]}"; do
+    current="$(display_env_value "${ENV_POLICY_CURRENT_VALUES[$key]-}")"
+    recommended="$(display_env_value "${ENV_POLICY_RECOMMENDED_VALUES[$key]-}")"
+    impact="$(env_policy_key_description "$env_name" "$key")"
+
+    if [[ -n "${ENV_POLICY_PENDING_VALUES[$key]+set}" ]]; then
+      pending="$(display_env_value "${ENV_POLICY_PENDING_VALUES[$key]-}")"
+      marker="pending"
+    else
+      pending="<none>"
+      marker="${ENV_POLICY_FINDING_LEVEL[$key]-ok}"
+    fi
+
+    printf "  %2d) %-28s state=%s\n" "$index" "$key" "$marker"
+    printf "      current=%s\n" "$(clip_text "$current" 56)"
+    printf "      suggested=%s\n" "$(clip_text "$recommended" 56)"
+    printf "      staged=%s\n" "$(clip_text "$pending" 56)"
+    printf "      impact=%s\n" "$(clip_text "$impact" 90)"
+    index=$((index + 1))
+  done
+}
+
+env_policy_edit_key_interactive() {
+  local env_name="$1"
+  local key="$2"
+  local current="$3"
+  local recommended="$4"
+  local impact
+  local existing_pending=""
+  local base_value
+  local selected_value
+  local choice
+
+  while true; do
+    impact="$(env_policy_key_description "$env_name" "$key")"
+
+    if [[ -n "${ENV_POLICY_PENDING_VALUES[$key]+set}" ]]; then
+      existing_pending="${ENV_POLICY_PENDING_VALUES[$key]-}"
+      base_value="$existing_pending"
+    else
+      existing_pending=""
+      base_value="$current"
+    fi
+
+    debug_header "$env_name" "Env Safety :: Edit $key"
+    debug_print_section "Key details"
+    echo "  Key            : $key"
+    echo "  Current value  : $(display_env_value "$current")"
+    echo "  Suggested value: $(display_env_value "$recommended")"
+    if [[ -n "${ENV_POLICY_PENDING_VALUES[$key]+set}" ]]; then
+      echo "  Staged value   : $(display_env_value "$existing_pending")"
+    else
+      echo "  Staged value   : <none>"
+    fi
+    echo "  Impact         : $(clip_text "$impact" 110)"
+    echo ""
+    debug_print_section "Findings"
+    env_policy_print_key_findings "$key"
+    echo ""
+
+    read -rp "  New value (blank keeps current staged/current value): " selected_value
+    if [[ -z "$selected_value" ]]; then
+      selected_value="$base_value"
+    fi
+
+    echo ""
+    echo "  Proposed value: $(display_env_value "$selected_value")"
+    echo "  Actions"
+    echo "    1) Save proposed value"
+    echo "    2) Save suggested value"
+    echo "    3) Back to key list"
+    echo "    4) Cancel manual review"
+    read -rp "  Choice [1-4]: " choice
+
+    case "$choice" in
+      1)
+        if [[ "$selected_value" == "$current" ]]; then
+          unset 'ENV_POLICY_PENDING_VALUES[$key]'
+        else
+          env_policy_set_pending_value "$key" "$selected_value"
+        fi
+        return 0
+        ;;
+      2)
+        if [[ "$recommended" == "$current" ]]; then
+          unset 'ENV_POLICY_PENDING_VALUES[$key]'
+        else
+          env_policy_set_pending_value "$key" "$recommended"
+        fi
+        return 0
+        ;;
+      3)
+        return 2
+        ;;
+      4)
+        return 1
+        ;;
+      *)
+        debug_print_warn "Invalid choice."
+        debug_press_enter
+        ;;
+    esac
+  done
+}
+
+env_policy_manual_review() {
+  local env_name="$1"
+  local choice
+  local key_index
+  local key
+  local current
+  local recommended
+  local pending_count
+  local edit_result=0
+
+  ENV_POLICY_PENDING_VALUES=()
+
+  while true; do
+    env_policy_collect_mismatched_keys
+
+    debug_header "$env_name" "Env Safety :: Manual Editor"
+    debug_print_section "Numbered key list (mismatches only)"
+
+    if (( ${#ENV_POLICY_MISMATCHED_KEYS[@]} == 0 )); then
+      debug_print_ok "All tracked keys already match suggested values."
+      echo ""
+      echo "  1) Back"
+      read -rp "  Choice [1]: " choice
+      ENV_POLICY_PENDING_VALUES=()
+      return 1
+    fi
+
+    env_policy_print_manual_key_menu "$env_name"
+    echo ""
+    debug_print_section "Staged updates"
+    env_policy_print_pending_summary "$env_name"
+    pending_count="$(env_policy_pending_count)"
+
+    echo ""
+    echo "  Choose next step:"
+    echo "    <number>) Edit key"
+    echo "    0) Save staged updates and continue"
+    echo "    b) Back without applying"
+    echo "    c) Cancel manual review"
+    read -rp "  Choice: " choice
+
+    case "${choice,,}" in
+      0|save|done)
+        if (( pending_count == 0 )); then
+          debug_print_warn "No staged updates. Edit at least one key before saving."
+          debug_press_enter
+          continue
+        fi
+        return 0
+        ;;
+      b|back)
+        ENV_POLICY_PENDING_VALUES=()
+        return 1
+        ;;
+      c|cancel)
+        ENV_POLICY_PENDING_VALUES=()
+        echo "Manual review cancelled."
+        return 1
+        ;;
+      *)
+        if [[ "$choice" =~ ^[0-9]+$ ]]; then
+          key_index=$((choice - 1))
+          if (( key_index < 0 || key_index >= ${#ENV_POLICY_MISMATCHED_KEYS[@]} )); then
+            debug_print_warn "Invalid key number."
+            debug_press_enter
+            continue
+          fi
+
+          key="${ENV_POLICY_MISMATCHED_KEYS[$key_index]}"
+          current="${ENV_POLICY_CURRENT_VALUES[$key]-}"
+          recommended="${ENV_POLICY_RECOMMENDED_VALUES[$key]-}"
+
+          if env_policy_edit_key_interactive "$env_name" "$key" "$current" "$recommended"; then
+            continue
+          fi
+
+          edit_result=$?
+          if (( edit_result == 1 )); then
+            ENV_POLICY_PENDING_VALUES=()
+            echo "Manual review cancelled."
+            return 1
+          fi
+
+          continue
+        fi
+
+        debug_print_warn "Invalid selection."
+        debug_press_enter
+        ;;
+    esac
+  done
+}
+
+env_policy_guided_autofix_for_key() {
+  local env_name="$1"
+  local key="$2"
+  local step="$3"
+  local total="$4"
+  local current
+  local recommended
+  local impact
+  local choice
+  local custom_value
+  local custom_choice
+
+  current="${ENV_POLICY_CURRENT_VALUES[$key]-}"
+  recommended="${ENV_POLICY_RECOMMENDED_VALUES[$key]-}"
+
+  while true; do
+    impact="$(env_policy_key_description "$env_name" "$key")"
+
+    debug_header "$env_name" "Env Safety :: Suggested Fix $step/$total"
+    debug_print_section "Confirm suggested update"
+    echo "  Key            : $key"
+    echo "  Current value  : $(display_env_value "$current")"
+    echo "  Suggested value: $(display_env_value "$recommended")"
+    echo "  Impact         : $(clip_text "$impact" 110)"
+    echo ""
+    debug_print_section "Findings"
+    env_policy_print_key_findings "$key"
+    echo ""
+    echo "  Actions"
+    echo "    1) Stage suggested value"
+    echo "    2) Enter custom value"
+    echo "    3) Skip this suggested fix"
+    echo "    4) Cancel suggested-fix flow"
+    read -rp "  Choice [1-4]: " choice
+
+    case "$choice" in
+      1)
+        env_policy_set_pending_value "$key" "$recommended"
+        return 0
+        ;;
+      2)
+        read -rp "  Custom value for $key: " custom_value
+        echo ""
+        echo "  Proposed custom value: $(display_env_value "$custom_value")"
+        echo "    1) Save custom value"
+        echo "    2) Back"
+        echo "    3) Cancel suggested-fix flow"
+        read -rp "  Choice [1-3]: " custom_choice
+
+        case "$custom_choice" in
+          1)
+            if [[ "$custom_value" == "$current" ]]; then
+              unset 'ENV_POLICY_PENDING_VALUES[$key]'
+            else
+              env_policy_set_pending_value "$key" "$custom_value"
+            fi
+            return 0
+            ;;
+          2)
+            continue
+            ;;
+          3)
+            return 1
+            ;;
+          *)
+            debug_print_warn "Invalid choice."
+            debug_press_enter
+            ;;
+        esac
+        ;;
+      3)
+        unset 'ENV_POLICY_PENDING_VALUES[$key]'
+        return 0
+        ;;
+      4)
+        return 1
+        ;;
+      *)
+        debug_print_warn "Invalid choice."
+        debug_press_enter
+        ;;
+    esac
+  done
+}
+
+env_policy_guided_autofix() {
+  local env_name="$1"
+  local key
+  local level
+  local current
+  local recommended
+  local choice
+  local pending_count
+  local index=0
+  local -a autofix_keys=()
+
+  for key in "${ENV_POLICY_KEYS[@]}"; do
+    level="${ENV_POLICY_FINDING_LEVEL[$key]-}"
+    if [[ "$level" != "error" && "$level" != "warn" ]]; then
+      continue
+    fi
+
+    current="${ENV_POLICY_CURRENT_VALUES[$key]-}"
+    recommended="${ENV_POLICY_RECOMMENDED_VALUES[$key]-}"
+    if [[ -z "$recommended" || "$current" == "$recommended" ]]; then
+      continue
+    fi
+
+    autofix_keys+=("$key")
+  done
+
+  if (( ${#autofix_keys[@]} == 0 )); then
+    debug_print_ok "No suggested fixes are needed."
+    return 2
+  fi
+
+  ENV_POLICY_PENDING_VALUES=()
+
+  for key in "${autofix_keys[@]}"; do
+    index=$((index + 1))
+    if ! env_policy_guided_autofix_for_key "$env_name" "$key" "$index" "${#autofix_keys[@]}"; then
+      ENV_POLICY_PENDING_VALUES=()
+      return 1
     fi
   done
 
-  return 0
+  while true; do
+    debug_header "$env_name" "Env Safety :: Suggested Fix Summary"
+    debug_print_section "Selected updates"
+    env_policy_print_pending_summary "$env_name"
+    pending_count="$(env_policy_pending_count)"
+    echo ""
+    echo "  Choose next step:"
+    echo "    1) Apply selected updates"
+    echo "    2) Return without applying"
+    read -rp "  Choice [1-2]: " choice
+
+    case "$choice" in
+      1)
+        if (( pending_count == 0 )); then
+          debug_print_warn "No updates selected to apply."
+          debug_press_enter
+          return 2
+        fi
+        return 0
+        ;;
+      2)
+        ENV_POLICY_PENDING_VALUES=()
+        return 1
+        ;;
+      *)
+        debug_print_warn "Invalid choice."
+        debug_press_enter
+        ;;
+    esac
+  done
 }
 
 env_file_set_key_value() {
@@ -1230,6 +1873,7 @@ ensure_env_confirmation() {
   local action_name="$2"
   local mode="${3:-required}"
   local choice
+  local guided_autofix_result=0
 
   if [[ "$ENV_CONFIRMATION_APPROVED" == true && "$ENV_CONFIRMATION_ENV" == "$env_name" ]]; then
     return 0
@@ -1260,15 +1904,15 @@ ensure_env_confirmation() {
   while true; do
     debug_header "$env_name" "Env Safety :: $action_name"
     debug_print_section "Current vs suggested non-sensitive values"
-    env_policy_print_matrix
+    env_policy_print_matrix "$env_name"
     echo ""
     debug_print_section "Findings"
     env_policy_print_findings
     echo ""
     echo "  Choose next step:"
     echo "    1) Continue with current values"
-    echo "    2) Auto-fix to suggested values"
-    echo "    3) Review/edit key values"
+    echo "    2) Guided suggested fixes (confirm each key)"
+    echo "    3) Numbered manual key editor"
     echo "    4) Abort"
     read -rp "  Choice [1-4]: " choice
 
@@ -1284,9 +1928,24 @@ ensure_env_confirmation() {
         return 0
         ;;
       2)
-        env_policy_collect_autofix_values
+        if env_policy_guided_autofix "$env_name"; then
+          guided_autofix_result=0
+        else
+          guided_autofix_result=$?
+        fi
+
+        if (( guided_autofix_result != 0 )); then
+          if (( guided_autofix_result == 1 )); then
+            debug_print_warn "Suggested-fix flow cancelled."
+          else
+            debug_print_warn "No selected updates to apply."
+          fi
+          debug_press_enter
+          continue
+        fi
+
         if ! env_policy_apply_pending_updates; then
-          debug_print_error "Auto-fix failed."
+          debug_print_error "Suggested-fix apply failed."
           debug_press_enter
           continue
         fi
@@ -1296,7 +1955,7 @@ ensure_env_confirmation() {
           ENV_CONFIRMATION_ENV="$env_name"
           return 0
         fi
-        debug_print_warn "Auto-fix applied, but some findings remain."
+        debug_print_warn "Suggested fixes applied, but some findings remain."
         debug_press_enter
         ;;
       3)
@@ -1493,41 +2152,55 @@ choose_action() {
     echo "    7) audit"
     echo "    8) review env values"
     echo "    9) switch environment"
+    echo "   10) rebuild options"
     echo "    0) exit"
-    read -rp "  Choice [1-9/0]: " choice
+    read -rp "  Choice [1-10/0]: " choice
 
     case "$choice" in
       1)
+        if ! configure_rebuild_ui_for_action "$active_env" "start"; then
+          continue
+        fi
         ACTION="start"
         ENV_NAME="$active_env"
         return
         ;;
       2)
+        build_mode_reset_selection
         ACTION="stop"
         ENV_NAME="$active_env"
         return
         ;;
       3)
+        if ! configure_rebuild_ui_for_action "$active_env" "restart"; then
+          continue
+        fi
         ACTION="restart"
         ENV_NAME="$active_env"
         return
         ;;
       4)
+        build_mode_reset_selection
         ACTION="debug"
         ENV_NAME="$active_env"
         return
         ;;
       5)
+        if ! configure_rebuild_ui_for_action "$active_env" "sync"; then
+          continue
+        fi
         ACTION="sync"
         ENV_NAME="$active_env"
         return
         ;;
       6)
+        build_mode_reset_selection
         ACTION="cert-sync"
         ENV_NAME="$active_env"
         return
         ;;
       7)
+        build_mode_reset_selection
         ACTION="audit"
         ENV_NAME="$active_env"
         return
@@ -1538,6 +2211,9 @@ choose_action() {
       9)
         selected_env="$(choose_environment_interactive "$active_env")"
         active_env="$selected_env"
+        ;;
+      10)
+        configure_rebuild_ui_for_action "$active_env" "menu" || true
         ;;
       0)
         echo "Cancelled."
@@ -1566,6 +2242,7 @@ Environment selection:
   - If omitted, the script auto-detects environment from current path and root .env.
   - In interactive mode, startup opens a rich menu + HUD before action selection.
   - The menu lets you switch environment and review/confirm key non-sensitive env values.
+  - The menu also includes rebuild controls for start/restart/sync (none, all, or service-level rebuild).
   - Detection checks /environments/<env> path segments first, then ENVIRONMENT/ENV/COMPOSE_PROJECT_NAME.
   - If detection fails, pass environment explicitly.
 
@@ -1612,7 +2289,7 @@ Safe sync behavior:
 
 Env safety behavior:
   start/restart/sync-rebuild paths run an env safety check.
-  Interactive mode offers: Continue, Auto-fix suggested values, Review/Edit, Abort.
+  Interactive mode offers: Continue, Guided suggested fixes (confirm each), Numbered manual key editor, Abort.
   Non-interactive mode fails if critical env safety findings are detected.
 
 Examples:
@@ -2444,7 +3121,11 @@ DETECTED_ENV=""
 while (($#)); do
   case "$1" in
     -h|--help)
-      SHOW_HELP=true
+      if [[ "$ACTION" == "debug" || "$ACTION" == "audit" ]]; then
+        EXTRA_ARGS+=("$1")
+      else
+        SHOW_HELP=true
+      fi
       ;;
     help)
       if [[ -z "$ENV_NAME" && -z "$ACTION" ]]; then
@@ -2508,8 +3189,12 @@ while (($#)); do
       fi
       ;;
     -*)
-      echo "Unknown option '$1'. Use --help for usage." >&2
-      exit 1
+      if [[ "$ACTION" == "debug" || "$ACTION" == "audit" ]]; then
+        EXTRA_ARGS+=("$1")
+      else
+        echo "Unknown option '$1'. Use --help for usage." >&2
+        exit 1
+      fi
       ;;
     *)
       EXTRA_ARGS+=("$1")
