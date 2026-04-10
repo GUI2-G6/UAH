@@ -5,7 +5,19 @@ function normalizeNamespace(value) {
         .replace(/[^a-z0-9_.-]/g, '_')
 }
 
-const DEFAULT_NAMESPACE = normalizeNamespace(window?.location?.hostname || 'dev') || 'dev'
+function inferDefaultNamespace() {
+    const host = String(window?.location?.hostname || '').trim().toLowerCase()
+
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]') {
+        return 'dev'
+    }
+    if (host.startsWith('beta.')) return 'beta'
+    if (host.startsWith('dev.')) return 'dev'
+
+    return 'dev'
+}
+
+const DEFAULT_NAMESPACE = inferDefaultNamespace()
 const AUTH_NAMESPACE = normalizeNamespace(import.meta?.env?.VITE_AUTH_NAMESPACE) || DEFAULT_NAMESPACE
 
 const LEGACY_ACCESS_TOKEN_KEY = 'uah_access_token'

@@ -502,6 +502,21 @@
   color: #1a1a2e;
 }
 
+.pipeline-guardrails summary {
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #1a1a2e;
+}
+
+.pipeline-guardrails[open] summary {
+  margin-bottom: 10px;
+}
+
+.pipeline-guardrails summary::-webkit-details-marker {
+  margin-right: 6px;
+}
+
 .pipeline-ordering-note {
   margin: 0 0 10px 0;
   font-size: 0.78rem;
@@ -515,6 +530,12 @@
 .import-subtitle {
   margin-top: -6px;
   margin-bottom: 12px;
+}
+
+.task-mode-note {
+  margin: 8px 4px 0 4px;
+  font-size: 0.8rem;
+  color: #64748b;
 }
 
 .upload-stage-row {

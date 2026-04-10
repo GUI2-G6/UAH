@@ -77,8 +77,8 @@
                         <button class="clear-btn" @click="clearFile" title="Remove file">&#x2715;</button>
                     </div>
 
-                    <div class="pipeline-guardrails import-options-spaced">
-                        <h4>Pipeline Guarantees</h4>
+                    <details class="pipeline-guardrails import-options-spaced">
+                        <summary>Pipeline Guarantees</summary>
                         <p class="pipeline-ordering-note">UAH parser order (highest reliability/accuracy to lowest): Local AI, Cloud AI, Rules-based.</p>
                         <ul class="pipeline-guarantee-list" role="list">
                             <li class="pipeline-guarantee-item" role="listitem">
@@ -94,7 +94,7 @@
                                 <span>Rules mode reads embedded PDF text only and does not use OCR/model queues.</span>
                             </li>
                         </ul>
-                    </div>
+                    </details>
 
                     <div class="parse-method-group">
                         <div class="parse-method-header">
@@ -151,8 +151,12 @@
                 <div v-if="uploadError" class="upload-error">{{ uploadError }}</div>
             </div>
 
+            <p v-if="!showImportSecondaryPanels" class="task-mode-note">
+                Upload focus mode is active. Queue diagnostics and summary metrics will return after this import step.
+            </p>
+
             <!-- Stats row -->
-            <div class="stats-row">
+            <div class="stats-row" v-if="showImportSecondaryPanels">
                 <div class="stat-card">
                     <div class="stat-label">Total Resumes</div>
                     <div class="stat-value">{{ resumes.length }}</div>
@@ -167,7 +171,7 @@
                 </div>
             </div>
 
-            <div class="queue-panel-card">
+            <div class="queue-panel-card" v-if="showImportSecondaryPanels">
                 <div class="queue-panel-header">
                     <div>
                         <h4>Parse Queue</h4>
@@ -1029,6 +1033,9 @@ export default {
                 rules: 'Rules-based parsing is deterministic from embedded PDF text only (no OCR fallback).',
             }
             return map[this.parseMethod] || ''
+        },
+        showImportSecondaryPanels() {
+            return this.uploadStep === 'select' && !this.uploading
         },
         canViewGlobalQueue() {
             return !!this.queueStatus?.can_view_global

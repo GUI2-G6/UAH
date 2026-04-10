@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+ENV_FEATURE_CHECK_SCRIPT="$ROOT_DIR/scripts/lib/env-feature-check.sh"
 
 BUILD_MODE="none"
 FLAG_NO_BUILD=false
@@ -133,6 +134,37 @@ get_env_value_or_default() {
   echo "$value"
 }
 
+run_env_feature_check() {
+  local env_name="$1"
+  local mode="${2:-enforce}"
+  local check_args=(
+    --env "$env_name"
+    --env-file "$ROOT_DIR/.env"
+  )
+
+  if [[ ! -f "$ENV_FEATURE_CHECK_SCRIPT" ]]; then
+    if [[ "$mode" == "warn" ]]; then
+      echo "[env-check] Skipping: checker script not found at $ENV_FEATURE_CHECK_SCRIPT"
+      return 0
+    fi
+    echo "[env-check] Missing required checker script: $ENV_FEATURE_CHECK_SCRIPT" >&2
+    exit 1
+  fi
+
+  if [[ "$mode" == "warn" ]]; then
+    check_args+=(--warn-only)
+  fi
+
+  if ! bash "$ENV_FEATURE_CHECK_SCRIPT" "${check_args[@]}"; then
+    if [[ "$mode" == "warn" ]]; then
+      echo "[env-check] Continuing despite post-sync env findings."
+      return 0
+    fi
+    echo "[env-check] Resolve env variable errors before continuing." >&2
+    exit 1
+  fi
+}
+
 is_container_running() {
   local container_name="$1"
   local state
@@ -227,6 +259,9 @@ preflight_startup() {
     echo "Docker Compose plugin is required but not available." >&2
     exit 1
   fi
+
+  echo "[preflight] Checking environment variable requirements..."
+  run_env_feature_check "$env_name" enforce
 
   case "$env_name" in
     dev)
@@ -388,7 +423,8 @@ run_hard_sync_reset() {
 }
 
 run_hard_sync_flow() {
-  local show_snapshot="${1:-true}"
+  local env_name="${1:-dev}"
+  local show_snapshot="${2:-true}"
 
   prepare_sync_branch
   refresh_sync_blocker_snapshot
@@ -402,9 +438,13 @@ run_hard_sync_flow() {
   fi
 
   run_hard_sync_reset
+  echo "[post-sync] Checking environment variable requirements..."
+  run_env_feature_check "$env_name" warn
 }
 
 prompt_sync_blocker_resolution() {
+  local env_name="$1"
+
   while true; do
     echo "Choose next step:"
     echo "  1) abort  - exit without syncing"
@@ -419,7 +459,7 @@ prompt_sync_blocker_resolution() {
         return 1
         ;;
       2|f|force|hard)
-        if run_hard_sync_flow false; then
+        if run_hard_sync_flow "$env_name" false; then
           return 0
         fi
         ;;
@@ -451,7 +491,7 @@ run_safe_sync_flow() {
     print_sync_blocker_report
 
     if [[ -t 0 ]]; then
-      if prompt_sync_blocker_resolution; then
+      if prompt_sync_blocker_resolution "$env_name"; then
         return 0
       fi
       return 1
@@ -463,6 +503,8 @@ run_safe_sync_flow() {
   fi
 
   git -C "$ROOT_DIR" pull --ff-only origin dev
+  echo "[post-sync] Checking environment variable requirements..."
+  run_env_feature_check "$env_name" warn
 }
 
 dev_sync() {
@@ -473,7 +515,7 @@ dev_sync() {
       run_safe_sync_flow dev
       ;;
     hard|reset)
-      run_hard_sync_flow true
+      run_hard_sync_flow dev true
       ;;
     *)
       echo "Unknown sync mode '$mode'. Use safe or hard." >&2
@@ -831,7 +873,7 @@ beta_sync() {
       run_safe_sync_flow beta
       ;;
     hard|reset)
-      run_hard_sync_flow true
+      run_hard_sync_flow beta true
       ;;
     *)
       echo "Unknown sync mode '$mode'. Use safe or hard." >&2

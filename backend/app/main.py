@@ -148,6 +148,76 @@ def _bootstrap_admin_user_if_enabled() -> None:
         db.close()
 
 
+def _ensure_dev_test_user_if_enabled() -> None:
+    if not settings.DEV_AUTH_TEST_ACCOUNT_ENABLED:
+        return
+
+    env_slug = (settings.ENVIRONMENT or "").strip().lower()
+    if env_slug not in {"development", "dev", "local"}:
+        logger.warning(
+            "[DEV-AUTH] Skipping dev test user setup outside development/local env: %s",
+            settings.ENVIRONMENT,
+        )
+        return
+
+    username = settings.DEV_AUTH_TEST_USERNAME.strip()
+    password = settings.DEV_AUTH_TEST_PASSWORD.strip()
+    email = (settings.DEV_AUTH_TEST_EMAIL or f"{username}@uah.local").strip().lower()
+
+    if not username or not password:
+        logger.error("[DEV-AUTH] DEV_AUTH_TEST_ACCOUNT_ENABLED=true but username/password are missing")
+        return
+
+    try:
+        from app.core.security import hash_password
+        from app.db.session import SessionLocal
+        from app.models.user import User
+    except Exception as exc:
+        logger.exception("[DEV-AUTH] Import failure while ensuring test user: %s", exc)
+        return
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.username == username).first()
+        if not user:
+            user = db.query(User).filter(User.email == email).first()
+
+        if user:
+            user.username = username
+            user.email = email
+            user.first_name = settings.DEV_AUTH_TEST_FIRST_NAME or "Dev"
+            user.last_name = settings.DEV_AUTH_TEST_LAST_NAME or "Tester"
+            user.is_active = True
+            user.is_admin = settings.DEV_AUTH_TEST_IS_ADMIN
+
+            if settings.DEV_AUTH_TEST_ROTATE_PASSWORD or not user.hashed_password:
+                user.hashed_password = hash_password(password)
+
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            logger.warning("[DEV-AUTH] Ensured dev test user '%s'", username)
+            return
+
+        user = User(
+            email=email,
+            username=username,
+            hashed_password=hash_password(password),
+            first_name=settings.DEV_AUTH_TEST_FIRST_NAME or "Dev",
+            last_name=settings.DEV_AUTH_TEST_LAST_NAME or "Tester",
+            is_active=True,
+            is_admin=settings.DEV_AUTH_TEST_IS_ADMIN,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        logger.warning("[DEV-AUTH] Created dev test user '%s'", username)
+    except Exception as exc:
+        logger.exception("[DEV-AUTH] Failed to ensure dev test user: %s", exc)
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_engine()
@@ -158,6 +228,7 @@ async def lifespan(app: FastAPI):
     _ensure_users_table_columns(engine)
     _ensure_resumes_table_columns(engine)
     _bootstrap_admin_user_if_enabled()
+    _ensure_dev_test_user_if_enabled()
 
     geo_dataset_status = ensure_city_dataset()
     status = geo_dataset_status.get("status")
