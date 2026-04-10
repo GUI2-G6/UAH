@@ -3,7 +3,7 @@
         'active': active
     }">
         <!--Logo-->
-        <img src="../images/logo.png" width="75px" height="75px" alt="logo" @click="goTo('/home')">
+        <img src="../images/logo.png" width="75px" height="75px" alt="logo" @click="goTo('/home')" title="Home">
         <!--Burger-Button-->
         <button type="button" class="burger-button " title="Menu" @click = "toggleActive">
             <span class="burger-bar" id="b-bar1"></span>
