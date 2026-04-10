@@ -13,17 +13,17 @@
         <div class="menu">
             <!--Application-Button-->
             <button width="50px" height="50px" class="burger-item" @click="goTo('/application')" title="Applied">
-                <img src="../images/placeholder/APPLICATIONS_LIGHT.png" alt="Applications" width="30px" height="28px">
+                <img src="../images/Folder.png" alt="Applications" width="30px" height="28px">
                 <span v-if="active" class="label">Applied</span>
             </button>
             <!--Resumes-Button-->
             <button width="50px" height="50px" class="burger-item" @click="goTo('/resumes')" title="Resumes">
-                <img src="../images/placeholder/RESUME_LIGHT.png" alt="Resumes" width="30px" height="28px">
+                <img src="../images/Resume.png" alt="Resumes" width="30px" height="28px">
                 <span v-if="active" class="label">Resumes</span>
             </button>
             <!--Job-Board-Button-->
             <button width="50px" height="50px" class="burger-item" @click="goTo('/job-board')" title="Jobs">
-                <img src="../images/placeholder/JOBBOARD_LIGHT.png" alt="Job Board" width="30px" height="28px">
+                <img src="../images/Suitcase.png" alt="Job Board" width="30px" height="28px">
                 <span v-if="active" class="label">Jobs</span>
             </button>
             <!--Analytics-Button-->
