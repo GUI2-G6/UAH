@@ -54,3 +54,19 @@ Security notes:
 ```sh
 npm run build
 ```
+
+## Job Board Notes
+
+- Filter metadata is backend-owned via `GET /api/jobs/filter-metadata` and includes:
+  - Canonical category groups/aliases
+  - Supported level labels
+  - `location_param_cap`
+- Job search sends keyword/date server-side (`q`, `posted_after`) so totals and pagination match backend filtering.
+- Before search, the UI preflights location trimming and shows `Using X of Y resolved locations`.
+- Compatibility transparency:
+  - With Remote off, constraint-overlap roles can still appear (policy: `allow-if-overlap`).
+  - The Job Board shows a diagnostics hint when this happens.
+- Local mock mode emulates:
+  - Category expansion behavior
+  - Location cap/truncation diagnostics
+  - Search diagnostics fields used by Job Board transparency UI
