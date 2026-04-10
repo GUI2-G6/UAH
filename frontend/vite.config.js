@@ -19,7 +19,8 @@ function resolveLocalMode(mode, env) {
   if (explicit === 'backend') return 'backend'
   if (explicit === 'mock') return 'mock'
   if (mode === 'backend') return 'backend'
-  return 'mock'
+  if (mode === 'mock') return 'mock'
+  return 'backend'
 }
 
 function isLoopbackOrigin(target) {

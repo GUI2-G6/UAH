@@ -15,6 +15,24 @@ This checklist captures environment variables that must exist on server-side `.e
 - `GOOGLE_REDIRECT_URI`
 - `MUSE_API_KEY`
 
+## Dev Test Account Controls
+
+Document these keys in env templates even when disabled:
+
+- `DEV_AUTH_TEST_ACCOUNT_ENABLED`
+- `DEV_AUTH_TEST_USERNAME`
+- `DEV_AUTH_TEST_PASSWORD`
+- `DEV_AUTH_TEST_EMAIL`
+- `DEV_AUTH_TEST_FIRST_NAME`
+- `DEV_AUTH_TEST_LAST_NAME`
+- `DEV_AUTH_TEST_IS_ADMIN`
+- `DEV_AUTH_TEST_ROTATE_PASSWORD`
+
+Environment policy:
+
+- Dev/local: may enable test account; when enabled, username and password must be set.
+- Beta/prod: must keep `DEV_AUTH_TEST_ACCOUNT_ENABLED=false`.
+
 ## Required For Gmail Integration
 
 - `GMAIL_CLIENT_ID`
@@ -71,8 +89,12 @@ This checklist captures environment variables that must exist on server-side `.e
 ## Operational Notes
 
 - Runtime script entrypoint is `scripts/uah.sh`.
+- `scripts/uah.sh` auto-detects environment context when env is omitted (path and root `.env` heuristics).
+- Lifecycle env requirement check entrypoint is `scripts/lib/env-feature-check.sh`.
 - Security audit entrypoint is `scripts/uah.sh <dev|beta|prod> audit`.
 - Dev cert sync hook is `scripts/dev/certbot-sync-dev-cert.sh`.
 - Password reset script reads `.env` from repo root by default and supports override via `UAH_ENV_FILE`.
 - Concurrent dev and beta on one host require distinct Redis host ports (`REDIS_HOST_PORT=6379`, `BETA_REDIS_HOST_PORT=6380`).
 - Beta queue defaults should use the `uah:beta:*` namespace to avoid cross-environment key overlap.
+- `scripts/uah.sh` runs env checks during startup preflight and warns after sync operations.
+- Debug operations are first-class under `scripts/uah.sh <env> debug ...` for connectivity, logs, queue, network, database, and dev user admin tasks.

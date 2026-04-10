@@ -449,6 +449,17 @@ _audit_check_secret_quality() {
       _audit_add_result pass admin_bootstrap_beta "ADMIN_BOOTSTRAP_ENABLED is disabled for beta."
     fi
   fi
+
+  if [[ "$AUDIT_ENV" == "beta" || "$AUDIT_ENV" == "prod" ]]; then
+    local dev_auth_test_enabled
+    dev_auth_test_enabled="$(_audit_env_value "DEV_AUTH_TEST_ACCOUNT_ENABLED" "$AUDIT_ENV_FILE" 2>/dev/null || true)"
+    dev_auth_test_enabled="${dev_auth_test_enabled,,}"
+    if [[ "$dev_auth_test_enabled" == "true" || "$dev_auth_test_enabled" == "1" || "$dev_auth_test_enabled" == "yes" ]]; then
+      _audit_add_result fail dev_auth_test_account_guard "DEV_AUTH_TEST_ACCOUNT_ENABLED is not allowed in beta/prod." "Set DEV_AUTH_TEST_ACCOUNT_ENABLED=false."
+    else
+      _audit_add_result pass dev_auth_test_account_guard "DEV_AUTH_TEST_ACCOUNT_ENABLED is disabled for beta/prod."
+    fi
+  fi
 }
 
 _audit_check_env_permissions() {
