@@ -111,7 +111,7 @@ try:
       print('  STATUS:', r.status_code)
       for m in data.get('models', []):
         size_gb = m['size'] / 1e9
-        print(f'  ✓ {m["name"]} ({size_gb:.1f}GB) - {m["details"]["parameter_size"]} {m["details"]["quantization_level"]}')
+        print(f"  ✓ {m['name']} ({size_gb:.1f}GB) - {m['details']['parameter_size']} {m['details']['quantization_level']}")
 except Exception as e:
     print('  ✗ FAILED:', type(e).__name__, str(e))
 " 2>/dev/null
