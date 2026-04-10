@@ -8,15 +8,32 @@ CERT_SRC="${CERT_SRC:-/etc/letsencrypt/live/dev.uahapp.com/fullchain.pem}"
 KEY_SRC="${KEY_SRC:-/etc/letsencrypt/live/dev.uahapp.com/privkey.pem}"
 CERT_DEST_DIR="${CERT_DEST_DIR:-$ROOT_DIR/volumes/certs/dev}"
 FRONTEND_CONTAINER="${FRONTEND_CONTAINER:-uah-dev-frontend}"
+CERT_REQUIRED="${CERT_REQUIRED:-true}"
+
+CERT_REQUIRED="${CERT_REQUIRED,,}"
 
 if [[ ! -f "$CERT_SRC" ]]; then
+  if [[ "$CERT_REQUIRED" == "true" ]]; then
+    echo "Cert source not found: $CERT_SRC" >&2
+    exit 1
+  fi
+
   echo "Cert source not found: $CERT_SRC" >&2
-  exit 1
+  echo "Skipping cert sync because CERT_REQUIRED=false." >&2
+  echo "Provision certs and run 'bash scripts/uah.sh dev cert-sync' when ready." >&2
+  exit 0
 fi
 
 if [[ ! -f "$KEY_SRC" ]]; then
+  if [[ "$CERT_REQUIRED" == "true" ]]; then
+    echo "Key source not found: $KEY_SRC" >&2
+    exit 1
+  fi
+
   echo "Key source not found: $KEY_SRC" >&2
-  exit 1
+  echo "Skipping cert sync because CERT_REQUIRED=false." >&2
+  echo "Provision certs and run 'bash scripts/uah.sh dev cert-sync' when ready." >&2
+  exit 0
 fi
 
 mkdir -p "$CERT_DEST_DIR"

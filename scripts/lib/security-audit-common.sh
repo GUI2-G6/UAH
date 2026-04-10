@@ -63,8 +63,8 @@ _audit_capture() {
   local __outvar="$1"
   shift
 
-  local _out
-  local _rc
+  local _out=""
+  local _rc=0
 
   set +e
   _out="$("$@" 2>&1)"
@@ -79,7 +79,7 @@ _audit_capture_privileged() {
   local __outvar="$1"
   shift
 
-  local _out
+  local _out=""
   if _audit_capture _out "$@"; then
     printf -v "$__outvar" "%s" "$_out"
     return 0

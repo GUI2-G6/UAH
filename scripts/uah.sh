@@ -726,7 +726,7 @@ run_sync_rebuild_if_requested() {
 
   if ! ensure_env_confirmation "$env_name" "sync-rebuild"; then
     echo "Sync rebuild cancelled by env safety confirmation."
-    exit 1
+    return 1
   fi
 
   echo "Running post-sync compose update ($(build_mode_label))..."
@@ -2328,11 +2328,58 @@ prod_scaffold() {
   echo "Prod mode is scaffold-only right now."
   echo "Requested action '$action' was not executed."
   echo "Add prod compose/container/network details before enabling prod operations."
-  exit 2
+  return 2
 }
 
 sync_dev_cert() {
-  bash "$ROOT_DIR/scripts/dev/certbot-sync-dev-cert.sh"
+  local mode="${1:-strict}"
+  local cert_required="true"
+
+  if [[ "$mode" == "optional" ]]; then
+    cert_required="false"
+  fi
+
+  CERT_REQUIRED="$cert_required" bash "$ROOT_DIR/scripts/dev/certbot-sync-dev-cert.sh"
+}
+
+dev_backend_connectivity_check_once() {
+  docker exec uah-dev-backend python3 - <<'PY'
+import httpx
+import sys
+
+try:
+    response = httpx.get('http://localhost:8000/api/', timeout=5)
+    print('BACKEND: OK -', response.status_code)
+    sys.exit(0)
+except Exception as exc:
+    print('BACKEND: FAILED -', type(exc).__name__, str(exc))
+    sys.exit(1)
+PY
+}
+
+wait_for_dev_backend_ready() {
+  local max_attempts=6
+  local attempt=1
+  local delay=2
+
+  while ((attempt <= max_attempts)); do
+    echo "  readiness attempt $attempt/$max_attempts..."
+    if dev_backend_connectivity_check_once; then
+      return 0
+    fi
+
+    if ((attempt < max_attempts)); then
+      echo "  Backend not ready yet. Retrying in ${delay}s..."
+      sleep "$delay"
+      if ((delay < 10)); then
+        delay=$((delay + 2))
+      fi
+    fi
+
+    attempt=$((attempt + 1))
+  done
+
+  return 1
 }
 
 dev_start() {
@@ -2352,22 +2399,28 @@ dev_start() {
   run_compose_up_with_build_mode dev
 
   echo "[4/6] Waiting for backend to be ready..."
-  sleep 12
+  if ! wait_for_dev_backend_ready; then
+    echo "Backend readiness check failed after retries." >&2
+    echo "Run: bash scripts/uah.sh dev debug logs backend --tail 120 --errors" >&2
+    echo ""
+    run_compose dev ps || true
+    return 1
+  fi
 
   echo "[5/6] Syncing cert to frontend..."
-  if ! sync_dev_cert; then
-    echo "Cert sync skipped."
+  if ! sync_dev_cert optional; then
+    echo "Cert sync warning: unable to sync certs now."
+    echo "You can retry later with: bash scripts/uah.sh dev cert-sync"
   fi
 
   echo "[6/6] Connectivity check..."
-  docker exec uah-dev-backend python3 -c "
-import httpx
-try:
-    r = httpx.get('http://localhost:8000/api/', timeout=5)
-    print('BACKEND: OK -', r.status_code)
-except Exception as e:
-    print('BACKEND: FAILED -', type(e).__name__, str(e))
-" 2>/dev/null || true
+  if ! dev_backend_connectivity_check_once; then
+    echo "Backend failed final connectivity check." >&2
+    echo "Run: bash scripts/uah.sh dev debug status" >&2
+    echo ""
+    run_compose dev ps || true
+    return 1
+  fi
 
   echo ""
   run_compose dev ps
@@ -2409,7 +2462,9 @@ dev_restart() {
   dev_stop
   echo ""
   sleep 3
-  dev_start
+  if ! dev_start; then
+    return 1
+  fi
 }
 
 beta_start() {
@@ -3112,11 +3167,98 @@ run_audit() {
   bash "$ROOT_DIR/scripts/prod/prod-security-audit.sh" "$@"
 }
 
+interactive_reset_iteration_state() {
+  ACTION=""
+  EXTRA_ARGS=()
+  build_mode_reset_selection
+}
+
+interactive_post_action_pause() {
+  if [[ -t 0 ]]; then
+    echo ""
+    read -rp "Press Enter to return to Control Center... " _unused
+  fi
+}
+
+run_selected_action() {
+  local env_name="$1"
+  local action="$2"
+  shift 2
+  local -a action_args=("$@")
+
+  if [[ "$env_name" == "prod" && "$action" != "audit" ]]; then
+    prod_scaffold "$action"
+    return $?
+  fi
+
+  case "$action" in
+    start)
+      if ! ensure_env_confirmation "$env_name" "start"; then
+        echo "Start cancelled by env safety confirmation."
+        return 1
+      fi
+      if [[ "$env_name" == "dev" ]]; then
+        dev_start
+      else
+        beta_start
+      fi
+      ;;
+    stop)
+      if [[ "$env_name" == "dev" ]]; then
+        dev_stop
+      else
+        beta_stop
+      fi
+      ;;
+    restart)
+      if ! ensure_env_confirmation "$env_name" "restart"; then
+        echo "Restart cancelled by env safety confirmation."
+        return 1
+      fi
+      if [[ "$env_name" == "dev" ]]; then
+        dev_restart
+      else
+        beta_restart
+      fi
+      ;;
+    debug)
+      run_debug "$env_name" "${action_args[@]}"
+      ;;
+    cert-sync)
+      if [[ "$env_name" != "dev" ]]; then
+        echo "cert-sync is only supported for dev right now." >&2
+        return 1
+      fi
+      sync_dev_cert strict
+      ;;
+    sync)
+      if [[ "$env_name" == "beta" ]]; then
+        beta_sync "${action_args[0]:-}"
+        run_sync_rebuild_if_requested beta
+      elif [[ "$env_name" == "dev" ]]; then
+        dev_sync "${action_args[0]:-safe}"
+        run_sync_rebuild_if_requested dev
+      else
+        prod_scaffold "sync"
+        return $?
+      fi
+      ;;
+    audit)
+      run_audit "$env_name" "${action_args[@]}"
+      ;;
+    *)
+      echo "Unknown action '$action'." >&2
+      return 1
+      ;;
+  esac
+}
+
 ENV_NAME=""
 ACTION=""
 EXTRA_ARGS=()
 SHOW_HELP=false
 DETECTED_ENV=""
+INTERACTIVE_CONTROL_CENTER=false
 
 while (($#)); do
   case "$1" in
@@ -3223,72 +3365,39 @@ elif [[ -n "$DETECTED_ENV" && "$DETECTED_ENV" != "$ENV_NAME" ]]; then
 fi
 
 if [[ -z "$ACTION" ]]; then
-  choose_action "$ENV_NAME"
-fi
-
-resolve_build_mode
-validate_build_mode_for_action "$ACTION"
-
-if [[ "$ENV_NAME" == "prod" && "$ACTION" != "audit" ]]; then
-  prod_scaffold "$ACTION"
-fi
-
-case "$ACTION" in
-  start)
-    if ! ensure_env_confirmation "$ENV_NAME" "start"; then
-      echo "Start cancelled by env safety confirmation."
-      exit 1
-    fi
-    if [[ "$ENV_NAME" == "dev" ]]; then
-      dev_start
-    else
-      beta_start
-    fi
-    ;;
-  stop)
-    if [[ "$ENV_NAME" == "dev" ]]; then
-      dev_stop
-    else
-      beta_stop
-    fi
-    ;;
-  restart)
-    if ! ensure_env_confirmation "$ENV_NAME" "restart"; then
-      echo "Restart cancelled by env safety confirmation."
-      exit 1
-    fi
-    if [[ "$ENV_NAME" == "dev" ]]; then
-      dev_restart
-    else
-      beta_restart
-    fi
-    ;;
-  debug)
-    run_debug "$ENV_NAME" "${EXTRA_ARGS[@]}"
-    ;;
-  cert-sync)
-    if [[ "$ENV_NAME" != "dev" ]]; then
-      echo "cert-sync is only supported for dev right now." >&2
-      exit 1
-    fi
-    sync_dev_cert
-    ;;
-  sync)
-    if [[ "$ENV_NAME" == "beta" ]]; then
-      beta_sync "${EXTRA_ARGS[0]:-}"
-      run_sync_rebuild_if_requested beta
-    elif [[ "$ENV_NAME" == "dev" ]]; then
-      dev_sync "${EXTRA_ARGS[0]:-safe}"
-      run_sync_rebuild_if_requested dev
-    else
-      prod_scaffold "sync"
-    fi
-    ;;
-  audit)
-    run_audit "$ENV_NAME" "${EXTRA_ARGS[@]}"
-    ;;
-  *)
-    echo "Unknown action '$ACTION'." >&2
+  if [[ -t 0 ]]; then
+    INTERACTIVE_CONTROL_CENTER=true
+  else
+    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync|audit" >&2
     exit 1
-    ;;
-esac
+  fi
+fi
+
+if [[ "$INTERACTIVE_CONTROL_CENTER" == true ]]; then
+  while true; do
+    local_action_status=0
+    choose_action "$ENV_NAME"
+    resolve_build_mode
+    validate_build_mode_for_action "$ACTION"
+
+    if run_selected_action "$ENV_NAME" "$ACTION" "${EXTRA_ARGS[@]}"; then
+      local_action_status=0
+    else
+      local_action_status=$?
+      echo ""
+      echo "Action '$ACTION' failed with exit code $local_action_status."
+    fi
+
+    interactive_reset_iteration_state
+    interactive_post_action_pause
+  done
+else
+  resolve_build_mode
+  validate_build_mode_for_action "$ACTION"
+  if run_selected_action "$ENV_NAME" "$ACTION" "${EXTRA_ARGS[@]}"; then
+    :
+  else
+    action_status=$?
+    exit "$action_status"
+  fi
+fi
