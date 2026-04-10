@@ -13,6 +13,31 @@ SYNC_BLOCKER_STATUS=""
 SYNC_BLOCKER_AHEAD=0
 SYNC_BLOCKER_BEHIND=0
 SYNC_CAN_FAST_FORWARD=true
+DETECTED_ENV_SOURCE="unknown"
+ENV_CONFIRMATION_APPROVED=false
+ENV_CONFIRMATION_ENV=""
+
+ENV_POLICY_ERROR_COUNT=0
+ENV_POLICY_WARN_COUNT=0
+ENV_POLICY_INFO_COUNT=0
+ENV_POLICY_KEYS=(
+  "VITE_LOCAL_MODE"
+  "DEV_AUTH_TEST_ACCOUNT_ENABLED"
+  "VITE_AUTH_NAMESPACE"
+  "USE_LOCAL_PIPELINE"
+  "LOCAL_OCR_URL"
+  "LOCAL_LLM_URL"
+  "REDIS_ENABLED"
+  "REDIS_URL"
+  "ENVIRONMENT"
+  "ENV"
+  "COMPOSE_PROJECT_NAME"
+)
+declare -A ENV_POLICY_CURRENT_VALUES=()
+declare -A ENV_POLICY_RECOMMENDED_VALUES=()
+declare -A ENV_POLICY_FINDING_LEVEL=()
+declare -A ENV_POLICY_PENDING_VALUES=()
+declare -a ENV_POLICY_MESSAGES=()
 
 if [[ -t 1 ]]; then
   RED='\033[0;31m'
@@ -187,24 +212,28 @@ detect_environment_context() {
 
   if [[ "$PWD" =~ /environments/(dev|beta|prod)(/|$) ]]; then
     pwd_env="${BASH_REMATCH[1]}"
+    DETECTED_ENV_SOURCE="cwd-path"
     echo "$pwd_env"
     return
   fi
 
   if [[ "$ROOT_DIR" =~ /environments/(dev|beta|prod)(/|$) ]]; then
     root_env="${BASH_REMATCH[1]}"
+    DETECTED_ENV_SOURCE="repo-path"
     echo "$root_env"
     return
   fi
 
   env_var="$(normalize_environment_label "$(get_env_value_or_default ENVIRONMENT "")")"
   if [[ -n "$env_var" ]]; then
+    DETECTED_ENV_SOURCE="ENVIRONMENT"
     echo "$env_var"
     return
   fi
 
   env_var="$(normalize_environment_label "$(get_env_value_or_default ENV "")")"
   if [[ -n "$env_var" ]]; then
+    DETECTED_ENV_SOURCE="ENV"
     echo "$env_var"
     return
   fi
@@ -212,18 +241,22 @@ detect_environment_context() {
   compose_project="$(get_env_value_or_default COMPOSE_PROJECT_NAME "")"
   compose_project="${compose_project,,}"
   if [[ "$compose_project" == *"beta"* ]]; then
+    DETECTED_ENV_SOURCE="COMPOSE_PROJECT_NAME"
     echo "beta"
     return
   fi
   if [[ "$compose_project" == *"prod"* ]]; then
+    DETECTED_ENV_SOURCE="COMPOSE_PROJECT_NAME"
     echo "prod"
     return
   fi
   if [[ "$compose_project" == *"dev"* || "$compose_project" == *"local"* ]]; then
+    DETECTED_ENV_SOURCE="COMPOSE_PROJECT_NAME"
     echo "dev"
     return
   fi
 
+  DETECTED_ENV_SOURCE="unknown"
   echo ""
 }
 
@@ -441,6 +474,11 @@ run_sync_rebuild_if_requested() {
     return
   fi
 
+  if ! ensure_env_confirmation "$env_name" "sync-rebuild"; then
+    echo "Sync rebuild cancelled by env safety confirmation."
+    exit 1
+  fi
+
   echo "Running post-sync compose update ($(build_mode_label))..."
   preflight_startup "$env_name"
   run_compose_up_with_build_mode "$env_name"
@@ -646,6 +684,873 @@ dev_sync() {
   esac
 }
 
+normalize_bool_value() {
+  local value="${1:-}"
+
+  value="${value,,}"
+  case "$value" in
+    1|true|yes|on)
+      echo "true"
+      ;;
+    0|false|no|off|"")
+      echo "false"
+      ;;
+    *)
+      echo "$value"
+      ;;
+  esac
+}
+
+is_truthy_value() {
+  [[ "$(normalize_bool_value "$1")" == "true" ]]
+}
+
+display_env_value() {
+  local value="${1:-}"
+
+  if [[ -z "$value" ]]; then
+    echo "<empty>"
+    return
+  fi
+
+  echo "$value"
+}
+
+clip_text() {
+  local value="${1:-}"
+  local max_len="${2:-28}"
+
+  if (( ${#value} <= max_len )); then
+    echo "$value"
+    return
+  fi
+
+  echo "${value:0:max_len-3}..."
+}
+
+env_policy_expected_value() {
+  local env_name="$1"
+  local key="$2"
+
+  case "$key" in
+    VITE_LOCAL_MODE)
+      echo "backend"
+      ;;
+    DEV_AUTH_TEST_ACCOUNT_ENABLED)
+      if [[ "$env_name" == "dev" ]]; then
+        echo "true"
+      else
+        echo "false"
+      fi
+      ;;
+    VITE_AUTH_NAMESPACE)
+      echo "$env_name"
+      ;;
+    USE_LOCAL_PIPELINE)
+      echo "false"
+      ;;
+    LOCAL_OCR_URL|LOCAL_LLM_URL)
+      echo "http://10.8.0.8:11434"
+      ;;
+    REDIS_ENABLED)
+      echo "false"
+      ;;
+    REDIS_URL)
+      if [[ "$env_name" == "beta" ]]; then
+        echo "redis://uah-beta-redis:6379/0"
+      elif [[ "$env_name" == "dev" ]]; then
+        echo "redis://uah-redis:6379/0"
+      else
+        echo "redis://uah-prod-redis:6379/0"
+      fi
+      ;;
+    ENVIRONMENT)
+      if [[ "$env_name" == "dev" ]]; then
+        echo "development"
+      elif [[ "$env_name" == "beta" ]]; then
+        echo "beta"
+      else
+        echo "production"
+      fi
+      ;;
+    ENV)
+      echo "$env_name"
+      ;;
+    COMPOSE_PROJECT_NAME)
+      echo "uah-$env_name"
+      ;;
+    *)
+      echo ""
+      ;;
+  esac
+}
+
+env_policy_severity_rank() {
+  case "$1" in
+    error)
+      echo 3
+      ;;
+    warn)
+      echo 2
+      ;;
+    info)
+      echo 1
+      ;;
+    *)
+      echo 0
+      ;;
+  esac
+}
+
+env_policy_reset_state() {
+  ENV_POLICY_ERROR_COUNT=0
+  ENV_POLICY_WARN_COUNT=0
+  ENV_POLICY_INFO_COUNT=0
+  ENV_POLICY_CURRENT_VALUES=()
+  ENV_POLICY_RECOMMENDED_VALUES=()
+  ENV_POLICY_FINDING_LEVEL=()
+  ENV_POLICY_PENDING_VALUES=()
+  ENV_POLICY_MESSAGES=()
+}
+
+env_policy_add_finding() {
+  local severity="$1"
+  local key="$2"
+  local message="$3"
+  local existing_level="${ENV_POLICY_FINDING_LEVEL[$key]-}"
+  local existing_rank
+  local incoming_rank
+
+  incoming_rank="$(env_policy_severity_rank "$severity")"
+  existing_rank="$(env_policy_severity_rank "$existing_level")"
+
+  if (( incoming_rank > existing_rank )); then
+    ENV_POLICY_FINDING_LEVEL["$key"]="$severity"
+  fi
+
+  ENV_POLICY_MESSAGES+=("$severity|$key|$message")
+
+  case "$severity" in
+    error)
+      ENV_POLICY_ERROR_COUNT=$((ENV_POLICY_ERROR_COUNT + 1))
+      ;;
+    warn)
+      ENV_POLICY_WARN_COUNT=$((ENV_POLICY_WARN_COUNT + 1))
+      ;;
+    info)
+      ENV_POLICY_INFO_COUNT=$((ENV_POLICY_INFO_COUNT + 1))
+      ;;
+  esac
+}
+
+env_policy_evaluate() {
+  local env_name="$1"
+  local key=""
+  local current=""
+  local expected=""
+  local local_mode=""
+  local dev_auth=""
+  local namespace=""
+  local env_var=""
+  local env_name_var=""
+  local compose_project=""
+  local use_local_pipeline=""
+  local local_ocr_url=""
+  local local_llm_url=""
+  local redis_enabled=""
+  local redis_url=""
+
+  env_policy_reset_state
+
+  for key in "${ENV_POLICY_KEYS[@]}"; do
+    current="$(get_env_value_or_default "$key" "")"
+    expected="$(env_policy_expected_value "$env_name" "$key")"
+    ENV_POLICY_CURRENT_VALUES["$key"]="$current"
+    ENV_POLICY_RECOMMENDED_VALUES["$key"]="$expected"
+  done
+
+  local_mode="${ENV_POLICY_CURRENT_VALUES[VITE_LOCAL_MODE]-}"
+  local_mode="${local_mode,,}"
+  if [[ "$local_mode" == "mock" ]]; then
+    if [[ "$env_name" == "dev" ]]; then
+      env_policy_add_finding "warn" "VITE_LOCAL_MODE" "VITE_LOCAL_MODE=mock enables local mock data (localdev profile)."
+    else
+      env_policy_add_finding "error" "VITE_LOCAL_MODE" "VITE_LOCAL_MODE=mock is unsafe for $env_name and can start fake-data mode."
+    fi
+  elif [[ "$local_mode" != "backend" && -n "$local_mode" ]]; then
+    env_policy_add_finding "warn" "VITE_LOCAL_MODE" "VITE_LOCAL_MODE should normally be backend (current: $local_mode)."
+  fi
+
+  dev_auth="${ENV_POLICY_CURRENT_VALUES[DEV_AUTH_TEST_ACCOUNT_ENABLED]-}"
+  if is_truthy_value "$dev_auth"; then
+    if [[ "$env_name" == "dev" ]]; then
+      env_policy_add_finding "warn" "DEV_AUTH_TEST_ACCOUNT_ENABLED" "Dev auth test account is enabled. Keep only for intentional local testing."
+    else
+      env_policy_add_finding "error" "DEV_AUTH_TEST_ACCOUNT_ENABLED" "DEV_AUTH_TEST_ACCOUNT_ENABLED=true is unsafe for $env_name."
+    fi
+  fi
+
+  namespace="${ENV_POLICY_CURRENT_VALUES[VITE_AUTH_NAMESPACE]-}"
+  namespace="${namespace,,}"
+  if [[ -z "$namespace" ]]; then
+    env_policy_add_finding "warn" "VITE_AUTH_NAMESPACE" "VITE_AUTH_NAMESPACE is empty."
+  elif [[ "$namespace" != "$env_name" ]]; then
+    if [[ "$env_name" == "dev" ]]; then
+      env_policy_add_finding "warn" "VITE_AUTH_NAMESPACE" "VITE_AUTH_NAMESPACE should usually be dev in dev context."
+    else
+      env_policy_add_finding "error" "VITE_AUTH_NAMESPACE" "VITE_AUTH_NAMESPACE must match $env_name (current: $namespace)."
+    fi
+  fi
+
+  env_name_var="${ENV_POLICY_CURRENT_VALUES[ENVIRONMENT]-}"
+  env_name_var="$(normalize_environment_label "$env_name_var")"
+  if [[ -n "$env_name_var" && "$env_name_var" != "$env_name" ]]; then
+    env_policy_add_finding "warn" "ENVIRONMENT" "ENVIRONMENT points to $env_name_var while current context is $env_name."
+  fi
+
+  env_var="${ENV_POLICY_CURRENT_VALUES[ENV]-}"
+  env_var="$(normalize_environment_label "$env_var")"
+  if [[ -n "$env_var" && "$env_var" != "$env_name" ]]; then
+    env_policy_add_finding "warn" "ENV" "ENV points to $env_var while current context is $env_name."
+  fi
+
+  compose_project="${ENV_POLICY_CURRENT_VALUES[COMPOSE_PROJECT_NAME]-}"
+  compose_project="${compose_project,,}"
+  if [[ -z "$compose_project" ]]; then
+    env_policy_add_finding "warn" "COMPOSE_PROJECT_NAME" "COMPOSE_PROJECT_NAME is empty; routing may be ambiguous."
+  elif [[ "$compose_project" != *"$env_name"* ]]; then
+    env_policy_add_finding "warn" "COMPOSE_PROJECT_NAME" "COMPOSE_PROJECT_NAME ($compose_project) does not include $env_name."
+  fi
+
+  use_local_pipeline="${ENV_POLICY_CURRENT_VALUES[USE_LOCAL_PIPELINE]-}"
+  if is_truthy_value "$use_local_pipeline"; then
+    env_policy_add_finding "warn" "USE_LOCAL_PIPELINE" "USE_LOCAL_PIPELINE is enabled; ensure Desktop Ollama route is intentional."
+
+    local_ocr_url="${ENV_POLICY_CURRENT_VALUES[LOCAL_OCR_URL]-}"
+    local_llm_url="${ENV_POLICY_CURRENT_VALUES[LOCAL_LLM_URL]-}"
+    if [[ -z "$local_ocr_url" ]]; then
+      env_policy_add_finding "warn" "LOCAL_OCR_URL" "LOCAL_OCR_URL is empty while USE_LOCAL_PIPELINE=true."
+    fi
+    if [[ -z "$local_llm_url" ]]; then
+      env_policy_add_finding "warn" "LOCAL_LLM_URL" "LOCAL_LLM_URL is empty while USE_LOCAL_PIPELINE=true."
+    fi
+  fi
+
+  redis_enabled="${ENV_POLICY_CURRENT_VALUES[REDIS_ENABLED]-}"
+  redis_url="${ENV_POLICY_CURRENT_VALUES[REDIS_URL]-}"
+  if is_truthy_value "$redis_enabled" && [[ -z "$redis_url" ]]; then
+    env_policy_add_finding "warn" "REDIS_URL" "REDIS_URL is empty while REDIS_ENABLED=true."
+  fi
+}
+
+env_policy_print_findings() {
+  local finding
+  local severity
+  local key
+  local message
+
+  if (( ${#ENV_POLICY_MESSAGES[@]} == 0 )); then
+    debug_print_ok "No risky env findings detected."
+    return
+  fi
+
+  for finding in "${ENV_POLICY_MESSAGES[@]}"; do
+    severity="${finding%%|*}"
+    key="${finding#*|}"
+    key="${key%%|*}"
+    message="${finding#*|*|}"
+    case "$severity" in
+      error)
+        debug_print_error "$key :: $message"
+        ;;
+      warn)
+        debug_print_warn "$key :: $message"
+        ;;
+      *)
+        debug_print_section "$key :: $message"
+        ;;
+    esac
+  done
+}
+
+env_policy_print_matrix() {
+  local key
+  local current
+  local recommended
+  local level
+  local marker
+
+  printf "  %-28s %-24s %-24s %-7s\n" "Key" "Current" "Suggested" "State"
+  printf "  %-28s %-24s %-24s %-7s\n" "----------------------------" "------------------------" "------------------------" "-------"
+
+  for key in "${ENV_POLICY_KEYS[@]}"; do
+    current="$(display_env_value "${ENV_POLICY_CURRENT_VALUES[$key]-}")"
+    recommended="$(display_env_value "${ENV_POLICY_RECOMMENDED_VALUES[$key]-}")"
+    level="${ENV_POLICY_FINDING_LEVEL[$key]-ok}"
+    marker="$level"
+    printf "  %-28s %-24s %-24s %-7s\n" "$key" "$(clip_text "$current" 24)" "$(clip_text "$recommended" 24)" "$marker"
+  done
+}
+
+env_policy_set_pending_value() {
+  local key="$1"
+  local value="$2"
+  ENV_POLICY_PENDING_VALUES["$key"]="$value"
+}
+
+env_policy_collect_autofix_values() {
+  local key
+  local current
+  local recommended
+  local level
+
+  ENV_POLICY_PENDING_VALUES=()
+  for key in "${ENV_POLICY_KEYS[@]}"; do
+    level="${ENV_POLICY_FINDING_LEVEL[$key]-}"
+    if [[ "$level" != "error" && "$level" != "warn" ]]; then
+      continue
+    fi
+
+    current="${ENV_POLICY_CURRENT_VALUES[$key]-}"
+    recommended="${ENV_POLICY_RECOMMENDED_VALUES[$key]-}"
+    if [[ -n "$recommended" && "$current" != "$recommended" ]]; then
+      env_policy_set_pending_value "$key" "$recommended"
+    fi
+  done
+}
+
+env_policy_prompt_manual_value() {
+  local env_name="$1"
+  local key="$2"
+  local current="$3"
+  local recommended="$4"
+  local choice
+  local selected_value=""
+
+  echo ""
+  echo "  Key: $key"
+  echo "    current   : $(display_env_value "$current")"
+  echo "    suggested : $(display_env_value "$recommended")"
+  echo "    1) keep current"
+  echo "    2) use suggested"
+
+  case "$key" in
+    VITE_LOCAL_MODE)
+      echo "    3) backend"
+      echo "    4) mock"
+      ;;
+    DEV_AUTH_TEST_ACCOUNT_ENABLED|USE_LOCAL_PIPELINE|REDIS_ENABLED)
+      echo "    3) true"
+      echo "    4) false"
+      ;;
+    VITE_AUTH_NAMESPACE)
+      echo "    3) dev"
+      echo "    4) beta"
+      echo "    5) prod"
+      ;;
+    *)
+      echo "    3) enter custom value"
+      ;;
+  esac
+  echo "    0) cancel manual review"
+  read -rp "    choice: " choice
+
+  case "$key" in
+    VITE_LOCAL_MODE)
+      case "$choice" in
+        1) echo "__KEEP__" ; return ;;
+        2) echo "$recommended" ; return ;;
+        3) echo "backend" ; return ;;
+        4) echo "mock" ; return ;;
+        0) echo "__ABORT__" ; return ;;
+        *) echo "__INVALID__" ; return ;;
+      esac
+      ;;
+    DEV_AUTH_TEST_ACCOUNT_ENABLED|USE_LOCAL_PIPELINE|REDIS_ENABLED)
+      case "$choice" in
+        1) echo "__KEEP__" ; return ;;
+        2) echo "$recommended" ; return ;;
+        3) echo "true" ; return ;;
+        4) echo "false" ; return ;;
+        0) echo "__ABORT__" ; return ;;
+        *) echo "__INVALID__" ; return ;;
+      esac
+      ;;
+    VITE_AUTH_NAMESPACE)
+      case "$choice" in
+        1) echo "__KEEP__" ; return ;;
+        2) echo "$recommended" ; return ;;
+        3) echo "dev" ; return ;;
+        4) echo "beta" ; return ;;
+        5) echo "prod" ; return ;;
+        0) echo "__ABORT__" ; return ;;
+        *) echo "__INVALID__" ; return ;;
+      esac
+      ;;
+    *)
+      case "$choice" in
+        1)
+          echo "__KEEP__"
+          return
+          ;;
+        2)
+          echo "$recommended"
+          return
+          ;;
+        3)
+          read -rp "    custom value: " selected_value
+          echo "$selected_value"
+          return
+          ;;
+        0)
+          echo "__ABORT__"
+          return
+          ;;
+        *)
+          echo "__INVALID__"
+          return
+          ;;
+      esac
+      ;;
+  esac
+
+}
+
+env_policy_manual_review() {
+  local env_name="$1"
+  local key
+  local current
+  local recommended
+  local selected
+
+  ENV_POLICY_PENDING_VALUES=()
+
+  for key in "${ENV_POLICY_KEYS[@]}"; do
+    current="${ENV_POLICY_CURRENT_VALUES[$key]-}"
+    recommended="${ENV_POLICY_RECOMMENDED_VALUES[$key]-}"
+
+    if [[ -z "$recommended" || "$current" == "$recommended" ]]; then
+      continue
+    fi
+
+    selected="$(env_policy_prompt_manual_value "$env_name" "$key" "$current" "$recommended")"
+    if [[ "$selected" == "__ABORT__" ]]; then
+      echo "Manual review cancelled."
+      return 1
+    fi
+    if [[ "$selected" == "__INVALID__" ]]; then
+      echo "Invalid choice for $key."
+      return 1
+    fi
+    if [[ "$selected" == "__KEEP__" ]]; then
+      continue
+    fi
+    if [[ "$selected" != "$current" ]]; then
+      env_policy_set_pending_value "$key" "$selected"
+    fi
+  done
+
+  return 0
+}
+
+env_file_set_key_value() {
+  local file_path="$1"
+  local key="$2"
+  local value="$3"
+  local tmp_file
+
+  tmp_file="$(mktemp)"
+
+  awk -v key="$key" -v value="$value" '
+    BEGIN { updated = 0 }
+    {
+      line = $0
+      if (line ~ /^[[:space:]]*#/ || index(line, "=") == 0) {
+        print line
+        next
+      }
+
+      k = substr(line, 1, index(line, "=") - 1)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", k)
+
+      if (k == key) {
+        if (updated == 0) {
+          print key "=" value
+          updated = 1
+        }
+        next
+      }
+
+      print line
+    }
+    END {
+      if (updated == 0) {
+        print key "=" value
+      }
+    }
+  ' "$file_path" > "$tmp_file"
+
+  mv "$tmp_file" "$file_path"
+}
+
+env_policy_apply_pending_updates() {
+  local env_file="$ROOT_DIR/.env"
+  local backup_file
+  local key
+  local value
+  local applied_count=0
+
+  if (( ${#ENV_POLICY_PENDING_VALUES[@]} == 0 )); then
+    echo "No pending env changes to apply."
+    return 0
+  fi
+
+  if [[ ! -f "$env_file" ]]; then
+    touch "$env_file"
+  fi
+
+  backup_file="$env_file.bak.$(date +%Y%m%d%H%M%S)"
+  cp "$env_file" "$backup_file"
+
+  for key in "${ENV_POLICY_KEYS[@]}"; do
+    value="${ENV_POLICY_PENDING_VALUES[$key]-}"
+    if [[ -z "${ENV_POLICY_PENDING_VALUES[$key]+set}" ]]; then
+      continue
+    fi
+    env_file_set_key_value "$env_file" "$key" "$value"
+    applied_count=$((applied_count + 1))
+  done
+
+  echo "Applied $applied_count env update(s). Backup: $backup_file"
+  return 0
+}
+
+ensure_env_confirmation() {
+  local env_name="$1"
+  local action_name="$2"
+  local mode="${3:-required}"
+  local choice
+
+  if [[ "$ENV_CONFIRMATION_APPROVED" == true && "$ENV_CONFIRMATION_ENV" == "$env_name" ]]; then
+    return 0
+  fi
+
+  env_policy_evaluate "$env_name"
+
+  if [[ "$mode" == "preview" && ! -t 0 ]]; then
+    return 0
+  fi
+
+  if [[ "$mode" != "preview" && ! -t 0 ]]; then
+    if (( ENV_POLICY_ERROR_COUNT > 0 )); then
+      echo "Env safety check failed for action '$action_name' in non-interactive mode." >&2
+      env_policy_print_findings >&2
+      echo "Run interactively to use abort/autofix/continue options: bash scripts/uah.sh" >&2
+      return 1
+    fi
+    return 0
+  fi
+
+  if (( ENV_POLICY_ERROR_COUNT == 0 && ENV_POLICY_WARN_COUNT == 0 )) && [[ "$mode" != "preview" ]]; then
+    ENV_CONFIRMATION_APPROVED=true
+    ENV_CONFIRMATION_ENV="$env_name"
+    return 0
+  fi
+
+  while true; do
+    debug_header "$env_name" "Env Safety :: $action_name"
+    debug_print_section "Current vs suggested non-sensitive values"
+    env_policy_print_matrix
+    echo ""
+    debug_print_section "Findings"
+    env_policy_print_findings
+    echo ""
+    echo "  Choose next step:"
+    echo "    1) Continue with current values"
+    echo "    2) Auto-fix to suggested values"
+    echo "    3) Review/edit key values"
+    echo "    4) Abort"
+    read -rp "  Choice [1-4]: " choice
+
+    case "$choice" in
+      1)
+        if [[ "$env_name" == "prod" && $ENV_POLICY_ERROR_COUNT -gt 0 ]]; then
+          debug_print_error "Continue is blocked for prod while critical findings exist."
+          debug_press_enter
+          continue
+        fi
+        ENV_CONFIRMATION_APPROVED=true
+        ENV_CONFIRMATION_ENV="$env_name"
+        return 0
+        ;;
+      2)
+        env_policy_collect_autofix_values
+        if ! env_policy_apply_pending_updates; then
+          debug_print_error "Auto-fix failed."
+          debug_press_enter
+          continue
+        fi
+        env_policy_evaluate "$env_name"
+        if (( ENV_POLICY_ERROR_COUNT == 0 && ENV_POLICY_WARN_COUNT == 0 )); then
+          ENV_CONFIRMATION_APPROVED=true
+          ENV_CONFIRMATION_ENV="$env_name"
+          return 0
+        fi
+        debug_print_warn "Auto-fix applied, but some findings remain."
+        debug_press_enter
+        ;;
+      3)
+        if ! env_policy_manual_review "$env_name"; then
+          debug_press_enter
+          continue
+        fi
+        if ! env_policy_apply_pending_updates; then
+          debug_print_error "Manual update apply failed."
+          debug_press_enter
+          continue
+        fi
+        env_policy_evaluate "$env_name"
+        if (( ENV_POLICY_ERROR_COUNT == 0 && ENV_POLICY_WARN_COUNT == 0 )); then
+          ENV_CONFIRMATION_APPROVED=true
+          ENV_CONFIRMATION_ENV="$env_name"
+          return 0
+        fi
+        debug_print_warn "Updates applied. Review remaining findings before continuing."
+        debug_press_enter
+        ;;
+      4)
+        return 1
+        ;;
+      *)
+        debug_print_warn "Invalid choice."
+        debug_press_enter
+        ;;
+    esac
+  done
+}
+
+startup_backend_container_name() {
+  case "$1" in
+    dev)
+      echo "uah-dev-backend"
+      ;;
+    beta)
+      echo "uah-beta-backend"
+      ;;
+    *)
+      echo "uah-prod-backend"
+      ;;
+  esac
+}
+
+startup_network_name() {
+  case "$1" in
+    dev)
+      echo "uah-infra"
+      ;;
+    beta)
+      echo "uah-beta-infra"
+      ;;
+    *)
+      echo "uah-prod-infra"
+      ;;
+  esac
+}
+
+startup_status_chip() {
+  local state="$1"
+  local label="$2"
+
+  case "$state" in
+    ok)
+      echo -e "  ${GREEN}●${NC} ${label}"
+      ;;
+    warn)
+      echo -e "  ${YELLOW}●${NC} ${label}"
+      ;;
+    *)
+      echo -e "  ${RED}●${NC} ${label}"
+      ;;
+  esac
+}
+
+startup_header() {
+  local env_name="$1"
+
+  if [[ -t 1 ]]; then
+    clear
+  fi
+
+  echo -e "${BOLD}${CYAN}"
+  echo "  ██╗   ██╗ █████╗ ██╗  ██╗"
+  echo "  ██║   ██║██╔══██╗██║  ██║"
+  echo "  ██║   ██║███████║███████║"
+  echo "  ██║   ██║██╔══██║██╔══██║"
+  echo "  ╚██████╔╝██║  ██║██║  ██║"
+  echo "   ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝"
+  echo -e "${NC}${BOLD}  Control Center :: ${env_name^^}${NC}"
+  echo -e "${CYAN}  ─────────────────────────────────────────────────────────────${NC}"
+  echo ""
+}
+
+startup_quick_hud() {
+  local env_name="$1"
+  local backend_container
+  local network_name
+
+  backend_container="$(startup_backend_container_name "$env_name")"
+  network_name="$(startup_network_name "$env_name")"
+
+  debug_print_section "Quick HUD"
+  startup_status_chip "ok" "Environment: $env_name (source: $DETECTED_ENV_SOURCE)"
+  startup_status_chip "ok" "Build mode: $(build_mode_label)"
+
+  if command -v docker >/dev/null 2>&1; then
+    startup_status_chip "ok" "Docker CLI: available"
+    if docker compose version >/dev/null 2>&1; then
+      startup_status_chip "ok" "Docker Compose: available"
+    else
+      startup_status_chip "error" "Docker Compose: missing plugin"
+    fi
+
+    if is_container_running "$backend_container"; then
+      startup_status_chip "ok" "Backend container: running ($backend_container)"
+    else
+      startup_status_chip "warn" "Backend container: not running ($backend_container)"
+    fi
+
+    if docker network inspect "$network_name" >/dev/null 2>&1; then
+      startup_status_chip "ok" "Primary network: present ($network_name)"
+    else
+      startup_status_chip "warn" "Primary network: missing ($network_name)"
+    fi
+  else
+    startup_status_chip "error" "Docker CLI: unavailable"
+  fi
+
+  env_policy_evaluate "$env_name"
+  if (( ENV_POLICY_ERROR_COUNT > 0 )); then
+    startup_status_chip "error" "Env safety: ${ENV_POLICY_ERROR_COUNT} critical, ${ENV_POLICY_WARN_COUNT} warnings"
+  elif (( ENV_POLICY_WARN_COUNT > 0 )); then
+    startup_status_chip "warn" "Env safety: ${ENV_POLICY_WARN_COUNT} warning(s)"
+  else
+    startup_status_chip "ok" "Env safety: clean"
+  fi
+}
+
+choose_environment_interactive() {
+  local current_env="$1"
+  local choice
+
+  echo ""
+  echo "  Select environment context:"
+  echo "    1) dev"
+  echo "    2) beta"
+  echo "    3) prod"
+  echo "    0) keep current ($current_env)"
+  read -rp "  Choice [1-3/0]: " choice
+
+  case "$choice" in
+    1)
+      echo "dev"
+      ;;
+    2)
+      echo "beta"
+      ;;
+    3)
+      echo "prod"
+      ;;
+    0|"")
+      echo "$current_env"
+      ;;
+    *)
+      echo "$current_env"
+      ;;
+  esac
+}
+
+choose_action() {
+  local active_env="$1"
+  local choice
+  local selected_env
+
+  if [[ ! -t 0 ]]; then
+    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync|audit" >&2
+    exit 1
+  fi
+
+  while true; do
+    startup_header "$active_env"
+    startup_quick_hud "$active_env"
+    echo ""
+    echo "  Actions"
+    echo "    1) start"
+    echo "    2) stop"
+    echo "    3) restart"
+    echo "    4) debug"
+    echo "    5) sync"
+    echo "    6) cert-sync"
+    echo "    7) audit"
+    echo "    8) review env values"
+    echo "    9) switch environment"
+    echo "    0) exit"
+    read -rp "  Choice [1-9/0]: " choice
+
+    case "$choice" in
+      1)
+        ACTION="start"
+        ENV_NAME="$active_env"
+        return
+        ;;
+      2)
+        ACTION="stop"
+        ENV_NAME="$active_env"
+        return
+        ;;
+      3)
+        ACTION="restart"
+        ENV_NAME="$active_env"
+        return
+        ;;
+      4)
+        ACTION="debug"
+        ENV_NAME="$active_env"
+        return
+        ;;
+      5)
+        ACTION="sync"
+        ENV_NAME="$active_env"
+        return
+        ;;
+      6)
+        ACTION="cert-sync"
+        ENV_NAME="$active_env"
+        return
+        ;;
+      7)
+        ACTION="audit"
+        ENV_NAME="$active_env"
+        return
+        ;;
+      8)
+        ensure_env_confirmation "$active_env" "preflight review" "preview" || true
+        ;;
+      9)
+        selected_env="$(choose_environment_interactive "$active_env")"
+        active_env="$selected_env"
+        ;;
+      0)
+        echo "Cancelled."
+        exit 0
+        ;;
+      *)
+        debug_print_warn "Invalid action selection."
+        debug_press_enter
+        ;;
+    esac
+  done
+}
+
 print_usage() {
   cat <<'EOF'
 UAH lifecycle command suite
@@ -659,6 +1564,8 @@ Environments:
 
 Environment selection:
   - If omitted, the script auto-detects environment from current path and root .env.
+  - In interactive mode, startup opens a rich menu + HUD before action selection.
+  - The menu lets you switch environment and review/confirm key non-sensitive env values.
   - Detection checks /environments/<env> path segments first, then ENVIRONMENT/ENV/COMPOSE_PROJECT_NAME.
   - If detection fails, pass environment explicitly.
 
@@ -703,6 +1610,11 @@ Safe sync behavior:
   Detects local blockers before pull (dirty files, local commits, diverged state).
   In interactive mode, you'll be prompted to abort or force hard sync.
 
+Env safety behavior:
+  start/restart/sync-rebuild paths run an env safety check.
+  Interactive mode offers: Continue, Auto-fix suggested values, Review/Edit, Abort.
+  Non-interactive mode fails if critical env safety findings are detected.
+
 Examples:
   bash scripts/uah.sh dev start
   bash scripts/uah.sh dev restart --build-frontend --build-backend
@@ -713,36 +1625,6 @@ Examples:
   bash scripts/uah.sh dev debug status
   bash scripts/uah.sh dev debug users reset-password testuser NewPass123
 EOF
-}
-
-choose_action() {
-  if [[ ! -t 0 ]]; then
-    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync|audit" >&2
-    exit 1
-  fi
-
-  echo "Select action:" >&2
-  echo "  1) start" >&2
-  echo "  2) stop" >&2
-  echo "  3) restart" >&2
-  echo "  4) debug" >&2
-  echo "  5) sync" >&2
-  echo "  6) cert-sync" >&2
-  echo "  7) audit" >&2
-  read -rp "Choice [1-7]: " choice
-  case "$choice" in
-    1) echo "start" ;;
-    2) echo "stop" ;;
-    3) echo "restart" ;;
-    4) echo "debug" ;;
-    5) echo "sync" ;;
-    6) echo "cert-sync" ;;
-    7) echo "audit" ;;
-    *)
-      echo "Invalid action selection." >&2
-      exit 1
-      ;;
-  esac
 }
 
 run_compose() {
@@ -1656,7 +2538,7 @@ elif [[ -n "$DETECTED_ENV" && "$DETECTED_ENV" != "$ENV_NAME" ]]; then
 fi
 
 if [[ -z "$ACTION" ]]; then
-  ACTION="$(choose_action)"
+  choose_action "$ENV_NAME"
 fi
 
 resolve_build_mode
@@ -1668,6 +2550,10 @@ fi
 
 case "$ACTION" in
   start)
+    if ! ensure_env_confirmation "$ENV_NAME" "start"; then
+      echo "Start cancelled by env safety confirmation."
+      exit 1
+    fi
     if [[ "$ENV_NAME" == "dev" ]]; then
       dev_start
     else
@@ -1682,6 +2568,10 @@ case "$ACTION" in
     fi
     ;;
   restart)
+    if ! ensure_env_confirmation "$ENV_NAME" "restart"; then
+      echo "Restart cancelled by env safety confirmation."
+      exit 1
+    fi
     if [[ "$ENV_NAME" == "dev" ]]; then
       dev_restart
     else
