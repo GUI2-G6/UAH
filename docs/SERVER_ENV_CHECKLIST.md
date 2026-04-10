@@ -89,6 +89,7 @@ Environment policy:
 ## Operational Notes
 
 - Runtime script entrypoint is `scripts/uah.sh`.
+- `scripts/uah.sh` auto-detects environment context when env is omitted (path and root `.env` heuristics).
 - Lifecycle env requirement check entrypoint is `scripts/lib/env-feature-check.sh`.
 - Security audit entrypoint is `scripts/uah.sh <dev|beta|prod> audit`.
 - Dev cert sync hook is `scripts/dev/certbot-sync-dev-cert.sh`.
@@ -96,3 +97,4 @@ Environment policy:
 - Concurrent dev and beta on one host require distinct Redis host ports (`REDIS_HOST_PORT=6379`, `BETA_REDIS_HOST_PORT=6380`).
 - Beta queue defaults should use the `uah:beta:*` namespace to avoid cross-environment key overlap.
 - `scripts/uah.sh` runs env checks during startup preflight and warns after sync operations.
+- Debug operations are first-class under `scripts/uah.sh <env> debug ...` for connectivity, logs, queue, network, database, and dev user admin tasks.

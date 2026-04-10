@@ -204,6 +204,7 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_AUTH_NAMESPACE: ${VITE_AUTH_NAMESPACE:-dev}
+        VITE_LOCAL_MODE: ${VITE_LOCAL_MODE:-backend}
     container_name: uah-dev-frontend
     restart: unless-stopped
     depends_on:

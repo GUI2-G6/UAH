@@ -131,6 +131,12 @@ validate_dev_like() {
     require_present "DEV_AUTH_TEST_USERNAME"
     require_present "DEV_AUTH_TEST_PASSWORD"
   fi
+
+  local local_mode
+  local_mode="$(to_lower "$(trim "$(get_env_value "VITE_LOCAL_MODE")")")"
+  if [[ "$local_mode" == "mock" ]]; then
+    add_warning "VITE_LOCAL_MODE is 'mock'; use this only for localhost frontend development."
+  fi
 }
 
 validate_beta() {
@@ -148,6 +154,12 @@ validate_beta() {
   if [[ "$namespace" != "beta" ]]; then
     add_error "VITE_AUTH_NAMESPACE must be 'beta' for beta (current: '${namespace:-<empty>}')."
   fi
+
+  local local_mode
+  local_mode="$(to_lower "$(trim "$(get_env_value "VITE_LOCAL_MODE")")")"
+  if [[ "$local_mode" == "mock" ]]; then
+    add_error "VITE_LOCAL_MODE must not be 'mock' for beta."
+  fi
 }
 
 validate_prod() {
@@ -164,6 +176,12 @@ validate_prod() {
   namespace="$(to_lower "$(trim "$(get_env_value "VITE_AUTH_NAMESPACE")")")"
   if [[ "$namespace" != "prod" ]]; then
     add_warning "VITE_AUTH_NAMESPACE is '$namespace' (expected 'prod' for prod deployments)."
+  fi
+
+  local local_mode
+  local_mode="$(to_lower "$(trim "$(get_env_value "VITE_LOCAL_MODE")")")"
+  if [[ "$local_mode" == "mock" ]]; then
+    add_error "VITE_LOCAL_MODE must not be 'mock' for prod."
   fi
 }
 

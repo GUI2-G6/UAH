@@ -222,12 +222,24 @@ function isLoopbackOrigin(origin) {
 }
 
 export function getFrontendLocalMode() {
+  const hostname = typeof window !== 'undefined' ? window.location?.hostname : ''
+  const isLoopbackRuntime = isLoopbackHost(hostname)
+
+  // Guardrail: never enable mock mode on non-loopback hosts.
+  // This prevents remote environments (dev/beta/prod domains) from silently
+  // intercepting API calls when VITE_LOCAL_MODE is misconfigured.
+  if (!isLoopbackRuntime) return 'backend'
+
   const explicit = import.meta.env.VITE_LOCAL_MODE
   if (explicit) return normalizeMode(explicit)
 
   if (import.meta.env.MODE === 'backend') return 'backend'
   if (import.meta.env.MODE === 'mock') return 'mock'
-  return 'mock'
+
+  // Safe default: only assume mock mode on loopback hosts.
+  if (isLoopbackRuntime) return 'mock'
+
+  return 'backend'
 }
 
 export function assertSafeLocalModeConfig() {

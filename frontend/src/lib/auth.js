@@ -5,10 +5,15 @@ function normalizeNamespace(value) {
         .replace(/[^a-z0-9_.-]/g, '_')
 }
 
+function isLoopbackHost(value) {
+    const host = String(value || '').trim().toLowerCase()
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]'
+}
+
 function inferDefaultNamespace() {
     const host = String(window?.location?.hostname || '').trim().toLowerCase()
 
-    if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]') {
+    if (isLoopbackHost(host)) {
         return 'dev'
     }
     if (host.startsWith('beta.')) return 'beta'
@@ -24,6 +29,7 @@ const LEGACY_ACCESS_TOKEN_KEY = 'uah_access_token'
 const LEGACY_CURRENT_USER_KEY = 'uah_current_user'
 const ACCESS_TOKEN_KEY = `uah_access_token:${AUTH_NAMESPACE}`
 const CURRENT_USER_KEY = `uah_current_user:${AUTH_NAMESPACE}`
+const SHOULD_MIGRATE_LEGACY_KEYS = isLoopbackHost(window?.location?.hostname)
 
 function parseTokenPayload(token) {
     try {
@@ -40,7 +46,7 @@ export function isTokenExpired(token) {
 
 export function getAccessToken() {
     let token = localStorage.getItem(ACCESS_TOKEN_KEY)
-    if (!token) {
+    if (!token && SHOULD_MIGRATE_LEGACY_KEYS) {
         const legacy = localStorage.getItem(LEGACY_ACCESS_TOKEN_KEY)
         if (legacy) {
             token = legacy
@@ -63,7 +69,7 @@ export function setAccessToken(token) {
 export function getCurrentUser() {
     try {
         let raw = localStorage.getItem(CURRENT_USER_KEY)
-        if (!raw) {
+        if (!raw && SHOULD_MIGRATE_LEGACY_KEYS) {
             const legacy = localStorage.getItem(LEGACY_CURRENT_USER_KEY)
             if (legacy) {
                 raw = legacy

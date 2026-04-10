@@ -17,6 +17,9 @@ bash scripts/dev/lifecycle/dev-audit.sh [options]
 bash scripts/beta/lifecycle/beta-audit.sh [options]
 ```
 
+Wrappers are stable aliases; `scripts/uah.sh` remains the canonical audit interface.
+Audit options are also listed in `bash scripts/uah.sh --help`.
+
 Direct environment scripts:
 
 ```bash

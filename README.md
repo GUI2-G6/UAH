@@ -122,6 +122,7 @@ Open `http://127.0.0.1:5173`.
 - `npm run dev` defaults to mock mode.
 - API calls are handled by an in-browser mock API layer.
 - This path is isolated from dev/beta/prod infrastructure.
+- Non-local frontend builds default to backend mode.
 
 ### Optional local backend passthrough mode
 
@@ -240,7 +241,15 @@ If safe sync detects blockers (local file changes, local commits, or non-fast-fo
 bash scripts/uah.sh --help
 ```
 
+If you omit the environment argument, `scripts/uah.sh` auto-detects context from:
+
+1. Current path segments like `/environments/dev`, `/environments/beta`, `/environments/prod`
+2. Root `.env` values (`ENVIRONMENT`, `ENV`, `COMPOSE_PROJECT_NAME`)
+
+If detection fails, pass `dev`, `beta`, or `prod` explicitly.
+
 Wrapper scripts under `scripts/dev/lifecycle/` and `scripts/beta/lifecycle/` pass all arguments through to `scripts/uah.sh`, so rebuild flags work there too.
+Wrappers remain stable aliases; `scripts/uah.sh` is the canonical interface.
 
 ### Command reference
 
@@ -256,6 +265,25 @@ Wrapper scripts under `scripts/dev/lifecycle/` and `scripts/beta/lifecycle/` pas
 | Beta sync (safe/hard) | `bash scripts/uah.sh beta sync safe` / `bash scripts/uah.sh beta sync hard` |
 | Dev wrapper examples | `bash scripts/dev/lifecycle/dev-start.sh` / `bash scripts/dev/lifecycle/dev-restart.sh` |
 | Beta wrapper examples | `bash scripts/beta/lifecycle/beta-start.sh` / `bash scripts/beta/lifecycle/beta-restart.sh` |
+
+### Debug option interface
+
+The interactive debug consoles still work as before:
+
+- `bash scripts/uah.sh dev debug`
+- `bash scripts/uah.sh beta debug`
+
+You can now run targeted debug operations directly through `uah.sh`:
+
+- `bash scripts/uah.sh <env> debug status`
+- `bash scripts/uah.sh <env> debug connectivity <check>`
+- `bash scripts/uah.sh <env> debug logs <service> [--tail N] [--follow] [--raw|--errors|--filtered]`
+- `bash scripts/uah.sh <env> debug queue <action>`
+- `bash scripts/uah.sh <env> debug database <action>`
+- `bash scripts/uah.sh dev debug users <action>`
+- `bash scripts/uah.sh <env> debug network <action>`
+
+Run `bash scripts/uah.sh <env> debug help` for the full matrix.
 
 ### Rebuild flags
 
@@ -550,6 +578,7 @@ Copy the appropriate template values into a real root `.env` before running serv
 | `SESSION_COOKIE_PATH` | backend | Session cookie path (usually `/`) |
 | `SESSION_COOKIE_HTTPS_ONLY` | backend | Use secure-only session cookie flag |
 | `VITE_AUTH_NAMESPACE` | frontend build | Frontend auth storage namespace key suffix |
+| `VITE_LOCAL_MODE` | frontend build/runtime | Frontend API mode (`backend` for deployed stacks, `mock` for local-only UI runs) |
 | `DEV_DOMAIN` | reference | Domain for dev access |
 
 Compose now requires `AUTH_NAMESPACE` and `SESSION_COOKIE_NAME` for backend startup.

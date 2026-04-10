@@ -18,7 +18,9 @@ RUN npm ci
 # Copy source and build
 COPY . .
 ARG VITE_AUTH_NAMESPACE
+ARG VITE_LOCAL_MODE=backend
 ENV VITE_AUTH_NAMESPACE=${VITE_AUTH_NAMESPACE}
+ENV VITE_LOCAL_MODE=${VITE_LOCAL_MODE}
 RUN npm run build
 
 # --- Stage 2: Serve ---
