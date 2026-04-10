@@ -144,7 +144,7 @@ Notes:
 
 - Use `env-examples/local/.env.example` as the starting point for local root `.env` values.
 
-For host-run backend workflows (`uvicorn` outside Docker), continue using the **[Backend Local Development Guide](./backend/README.md)**.
+For host-run backend workflows (`uvicorn` outside Docker), continue using the **[Backend Local Development Guide](./docs/backend/README.md)**.
 
 ---
 
@@ -219,6 +219,7 @@ bash scripts/uah.sh beta sync hard --build-all
 2. Checks out `dev` and syncs branch state
 3. Supports `safe` (`pull --ff-only`) and `hard` (`reset --hard origin/dev`) sync modes
 4. Optionally runs post-sync compose startup with rebuild flags when provided
+5. Runs environment feature validation after sync in warn-only mode so missing keys are surfaced early
 
 If safe sync detects blockers (local file changes, local commits, or non-fast-forward state):
 
@@ -315,6 +316,7 @@ On `start`, `restart`, and `sync` with rebuild flags, scripts validate:
 2. Required external networks exist (`uah-infra`, and `uah-beta-infra` for beta)
 3. Required infrastructure container `uah-dev-vpn` is running
 4. Redis host ports are available before startup (`REDIS_HOST_PORT` for dev, `BETA_REDIS_HOST_PORT` for beta)
+5. Environment feature requirements in root `.env` via `scripts/lib/env-feature-check.sh`
 
 ### Concurrent Dev + Beta OCR Routing
 
