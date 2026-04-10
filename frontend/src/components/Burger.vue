@@ -11,38 +11,33 @@
             <span class="burger-bar" id="b-bar3"></span>
         </button>
         <div class="menu">
-            <!--Notification-Button-->
-            <button width="50px" height="50px" class="burger-item" @click="goTo('/notifications')">
-                <img src="../images/placeholder/REMINDERICON_LIGHT.png" alt="Notifications" width="30px" height="28px">
-                <span v-if="active" class="label">Notifications</span>
-            </button>
             <!--Application-Button-->
-            <button width="50px" height="50px" class="burger-item" @click="goTo('/application')">
+            <button width="50px" height="50px" class="burger-item" @click="goTo('/application')" title="Applied">
                 <img src="../images/placeholder/APPLICATIONS_LIGHT.png" alt="Applications" width="30px" height="28px">
-                <span v-if="active" class="label">Applications</span>
-            </button>
-            <!--Analytics-Button-->
-            <button width="50px" height="50px" class="burger-item" @click="goTo('/analytics')">
-                <img src="../images/placeholder/ANALYTICS_LIGHT.png" alt="Analytics" width="30px" height="28px">
-                <span v-if="active" class="label">Analytics</span>
-            </button>
-            <!--Timeline-Button-->
-            <button width="50px" height="50px" class="burger-item" @click="goTo('/timeline')">
-                <img src="../images/placeholder/TIMELINE_LIGHT.png" alt="Timeline" width="30px" height="28px">
-                <span v-if="active" class="label">Timeline</span>
-            </button>
-            <!--Job-Board-Button-->
-            <button width="50px" height="50px" class="burger-item" @click="goTo('/job-board')">
-                <img src="../images/placeholder/JOBBOARD_LIGHT.png" alt="Job Board" width="30px" height="28px">
-                <span v-if="active" class="label">Jobs</span>
+                <span v-if="active" class="label">Applied</span>
             </button>
             <!--Resumes-Button-->
-            <button width="50px" height="50px" class="burger-item" @click="goTo('/resumes')">
+            <button width="50px" height="50px" class="burger-item" @click="goTo('/resumes')" title="Resumes">
                 <img src="../images/placeholder/RESUME_LIGHT.png" alt="Resumes" width="30px" height="28px">
                 <span v-if="active" class="label">Resumes</span>
             </button>
+            <!--Job-Board-Button-->
+            <button width="50px" height="50px" class="burger-item" @click="goTo('/job-board')" title="Jobs">
+                <img src="../images/placeholder/JOBBOARD_LIGHT.png" alt="Job Board" width="30px" height="28px">
+                <span v-if="active" class="label">Jobs</span>
+            </button>
+            <!--Analytics-Button-->
+            <button width="50px" height="50px" class="burger-item" @click="goTo('/analytics')" title="Analytics">
+                <img src="../images/placeholder/ANALYTICS_LIGHT.png" alt="Analytics" width="30px" height="28px">
+                <span v-if="active" class="label">Analytics</span>
+            </button>
+            <!--Notification-Button-->
+            <button width="50px" height="50px" class="burger-item" @click="goTo('/notifications')" title="Alerts">
+                <img src="../images/placeholder/REMINDERICON_LIGHT.png" alt="Notifications" width="30px" height="28px">
+                <span v-if="active" class="label">Alerts</span>
+            </button>
             <!--Settings-Button-->
-            <button width="50px" height="50px" class="burger-item" @click="goTo('/settings')">
+            <button width="50px" height="50px" class="burger-item" @click="goTo('/settings')" title="Settings">
                 <img src="../images/placeholder/SETTING_LIGHT.png" alt="Settings" width="30px" height="28px">
                 <span v-if="active" class="label">Settings</span>
             </button>
