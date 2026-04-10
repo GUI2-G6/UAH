@@ -1,3 +1,12 @@
+#burger > img {
+  cursor: pointer;
+}
+
+#burger > img:hover {
+  background-color: rgb(186, 186, 186);
+  border-radius: 8px;
+}
+
 /* Burger Icon */
 #burger {
   position: sticky;
@@ -79,6 +88,8 @@
   margin-left:11px;
   margin-right:11px;
   */
+
+  cursor:pointer;
 }
 #burger.active .burger-item {
   justify-content: flex-start; /* moves icon left */
@@ -103,7 +114,10 @@
 
 .burger:not(.active) .label {
   opacity:0;
-  pointer-events:none;
+}
+
+.label {
+  font-size:24px;
 }
 
 .burger-bottom {
