@@ -3,7 +3,7 @@
         'active': active
     }">
         <!--Logo-->
-        <img src="../images/logo.png" width="75px" height="75px" alt="logo">
+        <img src="../images/logo.png" width="75px" height="75px" alt="logo" @click="goTo('/home')">
         <!--Burger-Button-->
         <button type="button" class="burger-button " title="Menu" @click = "toggleActive">
             <span class="burger-bar" id="b-bar1"></span>
@@ -11,11 +11,6 @@
             <span class="burger-bar" id="b-bar3"></span>
         </button>
         <div class="menu">
-            <!--Home-Button-->
-            <button width="50px" height="50px" class="burger-item" @click="goTo('/home')">
-                <img src="../images/placeholder/HOMEICON_LIGHT.png" alt="Home" width="30px" height="28px">
-                <span v-if="active" class="label">Home</span>
-            </button>
             <!--Notification-Button-->
             <button width="50px" height="50px" class="burger-item" @click="goTo('/notifications')">
                 <img src="../images/placeholder/REMINDERICON_LIGHT.png" alt="Notifications" width="30px" height="28px">
@@ -39,7 +34,7 @@
             <!--Job-Board-Button-->
             <button width="50px" height="50px" class="burger-item" @click="goTo('/job-board')">
                 <img src="../images/placeholder/JOBBOARD_LIGHT.png" alt="Job Board" width="30px" height="28px">
-                <span v-if="active" class="label">Job Board</span>
+                <span v-if="active" class="label">Jobs</span>
             </button>
             <!--Resumes-Button-->
             <button width="50px" height="50px" class="burger-item" @click="goTo('/resumes')">
