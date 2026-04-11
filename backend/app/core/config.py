@@ -62,6 +62,7 @@ class Settings:
     DEV_AUTH_TEST_FIRST_NAME: str = os.getenv("DEV_AUTH_TEST_FIRST_NAME", "Dev")
     DEV_AUTH_TEST_LAST_NAME: str = os.getenv("DEV_AUTH_TEST_LAST_NAME", "Tester")
     DEV_AUTH_TEST_IS_ADMIN: bool = _env_bool("DEV_AUTH_TEST_IS_ADMIN", "false")
+    DEV_AUTH_TEST_IS_DEVELOPER: bool = _env_bool("DEV_AUTH_TEST_IS_DEVELOPER", "false")
     DEV_AUTH_TEST_ROTATE_PASSWORD: bool = _env_bool("DEV_AUTH_TEST_ROTATE_PASSWORD", "true")
 
     # Email (SMTP)

@@ -6,10 +6,10 @@
         <!--<Test />-->
         <router-view />
       </div>
-      <Footer @open-debug-view="openDebugView" />
+      <Footer :show-debug-tools="showDebugTools" @open-debug-view="openDebugView" />
     </div>
     <Toast />
-    <DebugDiagnosticModal v-if="debugViewOpen" :snapshot="debugSnapshot" @close="closeDebugView" />
+    <DebugDiagnosticModal v-if="showDebugTools && debugViewOpen" :snapshot="debugSnapshot" @close="closeDebugView" />
   </div>
 </template>
 
@@ -20,6 +20,7 @@
   import Footer from "./components/Footer.vue";
   import DebugDiagnosticModal from "./components/DebugDiagnosticModal.vue";
   import { setDebugRouteSnapshot, subscribeDebugState } from "./lib/debugDiagnostics";
+  import { subscribeDebugTools } from "./lib/debugTools";
 
   export default {
     name: "App",
@@ -35,6 +36,8 @@
         debugViewOpen: false,
         debugSnapshot: {},
         debugUnsubscribe: null,
+        debugToolsUnsubscribe: null,
+        showDebugTools: false,
       }
     },
     watch: {
@@ -54,14 +57,27 @@
       this.debugUnsubscribe = subscribeDebugState((snapshot) => {
         this.debugSnapshot = snapshot
       })
+      this.debugToolsUnsubscribe = subscribeDebugTools((state) => {
+        this.showDebugTools = state.showDebugTools === true
+        if (!this.showDebugTools) {
+          this.debugViewOpen = false
+          if (this.$route?.meta?.debugOnly) {
+            this.$router.replace('/home')
+          }
+        }
+      })
     },
     beforeUnmount() {
       if (typeof this.debugUnsubscribe === "function") {
         this.debugUnsubscribe()
       }
+      if (typeof this.debugToolsUnsubscribe === "function") {
+        this.debugToolsUnsubscribe()
+      }
     },
     methods: {
       openDebugView() {
+        if (!this.showDebugTools) return
         this.debugViewOpen = true
       },
       closeDebugView() {
