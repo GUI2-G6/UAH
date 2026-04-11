@@ -65,6 +65,38 @@ else
   NC=''
 fi
 
+# ---- Discord notification helper ----
+notify_discord() {
+  local webhook_url="${DISCORD_WEBHOOK_URL:-}"
+
+  # Fall back to .env value when not exported in current shell
+  if [[ -z "$webhook_url" ]]; then
+    webhook_url="$(get_env_value_or_default DISCORD_WEBHOOK_URL "")"
+  fi
+
+  # Return early if webhook URL is still not set
+  if [[ -z "$webhook_url" ]]; then
+    return
+  fi
+
+  local message="$1"
+  local color="${2:-3066993}"   # green default
+  curl -s -X POST "$webhook_url" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"embeds\": [{
+        \"title\": \"UAH Lifecycle Event\",
+        \"description\": \"$message\",
+        \"color\": $color,
+        \"footer\": { \"text\": \"$(hostname) · $(date '+%Y-%m-%d %H:%M')\" }
+      }]
+    }" > /dev/null
+}
+
+# Colors: green=3066993, yellow=16776960, red=15158332
+
+
+
 DEBUG_BACKEND_CONTAINER=""
 DEBUG_DB_CONTAINER=""
 DEBUG_REDIS_CONTAINER=""
@@ -2532,6 +2564,10 @@ dev_restart() {
 }
 
 beta_start() {
+  local beta_backend_running="false"
+  local beta_backend_port_ok="false"
+  local beta_ollama_ok="false"
+
   if [[ ! -f "$ROOT_DIR/docker-compose.yml" || ! -f "$ROOT_DIR/docker-compose.beta.yml" ]]; then
     echo "Missing required compose files at repo root." >&2
     exit 1
@@ -2574,20 +2610,50 @@ beta_start() {
     sudo iptables -I DOCKER-USER -i "$infra_br" -o "$beta_br" -j ACCEPT
 
   echo "[6/6] Connectivity check..."
-  docker exec uah-beta-backend python3 -c "
+  if docker exec uah-beta-backend python3 -c "
 import httpx
+import sys
 try:
     r = httpx.get('http://10.8.0.8:11434/api/tags', timeout=8)
     models = [m['name'] for m in r.json().get('models', [])]
     print('LOCAL OLLAMA: OK -', models)
+    sys.exit(0)
 except Exception as e:
     print('LOCAL OLLAMA: FAILED -', type(e).__name__, str(e))
-" || true
+    sys.exit(1)
+"; then
+    beta_ollama_ok="true"
+  fi
+
+  if docker inspect -f '{{.State.Running}}' uah-beta-backend 2>/dev/null | grep -qx 'true'; then
+    beta_backend_running="true"
+  fi
+
+  if docker exec uah-beta-backend python3 -c "
+import socket
+import sys
+try:
+    conn = socket.create_connection(('127.0.0.1', 8000), 5)
+    conn.close()
+    sys.exit(0)
+except Exception:
+    sys.exit(1)
+" >/dev/null 2>&1; then
+    beta_backend_port_ok="true"
+  fi
 
   echo ""
   run_compose beta ps
   echo ""
   echo "=== Beta stack started ==="
+
+  if [[ "$beta_backend_running" == "true" && "$beta_backend_port_ok" == "true" && "$beta_ollama_ok" == "true" ]]; then
+    notify_discord "**Beta start healthy**: backend running, backend port 8000 reachable, ollama reachable" 3066993
+  elif [[ "$beta_backend_running" == "true" && "$beta_backend_port_ok" == "true" ]]; then
+    notify_discord "**Beta start degraded**: backend running and reachable, but ollama connectivity failed" 16776960
+  else
+    notify_discord "**Beta start FAILED health**: backend running=$beta_backend_running, port8000=$beta_backend_port_ok, ollama=$beta_ollama_ok" 15158332
+  fi
 }
 
 beta_stop() {
@@ -2645,19 +2711,29 @@ beta_restart() {
 
 beta_sync() {
   local mode="${1:-safe}"
+  local commit_sha
 
   case "$mode" in
     safe|ff|fast-forward)
-      run_safe_sync_flow beta
+      if ! run_safe_sync_flow beta; then
+        notify_discord "**Beta sync FAILED** in safe mode" 15158332
+        return 1
+      fi
       ;;
     hard|reset)
-      run_hard_sync_flow true
+      if ! run_hard_sync_flow true; then
+        notify_discord "**Beta sync FAILED** in hard mode" 15158332
+        return 1
+      fi
       ;;
     *)
       echo "Unknown sync mode '$mode'. Use safe or hard." >&2
       exit 1
       ;;
   esac
+
+  commit_sha="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  notify_discord "**Beta synced** to commit \`$commit_sha\` (mode: $mode)" 3066993
 }
 
 sql_escape_literal() {
@@ -3223,6 +3299,8 @@ run_selected_action() {
   local action="$2"
   shift 2
   local -a action_args=("$@")
+
+  notify_discord "**uah.sh started** by \`$(whoami)\` on \`$(hostname)\` for action \`$action\` in \`$env_name\`" 16776960
 
   if [[ "$env_name" == "prod" && "$action" != "audit" ]]; then
     prod_scaffold "$action"
