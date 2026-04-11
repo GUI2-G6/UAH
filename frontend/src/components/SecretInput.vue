@@ -11,8 +11,13 @@
       :autocapitalize="autocapitalize"
       :autocorrect="autocorrect"
       :spellcheck="spellcheck"
+      :readonly="shouldReadonly"
       :disabled="disabled"
+      v-bind="autofillBlockAttrs"
       :class="[inputClass, { 'secret-input-default': !inputClass, 'secret-input-auth': useAuthStyles }]"
+      @focus="unlockAutofill"
+      @click="unlockAutofill"
+      @keydown="unlockAutofill"
       @input="$emit('update:modelValue', $event.target.value)"
     />
     <button
@@ -79,16 +84,31 @@ export default {
       type: String,
       default: 'password',
     },
+    blockAutofill: {
+      type: Boolean,
+      default: false,
+    },
   },
   emits: ['update:modelValue'],
   data() {
     return {
       revealed: false,
+      autofillUnlocked: false,
     }
   },
   computed: {
     computedType() {
       return this.revealed ? 'text' : this.hiddenType
+    },
+    shouldReadonly() {
+      return this.blockAutofill && !this.autofillUnlocked
+    },
+    autofillBlockAttrs() {
+      if (!this.blockAutofill) return {}
+      return {
+        'data-lpignore': 'true',
+        'data-1p-ignore': 'true',
+      }
     },
     useAuthStyles() {
       const cls = this.inputClass
@@ -103,6 +123,10 @@ export default {
   methods: {
     toggle() {
       this.revealed = !this.revealed
+    },
+    unlockAutofill() {
+      if (!this.blockAutofill || this.disabled || this.autofillUnlocked) return
+      this.autofillUnlocked = true
     },
   },
 }

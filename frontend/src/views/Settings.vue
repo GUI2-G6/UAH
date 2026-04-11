@@ -90,7 +90,7 @@
 
                 <div class="settings-group">
                     <h4>Change Password</h4>
-                    <form @submit.prevent="changePassword" class="account-security-form">
+                    <form @submit.prevent="changePassword" class="account-security-form" autocomplete="off">
                         <input
                             v-if="currentUser && currentUser.email"
                             class="credential-context"
@@ -102,9 +102,9 @@
                             tabindex="-1"
                             aria-hidden="true"
                         >
-                        <SecretInput id="settings-current-password" name="current_password" v-model="currentPassword" placeholder="Current password" autocomplete="current-password" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
-                        <SecretInput id="settings-new-password" name="new_password" v-model="newPassword" placeholder="New password" autocomplete="new-password" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
-                        <SecretInput id="settings-confirm-new-password" name="confirm_new_password" v-model="confirmNewPassword" placeholder="Confirm new password" autocomplete="new-password" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
+                        <SecretInput id="settings-current-password" name="current_password" v-model="currentPassword" placeholder="Current password" autocomplete="off" :blockAutofill="true" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
+                        <SecretInput id="settings-new-password" name="new_password" v-model="newPassword" placeholder="New password" autocomplete="off" :blockAutofill="true" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
+                        <SecretInput id="settings-confirm-new-password" name="confirm_new_password" v-model="confirmNewPassword" placeholder="Confirm new password" autocomplete="off" :blockAutofill="true" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
                         <button type="submit" :disabled="working" :class="buttonStatusClass('changePassword')">Update password</button>
                     </form>
                     <div v-if="actionStatus.changePassword.message" :class="feedbackClass('changePassword')">
