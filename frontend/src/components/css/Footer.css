@@ -39,6 +39,10 @@
     padding: 0;
 }
 
+.footer-link-button-dev {
+    font-weight: 600;
+}
+
 .footer a:hover {
     text-decoration: underline;
     color: var(--color-primary-600);

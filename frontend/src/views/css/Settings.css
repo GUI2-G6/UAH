@@ -337,6 +337,40 @@
   line-height: 1.15;
 }
 
+.developer-tools-group {
+  width: 100%;
+  max-width: 620px;
+}
+
+.developer-tools-capability {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0;
+}
+
+.developer-tools-toggle {
+  width: min(420px, 100%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.8);
+  color: #111827;
+  font-weight: 600;
+}
+
+.developer-tools-toggle input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--color-primary-600);
+  transform: scale(1.1);
+}
+
 @media (max-width: 700px) {
   .greeting {
     padding: 12px 14px;
@@ -366,5 +400,11 @@
 
   .connected-account-actions button {
     min-width: 120px;
+  }
+
+  .developer-tools-toggle {
+    width: 100%;
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

@@ -14,6 +14,7 @@ class User(Base):
     first_name = Column(String(100), nullable=True)
     last_name = Column(String(100), nullable=True)
     is_admin = Column(Boolean, default=False)
+    is_developer = Column(Boolean, default=False)
 
     linkedIn_id = Column(String(255), unique=True, nullable=True)
     google_id = Column(String(255), unique=True, nullable=True)
