@@ -11,15 +11,20 @@
                     <label for="job-keyword">Keyword</label>
                     <input
                         id="job-keyword"
+                        name="job_keyword"
                         v-model.trim="draftFilters.keyword"
                         type="text"
+                        autocomplete="off"
+                        autocapitalize="none"
+                        autocorrect="off"
+                        spellcheck="false"
                         placeholder="Title, company, location, category, level"
                     />
                 </div>
 
                 <div class="filter-group">
                     <label for="job-date-preset">Posted</label>
-                    <select id="job-date-preset" v-model="draftFilters.datePreset">
+                    <select id="job-date-preset" name="job_date_preset" autocomplete="off" v-model="draftFilters.datePreset">
                         <option value="any">Any time</option>
                         <option value="7">Last 7 days</option>
                         <option value="30">Last 30 days</option>
@@ -31,8 +36,10 @@
                     <label for="job-custom-date">After date</label>
                     <input
                         id="job-custom-date"
+                        name="job_custom_after_date"
                         v-model="draftFilters.customAfterDate"
                         type="date"
+                        autocomplete="off"
                     />
                 </div>
 
@@ -67,9 +74,13 @@
                   <div class="category-selector">
                     <input
                       id="job-categories"
+                      name="job_categories_input"
                       v-model.trim="categoryInput"
                       type="text"
                       autocomplete="off"
+                      autocapitalize="none"
+                      autocorrect="off"
+                      spellcheck="false"
                       placeholder="Search categories"
                       @focus="openCategoryMenu"
                       @input="onCategoryInput"
@@ -127,9 +138,13 @@
                     <div class="category-selector">
                       <input
                         id="job-levels"
+                        name="job_levels_input"
                         v-model.trim="levelInput"
                         type="text"
                         autocomplete="off"
+                        autocapitalize="none"
+                        autocorrect="off"
+                        spellcheck="false"
                         placeholder="Search levels"
                         @focus="openLevelMenu"
                         @input="onLevelInput"
@@ -210,7 +225,7 @@
                   </div>
 
                   <div v-if="draftFilters.locationMode === 'country'" class="mode-panel">
-                    <select v-model="draftFilters.countryCode">
+                    <select id="job-country-code" name="job_country_code" autocomplete="off" v-model="draftFilters.countryCode">
                       <option v-for="country in countryOptions" :key="country.code" :value="country.code">
                         {{ country.name }}{{ country.location_count ? ` (${country.location_count})` : '' }}
                       </option>
@@ -241,8 +256,13 @@
                     <div class="custom-input-row">
                         <input
                             id="job-company-input"
+                            name="job_company_input"
                             v-model.trim="companyInput"
                             type="text"
+                            autocomplete="off"
+                            autocapitalize="none"
+                            autocorrect="off"
+                            spellcheck="false"
                             placeholder="Add company and press Add"
                             @keyup.enter="addCustomFilterValue('companies')"
                         />
@@ -321,8 +341,13 @@
               <div v-if="draftFilters.locationMode === 'manual'" class="mode-panel">
                 <input
                   id="job-location-query"
+                  name="job_location_query"
                   v-model.trim="draftFilters.manualLocationQuery"
                   type="text"
+                  autocomplete="off"
+                  autocapitalize="none"
+                  autocorrect="off"
+                  spellcheck="false"
                   placeholder="ZIP code or city (e.g., 02108 or Boston, MA)"
                 />
               </div>
@@ -335,8 +360,14 @@
                 </div>
                 <div class="custom-input-row">
                   <input
+                    id="job-location-fallback"
+                    name="job_location_fallback"
                     v-model.trim="locationFallbackInput"
                     type="text"
+                    autocomplete="off"
+                    autocapitalize="none"
+                    autocorrect="off"
+                    spellcheck="false"
                     placeholder="If detection fails, enter ZIP/city"
                     @keyup.enter="resolveFallbackLocation"
                   />

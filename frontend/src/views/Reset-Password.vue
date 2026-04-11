@@ -4,28 +4,44 @@
       <h1>Reset password</h1>
       <p class="subtitle">Paste your reset token and choose a new password</p>
 
-      <input type="text" autocomplete="username" style="display:none" aria-hidden="true" />
-
       <SecretInput
         v-model="token"
+        id="reset-token"
+        name="reset_token"
         inputClass="email-input"
-        autocomplete="off"
+        autocomplete="one-time-code"
+        inputmode="text"
+        autocapitalize="none"
+        autocorrect="off"
+        :spellcheck="false"
         placeholder="Reset token"
         :disabled="loading"
       />
 
       <SecretInput
         v-model="newPassword"
+        id="reset-new-password"
+        name="new_password"
         inputClass="email-input"
         autocomplete="new-password"
+        inputmode="text"
+        autocapitalize="none"
+        autocorrect="off"
+        :spellcheck="false"
         placeholder="New password"
         :disabled="loading"
       />
 
       <SecretInput
         v-model="confirmNewPassword"
+        id="reset-confirm-password"
+        name="confirm_new_password"
         inputClass="email-input"
         autocomplete="new-password"
+        inputmode="text"
+        autocapitalize="none"
+        autocorrect="off"
+        :spellcheck="false"
         placeholder="Confirm new password"
         :disabled="loading"
       />

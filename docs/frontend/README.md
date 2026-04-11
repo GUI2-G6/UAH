@@ -70,3 +70,17 @@ npm run build
   - Category expansion behavior
   - Location cap/truncation diagnostics
   - Search diagnostics fields used by Job Board transparency UI
+
+## Settings And Autofill Notes (April 11, 2026)
+
+- Settings layout now keeps `Notifications & Preferences` inside the `Profile Settings` card for a single consolidated profile area.
+- `Connected Accounts` remains a dedicated card for long-term provider support (`Google` now, additional providers later).
+- Browser autofill compatibility pass applied to core forms:
+  - Auth (`Login`, `Register`, `Forgot-Password`, `Reset-Password`)
+  - Settings account/security inputs
+  - Resume applicant profile forms
+  - Applicant Information page
+- Standards used:
+  - Personal/contact fields use semantic `name` + `autocomplete` tokens (`given-name`, `family-name`, `email`, `tel`, `street-address`, `address-level2`, `address-level1`, `postal-code`).
+  - Password/token fields use `current-password`, `new-password`, `one-time-code`.
+  - Search/filter/custom query controls use `autocomplete="off"` plus neutral names to prevent account autofill bleed into non-account forms.

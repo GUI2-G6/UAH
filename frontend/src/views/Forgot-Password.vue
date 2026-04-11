@@ -4,13 +4,16 @@
       <h1>Forgot password</h1>
       <p class="subtitle">Enter your email to receive a reset token</p>
 
-      <input type="text" autocomplete="username" style="display:none" aria-hidden="true" />
-
       <input
+        id="forgot-email"
+        name="email"
         class="email-input"
         type="email"
         v-model="email"
         autocomplete="email"
+        autocapitalize="none"
+        autocorrect="off"
+        spellcheck="false"
         placeholder="Email"
       />
 

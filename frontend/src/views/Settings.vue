@@ -20,13 +20,45 @@
                         Current name: <strong>{{ (currentUser.first_name || currentUser.firstName || '') + (currentUser.last_name || currentUser.lastName ? ' ' + (currentUser.last_name || currentUser.lastName) : '') || 'Not set' }}</strong>
                     </p>
                     <p>First Name</p>
-                    <input type="text" v-model="firstName">
+                    <input id="settings-first-name" name="first_name" type="text" v-model="firstName" autocomplete="given-name">
                     <p>Last Name</p>
-                    <input type="text" v-model="lastName">
+                    <input id="settings-last-name" name="last_name" type="text" v-model="lastName" autocomplete="family-name">
                     <button @click="changeName" :disabled="working" :class="buttonStatusClass('changeName')">Update name</button>
                     <div v-if="actionStatus.changeName.message" :class="feedbackClass('changeName')">
                         {{ actionStatus.changeName.message }}
                     </div>
+                </div>
+                <div class="settings-group">
+                    <h4>Notifications & Preferences</h4>
+                    <p class="current-value">These preferences are currently local to this browser session and are organized here for future account-level settings support.</p>
+                    <p>Email Notifications</p>
+                    <select v-model="emailNotifications" name="email_notifications" id="settings-email-notifications" autocomplete="off">
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                    </select>
+                    <p>Reminder Notifications</p>
+                    <select v-model="reminderNotifications" name="reminder_notifications" id="settings-reminder-notifications" autocomplete="off">
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                    </select>
+                    <p>Application Status Updates</p>
+                    <select v-model="applicationStatusUpdates" name="application_status_updates" id="settings-application-status-updates" autocomplete="off">
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                    </select>
+                    <p>Language</p>
+                    <select v-model="language" name="language" id="settings-language" autocomplete="language">
+                        <option value="en">English</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                    </select>
+                    <p>Timezone</p>
+                    <select v-model="timezone" name="timezone" id="settings-timezone" autocomplete="off">
+                        <option value="EST">Eastern Standard Time (EST)</option>
+                        <option value="CST">Central Standard Time (CST)</option>
+                        <option value="MST">Mountain Standard Time (MST)</option>
+                        <option value="PST">Pacific Standard Time (PST)</option>
+                    </select>
                 </div>
             </Card>
             <Card>
@@ -36,8 +68,8 @@
                 <div class="settings-group">
                     <h4>Change Username</h4>
                     <p v-if="currentUser" class="current-value">Current: <strong>{{ currentUser.username || 'User' }}</strong></p>
-                    <input type="text" v-model="changeUsernameNew" placeholder="New username">
-                    <input type="text" v-model="changeUsernameNewConfirm" placeholder="Confirm new username">
+                    <input id="settings-new-username" name="new_username" type="text" v-model="changeUsernameNew" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="New username">
+                    <input id="settings-new-username-confirm" name="confirm_new_username" type="text" v-model="changeUsernameNewConfirm" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Confirm new username">
                     <button @click="changeUsername" :disabled="working" :class="buttonStatusClass('changeUsername')">Update username</button>
                     <div v-if="actionStatus.changeUsername.message" :class="feedbackClass('changeUsername')">
                         {{ actionStatus.changeUsername.message }}
@@ -47,8 +79,8 @@
                 <div class="settings-group">
                     <h4>Change Email</h4>
                     <p v-if="currentUser" class="current-value">Current: <strong>{{ currentUser.email || 'Not set' }}</strong></p>
-                    <input type="email" v-model="changeEmailNew" placeholder="New email">
-                    <input type="email" v-model="changeEmailNewConfirm" placeholder="Confirm new email">
+                    <input id="settings-new-email" name="new_email" type="email" v-model="changeEmailNew" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="New email">
+                    <input id="settings-new-email-confirm" name="confirm_new_email" type="email" v-model="changeEmailNewConfirm" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Confirm new email">
                     <button @click="changeEmail" :disabled="working" :class="buttonStatusClass('changeEmail')">Update email</button>
                     <div v-if="actionStatus.changeEmail.message" :class="feedbackClass('changeEmail')">
                         {{ actionStatus.changeEmail.message }}
@@ -58,10 +90,9 @@
                 <div class="settings-group">
                     <h4>Change Password</h4>
                     <form @submit.prevent="changePassword">
-                        <input type="text" autocomplete="username" style="display:none" aria-hidden="true" />
-                        <SecretInput v-model="currentPassword" placeholder="Current password" autocomplete="current-password" :disabled="working" />
-                        <SecretInput v-model="newPassword" placeholder="New password" autocomplete="new-password" :disabled="working" />
-                        <SecretInput v-model="confirmNewPassword" placeholder="Confirm new password" autocomplete="new-password" :disabled="working" />
+                        <SecretInput id="settings-current-password" name="current_password" v-model="currentPassword" placeholder="Current password" autocomplete="current-password" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
+                        <SecretInput id="settings-new-password" name="new_password" v-model="newPassword" placeholder="New password" autocomplete="new-password" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
+                        <SecretInput id="settings-confirm-new-password" name="confirm_new_password" v-model="confirmNewPassword" placeholder="Confirm new password" autocomplete="new-password" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
                         <button type="submit" :disabled="working" :class="buttonStatusClass('changePassword')">Update password</button>
                     </form>
                     <div v-if="actionStatus.changePassword.message" :class="feedbackClass('changePassword')">
@@ -76,7 +107,7 @@
                         {{ actionStatus.sendVerification.message }}
                     </div>
                     <form @submit.prevent="verifyEmail">
-                        <SecretInput v-model="verifyToken" placeholder="Verification token" autocomplete="off" :disabled="working" />
+                        <SecretInput id="settings-email-verification-token" name="email_verification_token" v-model="verifyToken" placeholder="Verification token" autocomplete="one-time-code" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
                         <button type="submit" :disabled="working" :class="buttonStatusClass('verifyEmail')">Verify email</button>
                     </form>
                     <div v-if="actionStatus.verifyEmail.message" :class="feedbackClass('verifyEmail')">
@@ -94,45 +125,60 @@
             </Card>
             <Card>
                 <template #header>
-                    <h3>Notifications & Preferences</h3>
+                    <h3>Connected Accounts</h3>
                 </template>
-                <div class="settings-group">
-                    <h4>Email Notifications</h4>
-                    <!--Using a select box here is obtrusive and bad. Redesign it to be a switch.-->
-                    <select name="email-notifications" id="email-notifications">
-                        <option>Yes</option>
-                        <option>No</option>
-                    </select>
-                    <h4>Reminder Notifications</h4>
-                    <!--Using a select box here is obtrusive and bad. Redesign it to be a switch.-->
-                    <select name="reminder-notifications" id="reminder-notifications">
-                        <option>Yes</option>
-                        <option>No</option>
-                    </select>
-                    <h4>Application Status Updates</h4>
-                    <!--Using a select box here is obtrusive and bad. Redesign it to be a switch.-->
-                    <select name="application-status-updates" id="application-status-updates">
-                        <option>Yes</option>
-                        <option>No</option>
-                    </select>
-                </div>
-                <div class="settings-group">
-                    <h4>Language</h4>
-                    <select name="language" id="language">
-                        <option>English</option>
-                        <option>Spanish</option>
-                        <option>French</option>
-                    </select>
-                    <h4>Timezone</h4>
-                    <select name="timezone" id="timezone">
-                        <option>Eastern Standard Time (EST)</option>
-                        <option>Central Standard Time (CST)</option>
-                        <option>Mountain Standard Time (MST)</option>
-                        <option>Pacific Standard Time (PST)</option>
-                    </select>
+                <div class="settings-group connected-accounts-group">
+                    <p class="connected-accounts-intro">
+                        Manage linked sign-in providers. This section is built to support additional providers over time.
+                    </p>
+                    <p v-if="connectedAccountsError" class="account-error">{{ connectedAccountsError }}</p>
+                    <div class="connected-accounts-list">
+                        <div class="connected-account-row" v-for="provider in connectedAccounts" :key="provider.provider">
+                            <div class="connected-account-meta">
+                                <p class="connected-account-title">
+                                    {{ provider.label }}
+                                    <span
+                                        class="connected-account-badge"
+                                        :class="provider.connected ? 'is-connected' : (provider.coming_soon ? 'is-coming-soon' : 'is-not-connected')"
+                                    >
+                                        {{ provider.connected ? 'Connected' : (provider.coming_soon ? 'Coming soon' : 'Not connected') }}
+                                    </span>
+                                </p>
+                                <p v-if="provider.connected && provider.account_email" class="connected-account-detail">
+                                    {{ provider.account_email }}
+                                </p>
+                                <p v-else-if="provider.disconnect_disabled_reason" class="connected-account-detail">
+                                    {{ provider.disconnect_disabled_reason }}
+                                </p>
+                                <p v-else-if="provider.coming_soon" class="connected-account-detail">
+                                    Provider support is planned.
+                                </p>
+                            </div>
+                            <div class="connected-account-actions">
+                                <button
+                                    v-if="provider.connected"
+                                    type="button"
+                                    :disabled="connectedAccountsBusyProvider === provider.provider || !provider.can_disconnect"
+                                    @click="disconnectProvider(provider.provider)"
+                                >
+                                    {{ connectedAccountsBusyProvider === provider.provider ? 'Disconnecting…' : 'Disconnect' }}
+                                </button>
+                                <button
+                                    v-else
+                                    type="button"
+                                    :disabled="connectedAccountsBusyProvider === provider.provider || provider.coming_soon || !provider.can_connect"
+                                    @click="connectProvider(provider.provider)"
+                                >
+                                    {{ connectedAccountsBusyProvider === provider.provider ? 'Connecting…' : 'Connect' }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" @click="loadConnectedAccounts" :disabled="connectedAccountsLoading || !!connectedAccountsBusyProvider">
+                        {{ connectedAccountsLoading ? 'Refreshing…' : 'Refresh connected accounts' }}
+                    </button>
                 </div>
             </Card>
-
         </div>
 
         <ConfirmModal
@@ -194,11 +240,24 @@ export default {
             verifyToken: '',
 
             confirmDeleteOpen: false,
+
+            connectedAccounts: [],
+            connectedAccountsLoading: false,
+            connectedAccountsError: '',
+            connectedAccountsBusyProvider: '',
+
+            emailNotifications: 'yes',
+            reminderNotifications: 'yes',
+            applicationStatusUpdates: 'yes',
+            language: 'en',
+            timezone: 'EST',
         }
     },
     computed: {},
     async mounted() {
         await this.loadUser()
+        await this.loadConnectedAccounts()
+        this.handleConnectedAccountRedirectState()
     },
     methods: {
         setActionStatus(key, state, message) {
@@ -245,6 +304,86 @@ export default {
             if (!msg) return `${label} failed`
             if (msg.startsWith('HTTP ')) return `${label} failed (${msg})`
             return `${label} failed: ${msg}`
+        },
+        handleConnectedAccountRedirectState() {
+            const accountsState = typeof this.$route?.query?.accounts === 'string' ? this.$route.query.accounts : ''
+            const provider = typeof this.$route?.query?.provider === 'string' ? this.$route.query.provider : ''
+            const reason = typeof this.$route?.query?.reason === 'string' ? this.$route.query.reason : ''
+
+            if (!accountsState) return
+
+            if (accountsState === 'connected') {
+                showToast(`${provider || 'Account'} connected successfully`, 'success')
+            } else if (accountsState === 'error') {
+                const detail = reason ? ` (${reason.replaceAll('_', ' ')})` : ''
+                showToast(`Could not connect ${provider || 'account'}${detail}`, 'error')
+            }
+
+            const nextQuery = { ...this.$route.query }
+            delete nextQuery.accounts
+            delete nextQuery.provider
+            delete nextQuery.reason
+            this.$router.replace({ path: this.$route.path, query: nextQuery })
+        },
+        async loadConnectedAccounts() {
+            this.connectedAccountsLoading = true
+            this.connectedAccountsError = ''
+            try {
+                const res = await authedFetch('/api/auth/connected-accounts')
+                const data = await res.json().catch(() => null)
+                if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
+                this.connectedAccounts = Array.isArray(data?.providers) ? data.providers : []
+            } catch (e) {
+                if (e.message === 'Session expired' || e.message === 'Not authenticated') {
+                    this.$router.push('/login')
+                    return
+                }
+                this.connectedAccountsError = this.formatFailure('Load connected accounts', e)
+            } finally {
+                this.connectedAccountsLoading = false
+            }
+        },
+        async connectProvider(provider) {
+            if (provider !== 'google') return
+
+            this.connectedAccountsBusyProvider = provider
+            this.connectedAccountsError = ''
+            try {
+                const res = await authedFetch('/api/auth/google/connect/start', {
+                    method: 'POST',
+                })
+                const data = await res.json().catch(() => null)
+                if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
+                if (!data?.authorization_url) throw new Error('Missing authorization URL')
+                window.location.assign(data.authorization_url)
+            } catch (e) {
+                const msg = this.formatFailure('Connect Google', e)
+                this.connectedAccountsError = msg
+                showToast(msg, 'error')
+                this.connectedAccountsBusyProvider = ''
+            }
+        },
+        async disconnectProvider(provider) {
+            if (provider !== 'google') return
+
+            this.connectedAccountsBusyProvider = provider
+            this.connectedAccountsError = ''
+            try {
+                const res = await authedFetch('/api/auth/google/disconnect', {
+                    method: 'DELETE',
+                })
+                const data = await res.json().catch(() => null)
+                if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
+                showToast(data?.message || 'Google account disconnected', 'success')
+                await this.loadConnectedAccounts()
+                await this.loadUser()
+            } catch (e) {
+                const msg = this.formatFailure('Disconnect Google', e)
+                this.connectedAccountsError = msg
+                showToast(msg, 'error')
+            } finally {
+                this.connectedAccountsBusyProvider = ''
+            }
         },
         async loadUser() {
             this.currentUser = getCurrentUser()

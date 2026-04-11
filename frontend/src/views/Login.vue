@@ -6,16 +6,27 @@
 
             <form @submit.prevent="login">
                 <input
+                    id="login-username"
+                    name="username"
                     class="email-input"
                     type="text"
                     v-model="username"
                     autocomplete="username"
+                    autocapitalize="none"
+                    autocorrect="off"
+                    spellcheck="false"
                     placeholder="Username"
                 />
                 <SecretInput
                     v-model="password"
+                    id="login-password"
+                    name="current-password"
                     inputClass="email-input"
                     autocomplete="current-password"
+                    inputmode="text"
+                    autocapitalize="none"
+                    autocorrect="off"
+                    :spellcheck="false"
                     placeholder="Password"
                     :disabled="loading"
                 />
@@ -24,6 +35,19 @@
                     {{ loading ? 'Signing in…' : 'Sign in' }}
                 </button>
             </form>
+
+            <div class="oauth-divider" aria-hidden="true">
+                <span>or</span>
+            </div>
+
+            <button
+                type="button"
+                class="oauth-btn"
+                :disabled="loading || oauthRedirecting"
+                @click="startGoogleOAuth"
+            >
+                {{ oauthRedirecting ? 'Redirecting to Google…' : 'Continue with Google' }}
+            </button>
 
             <p v-if="error" class="subtitle">{{ error }}</p>
 
@@ -54,7 +78,15 @@
                 username: "",
                 password: "",
                 loading: false,
+                oauthRedirecting: false,
                 error: null,
+            }
+        },
+        mounted() {
+            const oauthError = this.$route?.query?.oauth
+            const reason = this.$route?.query?.reason
+            if (oauthError === 'error') {
+                this.error = `Google sign-in failed${reason ? ` (${String(reason).replaceAll('_', ' ')})` : ''}`
             }
         },
         methods: {
@@ -94,6 +126,14 @@
             },
             goToForgotPassword() {
                 this.$router.push('/forgot-password')
+            },
+            startGoogleOAuth() {
+                this.error = null
+                this.oauthRedirecting = true
+                const next = typeof this.$route?.query?.next === 'string' ? this.$route.query.next : ''
+                const params = new URLSearchParams({ intent: 'login' })
+                if (next) params.set('next', next)
+                window.location.assign(`/api/auth/google?${params.toString()}`)
             },
         },
     }

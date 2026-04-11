@@ -11,17 +11,17 @@
                 </template>
                 <div class="appInfo-group">
                     <p>First Name</p>
-                    <input type="text" v-model="firstName">
+                    <input id="applicant-first-name" type="text" name="first_name" autocomplete="given-name" v-model="firstName">
                     <p>Last Name</p>
-                    <input type="text" v-model="lastName">
+                    <input id="applicant-last-name" type="text" name="last_name" autocomplete="family-name" v-model="lastName">
                     <p>Email</p>
-                    <input type ="text" v-model="currentUser.email">
+                    <input id="applicant-email" type="email" name="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="currentUser.email">
                     <p>Phone</p>
-                    <input type="text" v-model="currentUser.phone">
+                    <input id="applicant-phone" type="tel" name="phone" autocomplete="tel" v-model="currentUser.phone">
                     <p>LinkedIN URL</p>
-                    <input type="text" v-model="currentUser.linkedin">
+                    <input id="applicant-linkedin-url" type="url" name="linkedin_url" autocomplete="url" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="currentUser.linkedin">
                     <p>Portfolio/Website</p>
-                    <input type="text" v-model="currentUser.portfolio">
+                    <input id="applicant-portfolio-url" type="url" name="portfolio_url" autocomplete="url" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="currentUser.portfolio">
                 </div>
             </Card>
 
@@ -31,13 +31,13 @@
                 </template>
                 <div class="appInfo-group">
                     <p>Street Address</p>
-                    <input type="text" v-model="currentUser.streetAddress" placeholder="Street address">
+                    <input id="applicant-street-address" type="text" name="street_address" autocomplete="street-address" v-model="currentUser.streetAddress" placeholder="Street address">
                     <p>City</p>
-                    <input type="text" v-model="currentUser.City" placeholder="City">
+                    <input id="applicant-city" type="text" name="city" autocomplete="address-level2" v-model="currentUser.city" placeholder="City">
                     <p>State/Province</p>
-                    <input type="text" v-model="currentUser.state" placeholder="State/Province">
-                    <p>Country</p>
-                    <input type="text" v-model="currentUser.zip" placeholder="ZIP/Postal Code">
+                    <input id="applicant-state" type="text" name="state" autocomplete="address-level1" v-model="currentUser.state" placeholder="State/Province">
+                    <p>ZIP/Postal Code</p>
+                    <input id="applicant-postal-code" type="text" name="postal_code" autocomplete="postal-code" inputmode="numeric" v-model="currentUser.zip" placeholder="ZIP/Postal Code">
                 </div>
             </Card>
 
@@ -46,7 +46,7 @@
                     <h3>Professional Summary</h3>
                     <span>Summary</span>
                     <p style="white-space: pre-line;">{{ message }}</p>
-                    <textarea v-model="message" placeholder="Brief professional summary highlighting your key skills and experience..."></textarea>
+                    <textarea id="applicant-professional-summary" name="professional_summary" autocomplete="off" v-model="message" placeholder="Brief professional summary highlighting your key skills and experience..."></textarea>
                 </div>
             </Card>
 
@@ -54,7 +54,7 @@
                 <div class="appInfo-group">
                     <h3>Work Authorization</h3>
                     <p>Work Authorization Status</p>
-                    <select name="authorization-status" id="authorization-status">
+                    <select name="authorization_status" id="authorization-status" autocomplete="off">
                         <option>US Citizen</option>
                         <option>Green Card Holder</option>
                         <option>H1-B Visa</option>
@@ -63,7 +63,7 @@
                         <option>Require Sponsorship</option>
                     </select>
                     <p>Requires Sponsorship</p>
-                    <select name="requires-sponsorship" id="requires-sponsorship">
+                    <select name="requires_sponsorship" id="requires-sponsorship" autocomplete="off">
                         <option>Yes</option>
                         <option>No</option>
                         <option>In the future</option>
@@ -76,15 +76,15 @@
                 <div class="appInfo-group">
                 <h3>Education</h3>
                     <p>Degree</p>
-                    <input type="text" v-model="currentUser.degree" placeholder="Degree">
+                    <input id="applicant-degree" type="text" name="degree" autocomplete="organization-title" v-model="currentUser.degree" placeholder="Degree">
                     <p>Major/Field of Study</p>
-                    <input type="text" v-model="currentUser.major" placeholder="Major/Field of Study">
+                    <input id="applicant-major" type="text" name="major" autocomplete="off" v-model="currentUser.major" placeholder="Major/Field of Study">
                     <p>University</p>
-                    <input type="text" v-model="currentUser.university" placeholder="University">
+                    <input id="applicant-university" type="text" name="university" autocomplete="organization" v-model="currentUser.university" placeholder="University">
                     <p>Graduation Year</p>
-                    <input type="text" v-model="currentUser.gradYear" placeholder="Graduation Year">
+                    <input id="applicant-graduation-year" type="text" name="graduation_year" inputmode="numeric" autocomplete="off" v-model="currentUser.gradYear" placeholder="Graduation Year">
                     <p>GPA (Optional)</p>
-                    <input type="text" v-model="currentUser.gpa" placeholder="GPA">
+                    <input id="applicant-gpa" type="text" name="gpa" inputmode="decimal" autocomplete="off" v-model="currentUser.gpa" placeholder="GPA">
                 </div>
             </Card>
 
@@ -95,21 +95,21 @@
             <Card>
                 <h3>Current Experience</h3>
                 <p>Years of Experience</p>
-                <input type="text" v-model="currentUser.yearsExperience" placeholder="Years of Experience">
+                <input id="applicant-years-experience" type="text" name="years_experience" inputmode="numeric" autocomplete="off" v-model="currentUser.yearsExperience" placeholder="Years of Experience">
                 <p>Current Job Title</p>
-                <input type="text" v-model="currentUser.currentJobTitle" placeholder="Current Job Title">
+                <input id="applicant-current-job-title" type="text" name="current_job_title" autocomplete="organization-title" v-model="currentUser.currentJobTitle" placeholder="Current Job Title">
                 <p>Current Company</p>
-                <input type="text" v-model="currentUser.currentCompany" placeholder="Current Company">
+                <input id="applicant-current-company" type="text" name="current_company" autocomplete="organization" v-model="currentUser.currentCompany" placeholder="Current Company">
             </Card>
 
             <Card>
                 <h3>Job Preferences</h3>
                 <p>Desired Salary Range</p>
-                <input type="text" v-model="currentUser.salaryRange" placeholder="Desired Salary Range">
+                <input id="applicant-desired-salary-range" type="text" name="desired_salary_range" autocomplete="off" v-model="currentUser.salaryRange" placeholder="Desired Salary Range">
                 <p>Preferred Job Locations</p>
-                <input type="text" v-model="currentUser.preferredLocations" placeholder="Preferred Job Locations">
+                <input id="applicant-preferred-locations" type="text" name="preferred_locations" autocomplete="off" v-model="currentUser.preferredLocations" placeholder="Preferred Job Locations">
                 <p>Remote Work Preference</p>
-                <select name="remote-work-preference" id="remote-work-preference">
+                <select name="remote_work_preference" id="remote-work-preference" autocomplete="off">
                     <option>Remote Only</option>
                     <option>On-site</option>
                     <option>Hybrid</option>
