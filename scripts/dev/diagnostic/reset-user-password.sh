@@ -1,5 +1,5 @@
 #!/bin/bash
-# Usage: bash scripts/dev/diagnostic/reset-user-password.sh <username> <new_password>
+# Usage: bash scripts/dev/diagnostic/reset-user-password.sh <email> <new_password>
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,8 +7,8 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 ENV_FILE="${UAH_ENV_FILE:-$ROOT_DIR/.env}"
 BACKEND_CONTAINER="${BACKEND_CONTAINER:-uah-dev-backend}"
 
-USERNAME="${1:?Usage: reset-user-password.sh <username> <password>}"
-PASSWORD="${2:?Usage: reset-user-password.sh <username> <password>}"
+USER_EMAIL="${1:?Usage: reset-user-password.sh <email> <password>}"
+PASSWORD="${2:?Usage: reset-user-password.sh <email> <password>}"
 
 if [[ ! -f "$ENV_FILE" ]]; then
     echo "Env file not found: $ENV_FILE" >&2
@@ -32,14 +32,14 @@ conn = psycopg2.connect(
     user=os.environ['PGUSER'], password=os.environ['PGPASS']
 )
 cur = conn.cursor()
-cur.execute("UPDATE users SET hashed_password=%s WHERE username=%s RETURNING username, email", (h, os.environ['USERNAME']))
+cur.execute("UPDATE users SET hashed_password=%s WHERE lower(email)=lower(%s) RETURNING email", (h, os.environ['USER_EMAIL']))
 conn.commit()
 row = cur.fetchone()
 if row:
-    print(f"✓ Password reset for {row[0]} ({row[1]})")
+    print(f"✓ Password reset for {row[0]}")
     print(f"✓ Verify: {verify_password(os.environ['PW'], h)}")
 else:
-    print(f"✗ User '{os.environ['USERNAME']}' not found")
+    print(f"✗ User '{os.environ['USER_EMAIL']}' not found")
 cur.close()
 conn.close()
 PYEOF
@@ -52,7 +52,7 @@ PGUSER="$(read_env_var POSTGRES_USER)"
 
 docker exec \
   -e PW="$PASSWORD" \
-  -e USERNAME="$USERNAME" \
+  -e USER_EMAIL="$USER_EMAIL" \
   -e PGHOST="$PGHOST" \
   -e PGDB="$PGDB" \
   -e PGUSER="$PGUSER" \

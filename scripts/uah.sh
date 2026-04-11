@@ -2364,7 +2364,7 @@ Debug:
   bash scripts/uah.sh <env> debug logs [backend|frontend|cloudflared|redis|db] [--tail N] [--follow] [--raw|--errors|--filtered]
   bash scripts/uah.sh <env> debug queue [status|clear|clear-redis|clear-stuck|active|recent|failed|retry <id>|test-parse <local|cloud|rules>]
   bash scripts/uah.sh <env> debug database [isolation|user-count|resume-count|parse-stats|recent|raw <SQL>|size]
-  bash scripts/uah.sh dev debug users [list|show <username>|toggle-active <username> <true|false>|toggle-developer <username> <true|false>|reset-password <username> <password>]
+  bash scripts/uah.sh <env> debug users [list|show <email>|toggle-active <email> <true|false>|toggle-developer <email> <true|false>|reset-password <email> <password>]
   bash scripts/uah.sh <env> debug network [show-topology|show-routes|show-docker-user|show-vpn-iptables|apply-route|rollback-route|check-route]
   bash scripts/uah.sh beta debug network [apply-bridge|remove-bridge|full-reapply|rollback-all]
 
@@ -2407,7 +2407,7 @@ Examples:
   bash scripts/uah.sh dev sync --build-all
   bash scripts/uah.sh beta sync --build-frontend
   bash scripts/uah.sh dev debug status
-  bash scripts/uah.sh dev debug users reset-password testuser NewPass123
+  bash scripts/uah.sh beta debug users reset-password user@example.com NewPass123
 EOF
 }
 
@@ -3050,12 +3050,12 @@ debug_database() {
 debug_users() {
   local env_name="$1"
   local action="${2:-list}"
-  local username="${3:-}"
+  local user_email="${3:-}"
   local arg="${4:-}"
-  local escaped_username
+  local escaped_user_email
 
-  if [[ "$env_name" != "dev" ]]; then
-    echo "User admin operations are only supported for dev." >&2
+  if [[ "$env_name" != "dev" && "$env_name" != "beta" ]]; then
+    echo "User admin operations are only supported for dev and beta." >&2
     exit 1
   fi
 
@@ -3067,47 +3067,47 @@ debug_users() {
       docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -c "SELECT id, username, email, first_name, is_active, is_admin, is_developer, created_at FROM users ORDER BY id;" 2>&1 | sed 's/^/  /'
       ;;
     show)
-      if [[ -z "$username" ]]; then
-        echo "Usage: bash scripts/uah.sh dev debug users show <username>" >&2
+      if [[ -z "$user_email" ]]; then
+        echo "Usage: bash scripts/uah.sh $env_name debug users show <email>" >&2
         exit 1
       fi
-      escaped_username="$(sql_escape_literal "$username")"
-      docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -c "SELECT id, username, email, first_name, last_name, is_active, is_admin, is_developer, email_verified, created_at, updated_at FROM users WHERE username='${escaped_username}';" 2>&1 | sed 's/^/  /'
+      escaped_user_email="$(sql_escape_literal "$user_email")"
+      docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -c "SELECT id, username, email, first_name, last_name, is_active, is_admin, is_developer, email_verified, created_at, updated_at FROM users WHERE lower(email)=lower('${escaped_user_email}');" 2>&1 | sed 's/^/  /'
       ;;
     toggle-active)
-      if [[ -z "$username" || -z "$arg" ]]; then
-        echo "Usage: bash scripts/uah.sh dev debug users toggle-active <username> <true|false>" >&2
+      if [[ -z "$user_email" || -z "$arg" ]]; then
+        echo "Usage: bash scripts/uah.sh $env_name debug users toggle-active <email> <true|false>" >&2
         exit 1
       fi
       if [[ "$arg" != "true" && "$arg" != "false" ]]; then
         echo "toggle-active requires true or false." >&2
         exit 1
       fi
-      escaped_username="$(sql_escape_literal "$username")"
-      docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -c "UPDATE users SET is_active=$arg WHERE username='${escaped_username}' RETURNING username, is_active;" 2>&1 | sed 's/^/  /'
+      escaped_user_email="$(sql_escape_literal "$user_email")"
+      docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -c "UPDATE users SET is_active=$arg WHERE lower(email)=lower('${escaped_user_email}') RETURNING email, is_active;" 2>&1 | sed 's/^/  /'
       ;;
     toggle-developer)
-      if [[ -z "$username" || -z "$arg" ]]; then
-        echo "Usage: bash scripts/uah.sh dev debug users toggle-developer <username> <true|false>" >&2
+      if [[ -z "$user_email" || -z "$arg" ]]; then
+        echo "Usage: bash scripts/uah.sh $env_name debug users toggle-developer <email> <true|false>" >&2
         exit 1
       fi
       if [[ "$arg" != "true" && "$arg" != "false" ]]; then
         echo "toggle-developer requires true or false." >&2
         exit 1
       fi
-      escaped_username="$(sql_escape_literal "$username")"
-      docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -c "UPDATE users SET is_developer=$arg WHERE username='${escaped_username}' RETURNING username, is_developer;" 2>&1 | sed 's/^/  /'
+      escaped_user_email="$(sql_escape_literal "$user_email")"
+      docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -c "UPDATE users SET is_developer=$arg WHERE lower(email)=lower('${escaped_user_email}') RETURNING email, is_developer;" 2>&1 | sed 's/^/  /'
       ;;
     reset-password)
-      if [[ -z "$username" || -z "$arg" ]]; then
-        echo "Usage: bash scripts/uah.sh dev debug users reset-password <username> <password>" >&2
+      if [[ -z "$user_email" || -z "$arg" ]]; then
+        echo "Usage: bash scripts/uah.sh $env_name debug users reset-password <email> <password>" >&2
         exit 1
       fi
-      bash "$ROOT_DIR/scripts/dev/diagnostic/reset-user-password.sh" "$username" "$arg"
+      BACKEND_CONTAINER="$DEBUG_BACKEND_CONTAINER" bash "$ROOT_DIR/scripts/dev/diagnostic/reset-user-password.sh" "$user_email" "$arg"
       ;;
     *)
       echo "Unknown users action '$action'." >&2
-      echo "Supported: list, show <username>, toggle-active <username> <true|false>, toggle-developer <username> <true|false>, reset-password <username> <password>" >&2
+      echo "Supported: list, show <email>, toggle-active <email> <true|false>, toggle-developer <email> <true|false>, reset-password <email> <password>" >&2
       exit 1
       ;;
   esac
@@ -3226,7 +3226,7 @@ Debug subcommands:
   bash scripts/uah.sh <env> debug logs [backend|frontend|cloudflared|redis|db] [--tail N] [--follow] [--raw|--errors|--filtered]
   bash scripts/uah.sh <env> debug queue [status|clear|clear-redis|clear-stuck|active|recent|failed|retry <id>|test-parse <local|cloud|rules>]
   bash scripts/uah.sh <env> debug database [isolation|user-count|resume-count|parse-stats|recent|raw <SQL>|size]
-  bash scripts/uah.sh dev debug users [list|show <username>|toggle-active <username> <true|false>|toggle-developer <username> <true|false>|reset-password <username> <password>]
+  bash scripts/uah.sh <env> debug users [list|show <email>|toggle-active <email> <true|false>|toggle-developer <email> <true|false>|reset-password <email> <password>]
   bash scripts/uah.sh <env> debug network [show-topology|show-routes|show-docker-user|show-vpn-iptables|apply-route|rollback-route|check-route]
   bash scripts/uah.sh beta debug network [apply-bridge|remove-bridge|full-reapply|rollback-all]
 EOF
