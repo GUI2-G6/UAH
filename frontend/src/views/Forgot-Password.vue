@@ -39,6 +39,8 @@
 </template>
 
 <script>
+import { assertValidEmail } from '../lib/validation.js'
+
 export default {
   name: 'ForgotPassword',
   data() {
@@ -55,10 +57,11 @@ export default {
       this.error = null
       this.message = null
       try {
+        const email = assertValidEmail(this.email)
         const res = await fetch('/api/account/forgot-password', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: this.email }),
+          body: JSON.stringify({ email }),
         })
 
         const data = await res.json().catch(() => null)

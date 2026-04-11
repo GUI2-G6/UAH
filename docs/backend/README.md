@@ -35,9 +35,9 @@ Recommended: load these from the repository root `.env` file instead of typing p
 The backend supports a dev/local-only seeded test account via env flags:
 
 - `DEV_AUTH_TEST_ACCOUNT_ENABLED`
-- `DEV_AUTH_TEST_USERNAME`
 - `DEV_AUTH_TEST_PASSWORD`
 - `DEV_AUTH_TEST_EMAIL`
+- `DEV_AUTH_TEST_USERNAME` (legacy fallback only)
 - `DEV_AUTH_TEST_FIRST_NAME`
 - `DEV_AUTH_TEST_LAST_NAME`
 - `DEV_AUTH_TEST_IS_ADMIN`
@@ -45,7 +45,8 @@ The backend supports a dev/local-only seeded test account via env flags:
 
 Behavior:
 
-- If `DEV_AUTH_TEST_ACCOUNT_ENABLED=true`, username and password must be set.
+- If `DEV_AUTH_TEST_ACCOUNT_ENABLED=true`, email and password must be set.
+- `DEV_AUTH_TEST_USERNAME` remains accepted as a temporary compatibility fallback identifier but should be treated as an email value.
 - This feature is blocked in beta/prod and should remain disabled there.
 
 You can generate secrets with:

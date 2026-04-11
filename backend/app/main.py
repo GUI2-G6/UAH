@@ -28,6 +28,7 @@ from app.api.applicant_profile import router as profile_router
 from app.api.apply_session import router as apply_session_router
 from app.api.gmail import router as gmail_router
 from app.core.config import settings
+from app.core.validation import normalize_email, require_valid_email
 from app.db.base import Base
 from app.db.session import get_engine, init_engine
 from app.services.geolocation import ensure_city_dataset
@@ -148,6 +149,68 @@ def _bootstrap_admin_user_if_enabled() -> None:
         db.close()
 
 
+def _enforce_email_first_identity_mirror() -> None:
+    """Normalize stored emails and mirror username=email for all users.
+
+    This runs at startup as an idempotent guard while username sunset is in
+    progress. It fails fast on case-insensitive duplicate emails so we never
+    violate uniqueness assumptions when normalizing.
+    """
+
+    try:
+        from sqlalchemy import func
+        from app.db.session import SessionLocal
+        from app.models.user import User
+    except Exception as exc:
+        logger.exception("Email-first identity bootstrap import failed: %s", exc)
+        raise
+
+    db = SessionLocal()
+    try:
+        duplicate_rows = (
+            db.query(
+                func.lower(User.email).label("normalized_email"),
+                func.count(User.id).label("row_count"),
+            )
+            .group_by(func.lower(User.email))
+            .having(func.count(User.id) > 1)
+            .all()
+        )
+
+        if duplicate_rows:
+            sample = ", ".join(
+                [f"{row.normalized_email} ({row.row_count})" for row in duplicate_rows[:5]]
+            )
+            raise RuntimeError(
+                "Case-insensitive duplicate emails detected; cannot enforce email-first identity mirror. "
+                f"Examples: {sample}"
+            )
+
+        users = db.query(User).all()
+        updated_count = 0
+        for user in users:
+            normalized = normalize_email(user.email)
+            if not normalized:
+                raise RuntimeError(f"User id={user.id} has an empty email; cannot enforce email-first identity.")
+            if user.email != normalized or user.username != normalized:
+                user.email = normalized
+                user.username = normalized
+                updated_count += 1
+
+        if updated_count:
+            db.commit()
+            logger.warning("Email-first identity mirror enforced for %s user(s).", updated_count)
+        else:
+            db.rollback()
+            logger.info("Email-first identity mirror already in sync.")
+    except Exception:
+        db.rollback()
+        logger.exception("Email-first identity mirror bootstrap failed.")
+        raise
+    finally:
+        db.close()
+
+
 def _ensure_dev_test_user_if_enabled() -> None:
     if not settings.DEV_AUTH_TEST_ACCOUNT_ENABLED:
         return
@@ -160,12 +223,17 @@ def _ensure_dev_test_user_if_enabled() -> None:
         )
         return
 
-    username = settings.DEV_AUTH_TEST_USERNAME.strip()
+    legacy_username = settings.DEV_AUTH_TEST_USERNAME.strip()
     password = settings.DEV_AUTH_TEST_PASSWORD.strip()
-    email = (settings.DEV_AUTH_TEST_EMAIL or f"{username}@uah.local").strip().lower()
+    identifier = settings.DEV_AUTH_TEST_EMAIL.strip() or legacy_username
+    if not identifier or not password:
+        logger.error("[DEV-AUTH] DEV_AUTH_TEST_ACCOUNT_ENABLED=true but email/password are missing")
+        return
 
-    if not username or not password:
-        logger.error("[DEV-AUTH] DEV_AUTH_TEST_ACCOUNT_ENABLED=true but username/password are missing")
+    try:
+        email = require_valid_email(identifier, field_name="DEV_AUTH_TEST_EMAIL")
+    except ValueError as exc:
+        logger.error("[DEV-AUTH] Invalid dev test email identifier: %s", exc)
         return
 
     try:
@@ -178,12 +246,14 @@ def _ensure_dev_test_user_if_enabled() -> None:
 
     db = SessionLocal()
     try:
-        user = db.query(User).filter(User.username == username).first()
+        from sqlalchemy import func
+
+        user = db.query(User).filter(func.lower(User.email) == email).first()
         if not user:
-            user = db.query(User).filter(User.email == email).first()
+            user = db.query(User).filter(User.username == email).first()
 
         if user:
-            user.username = username
+            user.username = email
             user.email = email
             user.first_name = settings.DEV_AUTH_TEST_FIRST_NAME or "Dev"
             user.last_name = settings.DEV_AUTH_TEST_LAST_NAME or "Tester"
@@ -196,12 +266,12 @@ def _ensure_dev_test_user_if_enabled() -> None:
             db.add(user)
             db.commit()
             db.refresh(user)
-            logger.warning("[DEV-AUTH] Ensured dev test user '%s'", username)
+            logger.warning("[DEV-AUTH] Ensured dev test user '%s'", email)
             return
 
         user = User(
             email=email,
-            username=username,
+            username=email,
             hashed_password=hash_password(password),
             first_name=settings.DEV_AUTH_TEST_FIRST_NAME or "Dev",
             last_name=settings.DEV_AUTH_TEST_LAST_NAME or "Tester",
@@ -211,7 +281,7 @@ def _ensure_dev_test_user_if_enabled() -> None:
         db.add(user)
         db.commit()
         db.refresh(user)
-        logger.warning("[DEV-AUTH] Created dev test user '%s'", username)
+        logger.warning("[DEV-AUTH] Created dev test user '%s'", email)
     except Exception as exc:
         logger.exception("[DEV-AUTH] Failed to ensure dev test user: %s", exc)
     finally:
@@ -227,8 +297,10 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     _ensure_users_table_columns(engine)
     _ensure_resumes_table_columns(engine)
+    _enforce_email_first_identity_mirror()
     _bootstrap_admin_user_if_enabled()
     _ensure_dev_test_user_if_enabled()
+    _enforce_email_first_identity_mirror()
 
     geo_dataset_status = ensure_city_dataset()
     status = geo_dataset_status.get("status")

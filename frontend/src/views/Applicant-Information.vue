@@ -11,17 +11,17 @@
                 </template>
                 <div class="appInfo-group">
                     <p>First Name</p>
-                    <input id="applicant-first-name" type="text" name="first_name" autocomplete="given-name" v-model="firstName">
+                    <input id="applicant-first-name" type="text" name="first_name" autocomplete="off" v-model="firstName">
                     <p>Last Name</p>
-                    <input id="applicant-last-name" type="text" name="last_name" autocomplete="family-name" v-model="lastName">
+                    <input id="applicant-last-name" type="text" name="last_name" autocomplete="off" v-model="lastName">
                     <p>Email</p>
-                    <input id="applicant-email" type="email" name="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="currentUser.email">
+                    <input id="applicant-email" type="email" name="email" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="currentUser.email">
                     <p>Phone</p>
-                    <input id="applicant-phone" type="tel" name="phone" autocomplete="tel" v-model="currentUser.phone">
+                    <input id="applicant-phone" type="tel" name="phone" autocomplete="off" v-model="currentUser.phone">
                     <p>LinkedIN URL</p>
-                    <input id="applicant-linkedin-url" type="url" name="linkedin_url" autocomplete="url" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="currentUser.linkedin">
+                    <input id="applicant-linkedin-url" type="url" name="linkedin_url" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="currentUser.linkedin">
                     <p>Portfolio/Website</p>
-                    <input id="applicant-portfolio-url" type="url" name="portfolio_url" autocomplete="url" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="currentUser.portfolio">
+                    <input id="applicant-portfolio-url" type="url" name="portfolio_url" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="currentUser.portfolio">
                 </div>
             </Card>
 
@@ -31,13 +31,13 @@
                 </template>
                 <div class="appInfo-group">
                     <p>Street Address</p>
-                    <input id="applicant-street-address" type="text" name="street_address" autocomplete="street-address" v-model="currentUser.streetAddress" placeholder="Street address">
+                    <input id="applicant-street-address" type="text" name="street_address" autocomplete="off" v-model="currentUser.streetAddress" placeholder="Street address">
                     <p>City</p>
-                    <input id="applicant-city" type="text" name="city" autocomplete="address-level2" v-model="currentUser.city" placeholder="City">
+                    <input id="applicant-city" type="text" name="city" autocomplete="off" v-model="currentUser.city" placeholder="City">
                     <p>State/Province</p>
-                    <input id="applicant-state" type="text" name="state" autocomplete="address-level1" v-model="currentUser.state" placeholder="State/Province">
+                    <input id="applicant-state" type="text" name="state" autocomplete="off" v-model="currentUser.state" placeholder="State/Province">
                     <p>ZIP/Postal Code</p>
-                    <input id="applicant-postal-code" type="text" name="postal_code" autocomplete="postal-code" inputmode="numeric" v-model="currentUser.zip" placeholder="ZIP/Postal Code">
+                    <input id="applicant-postal-code" type="text" name="postal_code" autocomplete="off" inputmode="numeric" v-model="currentUser.zip" placeholder="ZIP/Postal Code">
                 </div>
             </Card>
 
@@ -76,11 +76,11 @@
                 <div class="appInfo-group">
                 <h3>Education</h3>
                     <p>Degree</p>
-                    <input id="applicant-degree" type="text" name="degree" autocomplete="organization-title" v-model="currentUser.degree" placeholder="Degree">
+                    <input id="applicant-degree" type="text" name="degree" autocomplete="off" v-model="currentUser.degree" placeholder="Degree">
                     <p>Major/Field of Study</p>
                     <input id="applicant-major" type="text" name="major" autocomplete="off" v-model="currentUser.major" placeholder="Major/Field of Study">
                     <p>University</p>
-                    <input id="applicant-university" type="text" name="university" autocomplete="organization" v-model="currentUser.university" placeholder="University">
+                    <input id="applicant-university" type="text" name="university" autocomplete="off" v-model="currentUser.university" placeholder="University">
                     <p>Graduation Year</p>
                     <input id="applicant-graduation-year" type="text" name="graduation_year" inputmode="numeric" autocomplete="off" v-model="currentUser.gradYear" placeholder="Graduation Year">
                     <p>GPA (Optional)</p>
@@ -97,9 +97,9 @@
                 <p>Years of Experience</p>
                 <input id="applicant-years-experience" type="text" name="years_experience" inputmode="numeric" autocomplete="off" v-model="currentUser.yearsExperience" placeholder="Years of Experience">
                 <p>Current Job Title</p>
-                <input id="applicant-current-job-title" type="text" name="current_job_title" autocomplete="organization-title" v-model="currentUser.currentJobTitle" placeholder="Current Job Title">
+                <input id="applicant-current-job-title" type="text" name="current_job_title" autocomplete="off" v-model="currentUser.currentJobTitle" placeholder="Current Job Title">
                 <p>Current Company</p>
-                <input id="applicant-current-company" type="text" name="current_company" autocomplete="organization" v-model="currentUser.currentCompany" placeholder="Current Company">
+                <input id="applicant-current-company" type="text" name="current_company" autocomplete="off" v-model="currentUser.currentCompany" placeholder="Current Company">
             </Card>
 
             <Card>
@@ -137,7 +137,6 @@
 <script>
 import Card from "../components/Card.vue";
 import ConfirmModal from "../components/ConfirmModal.vue";
-import SecretInput from "../components/SecretInput.vue";
 import { authedFetch, clearAuth, getCurrentUser, setCurrentUser } from "../lib/auth.js";
 
 export default {
@@ -145,7 +144,6 @@ export default {
   components: {
         Card,
         ConfirmModal,
-        SecretInput,
     },
     data() {
         return {
@@ -156,7 +154,6 @@ export default {
             working: false,
             actionStatus: {
                 changeName: { state: 'idle', message: '' },
-                changeUsername: { state: 'idle', message: '' },
                 changeEmail: { state: 'idle', message: '' },
                 changePassword: { state: 'idle', message: '' },
                 sendVerification: { state: 'idle', message: '' },
@@ -164,9 +161,6 @@ export default {
                 deleteAccount: { state: 'idle', message: '' },
             },
             _actionTimers: {},
-
-            changeUsernameNew: '',
-            changeUsernameNewConfirm: '',
 
             changeEmailNew: '',
             changeEmailNewConfirm: '',
@@ -358,42 +352,6 @@ export default {
                 await this.loadUser()
             } catch (e) {
                 this.setActionStatus('changeEmail', 'error', this.formatFailure('Update email', e))
-            } finally {
-                this.working = false
-            }
-        },
-
-        async changeUsername() {
-            const newUsername = (this.changeUsernameNew || '').trim()
-            const newUsernameConfirm = (this.changeUsernameNewConfirm || '').trim()
-            if (!newUsername || !newUsernameConfirm) {
-                this.setActionStatus('changeUsername', 'error', 'Please enter and confirm your new username')
-                return
-            }
-            if (newUsername !== newUsernameConfirm) {
-                this.setActionStatus('changeUsername', 'error', 'Usernames do not match')
-                return
-            }
-            this.working = true
-            this.setActionStatus('changeUsername', 'working', 'Updating…')
-            try {
-                const res = await authedFetch('/api/account/change-username', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        new_username: newUsername,
-                    }),
-                })
-                const data = await res.json().catch(() => null)
-                if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
-
-                // Endpoint returns UserResponse
-                this.currentUser = data
-                setCurrentUser(data)
-                this.setActionStatus('changeUsername', 'success', 'Username updated')
-                this.changeUsernameNewConfirm = ''
-            } catch (e) {
-                this.setActionStatus('changeUsername', 'error', this.formatFailure('Update username', e))
             } finally {
                 this.working = false
             }

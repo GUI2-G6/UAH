@@ -71,16 +71,16 @@ npm run build
   - Location cap/truncation diagnostics
   - Search diagnostics fields used by Job Board transparency UI
 
-## Settings And Autofill Notes (April 11, 2026)
+## Identity And Autofill Notes (April 11, 2026)
 
-- Settings layout now keeps `Notifications & Preferences` inside the `Profile Settings` card for a single consolidated profile area.
-- `Connected Accounts` remains a dedicated card for long-term provider support (`Google` now, additional providers later).
-- Browser autofill compatibility pass applied to core forms:
-  - Auth (`Login`, `Register`, `Forgot-Password`, `Reset-Password`)
-  - Settings account/security inputs
-  - Resume applicant profile forms
-  - Applicant Information page
-- Standards used:
-  - Personal/contact fields use semantic `name` + `autocomplete` tokens (`given-name`, `family-name`, `email`, `tel`, `street-address`, `address-level2`, `address-level1`, `postal-code`).
-  - Password/token fields use `current-password`, `new-password`, `one-time-code`.
-  - Search/filter/custom query controls use `autocomplete="off"` plus neutral names to prevent account autofill bleed into non-account forms.
+- Identity is now email-first in UI flows.
+  - Login uses email as the sign-in identifier.
+  - Register no longer asks for username.
+  - Settings no longer shows username management.
+- Autofill policy is intentionally narrow:
+  - Keep browser/password-manager metadata only on auth + account-security forms:
+    - `Login`, `Register`, `Forgot-Password`, `Reset-Password`
+    - Settings `Change Email` + `Change Password`
+  - All profile/resume/settings-preference data-entry fields are `autocomplete="off"` to avoid noisy autofill interference.
+- Password manager compatibility is preserved for credential updates:
+  - Account-security forms provide username/email context and keep `current-password` / `new-password` semantics for password updates.

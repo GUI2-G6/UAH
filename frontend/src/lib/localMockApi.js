@@ -276,7 +276,7 @@ function makeMockToken(user) {
   const header = { alg: 'HS256', typ: 'JWT' }
   const payload = {
     sub: String(user.id),
-    username: user.username,
+    username: user.email || user.username,
     exp: Math.floor(Date.now() / 1000) + 12 * 60 * 60,
     iat: Math.floor(Date.now() / 1000),
   }
@@ -334,10 +334,11 @@ export function assertSafeLocalModeConfig() {
 }
 
 function createDefaultUser(overrides = {}) {
+  const defaultEmail = 'localdev@uah.local'
   return {
     id: 1,
-    username: 'localdev',
-    email: 'localdev@uah.local',
+    username: defaultEmail,
+    email: defaultEmail,
     email_verified: true,
     first_name: 'Local',
     last_name: 'Developer',
@@ -1138,11 +1139,12 @@ async function handleMockApiRequest(request, requestUrl, state) {
 
   if (pathname === '/api/auth/login' && method === 'POST') {
     const body = await parseJsonBody(request)
-    const username = normalizeText(body.username) || 'localdev'
+    const email = normalizeTextLower(body.email || body.username) || 'localdev@uah.local'
 
     state.user = {
       ...state.user,
-      username,
+      email,
+      username: email,
     }
     const token = makeMockToken(state.user)
     saveState(state)
@@ -1156,10 +1158,11 @@ async function handleMockApiRequest(request, requestUrl, state) {
 
   if (pathname === '/api/auth/register' && method === 'POST') {
     const body = await parseJsonBody(request)
+    const email = normalizeTextLower(body.email) || 'localdev@uah.local'
 
     state.user = createDefaultUser({
-      username: normalizeText(body.username) || 'localdev',
-      email: normalizeText(body.email) || 'localdev@uah.local',
+      username: email,
+      email,
       first_name: normalizeText(body.first_name) || 'Local',
       last_name: normalizeText(body.last_name) || 'Developer',
     })
@@ -1234,7 +1237,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
 
   if (pathname === '/api/account/change-email' && method === 'PUT') {
     const body = await parseJsonBody(request)
-    const nextEmail = normalizeText(body.new_email)
+    const nextEmail = normalizeTextLower(body.new_email)
 
     if (!nextEmail) {
       return toJsonResponse({ detail: 'new_email is required' }, 400)
@@ -1243,6 +1246,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
     state.user = {
       ...state.user,
       email: nextEmail,
+      username: nextEmail,
       email_verified: false,
     }
 
@@ -1256,20 +1260,10 @@ async function handleMockApiRequest(request, requestUrl, state) {
   }
 
   if (pathname === '/api/account/change-username' && method === 'PUT') {
-    const body = await parseJsonBody(request)
-    const nextUsername = normalizeText(body.new_username)
-
-    if (!nextUsername) {
-      return toJsonResponse({ detail: 'new_username is required' }, 400)
-    }
-
-    state.user = {
-      ...state.user,
-      username: nextUsername,
-    }
-    saveState(state)
-
-    return toJsonResponse(state.user)
+    return toJsonResponse(
+      { detail: 'Username updates are deprecated. Email is now the sign-in identifier.' },
+      410
+    )
   }
 
   if (pathname === '/api/account/send-verification' && method === 'POST') {

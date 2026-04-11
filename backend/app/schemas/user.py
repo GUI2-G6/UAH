@@ -1,4 +1,5 @@
-from pydantic import BaseModel, Field, AliasChoices
+from pydantic import BaseModel, Field, AliasChoices, field_validator
+from app.core.validation import require_valid_email
 
 
 class UserRegister(BaseModel):
@@ -8,13 +9,6 @@ class UserRegister(BaseModel):
         max_length=255,
         description="Unique login email used for authentication, password recovery, and account notifications.",
         examples=["jane.doe@example.com"],
-    )
-    username: str = Field(
-        ...,
-        min_length=3,
-        max_length=64,
-        description="Unique public username displayed in the UI and used for credential-based login.",
-        examples=["jane_doe"],
     )
     password: str = Field(
         ...,
@@ -36,21 +30,32 @@ class UserRegister(BaseModel):
         examples=["Doe"],
     )
 
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        return require_valid_email(value)
+
 class UserLogin(BaseModel):
-    username: str = Field(
+    email: str = Field(
         ...,
-        min_length=3,
-        max_length=64,
-        description="Existing username for credential-based login.",
-        examples=["jane_doe"],
+        min_length=5,
+        max_length=255,
+        validation_alias=AliasChoices("email", "username"),
+        description="Existing account email for credential-based login. Legacy `username` payload key is accepted temporarily for compatibility.",
+        examples=["jane.doe@example.com"],
     )
     password: str = Field(
         ...,
         min_length=8,
         max_length=128,
-        description="Account password for the specified username.",
+        description="Account password for the specified email account.",
         examples=["MySecurePass!123"],
     )
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        return require_valid_email(value)
 
 class UserResponse(BaseModel):
     id: int = Field(
@@ -65,8 +70,8 @@ class UserResponse(BaseModel):
     )
     username: str | None = Field(
         default=None,
-        description="Public username chosen by the user.",
-        examples=["jane_doe"],
+        description="Compatibility field mirrored to the account email while username sunset is in progress.",
+        examples=["jane.doe@example.com"],
     )
     first_name: str | None = Field(
         default=None,
@@ -152,6 +157,11 @@ class ForgotPasswordRequest(BaseModel):
         examples=["jane.doe@example.com"],
     )
 
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        return require_valid_email(value)
+
 class ChangeEmailRequest(BaseModel):
     new_email: str = Field(
         ...,
@@ -161,12 +171,17 @@ class ChangeEmailRequest(BaseModel):
         examples=["jane.new@example.com"],
     )
 
+    @field_validator("new_email")
+    @classmethod
+    def validate_new_email(cls, value: str) -> str:
+        return require_valid_email(value, field_name="new_email")
+
 class ChangeUsernameRequest(BaseModel):
     new_username: str = Field(
         ...,
         min_length=3,
         max_length=64,
-        description="New unique username for the authenticated account.",
+        description="Deprecated request shape retained for compatibility while username sunset is in progress.",
         examples=["jane_doe_2"],
     )
 

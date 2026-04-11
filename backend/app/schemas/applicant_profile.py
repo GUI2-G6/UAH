@@ -1,5 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
+from app.core.validation import normalize_phone, require_valid_email
 
 
 class ProfileBase(BaseModel):
@@ -39,6 +40,18 @@ class ProfileBase(BaseModel):
     veteran_status: str | None = Field(default=None, max_length=120, description="Optional veteran status answer used in compliance forms.", examples=["Not a protected veteran"])
     disability_status: str | None = Field(default=None, max_length=160, description="Optional disability self-identification response.", examples=["I do not wish to answer"])
     california_resident: str | None = Field(default=None, max_length=60, description="Optional California residency declaration used by some employers.", examples=["No"])
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return require_valid_email(value)
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, value: str | None) -> str | None:
+        return normalize_phone(value)
 
 
 class ProfileCreate(ProfileBase):

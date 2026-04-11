@@ -3,19 +3,17 @@
     <div class="auth-card">
       <h1>Create account</h1>
       <p class="subtitle">Create an account to access UAH</p>
-
-      <input id="register-email" name="email" class="email-input" type="email" v-model="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Email" />
-      <input id="register-confirm-email" name="confirm_email" class="email-input" type="email" v-model="confirmEmail" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Confirm email" />
-      <input id="register-username" name="account_username" class="email-input" type="text" v-model="username" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Username" />
-      <input id="register-confirm-username" name="account_username_confirm" class="email-input" type="text" v-model="confirmUsername" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Confirm username" />
-      <SecretInput v-model="password" id="register-password" name="new-password" inputClass="email-input" autocomplete="new-password" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" placeholder="Password" :disabled="loading" />
-      <SecretInput v-model="confirmPassword" id="register-confirm-password" name="confirm_password" inputClass="email-input" autocomplete="new-password" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" placeholder="Confirm password" :disabled="loading" />
-      <input id="register-first-name" name="first_name" class="email-input" type="text" v-model="first_name" autocomplete="given-name" placeholder="First name" />
-      <input id="register-last-name" name="last_name" class="email-input" type="text" v-model="last_name" autocomplete="family-name" placeholder="Last name" />
-
-      <button class="submit-btn" @click="register" :disabled="loading">
-        {{ loading ? 'Creating…' : 'Create account' }}
-      </button>
+      <form @submit.prevent="register">
+        <input id="register-email" name="email" class="email-input" type="email" v-model="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Email" />
+        <input id="register-confirm-email" name="confirm_email" class="email-input" type="email" v-model="confirmEmail" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Confirm email" />
+        <SecretInput v-model="password" id="register-password" name="new-password" inputClass="email-input" autocomplete="new-password" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" placeholder="Password" :disabled="loading" />
+        <SecretInput v-model="confirmPassword" id="register-confirm-password" name="confirm_password" inputClass="email-input" autocomplete="new-password" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" placeholder="Confirm password" :disabled="loading" />
+        <input id="register-first-name" name="first_name" class="email-input" type="text" v-model="first_name" autocomplete="given-name" placeholder="First name" />
+        <input id="register-last-name" name="last_name" class="email-input" type="text" v-model="last_name" autocomplete="family-name" placeholder="Last name" />
+        <button class="submit-btn" type="submit" :disabled="loading">
+          {{ loading ? 'Creating…' : 'Create account' }}
+        </button>
+      </form>
 
       <div class="oauth-divider" aria-hidden="true">
         <span>or</span>
@@ -43,6 +41,7 @@
 <script>
 import SecretInput from '../components/SecretInput.vue'
 import { setAuth } from '../lib/auth.js'
+import { assertValidEmail } from '../lib/validation.js'
 
 export default {
   name: 'Register',
@@ -53,8 +52,6 @@ export default {
     return {
       email: '',
       confirmEmail: '',
-      username: '',
-      confirmUsername: '',
       password: '',
       confirmPassword: '',
       first_name: '',
@@ -79,21 +76,10 @@ export default {
       this.loading = true
       this.error = null
       try {
-        const email = (this.email || '').trim()
-        const confirmEmail = (this.confirmEmail || '').trim()
-        const username = (this.username || '').trim()
-        const confirmUsername = (this.confirmUsername || '').trim()
-
-
-        const emailRegex = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i
-        if (!emailRegex.test(email)) {
-          throw new Error('Please enter a valid email address')
-        }
+        const email = assertValidEmail(this.email)
+        const confirmEmail = assertValidEmail(this.confirmEmail, 'confirm email')
         if (!email || !confirmEmail || email.toLowerCase() !== confirmEmail.toLowerCase()) {
           throw new Error('Emails do not match')
-        }
-        if (!username || !confirmUsername || username !== confirmUsername) {
-          throw new Error('Usernames do not match')
         }
         if (!this.password || !this.confirmPassword || this.password !== this.confirmPassword) {
           throw new Error('Passwords do not match')
@@ -104,7 +90,6 @@ export default {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             email,
-            username,
             password: this.password,
             first_name: this.first_name || null,
             last_name: this.last_name || null,

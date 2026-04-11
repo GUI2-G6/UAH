@@ -45,7 +45,7 @@
 
         <div class="burger-bottom">
             <div class="user-summary" v-if="currentUser">
-                <div class="user-name">{{ displayUsername }}</div>
+                <div class="user-name">{{ displayIdentity }}</div>
                 <div class="user-email" v-if="currentUser.email">{{ currentUser.email }}</div>
             </div>
 
@@ -103,8 +103,12 @@
             };
         },
         computed: {
-            displayUsername() {
-                return this.currentUser?.username || 'User'
+            displayIdentity() {
+                const first = this.currentUser?.first_name || this.currentUser?.firstName || ''
+                const last = this.currentUser?.last_name || this.currentUser?.lastName || ''
+                const fullName = `${first} ${last}`.trim()
+                if (fullName) return fullName
+                return this.currentUser?.email || 'User'
             }
         },
         mounted() {

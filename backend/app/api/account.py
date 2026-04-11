@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.user import User
@@ -14,6 +15,7 @@ from app.core.security import (
     create_verification_token, decode_verification_token,
 )
 from app.core.config import settings
+from app.core.validation import require_valid_email
 from app.services.email import send_email, EmailNotConfiguredError
 
 router = APIRouter(prefix="/api/account", tags=["account"])
@@ -32,7 +34,8 @@ def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db
     - 200: Reset flow accepted (message always returned).
     - 500: Email infrastructure not configured or send failure.
     """
-    user = db.query(User).filter(User.email == payload.email).first()
+    normalized_email = require_valid_email(payload.email)
+    user = db.query(User).filter(func.lower(User.email) == normalized_email).first()
 
     if not user:
         return MessageResponse(message="If that email exists, a reset link has been sent")
@@ -135,8 +138,9 @@ def change_email(
     - 200: Email updated and verification required.
     - 400: Email already belongs to another account.
     """
-    existing = db.query(User).filter(User.email == payload.new_email).first()
-    if existing:
+    normalized_new_email = require_valid_email(payload.new_email, field_name="new_email")
+    existing = db.query(User).filter(func.lower(User.email) == normalized_new_email).first()
+    if existing and existing.id != current_user.id:
         raise HTTPException(status_code=400, detail="Email already in use")
 
     old_email = current_user.email
@@ -164,7 +168,8 @@ def change_email(
             detail="Your current email must be verified before changing it. A verification email has been sent."
         )
 
-    current_user.email = payload.new_email
+    current_user.email = normalized_new_email
+    current_user.username = normalized_new_email
     current_user.email_verified = False
     db.commit()
 
@@ -174,7 +179,7 @@ def change_email(
                 to=old_email,
                 subject="UAH account email changed",
                 text=(
-                    f"The email on your UAH account was just changed to {payload.new_email}.\n\n"
+                    f"The email on your UAH account was just changed to {normalized_new_email}.\n\n"
                     "If you did not make this change, please contact support immediately.\n"
                 ),
             )
@@ -191,23 +196,15 @@ def change_username(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Update username for the current user.
-
-    Ensures the new username is unique before persisting and returning the
-    updated user profile.
+    Deprecated endpoint retained temporarily for compatibility.
 
     Response codes:
-    - 200: Username changed successfully.
-    - 400: Username already taken by another account.
+    - 410: Username updates are no longer supported.
     """
-    existing = db.query(User).filter(User.username == payload.new_username).first()
-    if existing and existing.id != current_user.id:
-        raise HTTPException(status_code=400, detail="Username already taken")
-
-    current_user.username = payload.new_username
-    db.commit()
-    db.refresh(current_user)
-    return current_user
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Username updates are deprecated. Email is now the sign-in identifier.",
+    )
 
 
 @router.put("/change-name", response_model=UserResponse)

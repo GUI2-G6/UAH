@@ -20,9 +20,9 @@ This checklist captures environment variables that must exist on server-side `.e
 Document these keys in env templates even when disabled:
 
 - `DEV_AUTH_TEST_ACCOUNT_ENABLED`
-- `DEV_AUTH_TEST_USERNAME`
 - `DEV_AUTH_TEST_PASSWORD`
 - `DEV_AUTH_TEST_EMAIL`
+- `DEV_AUTH_TEST_USERNAME` (legacy fallback only)
 - `DEV_AUTH_TEST_FIRST_NAME`
 - `DEV_AUTH_TEST_LAST_NAME`
 - `DEV_AUTH_TEST_IS_ADMIN`
@@ -30,7 +30,8 @@ Document these keys in env templates even when disabled:
 
 Environment policy:
 
-- Dev/local: may enable test account; when enabled, username and password must be set.
+- Dev/local: may enable test account; when enabled, email and password must be set.
+- `DEV_AUTH_TEST_USERNAME` is legacy-only compatibility and should be an email value if used.
 - Beta/prod: must keep `DEV_AUTH_TEST_ACCOUNT_ENABLED=false`.
 
 ## Required For Gmail Integration
