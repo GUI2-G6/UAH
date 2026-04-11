@@ -195,7 +195,7 @@ bash scripts/uah.sh beta restart --build-all
 
 ## Syncing Dev from GitHub
 
-Use the lifecycle entrypoint in this repo instead of legacy `sync-dev.sh` references.
+Use `scripts/uah.sh` as the canonical lifecycle entrypoint. Legacy-style sync wrappers are supported as pass-through aliases.
 
 ### Usage
 
@@ -209,7 +209,8 @@ bash scripts/uah.sh dev sync hard
 # Dev sync + full rebuild after sync
 bash scripts/uah.sh dev sync --build-all
 
-# Beta sync modes + optional rebuild
+# Beta sync (default mode is safe) + optional rebuild
+bash scripts/uah.sh beta sync --build-frontend
 bash scripts/uah.sh beta sync safe --build-frontend
 bash scripts/uah.sh beta sync hard --build-all
 ```
@@ -263,8 +264,8 @@ Wrappers remain stable aliases; `scripts/uah.sh` is the canonical interface.
 | Beta restart | `bash scripts/uah.sh beta restart` |
 | Beta stop | `bash scripts/uah.sh beta stop` |
 | Beta sync (safe/hard) | `bash scripts/uah.sh beta sync safe` / `bash scripts/uah.sh beta sync hard` |
-| Dev wrapper examples | `bash scripts/dev/lifecycle/dev-start.sh` / `bash scripts/dev/lifecycle/dev-restart.sh` |
-| Beta wrapper examples | `bash scripts/beta/lifecycle/beta-start.sh` / `bash scripts/beta/lifecycle/beta-restart.sh` |
+| Dev wrapper examples | `bash scripts/dev/lifecycle/dev-start.sh` / `bash scripts/dev/lifecycle/dev-restart.sh` / `bash scripts/dev/lifecycle/sync-dev.sh` |
+| Beta wrapper examples | `bash scripts/beta/lifecycle/beta-start.sh` / `bash scripts/beta/lifecycle/beta-restart.sh` / `bash scripts/beta/lifecycle/sync-beta.sh` |
 
 ### Debug option interface
 

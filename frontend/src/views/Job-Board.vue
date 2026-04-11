@@ -99,7 +99,7 @@
                     </div>
 
                     <p class="hint-text" v-if="categoryInfo">{{ categoryInfo }}</p>
-                    <p class="hint-text">Unified groups expand to Muse subcategories automatically.</p>
+                    <p class="hint-text">Pick a suggested group or type a custom Muse category and press Enter.</p>
 
                     <div class="custom-input-row">
                       <button type="button" @click="openCategoryMappingModal" :disabled="!draftFilters.categories.length">
@@ -433,6 +433,9 @@
                 <li v-for="group in selectedCategoryGroups" :key="`cat-map-${group.name}`">
                   <strong>{{ group.name }}</strong>: {{ group.muse_categories.join(', ') }}
                 </li>
+                <li v-for="custom in selectedCustomCategories" :key="`cat-custom-${custom}`">
+                  <strong>{{ custom }}</strong>: used as a direct Muse category query value.
+                </li>
               </ul>
             </div>
             <div class="city-modal-actions">
@@ -506,7 +509,9 @@
               Showing {{ jobs.length }} jobs on page {{ page }}
               <span v-if="totalJobs > 0">of {{ totalJobs }} {{ totalsAreEstimated ? 'estimated total' : 'total' }}</span>
             </p>
+            <p v-if="pretrimLocationNotice" class="hint-text">{{ pretrimLocationNotice }}</p>
             <p v-if="locationLimitNotice" class="warn-text">{{ locationLimitNotice }}</p>
+            <p v-if="compatibilityNotice" class="hint-text">{{ compatibilityNotice }}</p>
         </div>
 
         <div class="pagination pagination-top" v-if="!loading && !error">
@@ -628,6 +633,7 @@ export default {
       tech: "Tech",
       technology: "Tech",
       engineering: "Tech",
+      fintech: "Finance",
       finance: "Finance",
       product: "Product",
       people: "People",
@@ -695,6 +701,9 @@ export default {
       totalsAreEstimated: false,
       hasNextPage: false,
       locationLimitNotice: "",
+      pretrimLocationNotice: "",
+      filterMetadataVersion: "",
+      filterMetadataHash: "",
       lastSearchDiagnostics: {},
       maxLocationParams,
       locationSourceMode,
@@ -726,6 +735,7 @@ export default {
       locationWarning: "",
       locationPreviewNames: [],
       locationPreviewCities: [],
+      locationPreviewCandidates: [],
       locationPreviewCenter: null,
       resolvedLocation: null,
       draftFilters: JSON.parse(JSON.stringify(defaultFilters)),
@@ -755,6 +765,9 @@ export default {
       return (this.draftFilters.categories || [])
         .map(name => this.categoryMapLookup[name])
         .filter(Boolean)
+    },
+    selectedCustomCategories() {
+      return (this.draftFilters.categories || []).filter(name => !this.categoryMapLookup[name])
     },
     filteredLevelOptions() {
       const selected = new Set((this.draftFilters.levels || []).map(value => value.toLowerCase()))
@@ -850,6 +863,14 @@ export default {
         pages.push(p)
       }
       return pages
+    },
+    compatibilityNotice() {
+      const overlapCount = Number(this.lastSearchDiagnostics.acceptedByConstraintOverlap || 0)
+      if (!overlapCount) return ""
+      if (this.appliedFilters.includeRemote === true) return ""
+      const policy = (this.lastSearchDiagnostics.constraintPolicyRemoteOff || "").trim()
+      const policyHint = policy ? ` Policy: ${policy}.` : ""
+      return `${overlapCount} remote role(s) remained because location constraints overlapped your selected area.${policyHint}`
     }
   },
   methods: {
@@ -909,15 +930,202 @@ export default {
       }
       return name
     },
+    normalizeLocationCandidateForRequest(city, mode = "") {
+      const normalizedMode = (mode || this.draftFilters.locationMode || "").trim().toLowerCase()
+      if (normalizedMode === "country" && this.locationSourceMode === "muse") {
+        const museName = (city?.name || "").trim()
+        if (!museName) return ""
+        if (museName.includes(",")) return museName
+        const countryCode = (city?.country_code || "").trim().toUpperCase()
+        return countryCode ? `${museName}, ${countryCode}` : museName
+      }
+      return this.formatLocationCandidate(city)
+    },
+    toOptionalNumber(value) {
+      const numeric = Number(value)
+      return Number.isFinite(numeric) ? numeric : null
+    },
+    buildLocationCandidates(rawCities, mode = "") {
+      const candidates = []
+      for (const [index, rawCity] of (rawCities || []).entries()) {
+        const candidateValue = this.normalizeLocationCandidateForRequest(rawCity, mode)
+        if (!candidateValue) continue
+
+        candidates.push({
+          value: candidateValue,
+          key: candidateValue.toLowerCase(),
+          raw_index: index,
+          distance_miles: this.toOptionalNumber(rawCity?.distance_miles),
+          observed_count: this.toOptionalNumber(rawCity?.observed_count) || 0,
+        })
+      }
+      return candidates
+    },
+    orderLocationCandidates(candidates, mode = "") {
+      const normalizedMode = (mode || "").trim().toLowerCase()
+      const ordered = [...(candidates || [])]
+
+      if (normalizedMode === "country") {
+        ordered.sort((a, b) => {
+          if (a.observed_count !== b.observed_count) {
+            return b.observed_count - a.observed_count
+          }
+          return a.value.localeCompare(b.value)
+        })
+        return ordered
+      }
+
+      if (normalizedMode === "nearby" || normalizedMode === "manual") {
+        ordered.sort((a, b) => {
+          const aDistance = a.distance_miles === null ? Number.POSITIVE_INFINITY : a.distance_miles
+          const bDistance = b.distance_miles === null ? Number.POSITIVE_INFINITY : b.distance_miles
+          if (aDistance !== bDistance) {
+            return aDistance - bDistance
+          }
+          return a.raw_index - b.raw_index
+        })
+        return ordered
+      }
+
+      return ordered
+    },
+    dedupeLocationCandidates(candidates) {
+      const unique = []
+      const seen = new Set()
+      for (const candidate of candidates || []) {
+        if (!candidate?.value || !candidate?.key) continue
+        if (seen.has(candidate.key)) continue
+        seen.add(candidate.key)
+        unique.push(candidate)
+      }
+      return unique
+    },
+    buildPreflightLocationSelection(locationNames, mode = "") {
+      const normalizedMode = (mode || "").trim().toLowerCase()
+      const cap = Math.max(1, Number(this.maxLocationParams || 1))
+      const fallbackCandidates = this.normalizeUnique(locationNames).map((value, index) => ({
+        value,
+        key: value.toLowerCase(),
+        raw_index: index,
+        distance_miles: null,
+        observed_count: 0,
+      }))
+      const baseCandidates = this.locationPreviewCandidates.length
+        ? this.locationPreviewCandidates
+        : fallbackCandidates
+
+      const orderedCandidates = this.orderLocationCandidates(baseCandidates, normalizedMode)
+      const dedupedCandidates = this.dedupeLocationCandidates(orderedCandidates)
+
+      const requestedCount = dedupedCandidates.length
+      const selected = dedupedCandidates.slice(0, cap).map(candidate => candidate.value)
+      const usedCount = selected.length
+      const truncated = requestedCount > usedCount
+      const strategy = normalizedMode === "country"
+        ? "country-observed-count"
+        : ((normalizedMode === "nearby" || normalizedMode === "manual") ? "distance-first" : "input-order")
+
+      return {
+        selected,
+        requestedCount,
+        usedCount,
+        truncated,
+        strategy,
+      }
+    },
+    buildPostedAfterValue(filters) {
+      const preset = (filters?.datePreset || "any").trim().toLowerCase()
+      if (preset === "custom") {
+        const customDate = (filters?.customAfterDate || "").trim()
+        return /^\d{4}-\d{2}-\d{2}$/.test(customDate) ? customDate : ""
+      }
+
+      let days = 0
+      if (preset === "7") days = 7
+      if (preset === "30") days = 30
+      if (!days) return ""
+
+      const threshold = new Date()
+      threshold.setHours(0, 0, 0, 0)
+      threshold.setDate(threshold.getDate() - days)
+      return threshold.toISOString().slice(0, 10)
+    },
     normalizeCategoryValues(values) {
       const canonicalized = []
       for (const value of values || []) {
         const clean = (value || "").trim()
         if (!clean) continue
         const canonical = this.categoryLookup[clean.toLowerCase()]
-        if (canonical) canonicalized.push(canonical)
+        canonicalized.push(canonical || clean)
       }
       return this.normalizeUnique(canonicalized)
+    },
+    applyFilterMetadata(payload) {
+      if (!payload || typeof payload !== "object") return
+
+      const groups = Array.isArray(payload.category_groups) ? payload.category_groups : []
+      if (groups.length) {
+        this.categoryGroups = groups.map(group => ({
+          key: (group.key || "").toString(),
+          name: (group.name || "").toString(),
+          muse_categories: Array.isArray(group.muse_categories) ? group.muse_categories.map(value => String(value || "").trim()).filter(Boolean) : []
+        })).filter(group => group.name)
+
+        const mapLookup = {}
+        for (const group of this.categoryGroups) {
+          mapLookup[group.name] = group
+        }
+        this.categoryMapLookup = mapLookup
+        this.categoryOptions = this.categoryGroups.map(group => group.name)
+      }
+
+      const aliasMapRaw = payload.category_aliases && typeof payload.category_aliases === "object"
+        ? payload.category_aliases
+        : {}
+      const lookup = {}
+      const canonicalByLower = {}
+
+      for (const option of this.categoryOptions) {
+        const canonical = String(option || "").trim()
+        if (!canonical) continue
+        lookup[canonical.toLowerCase()] = canonical
+        canonicalByLower[canonical.toLowerCase()] = canonical
+      }
+
+      for (const [alias, rawCanonical] of Object.entries(aliasMapRaw)) {
+        const normalizedAlias = String(alias || "").trim().toLowerCase()
+        const normalizedCanonical = String(rawCanonical || "").trim()
+        if (!normalizedAlias || !normalizedCanonical) continue
+        const resolvedCanonical = canonicalByLower[normalizedCanonical.toLowerCase()] || normalizedCanonical
+        lookup[normalizedAlias] = resolvedCanonical
+      }
+      this.categoryLookup = lookup
+
+      const levels = Array.isArray(payload.levels) ? payload.levels.map(level => String(level || "").trim()).filter(Boolean) : []
+      if (levels.length) {
+        this.levelOptions = levels
+        const nextLevelLookup = {}
+        for (const level of levels) {
+          nextLevelLookup[level.toLowerCase()] = level
+        }
+        this.levelLookup = nextLevelLookup
+      }
+
+      const capValue = Number(payload.location_param_cap || 0)
+      if (Number.isFinite(capValue) && capValue > 0) {
+        this.maxLocationParams = Math.max(1, Math.floor(capValue))
+      }
+
+      this.filterMetadataVersion = payload.metadata_version || ""
+      this.filterMetadataHash = payload.metadata_hash || ""
+    },
+    async fetchFilterMetadata() {
+      try {
+        const payload = await this.fetchJson("/api/jobs/filter-metadata")
+        this.applyFilterMetadata(payload)
+      } catch (error) {
+        console.error("Failed to load jobs filter metadata", error)
+      }
     },
     async fetchCountryOptions() {
       try {
@@ -993,8 +1201,9 @@ export default {
       this.categoryActiveIndex = next
     },
     addCategory(category) {
-      const canonical = this.categoryLookup[(category || "").trim().toLowerCase()]
-      if (!canonical) return
+      const clean = (category || "").trim()
+      if (!clean) return
+      const canonical = this.categoryLookup[clean.toLowerCase()] || clean
 
       this.draftFilters.categories = this.normalizeUnique([
         ...(this.draftFilters.categories || []),
@@ -1004,7 +1213,9 @@ export default {
       this.categoryInput = ""
       this.categoryActiveIndex = 0
       this.categoryMenuOpen = true
-      this.categoryInfo = ""
+      this.categoryInfo = canonical === clean && !this.categoryLookup[clean.toLowerCase()]
+        ? "Added custom category value."
+        : ""
     },
     chooseCategoryFromInput() {
       const input = (this.categoryInput || "").trim()
@@ -1026,8 +1237,7 @@ export default {
         this.addCategory(highlighted)
         return
       }
-
-      this.categoryInfo = "Choose a valid category group from suggestions."
+      this.addCategory(input)
     },
     openCategoryMappingModal() {
       if (!this.selectedCategoryGroups.length) return
@@ -1053,10 +1263,12 @@ export default {
       this.draftFilters.locationMode = mode
       this.locationPreviewNames = []
       this.locationPreviewCities = []
+      this.locationPreviewCandidates = []
       this.locationPreviewCenter = null
       this.locationInfo = ""
       this.locationWarning = ""
       this.locationError = ""
+      this.pretrimLocationNotice = ""
       this.publishDebugState("location-mode-changed")
     },
     publishDebugState(reason = "state-update") {
@@ -1078,6 +1290,7 @@ export default {
         companyCount: (this.appliedFilters.companies || []).length,
         includeHybrid: this.appliedFilters.includeHybrid,
         includeRemote: this.appliedFilters.includeRemote,
+        pretrimLocationNotice: this.pretrimLocationNotice,
         locationWarning: this.locationWarning,
         locationError: this.locationError,
         searchDiagnostics: this.lastSearchDiagnostics,
@@ -1340,6 +1553,7 @@ export default {
       this.locationError = ""
       this.locationWarning = ""
       this.locationInfo = ""
+      this.locationPreviewCandidates = []
 
       const mode = this.draftFilters.locationMode
 
@@ -1350,8 +1564,12 @@ export default {
 
         const payload = await this.fetchJson(`${endpoint}?country_code=${encodeURIComponent(this.draftFilters.countryCode)}&limit=200`)
         const previewCities = (payload.locations || payload.cities || []).filter(city => city?.name)
-        const names = this.normalizeUnique(previewCities.map(city => city.name))
+        const candidates = this.dedupeLocationCandidates(
+          this.orderLocationCandidates(this.buildLocationCandidates(previewCities, "country"), "country")
+        )
+        const names = candidates.map(candidate => candidate.value)
         this.locationPreviewCities = previewCities
+        this.locationPreviewCandidates = candidates
         const center = this.getBestKnownCenter()
         this.locationPreviewCenter = center
           ? { latitude: center.latitude, longitude: center.longitude }
@@ -1373,6 +1591,7 @@ export default {
         this.locationWarning = "Could not determine location center. Enter ZIP/city manually."
         this.locationPreviewNames = []
         this.locationPreviewCities = []
+        this.locationPreviewCandidates = []
         this.locationPreviewCenter = null
         return []
       }
@@ -1386,8 +1605,12 @@ export default {
       )
 
       const previewCities = (payload.cities || []).filter(city => city?.name)
-      const names = this.normalizeUnique(previewCities.map(city => this.formatLocationCandidate(city)))
+      const candidates = this.dedupeLocationCandidates(
+        this.orderLocationCandidates(this.buildLocationCandidates(previewCities, mode), mode)
+      )
+      const names = candidates.map(candidate => candidate.value)
       this.locationPreviewCities = previewCities
+      this.locationPreviewCandidates = candidates
       this.locationPreviewCenter = {
         latitude: center.latitude,
         longitude: center.longitude
@@ -1398,6 +1621,13 @@ export default {
         const fallbackName = center.city || this.draftFilters.manualLocationQuery || ""
         if (fallbackName) {
           this.locationPreviewCities = [{ name: fallbackName }]
+          this.locationPreviewCandidates = [{
+            value: fallbackName,
+            key: fallbackName.toLowerCase(),
+            raw_index: 0,
+            distance_miles: 0,
+            observed_count: 0,
+          }]
           this.locationPreviewNames = [fallbackName]
           this.locationWarning = "No cities found in that radius, so only the center location will be used."
           return [fallbackName]
@@ -1445,74 +1675,19 @@ export default {
       for (const value of this.normalizeUnique(this.appliedFilters.companies)) {
         params.append("company", value)
       }
+      const keyword = (this.appliedFilters.keyword || "").trim()
+      if (keyword) {
+        params.set("q", keyword)
+      }
+      const postedAfter = this.buildPostedAfterValue(this.appliedFilters)
+      if (postedAfter) {
+        params.set("posted_after", postedAfter)
+      }
 
       params.set("include_remote", this.appliedFilters.includeRemote ? "true" : "false")
       params.set("include_hybrid", this.appliedFilters.includeHybrid ? "true" : "false")
 
       return params.toString()
-    },
-    applyClientFilters(inputJobs) {
-      let filtered = [...inputJobs]
-      const keyword = this.appliedFilters.keyword.trim().toLowerCase()
-
-      if (keyword) {
-        filtered = filtered.filter(job => {
-          const metadata = [
-            job.title,
-            job.company,
-            ...(job.locations || []),
-            ...(job.categories || []),
-            ...(job.levels || []),
-            ...(job.tags || []),
-            job.short_name || ""
-          ]
-          return metadata
-            .join(" ")
-            .toLowerCase()
-            .includes(keyword)
-        })
-      }
-
-      filtered = filtered.filter(job => {
-        const includeHybrid = this.appliedFilters.includeHybrid !== false
-        const includeRemote = this.appliedFilters.includeRemote === true
-        const hasHybrid = job.has_hybrid === true
-        const hasRemote = job.has_remote === true
-        const isRemoteOnly = hasRemote && !hasHybrid
-        const localCompatibleRemote = job.is_local_compatible_remote === true
-
-        if (!includeHybrid && hasHybrid) {
-          return false
-        }
-        if (!includeRemote && isRemoteOnly && !localCompatibleRemote) {
-          return false
-        }
-        return true
-      })
-
-      const preset = this.appliedFilters.datePreset
-      const now = new Date()
-      let threshold = null
-
-      if (preset === "7") {
-        threshold = new Date(now)
-        threshold.setDate(now.getDate() - 7)
-      } else if (preset === "30") {
-        threshold = new Date(now)
-        threshold.setDate(now.getDate() - 30)
-      } else if (preset === "custom" && this.appliedFilters.customAfterDate) {
-        threshold = new Date(`${this.appliedFilters.customAfterDate}T00:00:00`)
-      }
-
-      if (threshold) {
-        filtered = filtered.filter(job => {
-          if (!job.publication_date) return false
-          const postedDate = new Date(job.publication_date)
-          return !Number.isNaN(postedDate.getTime()) && postedDate >= threshold
-        })
-      }
-
-      return filtered
     },
     async loadJobs(allowAutoClamp = true) {
       this.loading = true
@@ -1557,12 +1732,15 @@ export default {
           constraintParseHighConfidence: Number(data.constraint_parse_high_confidence || 0),
           constraintParseMediumConfidence: Number(data.constraint_parse_medium_confidence || 0),
           constraintParseLowConfidence: Number(data.constraint_parse_low_confidence || 0),
+          constraintPolicyRemoteOff: data.constraint_policy_remote_off || "",
           constraintCompatibilityEnabled: data.constraint_compatibility_enabled === true,
           constraintFilterMinConfidence: data.constraint_filter_min_confidence || "",
           adaptiveChaseEnabled: data.adaptive_chase_enabled === true,
           adaptiveChaseExtraPages: Number(data.adaptive_chase_extra_pages || 0),
           effectiveMaxPages: Number(data.effective_max_pages || 0),
           effectiveMinFilteredRatio: Number(data.effective_min_filtered_ratio || 0),
+          droppedLocationCount: Number(data.dropped_location_count || 0),
+          droppedLocationsSample: data.dropped_locations_sample || [],
           requestedLocationsSample: data.requested_locations_sample || [],
           selectedLocationsSample: data.selected_locations_sample || [],
           cacheHit: data.cache_hit === true,
@@ -1573,7 +1751,13 @@ export default {
         if (data.location_params_truncated === true) {
           const used = Number(data.used_location_count || data.location_params_used || 0)
           const requested = Number(data.requested_location_count || used)
-          this.locationLimitNotice = `Large location set detected. Backend used ${used} of ${requested} locations for stable results.`
+          const droppedSample = Array.isArray(data.dropped_locations_sample)
+            ? data.dropped_locations_sample.slice(0, 3)
+            : []
+          const droppedHint = droppedSample.length
+            ? ` Dropped examples: ${droppedSample.join(", ")}.`
+            : ""
+          this.locationLimitNotice = `Large location set detected. Backend used ${used} of ${requested} locations for stable results.${droppedHint}`
         } else {
           this.locationLimitNotice = ""
         }
@@ -1602,7 +1786,7 @@ export default {
           contents: job.contents || ""
         }))
 
-        this.jobs = this.applyClientFilters(mappedJobs)
+        this.jobs = mappedJobs
 
         if (allowAutoClamp && this.page > 1 && !this.jobs.length && !this.hasNextPage) {
           this.page = Math.max(1, this.page - 1)
@@ -1624,18 +1808,23 @@ export default {
       this.locationBusy = true
       try {
         const locationNames = await this.resolveLocationNamesFromDraft()
+        const preflightSelection = this.buildPreflightLocationSelection(locationNames, this.draftFilters.locationMode)
+        this.pretrimLocationNotice = preflightSelection.requestedCount
+          ? `Using ${preflightSelection.usedCount} of ${preflightSelection.requestedCount} resolved locations (${preflightSelection.strategy}).`
+          : ""
 
         this.appliedFilters = this.cloneFilters(this.draftFilters)
         this.appliedFilters.categories = this.normalizeCategoryValues(this.appliedFilters.categories)
         this.appliedFilters.levels = this.normalizeLevelValues(this.appliedFilters.levels)
         this.appliedFilters.companies = this.normalizeUnique(this.appliedFilters.companies)
-        this.appliedFilters.locationNames = this.normalizeUnique(locationNames)
+        this.appliedFilters.locationNames = preflightSelection.selected
 
         this.page = 1
         await this.loadJobs()
         this.publishDebugState("filters-applied")
       } catch (e) {
         this.locationError = "Failed to apply location filters. Please review your location settings."
+        this.pretrimLocationNotice = ""
         console.error("Apply filters failed", e)
         this.publishDebugState("filters-apply-error")
       } finally {
@@ -1663,12 +1852,14 @@ export default {
       this.locationError = ""
       this.locationPreviewNames = []
       this.locationPreviewCities = []
+      this.locationPreviewCandidates = []
       this.locationPreviewCenter = null
       this.totalJobs = 0
       this.totalPages = 1
       this.totalsAreEstimated = false
       this.hasNextPage = false
       this.locationLimitNotice = ""
+      this.pretrimLocationNotice = ""
       this.page = 1
 
       await this.loadJobs()
@@ -1693,6 +1884,7 @@ export default {
   },
   async mounted() {
     window.addEventListener("keydown", this.handleGlobalKeydown)
+    await this.fetchFilterMetadata()
     await this.fetchCountryOptions()
 
     const cached = getCachedLocation()

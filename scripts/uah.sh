@@ -231,6 +231,63 @@ build_mode_default_service_list() {
   esac
 }
 
+build_mode_service_supported_for_env() {
+  local env_name="$1"
+  local service_name="$2"
+
+  case "$env_name" in
+    dev)
+      case "$service_name" in
+        backend|frontend|db|redis)
+          return 0
+          ;;
+      esac
+      ;;
+    beta)
+      case "$service_name" in
+        backend|frontend|db|redis|cloudflared)
+          return 0
+          ;;
+      esac
+      ;;
+  esac
+
+  return 1
+}
+
+build_mode_supported_services_label() {
+  local env_name="$1"
+
+  case "$env_name" in
+    dev)
+      echo "backend frontend db redis"
+      ;;
+    beta)
+      echo "backend frontend db redis cloudflared"
+      ;;
+    *)
+      echo "<none>"
+      ;;
+  esac
+}
+
+validate_build_services_for_env() {
+  local env_name="$1"
+  local service_name
+
+  if [[ "$BUILD_MODE" != "services" ]]; then
+    return
+  fi
+
+  for service_name in "${BUILD_SERVICES[@]}"; do
+    if ! build_mode_service_supported_for_env "$env_name" "$service_name"; then
+      echo "Build service '$service_name' is not available for '$env_name'." >&2
+      echo "Supported services: $(build_mode_supported_services_label "$env_name")" >&2
+      exit 1
+    fi
+  done
+}
+
 build_mode_print_selected_services() {
   local service
 
@@ -2268,13 +2325,13 @@ Build options (for start, restart, sync only):
   --build-backend
   --build-db
   --build-redis
-  --build-cloudflared
+  --build-cloudflared (beta only)
   --build-service <name>
   --build-service=<name>
 
 Sync mode:
-  dev sync [safe|hard]
-  beta sync [safe|hard]
+  dev sync [safe|hard]   (default: safe)
+  beta sync [safe|hard]  (default: safe)
 
 Audit options:
   --env-file <path>
@@ -2298,7 +2355,7 @@ Examples:
   bash scripts/uah.sh beta restart --build-all
   bash scripts/uah.sh dev sync hard
   bash scripts/uah.sh dev sync --build-all
-  bash scripts/uah.sh beta sync safe --build-frontend
+  bash scripts/uah.sh beta sync --build-frontend
   bash scripts/uah.sh dev debug status
   bash scripts/uah.sh dev debug users reset-password testuser NewPass123
 EOF
@@ -2580,33 +2637,7 @@ beta_restart() {
 }
 
 beta_sync() {
-  local mode="${1:-}"
-
-  if [[ -z "$mode" ]]; then
-    if [[ ! -t 0 ]]; then
-      echo "Provide sync mode in non-interactive mode: safe|hard" >&2
-      exit 1
-    fi
-
-    echo "Choose beta sync mode:"
-    echo "  1) safe  - checkout dev and pull --ff-only"
-    echo "  2) hard  - checkout dev and reset --hard origin/dev"
-    echo "  0) cancel"
-    read -rp "Choice [1-2/0]: " selection
-
-    case "$selection" in
-      1) mode="safe" ;;
-      2) mode="hard" ;;
-      0)
-        echo "Sync cancelled."
-        return
-        ;;
-      *)
-        echo "Invalid sync mode selection." >&2
-        exit 1
-        ;;
-    esac
-  fi
+  local mode="${1:-safe}"
 
   case "$mode" in
     safe|ff|fast-forward)
@@ -3191,6 +3222,10 @@ run_selected_action() {
     return $?
   fi
 
+  if [[ "$action" == "start" || "$action" == "restart" || "$action" == "sync" ]]; then
+    validate_build_services_for_env "$env_name"
+  fi
+
   case "$action" in
     start)
       if ! ensure_env_confirmation "$env_name" "start"; then
@@ -3233,7 +3268,7 @@ run_selected_action() {
       ;;
     sync)
       if [[ "$env_name" == "beta" ]]; then
-        beta_sync "${action_args[0]:-}"
+        beta_sync "${action_args[0]:-safe}"
         run_sync_rebuild_if_requested beta
       elif [[ "$env_name" == "dev" ]]; then
         dev_sync "${action_args[0]:-safe}"

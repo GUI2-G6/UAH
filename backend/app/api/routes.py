@@ -42,6 +42,7 @@ How DB session will be injected later:
           return db.query(Item).all()
 """
 from contextvars import Token
+from datetime import datetime, timezone
 import hashlib
 import ipaddress
 import json
@@ -166,6 +167,24 @@ CATEGORY_GROUP_ALIAS = {
     "support": "customer and support",
 }
 
+CATEGORY_GROUP_DISPLAY_NAMES = {
+    "tech": "Tech",
+    "finance": "Finance",
+    "product": "Product",
+    "people": "People",
+    "business and operations": "Business and Operations",
+    "sales and marketing": "Sales and Marketing",
+    "customer and support": "Customer and Support",
+}
+
+MUSE_LEVEL_OPTIONS = [
+    "Internship",
+    "Entry Level",
+    "Mid Level",
+    "Senior Level",
+    "Management",
+]
+
 _JOBS_CACHE: dict[str, dict[str, Any]] = {}
 
 TIMEZONE_FAMILY_ALIASES = {
@@ -217,6 +236,112 @@ def _normalize_text(value: Optional[str]) -> str:
 
 def _normalize_constraint_text(value: Optional[str]) -> str:
     return _normalize_text((value or "").replace("/", " ").replace("-", " "))
+
+
+def _build_category_groups_payload() -> List[dict[str, Any]]:
+    payload: List[dict[str, Any]] = []
+    for key, categories in UNIFIED_CATEGORY_GROUPS.items():
+        payload.append(
+            {
+                "key": key,
+                "name": CATEGORY_GROUP_DISPLAY_NAMES.get(key, key.title()),
+                "muse_categories": list(categories),
+            }
+        )
+    return payload
+
+
+def _build_category_aliases_payload() -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for alias, group_key in CATEGORY_GROUP_ALIAS.items():
+        display_name = CATEGORY_GROUP_DISPLAY_NAMES.get(group_key)
+        if display_name:
+            aliases[alias] = display_name
+    return aliases
+
+
+def _build_jobs_filter_metadata_payload() -> dict[str, Any]:
+    category_groups = _build_category_groups_payload()
+    category_aliases = _build_category_aliases_payload()
+    levels = list(MUSE_LEVEL_OPTIONS)
+
+    core_payload = {
+        "category_groups": category_groups,
+        "category_aliases": category_aliases,
+        "levels": levels,
+        "location_param_cap": max(1, settings.MUSE_LOCATION_PARAM_CAP),
+    }
+    metadata_raw = json.dumps(core_payload, sort_keys=True, separators=(",", ":"))
+    metadata_hash = hashlib.sha256(metadata_raw.encode("utf-8")).hexdigest()
+
+    return {
+        **core_payload,
+        "metadata_version": "jobs-filter-v1",
+        "metadata_hash": metadata_hash,
+    }
+
+
+def _parse_posted_after_input(raw_value: Optional[str]) -> Optional[datetime]:
+    value = (raw_value or "").strip()
+    if not value:
+        return None
+
+    try:
+        if "T" in value:
+            normalized = value.replace("Z", "+00:00")
+            parsed = datetime.fromisoformat(normalized)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
+
+        parsed_date = datetime.strptime(value, "%Y-%m-%d")
+        return parsed_date.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _parse_publication_datetime(raw_value: Optional[str]) -> Optional[datetime]:
+    value = (raw_value or "").strip()
+    if not value:
+        return None
+
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _job_matches_keyword(mapped_job: dict[str, Any], keyword: str) -> bool:
+    query = _normalize_text(keyword)
+    if not query:
+        return True
+
+    searchable_chunks: List[str] = [
+        mapped_job.get("name", "") or "",
+        mapped_job.get("short_name", "") or "",
+        mapped_job.get("company", "") or "",
+        mapped_job.get("contents", "") or "",
+        " ".join(mapped_job.get("locations", []) or []),
+        " ".join(mapped_job.get("categories", []) or []),
+        " ".join(mapped_job.get("levels", []) or []),
+        " ".join(mapped_job.get("tags", []) or []),
+    ]
+    searchable = _normalize_text(" ".join(searchable_chunks))
+    return query in searchable
+
+
+def _job_matches_posted_after(mapped_job: dict[str, Any], posted_after: Optional[datetime]) -> bool:
+    if posted_after is None:
+        return True
+
+    published_at = _parse_publication_datetime(mapped_job.get("publication_date"))
+    if published_at is None:
+        return False
+    return published_at >= posted_after
 
 
 def _extract_timezone_families(text: str) -> List[str]:
@@ -403,6 +528,8 @@ def _build_jobs_filter_signature(
     include_hybrid: bool,
     location_mode: str,
     location_country_code: str,
+    keyword_query: str,
+    posted_after_iso: str,
     page_size: int,
 ) -> str:
     signature_payload = {
@@ -414,6 +541,8 @@ def _build_jobs_filter_signature(
         "include_hybrid": include_hybrid,
         "location_mode": location_mode,
         "location_country_code": location_country_code,
+        "keyword_query": keyword_query,
+        "posted_after_iso": posted_after_iso,
         "page_size": page_size,
     }
     raw = json.dumps(signature_payload, sort_keys=True, separators=(",", ":"))
@@ -607,6 +736,8 @@ def _canonicalize_selected_locations(
             "transformed_count": 0,
             "unmatched_count": 0,
             "requested_unique_count": 0,
+            "dropped_count": 0,
+            "dropped_locations_sample": [],
             "strategy": "none",
             "country_scope": (location_country_code or "").upper(),
         }
@@ -619,11 +750,14 @@ def _canonicalize_selected_locations(
     supported_rows = query.all()
     if not supported_rows:
         selected = normalized_raw[:location_param_cap]
+        dropped_locations = normalized_raw[location_param_cap:]
         return selected, {
             "canonicalized_count": len(selected),
             "transformed_count": 0,
             "unmatched_count": len(selected),
             "requested_unique_count": len(normalized_raw),
+            "dropped_count": max(0, len(normalized_raw) - len(selected)),
+            "dropped_locations_sample": dropped_locations[:12],
             "strategy": "raw-fallback-no-index",
             "country_scope": scope_country,
         }
@@ -728,6 +862,8 @@ def _canonicalize_selected_locations(
     else:
         selected_locations = [item["resolved"] for item in ordered_candidates[:location_param_cap]]
 
+    dropped_locations = [item["resolved"] for item in ordered_candidates[len(selected_locations):]]
+
     return selected_locations, {
         "canonicalized_count": len(selected_locations),
         "transformed_count": transformed_count,
@@ -735,6 +871,8 @@ def _canonicalize_selected_locations(
         "strict_state_blocked_count": strict_state_blocked_count,
         "state_diversity_count": len({(_extract_state_code(name) or "") for name in selected_locations if _extract_state_code(name)}),
         "requested_unique_count": len(normalized_raw),
+        "dropped_count": max(0, len(ordered_candidates) - len(selected_locations)),
+        "dropped_locations_sample": dropped_locations[:12],
         "strategy": "muse-index-country-aware-nearby-state-locked" if strict_state_mode else ("muse-index-country-aware" if scope_country else "muse-index-global"),
         "country_scope": scope_country,
     }
@@ -1361,6 +1499,21 @@ async def refresh_muse_supported_locations(
         "countries_total": len(countries),
     }
 
+
+@router.get(
+    "/jobs/filter-metadata",
+    tags=["jobs"],
+    response_description="Canonical category/level metadata and search guardrail limits for the Job Board.",
+)
+async def jobs_filter_metadata():
+    """
+    Return shared filter metadata consumed by the Job Board UI.
+
+    Keeps category/level taxonomy and location parameter guardrail values in one
+    backend-owned contract so frontend and backend behavior stay aligned.
+    """
+    return _build_jobs_filter_metadata_payload()
+
 @router.get(
     "/jobs/search",
     tags=["jobs"],
@@ -1443,6 +1596,16 @@ async def search_jobs(
         None,
         description="One or more company names to include in provider query filters.",
     ),
+    q: Optional[str] = Query(
+        None,
+        min_length=1,
+        max_length=200,
+        description="Optional keyword query applied server-side across title, company, location, tags, and description.",
+    ),
+    posted_after: Optional[str] = Query(
+        None,
+        description="Optional ISO date or datetime filter. Only jobs published on/after this value are returned.",
+    ),
     include_remote: bool = Query(False, description="When true, include fully remote roles that pass compatibility rules."),
     include_hybrid: bool = Query(True, description="When true, include hybrid roles in the result set."),
     db: Session = Depends(get_db),
@@ -1465,7 +1628,10 @@ async def search_jobs(
     # Gets the list of jobs from The Muse API based on the provided query parameters 
     url = "https://www.themuse.com/api/public/jobs"
     params_base = []
-    
+    normalized_keyword_query = _normalize_text(q)
+    parsed_posted_after = _parse_posted_after_input(posted_after)
+    posted_after_iso = parsed_posted_after.isoformat() if parsed_posted_after else ""
+
     if MUSE_API_KEY:
         params_base.append(("api_key", MUSE_API_KEY))
     
@@ -1524,6 +1690,8 @@ async def search_jobs(
             "transformed_count": 0,
             "unmatched_count": 0,
             "requested_unique_count": 0,
+            "dropped_count": 0,
+            "dropped_locations_sample": [],
             "strategy": "none",
             "country_scope": (location_country_code or "").upper(),
         }
@@ -1545,6 +1713,8 @@ async def search_jobs(
         include_hybrid=include_hybrid,
         location_mode=(location_mode or "").strip().lower(),
         location_country_code=(location_country_code or "").strip().upper(),
+        keyword_query=normalized_keyword_query,
+        posted_after_iso=posted_after_iso,
         page_size=page_size,
     )
     cached_response = _get_jobs_cache_response(cache_signature, page)
@@ -1616,6 +1786,13 @@ async def search_jobs(
 
             for raw_job in raw_jobs:
                 mapped = _map_muse_job(raw_job)
+                if not _job_matches_keyword(mapped, normalized_keyword_query):
+                    page_filtered += 1
+                    continue
+                if not _job_matches_posted_after(mapped, parsed_posted_after):
+                    page_filtered += 1
+                    continue
+
                 constraints = mapped.get("location_constraints") or {}
                 confidence = constraints.get("confidence")
                 if confidence == "high":
@@ -1725,6 +1902,7 @@ async def search_jobs(
     else:
         filtered_total_pages = page + 1
 
+    filter_metadata = _build_jobs_filter_metadata_payload()
     response_payload = {
         "page": first_payload.get("page"),
         "total_pages": filtered_total_pages,
@@ -1747,6 +1925,8 @@ async def search_jobs(
         "location_params_used": len(selected_locations),
         "used_location_count": len(selected_locations),
         "location_params_truncated": location_params_truncated,
+        "dropped_location_count": int(location_canonicalization.get("dropped_count") or 0),
+        "dropped_locations_sample": location_canonicalization.get("dropped_locations_sample") or [],
         "location_mode": (location_mode or "").strip().lower(),
         "location_country_code": (location_country_code or "").strip().upper(),
         "location_selection_strategy": location_canonicalization.get("strategy"),
@@ -1776,6 +1956,10 @@ async def search_jobs(
         "has_more_source_pages": has_more_source_pages,
         "has_next_page_possible_raw": has_more_source_pages,
         "source_page_count": last_seen_page_count,
+        "keyword_query": normalized_keyword_query,
+        "posted_after": posted_after_iso,
+        "jobs_filter_metadata_version": filter_metadata.get("metadata_version"),
+        "jobs_filter_metadata_hash": filter_metadata.get("metadata_hash"),
         "cache_hit": False,
     }
     _set_jobs_cache_response(cache_signature, page, response_payload)
