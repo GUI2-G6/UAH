@@ -1,10 +1,16 @@
 <template>
   <div class="secret-input">
     <input
+      :id="id"
+      :name="name"
       :type="computedType"
       :value="modelValue"
       :placeholder="placeholder"
       :autocomplete="autocomplete"
+      :inputmode="inputmode"
+      :autocapitalize="autocapitalize"
+      :autocorrect="autocorrect"
+      :spellcheck="spellcheck"
       :disabled="disabled"
       :class="[inputClass, { 'secret-input-default': !inputClass, 'secret-input-auth': useAuthStyles }]"
       @input="$emit('update:modelValue', $event.target.value)"
@@ -33,9 +39,33 @@ export default {
       type: String,
       default: '',
     },
+    id: {
+      type: String,
+      default: '',
+    },
+    name: {
+      type: String,
+      default: '',
+    },
     autocomplete: {
       type: String,
       default: 'off',
+    },
+    inputmode: {
+      type: String,
+      default: 'text',
+    },
+    autocapitalize: {
+      type: String,
+      default: 'off',
+    },
+    autocorrect: {
+      type: String,
+      default: 'off',
+    },
+    spellcheck: {
+      type: [Boolean, String],
+      default: false,
     },
     disabled: {
       type: Boolean,

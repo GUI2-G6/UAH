@@ -50,6 +50,7 @@ import os, secrets, httpx
 import httpx
 import re
 import time
+from urllib.parse import urlencode
 from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -57,7 +58,8 @@ from app.api.deps import get_current_user, require_admin_user
 from app.models.user import User, SavedJob
 from app.db.session import get_db
 from app.google.service import GoogleAuthService
-from app.schemas.user import TokenResponse, UserResponse, SaveJobRequest
+from app.schemas.user import SaveJobRequest
+from app.core.security import create_access_token
 from typing import Optional, List, Any
 from app.services.geolocation import (
     geocode_query,
@@ -2092,10 +2094,76 @@ async def unsave_job(
     db.commit()
     return {"message": "Job removed from saved list"}
 
+GOOGLE_OAUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
+
+
+def _google_config_or_raise() -> tuple[str, str, str]:
+    client_id = (GOOGLE_CLIENT_ID or "").strip()
+    client_secret = (GOOGLE_CLIENT_SECRET or "").strip()
+    redirect_uri = (GOOGLE_REDIRECT_URI or "").strip()
+    if not client_id or not client_secret or not redirect_uri:
+        raise HTTPException(status_code=500, detail="Google OAuth is not configured")
+    return client_id, client_secret, redirect_uri
+
+
+def _frontend_url(path: str, query: dict[str, str] | None = None, fragment: dict[str, str] | None = None) -> str:
+    base = (settings.PUBLIC_APP_URL or "").rstrip("/")
+    normalized_path = path if path.startswith("/") else f"/{path}"
+    url = f"{base}{normalized_path}"
+    if query:
+        url = f"{url}?{urlencode(query)}"
+    if fragment:
+        url = f"{url}#{urlencode(fragment)}"
+    return url
+
+
+def _sanitize_next_path(next_path: str | None) -> str:
+    candidate = (next_path or "").strip()
+    if not candidate or not candidate.startswith("/") or candidate.startswith("//"):
+        return "/home"
+    return candidate
+
+
+def _build_google_authorization_url(state: str, redirect_uri: str, client_id: str) -> str:
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state,
+        "prompt": "select_account",
+    }
+    return f"{GOOGLE_OAUTH_URL}?{urlencode(params)}"
+
+
+def _clear_google_oauth_session(request: Request) -> None:
+    request.session.pop("oauth_state", None)
+    request.session.pop("oauth_mode", None)
+    request.session.pop("oauth_user_id", None)
+    request.session.pop("oauth_next", None)
+    request.session.pop("oauth_intent", None)
+
+
+def _oauth_login_error(reason: str, intent: str = "login") -> RedirectResponse:
+    route = "/register" if (intent or "").strip().lower() == "register" else "/login"
+    return RedirectResponse(
+        _frontend_url(route, query={"oauth": "error", "provider": "google", "reason": reason})
+    )
+
+
+def _oauth_settings_redirect(status: str, reason: str | None = None) -> RedirectResponse:
+    query = {"accounts": status, "provider": "google"}
+    if reason:
+        query["reason"] = reason
+    return RedirectResponse(_frontend_url("/settings", query=query))
+
+
 @router.get(
     "/auth/google",
     tags=["google auth"],
-    response_description="Redirects browser to Google OAuth consent screen.",
+    response_description="Redirects browser to Google OAuth consent screen for login/registration.",
     responses={
         307: {
             "description": "Temporary redirect to Google OAuth endpoint."
@@ -2105,75 +2173,132 @@ async def unsave_job(
         },
     },
 )
-async def google_oauth(request: Request):
+async def google_oauth(
+    request: Request,
+    intent: str = Query("login", description="Optional UI intent for telemetry. Supported: login, register."),
+    next: str | None = Query(None, description="Optional post-login app path, e.g. /home or /job-board."),
+):
     """
-    Start Google OAuth authorization flow.
-
-    Creates a CSRF-protection state value, stores it in session, and redirects
-    the browser to Google's OAuth consent page.
+    Start Google OAuth flow for unauthenticated sign-in/up.
 
     Response codes:
     - 307/302: Redirect to Google OAuth consent screen.
     """
-    # Generates a random  16 character state string to prevent attacks
+    client_id, _, redirect_uri = _google_config_or_raise()
+    normalized_intent = (intent or "login").strip().lower()
+    if normalized_intent not in {"login", "register"}:
+        normalized_intent = "login"
+
     state = secrets.token_urlsafe(16)
-    # Stores the state in the session for later verification when the user is redirected back
     request.session["oauth_state"] = state
-    
-    # Holds all the parameters required for the Google OAuth including client ID, redirect URI, response type, scope, and the generated state
-    params = {
-        "client_id": GOOGLE_CLIENT_ID,
-        "redirect_uri": GOOGLE_REDIRECT_URI,
-        "response_type": "code",
-        "scope": "openid email profile",
-        "state": state,
+    request.session["oauth_mode"] = "login"
+    request.session["oauth_intent"] = normalized_intent
+    request.session["oauth_next"] = _sanitize_next_path(next)
+
+    return RedirectResponse(_build_google_authorization_url(state, redirect_uri, client_id))
+
+
+@router.post(
+    "/auth/google/connect/start",
+    tags=["google auth"],
+    response_description="Returns Google OAuth authorization URL for connecting a Google account to an existing user.",
+)
+async def start_google_connect(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Start Google OAuth flow for linking Google to an authenticated account.
+    """
+    client_id, _, redirect_uri = _google_config_or_raise()
+    state = secrets.token_urlsafe(16)
+
+    request.session["oauth_state"] = state
+    request.session["oauth_mode"] = "connect"
+    request.session["oauth_user_id"] = int(current_user.id)
+    request.session["oauth_next"] = "/settings"
+
+    return {"authorization_url": _build_google_authorization_url(state, redirect_uri, client_id)}
+
+
+@router.get(
+    "/auth/connected-accounts",
+    tags=["google auth"],
+    response_description="Connected account status payload for Settings.",
+)
+def connected_accounts(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Return connected-account state for the authenticated user.
+    """
+    google_connected = bool(current_user.google_id)
+    has_password = bool(current_user.hashed_password)
+    providers = [
+        {
+            "provider": "google",
+            "label": "Google",
+            "connected": google_connected,
+            "account_email": current_user.email if google_connected else None,
+            "can_connect": not google_connected,
+            "can_disconnect": google_connected and has_password,
+            "disconnect_disabled_reason": (
+                "Set a password before disconnecting your only sign-in method."
+                if google_connected and not has_password
+                else None
+            ),
+            "coming_soon": False,
+        },
+        {
+            "provider": "linkedin",
+            "label": "LinkedIn",
+            "connected": False,
+            "account_email": None,
+            "can_connect": False,
+            "can_disconnect": False,
+            "disconnect_disabled_reason": None,
+            "coming_soon": True,
+        },
+    ]
+    return {
+        "providers": providers,
+        "has_password": has_password,
     }
-                                
-    # Creates a query string from the parameters and redirects the user to Google's OAuth 2.0 authorization endpoint with the query string attached
-    query = "&".join([f"{key}={value}" for key, value in params.items()])
-    # Then sends the user's browser to the Google OAuth consent screen s they can log in and authorize the application to access their Google account information. 
-    # After the user completes the authorization process, Google will redirect them back to the specified redirect URI with an authorization code 
-    #                                                                                                   that can be exchanged for an access token.
-    return RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{query}")
-    
-    
-    
+
+
+@router.delete(
+    "/auth/google/disconnect",
+    tags=["google auth"],
+    response_description="Disconnect currently linked Google account.",
+)
+def disconnect_google_account(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Disconnect Google as a login method for the current account.
+    """
+    if not current_user.google_id:
+        return {"message": "Google account already disconnected"}
+
+    if not current_user.hashed_password:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot disconnect Google without another sign-in method. Set a password first.",
+        )
+
+    current_user.google_id = None
+    db.commit()
+    return {"message": "Google account disconnected"}
+
+
 @router.get(
     "/auth/google/callback",
-    response_model=TokenResponse,
     tags=["google auth"],
-    response_description="UAH token payload for authenticated Google user.",
+    response_description="Completes Google OAuth and redirects browser back to frontend.",
     responses={
-        200: {
-            "description": "Google OAuth completed and local token issued.",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature",
-                        "token_type": "bearer",
-                        "user": {
-                            "id": 42,
-                            "email": "jane.doe@example.com",
-                            "username": "jane_doe",
-                            "first_name": "Jane",
-                            "last_name": "Doe",
-                            "avatar_url": "https://lh3.googleusercontent.com/a-/example",
-                            "email_verified": True,
-                            "is_active": True,
-                        },
-                    }
-                }
-            },
-        },
-        400: {
-            "description": "OAuth state mismatch or token exchange failure.",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "detail": "Invalid state parameter"
-                    }
-                }
-            },
+        302: {
+            "description": "Redirect to frontend OAuth callback/login/settings after processing."
         },
     },
 )
@@ -2184,61 +2309,126 @@ async def google_oauth_callback(
     db: Session = Depends(get_db),
 ):
     """
-    Complete Google OAuth flow and issue local API token.
-
-    Validates the state token, exchanges authorization code for Google tokens,
-    fetches user profile claims, creates/loads the local user, and returns a
-    UAH bearer token.
-
-    Response codes:
-    - 200: OAuth login completed and local token returned.
-    - 400: Invalid state token or failed Google token exchange.
+    Complete Google OAuth flow, then redirect to the frontend.
     """
-    # Verifies if the parameter "state" matches the one stored in the session to prevent any attacks. 
-    # If they don't match, it raises an HTTP 400 error.
-    if state != request.session.get("oauth_state"):
-        raise HTTPException(status_code=400, detail="Invalid state parameter")    
-    
-    # Opens an asynchronous HTTP client session using httpx to exchange the authorization code for an access token 
-    # by making a POST request to Google's token endpoint.
+    oauth_intent = (request.session.get("oauth_intent") or "login").strip().lower()
+
+    try:
+        client_id, client_secret, redirect_uri = _google_config_or_raise()
+    except HTTPException:
+        _clear_google_oauth_session(request)
+        return _oauth_login_error("not_configured", intent=oauth_intent)
+
+    expected_state = request.session.get("oauth_state")
+    oauth_mode = (request.session.get("oauth_mode") or "login").strip().lower()
+    oauth_user_id = request.session.get("oauth_user_id")
+    oauth_next = _sanitize_next_path(request.session.get("oauth_next"))
+
+    if not expected_state or state != expected_state:
+        _clear_google_oauth_session(request)
+        if oauth_mode == "connect":
+            return _oauth_settings_redirect("error", "invalid_state")
+        return _oauth_login_error("invalid_state", intent=oauth_intent)
+
     async with httpx.AsyncClient() as client:
-        
-        # Sends a POST request to Google's token endpoint with the required parameters including the authorization code, client ID, client secret, 
-        # redirect URI, and grant type.
-        token_response = await client.post("https://oauth2.googleapis.com/token", 
+        token_response = await client.post(
+            GOOGLE_TOKEN_URL,
             data={
                 "code": code,
-                "client_id": GOOGLE_CLIENT_ID,
-                "client_secret": GOOGLE_CLIENT_SECRET,
-                "redirect_uri": GOOGLE_REDIRECT_URI,
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "redirect_uri": redirect_uri,
                 "grant_type": "authorization_code",
             },
         )
-        # Converts the response to JSON and extracts the access token from the response data. 
-        # The access token can then be used to make authenticated requests to Google's APIs on behalf of the user.
         token_response_data = token_response.json()
         access_token = token_response_data.get("access_token")
         if not access_token:
-            raise HTTPException(status_code=400, detail="Failed to obtain access token")
-        
-        # Gets the user's profile information by making a GET request to Google's userinfo endpoint with the access token included in the Authorization header.
-        profile_response = await client.get("https://www.googleapis.com/oauth2/v3/userinfo", headers={"Authorization": f"Bearer {access_token}"})
+            _clear_google_oauth_session(request)
+            if oauth_mode == "connect":
+                return _oauth_settings_redirect("error", "token_exchange_failed")
+            return _oauth_login_error("token_exchange_failed", intent=oauth_intent)
+
+        profile_response = await client.get(
+            GOOGLE_USERINFO_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        if profile_response.status_code != 200:
+            _clear_google_oauth_session(request)
+            if oauth_mode == "connect":
+                return _oauth_settings_redirect("error", "profile_fetch_failed")
+            return _oauth_login_error("profile_fetch_failed", intent=oauth_intent)
+
         profile_data = profile_response.json()
-        
-        # Extracts the user's Google ID, email, name, and profile picture URL from the profile data returned by Google.
-        google_id = profile_data['sub']
-        email = profile_data["email"]
-        name = profile_data["name"]
+
+        google_id = profile_data.get("sub")
+        email = (profile_data.get("email") or "").strip().lower()
+        name = profile_data.get("name")
         picture = profile_data.get("picture")
+        email_verified = bool(profile_data.get("email_verified"))
 
-        
-        user = GoogleAuthService.get_or_create_user(db=db, google_id=google_id, email=email, full_name=name, picture_url=picture)
+    if not google_id or not email:
+        _clear_google_oauth_session(request)
+        if oauth_mode == "connect":
+            return _oauth_settings_redirect("error", "missing_profile_fields")
+        return _oauth_login_error("missing_profile_fields", intent=oauth_intent)
 
-        from app.core.security import create_access_token
-        user_access_token = create_access_token(data={"sub": str(user.id)})
-        
-        return TokenResponse(access_token=user_access_token, user=UserResponse.model_validate(user),
+    if oauth_mode == "connect":
+        if not oauth_user_id:
+            _clear_google_oauth_session(request)
+            return _oauth_settings_redirect("error", "connect_state_missing")
+
+        user = db.query(User).filter(User.id == int(oauth_user_id)).first()
+        if not user:
+            _clear_google_oauth_session(request)
+            return _oauth_settings_redirect("error", "user_not_found")
+
+        google_owner = db.query(User).filter(User.google_id == google_id).first()
+        if google_owner and google_owner.id != user.id:
+            _clear_google_oauth_session(request)
+            return _oauth_settings_redirect("error", "google_already_linked")
+
+        email_owner = db.query(User).filter(User.email == email).first()
+        if email_owner and email_owner.id != user.id:
+            _clear_google_oauth_session(request)
+            return _oauth_settings_redirect("error", "email_conflict")
+
+        user.google_id = google_id
+        if picture:
+            user.picture_url = picture
+        if name and not user.full_name:
+            user.full_name = name
+        if email_verified and user.email and user.email.lower() == email:
+            user.email_verified = True
+        db.commit()
+
+        _clear_google_oauth_session(request)
+        return _oauth_settings_redirect("connected")
+
+    user = GoogleAuthService.get_or_create_user(
+        db=db,
+        google_id=google_id,
+        email=email,
+        full_name=name,
+        picture_url=picture,
+        email_verified=email_verified,
     )
+
+    if not user.is_active:
+        _clear_google_oauth_session(request)
+        return _oauth_login_error("account_inactive", intent=oauth_intent)
+
+    user_access_token = create_access_token(data={"sub": str(user.id)})
+    redirect_url = _frontend_url(
+        "/oauth-callback",
+        fragment={
+            "access_token": user_access_token,
+            "next": oauth_next,
+            "provider": "google",
+        },
+    )
+    _clear_google_oauth_session(request)
+    return RedirectResponse(redirect_url)
 
 
 @router.get(

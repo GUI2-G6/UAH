@@ -44,7 +44,7 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  const publicPaths = new Set(['/login', '/register', '/status', '/forgot-password', '/reset-password'])
+  const publicPaths = new Set(['/login', '/register', '/status', '/forgot-password', '/reset-password', '/oauth-callback'])
   const authed = isAuthenticated()
 
   if (publicPaths.has(to.path)) {

@@ -46,3 +46,6 @@ yarn-error.log*
 # ----- Temporary files -----
 test.txt
 NETWORK_FINDINGS_2026-04-08.md
+endpoint_inventory_backend.tsv
+endpoint_inventory_frontend_calls.tsv
+endpoint_utilization_matrix_2026-04-11.tsv

@@ -302,7 +302,14 @@
             <div v-if="profiles.length > 0" class="profile-switcher">
                 <div class="profile-switcher-row">
                     <label class="profile-switcher-label">Active Profile:</label>
-                    <select class="profile-select" :value="activeProfileId" @change="switchProfile(Number($event.target.value))">
+                    <select
+                        id="resume-active-profile"
+                        name="active_profile"
+                        class="profile-select"
+                        autocomplete="off"
+                        :value="activeProfileId"
+                        @change="switchProfile(Number($event.target.value))"
+                    >
                         <option v-for="p in profiles" :key="p.id" :value="p.id">
                             {{ p.name }}{{ p.is_active ? ' (active)' : '' }}
                         </option>
@@ -317,8 +324,11 @@
                 </div>
                 <div v-if="showNewProfileInput" class="new-profile-row">
                     <input
+                        id="resume-new-profile-name"
+                        name="new_profile_name"
                         v-model="newProfileName"
                         type="text"
+                        autocomplete="off"
                         placeholder="New profile name…"
                         class="new-profile-input"
                         @keyup.enter="createNewProfile"
@@ -339,27 +349,27 @@
                 <div class="appinfo-grid">
                     <div class="field-group">
                         <label>First Name</label>
-                        <input type="text" v-model="firstName" placeholder="John">
+                        <input id="resume-first-name" type="text" name="first_name" autocomplete="given-name" v-model="firstName" placeholder="John">
                     </div>
                     <div class="field-group">
                         <label>Last Name</label>
-                        <input type="text" v-model="lastName" placeholder="Doe">
+                        <input id="resume-last-name" type="text" name="last_name" autocomplete="family-name" v-model="lastName" placeholder="Doe">
                     </div>
                     <div class="field-group">
                         <label>Email</label>
-                        <input type="email" v-model="appEmail" placeholder="john.doe@email.com">
+                        <input id="resume-email" type="email" name="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="appEmail" placeholder="john.doe@email.com">
                     </div>
                     <div class="field-group">
                         <label>Phone</label>
-                        <input type="text" v-model="phone" placeholder="(555) 123-4567">
+                        <input id="resume-phone" type="tel" name="phone" autocomplete="tel" v-model="phone" placeholder="(555) 123-4567">
                     </div>
                     <div class="field-group">
                         <label>LinkedIn URL</label>
-                        <input type="text" v-model="linkedin" placeholder="linkedin.com/in/johndoe">
+                        <input id="resume-linkedin" type="url" name="linkedin_url" autocomplete="url" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="linkedin" placeholder="linkedin.com/in/johndoe">
                     </div>
                     <div class="field-group">
                         <label>Portfolio/Website</label>
-                        <input type="text" v-model="portfolio" placeholder="johndoe.com">
+                        <input id="resume-portfolio" type="url" name="portfolio_url" autocomplete="url" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="portfolio" placeholder="johndoe.com">
                     </div>
                 </div>
             </div>
@@ -369,20 +379,20 @@
                 <h3>Address</h3>
                 <div class="field-group field-group-spaced">
                     <label>Street Address</label>
-                    <input type="text" v-model="streetAddress" placeholder="123 Main Street">
+                    <input id="resume-street-address" type="text" name="street_address" autocomplete="street-address" v-model="streetAddress" placeholder="123 Main Street">
                 </div>
                 <div class="appinfo-3col">
                     <div class="field-group">
                         <label>City</label>
-                        <input type="text" v-model="city" placeholder="San Francisco">
+                        <input id="resume-city" type="text" name="city" autocomplete="address-level2" v-model="city" placeholder="San Francisco">
                     </div>
                     <div class="field-group">
                         <label>State</label>
-                        <input type="text" v-model="appState" placeholder="CA">
+                        <input id="resume-state" type="text" name="state" autocomplete="address-level1" v-model="appState" placeholder="CA">
                     </div>
                     <div class="field-group">
                         <label>ZIP Code</label>
-                        <input type="text" v-model="zip" placeholder="94105">
+                        <input id="resume-zip" type="text" name="postal_code" autocomplete="postal-code" inputmode="numeric" v-model="zip" placeholder="94105">
                     </div>
                 </div>
             </div>
@@ -392,7 +402,7 @@
                 <h3>Professional Summary</h3>
                 <div class="field-group">
                     <label>Summary</label>
-                    <textarea v-model="summary" class="textarea-summary" placeholder="Brief professional summary highlighting your key skills and experience…"></textarea>
+                    <textarea id="resume-professional-summary" name="professional_summary" autocomplete="off" v-model="summary" class="textarea-summary" placeholder="Brief professional summary highlighting your key skills and experience…"></textarea>
                 </div>
             </div>
 
@@ -402,7 +412,7 @@
                 <div class="appinfo-grid">
                     <div class="field-group">
                         <label>Authorization Status</label>
-                        <select v-model="workAuth">
+                        <select id="resume-work-authorization" name="authorization_status" autocomplete="off" v-model="workAuth">
                             <option value="">Select…</option>
                             <option>US Citizen</option>
                             <option>Green Card</option>
@@ -414,7 +424,7 @@
                     </div>
                     <div class="field-group">
                         <label>Requires Sponsorship?</label>
-                        <select v-model="requiresSponsorship">
+                        <select id="resume-requires-sponsorship" name="requires_sponsorship" autocomplete="off" v-model="requiresSponsorship">
                             <option value="">Select…</option>
                             <option>Yes</option>
                             <option>No</option>
@@ -430,23 +440,23 @@
                 <div class="appinfo-grid">
                     <div class="field-group">
                         <label>Degree</label>
-                        <input type="text" v-model="degree" placeholder="Bachelor of Science">
+                        <input id="resume-degree" type="text" name="degree" autocomplete="organization-title" v-model="degree" placeholder="Bachelor of Science">
                     </div>
                     <div class="field-group">
                         <label>Major / Field of Study</label>
-                        <input type="text" v-model="major" placeholder="Computer Science">
+                        <input id="resume-major" type="text" name="major" autocomplete="off" v-model="major" placeholder="Computer Science">
                     </div>
                     <div class="field-group appinfo-full">
                         <label>University</label>
-                        <input type="text" v-model="university" placeholder="University of Alabama in Huntsville">
+                        <input id="resume-university" type="text" name="university" autocomplete="organization" v-model="university" placeholder="University of Alabama in Huntsville">
                     </div>
                     <div class="field-group">
                         <label>Graduation Year</label>
-                        <input type="text" v-model="gradYear" placeholder="2026">
+                        <input id="resume-graduation-year" type="text" name="graduation_year" inputmode="numeric" autocomplete="off" v-model="gradYear" placeholder="2026">
                     </div>
                     <div class="field-group">
                         <label>GPA (optional)</label>
-                        <input type="text" v-model="gpa" placeholder="3.8">
+                        <input id="resume-gpa" type="text" name="gpa" inputmode="decimal" autocomplete="off" v-model="gpa" placeholder="3.8">
                     </div>
                 </div>
             </div>
@@ -457,11 +467,11 @@
                 <div class="appinfo-grid">
                     <div class="field-group">
                         <label>Years of Experience</label>
-                        <input type="text" v-model="yearsExperience" placeholder="2">
+                        <input id="resume-years-experience" type="text" name="years_experience" inputmode="numeric" autocomplete="off" v-model="yearsExperience" placeholder="2">
                     </div>
                     <div class="field-group">
                         <label>Current / Most Recent Job Title</label>
-                        <input type="text" v-model="jobTitle" placeholder="Software Engineer Intern">
+                        <input id="resume-job-title" type="text" name="job_title" autocomplete="organization-title" v-model="jobTitle" placeholder="Software Engineer Intern">
                     </div>
                 </div>
             </div>
@@ -470,15 +480,15 @@
                 <h3>Skills and Certifications</h3>
                 <div class="field-group field-group-spaced">
                     <label>Skills (comma-separated)</label>
-                    <textarea v-model="skillsText" placeholder="Python, SQL, FastAPI, Vue.js, Docker"></textarea>
+                    <textarea id="resume-skills" name="skills_text" autocomplete="off" v-model="skillsText" placeholder="Python, SQL, FastAPI, Vue.js, Docker"></textarea>
                 </div>
                 <div class="field-group field-group-spaced">
                     <label>Certifications and Licenses</label>
-                    <textarea v-model="certificationsText" placeholder="AWS Certified Cloud Practitioner - Amazon - 2025"></textarea>
+                    <textarea id="resume-certifications" name="certifications_text" autocomplete="off" v-model="certificationsText" placeholder="AWS Certified Cloud Practitioner - Amazon - 2025"></textarea>
                 </div>
                 <div class="field-group">
                     <label>Professional Links</label>
-                    <textarea v-model="professionalLinksText" placeholder="LinkedIn: https://...&#10;GitHub: https://...&#10;Portfolio: https://..."></textarea>
+                    <textarea id="resume-professional-links" name="professional_links_text" autocomplete="off" v-model="professionalLinksText" placeholder="LinkedIn: https://...&#10;GitHub: https://...&#10;Portfolio: https://..."></textarea>
                 </div>
             </div>
 
@@ -487,6 +497,9 @@
                 <div class="field-group">
                     <label>Education History</label>
                     <textarea
+                        id="resume-education-history"
+                        name="education_history_text"
+                        autocomplete="off"
                         class="textarea-tall"
                         v-model="educationHistoryText"
                         placeholder="School | Degree | Field | Start Date | End Date&#10;Example University | B.S. | Computer Science | August 2022 | May 2026"
@@ -499,6 +512,9 @@
                 <div class="field-group">
                     <label>Employment History</label>
                     <textarea
+                        id="resume-employment-history"
+                        name="employment_history_text"
+                        autocomplete="off"
                         class="textarea-tall"
                         v-model="employmentHistoryText"
                         placeholder="Company | Title | Location | Start Date | End Date&#10;Tech Corp | Software Engineer Intern | Boston, MA | June 2024 | August 2024"
@@ -511,7 +527,7 @@
                 <div class="appinfo-grid">
                     <div class="field-group">
                         <label>Gender Identity (Optional)</label>
-                        <select v-model="demographicGender">
+                        <select id="resume-demographic-gender" name="demographic_gender" autocomplete="off" v-model="demographicGender">
                             <option value="">Prefer not to answer</option>
                             <option>Female</option>
                             <option>Male</option>
@@ -521,7 +537,7 @@
                     </div>
                     <div class="field-group">
                         <label>Ethnicity / Race (Optional)</label>
-                        <select v-model="demographicEthnicity">
+                        <select id="resume-demographic-ethnicity" name="demographic_ethnicity" autocomplete="off" v-model="demographicEthnicity">
                             <option value="">Prefer not to answer</option>
                             <option>American Indian or Alaska Native</option>
                             <option>Asian</option>
