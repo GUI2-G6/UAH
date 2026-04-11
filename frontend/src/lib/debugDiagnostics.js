@@ -1,3 +1,5 @@
+import { shouldShowDebugTools, subscribeDebugTools } from './debugTools'
+
 const MAX_REQUEST_LOGS = 30
 
 const state = {
@@ -15,6 +17,10 @@ const state = {
 
 const listeners = new Set()
 let fetchTrackerInstalled = false
+
+function debugToolsEnabled() {
+  return shouldShowDebugTools()
+}
 
 function routeKeyFromRoute(route) {
   if (!route) return "unknown"
@@ -113,12 +119,14 @@ export function setDebugRouteSnapshot(route) {
 }
 
 export function publishCurrentPageDiagnostics(payload) {
+  if (!debugToolsEnabled()) return
   const key = state.routeKey || "unknown"
   state.pageDiagnosticsByRoute[key] = redactSensitive(payload || {})
   notify()
 }
 
 export function publishPageDiagnosticsForRoute(routeKey, payload) {
+  if (!debugToolsEnabled()) return
   if (!routeKey) return
   state.pageDiagnosticsByRoute[String(routeKey)] = redactSensitive(payload || {})
   notify()
@@ -143,6 +151,8 @@ export function installDebugFetchTracker() {
 
     try {
       const response = await nativeFetch(input, init)
+      if (!debugToolsEnabled()) return response
+
       const durationMs = Math.round(performance.now() - startedAt)
       state.recentRequests.unshift({
         method,
@@ -156,6 +166,8 @@ export function installDebugFetchTracker() {
       notify()
       return response
     } catch (error) {
+      if (!debugToolsEnabled()) throw error
+
       const durationMs = Math.round(performance.now() - startedAt)
       state.recentRequests.unshift({
         method,
@@ -171,4 +183,14 @@ export function installDebugFetchTracker() {
       throw error
     }
   }
+}
+
+if (typeof window !== "undefined") {
+  subscribeDebugTools((snapshot) => {
+    if (snapshot?.showDebugTools) return
+
+    state.pageDiagnosticsByRoute = {}
+    state.recentRequests = []
+    notify()
+  })
 }

@@ -12,16 +12,13 @@
             </template>
 
             <div class="job-meta-row">
-                <span class="meta-pill">{{ job.location || "Unknown location" }}</span>
-                <span class="meta-pill accent">{{ workSetupLabel }}</span>
-                <span class="meta-pill trust">Muse Source</span>
-                <span v-if="job.is_local_compatible_remote" class="meta-pill compatible">Location overlap</span>
                 <span
-                    v-for="tz in constraintTimezones"
-                    :key="`tz-${tz}`"
-                    class="meta-pill info"
+                    v-for="pill in visibleMetaPills"
+                    :key="pill"
+                    class="meta-pill"
+                    :class="{ accent: pill === workSetupLabel, compatible: pill === 'Location overlap' }"
                 >
-                    {{ tz }}
+                    {{ pill }}
                 </span>
             </div>
 
@@ -56,8 +53,15 @@
                     <span v-if="job.categories && job.categories.length">Categories: {{ job.categories.join(", ") }}</span>
                     <span v-if="job.tags && job.tags.length">Tags: {{ job.tags.join(", ") }}</span>
                     <span v-if="job.publication_date">Posted: {{ formattedPublicationDate }}</span>
-                    <span v-if="job.is_local_compatible_remote">Compatibility: {{ compatibilityLabel }}</span>
-                    <span v-if="constraintExclusions.length">Exclusions: {{ constraintExclusions.join(", ") }}</span>
+                    <span v-if="showDebugMeta && job.is_local_compatible_remote">Compatibility: {{ compatibilityLabel }}</span>
+                    <span v-if="showDebugMeta && constraintExclusions.length">Exclusions: {{ constraintExclusions.join(", ") }}</span>
+                    <span
+                        v-if="showDebugMeta"
+                        v-for="tz in constraintTimezones"
+                        :key="`modal-tz-${tz}`"
+                    >
+                        Time zone: {{ tz }}
+                    </span>
                 </div>
 
                 <div class="job-modal-body">
@@ -83,7 +87,11 @@ export default {
         Card
     },
     props: {
-        job: Object
+        job: Object,
+        showDebugMeta: {
+            type: Boolean,
+            default: false,
+        }
     },
     data() {
         return {
@@ -140,6 +148,18 @@ export default {
             if (this.job?.has_hybrid) return "Hybrid"
             if (this.job?.has_remote) return "Remote"
             return "On-site"
+        },
+        visibleMetaPills() {
+            const pills = [
+                this.job?.location || "Unknown location",
+                this.workSetupLabel,
+            ]
+
+            if (this.showDebugMeta && this.job?.is_local_compatible_remote) {
+                pills.push("Location overlap")
+            }
+
+            return pills
         }
     },
     methods: {

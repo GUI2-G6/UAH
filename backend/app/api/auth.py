@@ -45,6 +45,7 @@ def _ensure_admin_user(db: Session) -> User:
             user.username = normalized_admin_email
         if user.email != normalized_admin_email:
             user.email = normalized_admin_email
+        user.is_admin = True
         db.add(user)
         db.commit()
         db.refresh(user)

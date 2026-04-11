@@ -23,6 +23,14 @@
           'System Issues Detected' }}
       </span>
     </div>
+    <div v-else-if="accessState === 'admin-required'" class="overall-banner degraded">
+      <span class="overall-dot degraded"></span>
+      <span class="overall-text">Admin sign-in required for backend diagnostics</span>
+    </div>
+    <div v-else-if="accessState === 'signin-required'" class="overall-banner degraded">
+      <span class="overall-dot degraded"></span>
+      <span class="overall-text">Sign in with an admin account to view backend diagnostics</span>
+    </div>
     <div v-else-if="error" class="overall-banner unhealthy">
       <span class="overall-dot unhealthy"></span>
       <span class="overall-text">Unable to reach backend</span>
@@ -33,8 +41,29 @@
       <p>Running diagnostics...</p>
     </div>
 
-    <div v-if="diagnostics" class="service-grid">
-      <div class="service-card" v-if="diagnostics.services.backend">
+    <div v-if="diagnostics || accessState !== 'ok'" class="service-grid">
+      <div class="service-card" v-if="accessState !== 'ok'">
+        <div class="card-header">
+          <h3>
+            <span class="dot yellow"></span>
+            Diagnostics Access
+          </h3>
+          <span class="badge degraded">
+            limited
+          </span>
+        </div>
+        <p v-if="accessState === 'signin-required'">
+          Backend diagnostics are protected. Sign in with an admin account to inspect backend, database, and network health.
+        </p>
+        <p v-else-if="accessState === 'admin-required'">
+          You are signed in, but this account does not have admin privileges for the diagnostics endpoint.
+        </p>
+        <p v-else>
+          Diagnostics access is currently limited.
+        </p>
+      </div>
+
+      <div class="service-card" v-if="diagnostics?.services?.backend">
         <div class="card-header">
           <h3>
             <span
@@ -79,7 +108,7 @@
         </table>
       </div>
 
-      <div class="service-card" v-if="diagnostics.services.database">
+      <div class="service-card" v-if="diagnostics?.services?.database">
         <div class="card-header">
           <h3>
             <span
@@ -134,7 +163,7 @@
         </div>
       </div>
 
-      <div class="service-card" v-if="diagnostics.services.network">
+      <div class="service-card" v-if="diagnostics?.services?.network">
         <div class="card-header">
           <h3>
             <span
@@ -212,7 +241,7 @@
 </template>
 
 <script>
-import { getAccessToken } from '../lib/auth.js'
+import { authedFetch, getAccessToken } from '../lib/auth.js'
 
 export default {
   name: 'Status',
@@ -221,6 +250,7 @@ export default {
       diagnostics: null,
       loading: true,
       error: null,
+      accessState: 'ok',
       showRaw: false,
       lastChecked: null,
       userAgent: navigator.userAgent,
@@ -245,13 +275,35 @@ export default {
     async fetchDiagnostics() {
       this.loading = true
       this.error = null
+      this.accessState = 'ok'
       try {
-        const res = await fetch('/api/diagnostics')
+        if (!getAccessToken()) {
+          this.diagnostics = null
+          this.lastChecked = null
+          this.accessState = 'signin-required'
+          return
+        }
+
+        const res = await authedFetch('/api/diagnostics')
+        if (res.status === 403) {
+          this.diagnostics = null
+          this.lastChecked = null
+          this.accessState = 'admin-required'
+          return
+        }
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         this.diagnostics = await res.json()
         this.lastChecked = new Date().toLocaleTimeString()
       } catch (err) {
-        this.error = err?.message ?? String(err)
+        const message = err?.message ?? String(err)
+        if (message === 'Not authenticated' || message === 'Session expired') {
+          this.accessState = 'signin-required'
+          this.error = null
+          this.diagnostics = null
+          this.lastChecked = null
+        } else {
+          this.error = message
+        }
       } finally {
         this.loading = false
       }

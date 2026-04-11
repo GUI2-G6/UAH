@@ -61,6 +61,10 @@ export function getAccessToken() {
     return token
 }
 
+export function getAuthNamespace() {
+    return AUTH_NAMESPACE
+}
+
 export function setAccessToken(token) {
     if (token) localStorage.setItem(ACCESS_TOKEN_KEY, token)
     else localStorage.removeItem(ACCESS_TOKEN_KEY)
