@@ -6,16 +6,31 @@
         </div>
         <div class="dashboard">
             <Card>
-                <h2>Applied: {{ stats.applied }}</h2>
+                <template #header>
+                    <h2>Applications</h2>
+                </template>
+                <template #tab>
+                    <h3>Updated: 7/4/2026</h3>
+                </template>
+                <p>{{ stats.applied }}</p>
             </Card>
             <Card>
-                <h2>Interviews: {{ stats.interviews }}</h2>
+                <template #header>
+                    <h2>Interviews</h2>
+                </template>
+                <p>{{ stats.interviews }}</p>
             </Card>
             <Card>
-                <h2>Offers: {{ stats.offers }}</h2>
+                <template #header>
+                    <h2>Offers</h2>
+                </template>  
+                <p>{{ stats.offers }}</p>
             </Card>
             <Card>
-                <h2>Rejected: {{ stats.rejected }}</h2>
+                <template #header>
+                    <h2>Rejected</h2>
+                </template>
+                <p>{{ stats.rejected }}</p>
             </Card>
             <Card class="big-card">
                 <h2>Recent Applications</h2>
