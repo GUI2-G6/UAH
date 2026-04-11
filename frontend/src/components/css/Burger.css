@@ -1,9 +1,11 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+
 #burger > img {
   cursor: pointer;
 }
 
 #burger > img:hover {
-  background-color: rgb(186, 186, 186);
+  background-color: rgb(194, 232, 255);
   border-radius: 8px;
 }
 
@@ -14,7 +16,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  border-right: 2px solid rgba(246, 247, 249);
+  border-right: 2px solid rgb(249, 246, 246);
   padding: 16px 12px;
   min-height: 100vh;
   height: 100dvh;
@@ -22,7 +24,7 @@
   flex-shrink: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  background: #fff;
+  background: #fff7ec;
   z-index: 10;
   transition: width 0.3s ease;
 }
@@ -70,6 +72,14 @@
   transform: rotate(-45deg) translate(7px, -6px);
 }
 
+.burger-button {
+  border-radius:8px;
+}
+
+.burger-button:hover {
+  background-color: rgb(194, 232, 255);
+}
+
 /*Burger items*/
 .burger-item {
   display:flex;
@@ -84,6 +94,8 @@
   margin-top: 8px;
   margin-bottom: 8px;
   margin-left: 11px;
+
+  border-radius: 8px;
   /*
   margin-left:11px;
   margin-right:11px;
@@ -100,7 +112,7 @@
 }
 
 .burger-item:hover {
-  background-color: rgb(186, 186, 186);
+  background-color: rgb(194, 232, 255);
   border-radius: 8px;
 }
 
@@ -118,6 +130,9 @@
 
 .label {
   font-size:24px;
+  font-family: 'Inter', sans-serif;
+  color:rgba(63, 98, 236);
+  font-weight:bold;
 }
 
 .burger-bottom {
