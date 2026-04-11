@@ -340,6 +340,8 @@ function createDefaultUser(overrides = {}) {
     username: defaultEmail,
     email: defaultEmail,
     email_verified: true,
+    is_admin: true,
+    is_developer: true,
     first_name: 'Local',
     last_name: 'Developer',
     phone: '',
@@ -498,7 +500,7 @@ function ensureArray(value, fallback = []) {
 
 function ensureStateShape(state) {
   const safe = state && typeof state === 'object' ? state : createDefaultState()
-  safe.user = safe.user && typeof safe.user === 'object' ? safe.user : createDefaultUser()
+  safe.user = safe.user && typeof safe.user === 'object' ? { ...createDefaultUser(), ...safe.user } : createDefaultUser()
   safe.resumes = ensureArray(safe.resumes, [])
   safe.profiles = ensureArray(safe.profiles, [])
   safe.parseJobs = safe.parseJobs && typeof safe.parseJobs === 'object' ? safe.parseJobs : {}
@@ -1695,6 +1697,10 @@ async function handleMockApiRequest(request, requestUrl, state) {
       source_page_count: totalPages,
       window_start_page: page,
       window_size: 1,
+      dropped_invalid_url_count: 0,
+      url_validation_checked_count: 0,
+      url_validation_cache_hit_count: 0,
+      location_relaxed_fallback: false,
       location_selection_strategy: locationSelection.strategy,
       canonicalized_location_count: selectedLocations.length,
       transformed_location_count: 0,

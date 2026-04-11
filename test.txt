@@ -17,8 +17,6 @@ implement a proper admin account system and or pannel for beta perhaps
 
 experiment with combining the rules based and local ocr pass stuff to enhance catching things for resumes with large amounts of styling applied.
 
-fix view/delete button sizing/style in resume parsing page
-
 make cannotical definitions for each page we currently have so we make sure our understandings are all aligned between devs and implementation.
 
 Move alerts/notifications page to below dash/home
@@ -32,3 +30,11 @@ add nice regex for phone numbers and emails and stuff globally.
 add cool area code flag render for phone numbers idk
 
 add phone number linking ability
+
+padding on view details button is odd 
+
+standardize connected accounts button/card sizes
+
+make sure resume page ui stuff is mobile friendly
+
+make sure the actual current password isnt showing via autofill upon entering settings or whatever/isnt autofillable

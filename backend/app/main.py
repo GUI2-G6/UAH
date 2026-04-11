@@ -78,6 +78,7 @@ def _ensure_users_table_columns(engine) -> None:
             "email_verified": "BOOLEAN DEFAULT FALSE",
             "is_active": "BOOLEAN DEFAULT TRUE",
             "is_admin": "BOOLEAN DEFAULT FALSE",
+            "is_developer": "BOOLEAN DEFAULT FALSE",
             "gmail_refresh_token": "TEXT",
             "gmail_email": "VARCHAR(255)",
             "created_at": "TIMESTAMPTZ DEFAULT now()",
@@ -259,6 +260,7 @@ def _ensure_dev_test_user_if_enabled() -> None:
             user.last_name = settings.DEV_AUTH_TEST_LAST_NAME or "Tester"
             user.is_active = True
             user.is_admin = settings.DEV_AUTH_TEST_IS_ADMIN
+            user.is_developer = settings.DEV_AUTH_TEST_IS_DEVELOPER
 
             if settings.DEV_AUTH_TEST_ROTATE_PASSWORD or not user.hashed_password:
                 user.hashed_password = hash_password(password)
@@ -277,6 +279,7 @@ def _ensure_dev_test_user_if_enabled() -> None:
             last_name=settings.DEV_AUTH_TEST_LAST_NAME or "Tester",
             is_active=True,
             is_admin=settings.DEV_AUTH_TEST_IS_ADMIN,
+            is_developer=settings.DEV_AUTH_TEST_IS_DEVELOPER,
         )
         db.add(user)
         db.commit()

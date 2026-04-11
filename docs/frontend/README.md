@@ -61,6 +61,9 @@ npm run build
   - Canonical category groups/aliases
   - Supported level labels
   - `location_param_cap`
+- Default discovery is intentionally broad:
+  - `Remote` and `Hybrid` start enabled.
+  - Backend may run a one-time relaxed-location fallback when strict location matching returns no jobs.
 - Job search sends keyword/date server-side (`q`, `posted_after`) so totals and pagination match backend filtering.
 - Before search, the UI preflights location trimming and shows `Using X of Y resolved locations`.
 - Compatibility transparency:

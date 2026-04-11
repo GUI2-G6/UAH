@@ -90,7 +90,7 @@
 
                 <div class="settings-group">
                     <h4>Change Password</h4>
-                    <form @submit.prevent="changePassword" class="account-security-form">
+                    <form @submit.prevent="changePassword" class="account-security-form" autocomplete="off">
                         <input
                             v-if="currentUser && currentUser.email"
                             class="credential-context"
@@ -102,9 +102,9 @@
                             tabindex="-1"
                             aria-hidden="true"
                         >
-                        <SecretInput id="settings-current-password" name="current_password" v-model="currentPassword" placeholder="Current password" autocomplete="current-password" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
-                        <SecretInput id="settings-new-password" name="new_password" v-model="newPassword" placeholder="New password" autocomplete="new-password" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
-                        <SecretInput id="settings-confirm-new-password" name="confirm_new_password" v-model="confirmNewPassword" placeholder="Confirm new password" autocomplete="new-password" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
+                        <SecretInput id="settings-current-password" name="current_password" v-model="currentPassword" placeholder="Current password" autocomplete="off" :blockAutofill="true" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
+                        <SecretInput id="settings-new-password" name="new_password" v-model="newPassword" placeholder="New password" autocomplete="off" :blockAutofill="true" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
+                        <SecretInput id="settings-confirm-new-password" name="confirm_new_password" v-model="confirmNewPassword" placeholder="Confirm new password" autocomplete="off" :blockAutofill="true" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
                         <button type="submit" :disabled="working" :class="buttonStatusClass('changePassword')">Update password</button>
                     </form>
                     <div v-if="actionStatus.changePassword.message" :class="feedbackClass('changePassword')">
@@ -192,6 +192,24 @@
                         {{ connectedAccountsLoading ? 'Refreshing…' : 'Refresh connected accounts' }}
                     </button>
                 </div>
+                <div v-if="canAccessDebugTools" class="settings-group developer-tools-group">
+                    <h4>Developer Tools</h4>
+                    <p class="connected-accounts-intro">Dev only. Debug views and internal diagnostics stay hidden for normal accounts.</p>
+                    <p class="developer-tools-capability">
+                        Capability
+                        <span class="connected-account-badge is-connected">Developer account</span>
+                    </p>
+                    <label class="developer-tools-toggle" for="settings-debug-tools-toggle">
+                        <span>Show debug tools in this browser</span>
+                        <input
+                            id="settings-debug-tools-toggle"
+                            type="checkbox"
+                            :checked="showDebugTools"
+                            @change="toggleDebugTools($event.target.checked)"
+                        >
+                    </label>
+                    <p class="connected-account-detail">This toggle is local to this browser and can be turned off later without changing your account role.</p>
+                </div>
             </Card>
         </div>
 
@@ -213,7 +231,8 @@
 import Card from "../components/Card.vue";
 import ConfirmModal from "../components/ConfirmModal.vue";
 import SecretInput from "../components/SecretInput.vue";
-import { authedFetch, clearAuth, getCurrentUser, setCurrentUser } from "../lib/auth.js";
+import { authedFetch, clearAuth, getAccessToken, getCurrentUser, setCurrentUser } from "../lib/auth.js";
+import { setDebugToolsPreference, subscribeDebugTools } from "../lib/debugTools.js";
 import { assertValidEmail } from "../lib/validation.js";
 import { showToast } from '@/services/toastService.js';
 
@@ -262,6 +281,10 @@ export default {
             applicationStatusUpdates: 'yes',
             language: 'en',
             timezone: 'EST',
+
+            canAccessDebugTools: false,
+            showDebugTools: false,
+            debugToolsUnsubscribe: null,
         }
     },
     computed: {},
@@ -269,6 +292,15 @@ export default {
         await this.loadUser()
         await this.loadConnectedAccounts()
         this.handleConnectedAccountRedirectState()
+        this.debugToolsUnsubscribe = subscribeDebugTools((state) => {
+            this.canAccessDebugTools = state.canAccessDebugTools === true
+            this.showDebugTools = state.showDebugTools === true
+        })
+    },
+    beforeUnmount() {
+        if (typeof this.debugToolsUnsubscribe === 'function') {
+            this.debugToolsUnsubscribe()
+        }
     },
     methods: {
         setActionStatus(key, state, message) {
@@ -315,6 +347,15 @@ export default {
             if (!msg) return `${label} failed`
             if (msg.startsWith('HTTP ')) return `${label} failed (${msg})`
             return `${label} failed: ${msg}`
+        },
+        toggleDebugTools(enabled) {
+            const nextState = setDebugToolsPreference(enabled === true, this.currentUser)
+            this.canAccessDebugTools = nextState.canAccessDebugTools === true
+            this.showDebugTools = nextState.showDebugTools === true
+
+            if (!this.showDebugTools && this.$route?.meta?.debugOnly) {
+                this.$router.replace('/home')
+            }
         },
         handleConnectedAccountRedirectState() {
             const accountsState = typeof this.$route?.query?.accounts === 'string' ? this.$route.query.accounts : ''
@@ -404,9 +445,7 @@ export default {
                 this.lastName = this.currentUser.last_name || this.currentUser.lastName || ''
             }
 
-            const host = window.location.hostname
-            const isLocalDev = host === 'localhost' || host === '127.0.0.1' || host === '::1'
-            if (isLocalDev) return
+            if (!getAccessToken()) return
 
             // Refresh from backend if available.
             try {

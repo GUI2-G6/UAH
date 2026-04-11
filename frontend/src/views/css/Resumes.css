@@ -1334,6 +1334,12 @@
   font-size: 0.85rem;
 }
 
+.parse-details-btn {
+  min-height: 34px;
+  padding: 7px 12px;
+  line-height: 1.2;
+}
+
 .view-badge {
   align-self: flex-start;
 }
@@ -1567,5 +1573,204 @@
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 768px) {
+  .greeting {
+    align-items: flex-start;
+    gap: 10px;
+    padding: 16px;
+  }
+
+  .greeting .btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .resume-nav {
+    padding: 0 12px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .resume-nav button {
+    flex: 0 0 auto;
+    min-height: 44px;
+    white-space: nowrap;
+  }
+
+  .dashboard {
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .appinfo-card,
+  .eeo-card,
+  .queue-panel-card {
+    padding: 16px;
+  }
+
+  .resume-list-item {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 10px 12px;
+    padding: 12px 14px;
+  }
+
+  .resume-meta {
+    min-width: 180px;
+  }
+
+  .resume-badges {
+    margin-right: 0;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .resume-actions {
+    margin-left: auto;
+    width: 100%;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .parse-method-header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .parse-details-btn {
+    min-height: 36px;
+  }
+
+  .method-toggle.method-toggle-3 {
+    flex-wrap: wrap;
+  }
+
+  .method-toggle.method-toggle-3 button {
+    min-width: 150px;
+    min-height: 40px;
+  }
+
+  .modal-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .modal-actions button {
+    min-height: 40px;
+  }
+
+  .queue-panel-header {
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+
+  .queue-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .queue-global-entry {
+    grid-template-columns: 48px 1fr;
+    row-gap: 4px;
+  }
+
+  .entry-status {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 480px) {
+  .greeting {
+    padding: 12px;
+  }
+
+  .greeting h1 {
+    font-size: 1.45rem;
+  }
+
+  .greeting p {
+    font-size: 0.9rem;
+  }
+
+  .dashboard {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .resume-nav {
+    padding: 0 8px;
+  }
+
+  .resume-nav button {
+    padding: 10px 12px;
+    font-size: 0.84rem;
+  }
+
+  .appinfo-card,
+  .eeo-card,
+  .queue-panel-card {
+    padding: 12px;
+  }
+
+  .drop-zone {
+    padding: 24px 12px;
+  }
+
+  .modal-overlay {
+    padding: 12px;
+  }
+
+  .modal-box {
+    padding: 16px;
+    gap: 14px;
+    max-height: 92vh;
+  }
+
+  .view-modal-box,
+  .pipeline-details-modal {
+    max-width: 100%;
+  }
+
+  .view-sub-nav {
+    overflow-x: auto;
+  }
+
+  .view-sub-nav button {
+    min-height: 40px;
+    white-space: nowrap;
+    padding: 8px 12px;
+  }
+
+  .resume-list-item {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .resume-meta {
+    min-width: 0;
+  }
+
+  .resume-meta .resume-name {
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .resume-actions {
+    justify-content: flex-start;
+  }
+
+  .resume-actions button {
+    min-height: 36px;
+  }
+
+  .queue-global-entry {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    align-items: flex-start;
   }
 }

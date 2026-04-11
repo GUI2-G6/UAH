@@ -2,31 +2,31 @@
     <div>
         <Card>
             <template #header>
-                <h3 class="job-title">{{ job.title }}</h3>
+                <div class="job-header-row">
+                    <h3 class="job-title">{{ job.title }}</h3>
+                    <span v-if="formattedPublicationDate" class="meta-pill posted">Posted {{ formattedPublicationDate }}</span>
+                </div>
             </template>
             <template #subtitle>
                 <p class="job-company">{{ job.company || "Unknown company" }}</p>
             </template>
 
             <div class="job-meta-row">
-                <span class="meta-pill">{{ job.location || "Unknown location" }}</span>
-                <span v-if="job.has_hybrid" class="meta-pill accent">Hybrid</span>
-                <span v-if="job.has_remote && !job.has_hybrid" class="meta-pill accent">Remote</span>
-                <span v-if="job.is_local_compatible_remote" class="meta-pill compatible">Local-Compatible</span>
                 <span
-                    v-for="tz in constraintTimezones"
-                    :key="`tz-${tz}`"
-                    class="meta-pill info"
+                    v-for="pill in visibleMetaPills"
+                    :key="pill"
+                    class="meta-pill"
+                    :class="{ accent: pill === workSetupLabel, compatible: pill === 'Location overlap' }"
                 >
-                    {{ tz }}
+                    {{ pill }}
                 </span>
             </div>
 
             <p class="job-teaser">{{ teaserText }}</p>
 
             <div class="job-actions">
-                <button type="button" class="secondary" @click="openDetails">View More</button>
-                <button type="button" class="primary" @click="apply">Apply</button>
+                <button type="button" class="secondary" @click="openDetails">Details</button>
+                <button type="button" class="primary" @click="apply">Apply Now</button>
             </div>
         </Card>
 
@@ -53,8 +53,15 @@
                     <span v-if="job.categories && job.categories.length">Categories: {{ job.categories.join(", ") }}</span>
                     <span v-if="job.tags && job.tags.length">Tags: {{ job.tags.join(", ") }}</span>
                     <span v-if="job.publication_date">Posted: {{ formattedPublicationDate }}</span>
-                    <span v-if="job.is_local_compatible_remote">Compatibility: {{ compatibilityLabel }}</span>
-                    <span v-if="constraintExclusions.length">Exclusions: {{ constraintExclusions.join(", ") }}</span>
+                    <span v-if="showDebugMeta && job.is_local_compatible_remote">Compatibility: {{ compatibilityLabel }}</span>
+                    <span v-if="showDebugMeta && constraintExclusions.length">Exclusions: {{ constraintExclusions.join(", ") }}</span>
+                    <span
+                        v-if="showDebugMeta"
+                        v-for="tz in constraintTimezones"
+                        :key="`modal-tz-${tz}`"
+                    >
+                        Time zone: {{ tz }}
+                    </span>
                 </div>
 
                 <div class="job-modal-body">
@@ -80,7 +87,11 @@ export default {
         Card
     },
     props: {
-        job: Object
+        job: Object,
+        showDebugMeta: {
+            type: Boolean,
+            default: false,
+        }
     },
     data() {
         return {
@@ -132,6 +143,23 @@ export default {
             const reason = this.job?.local_compatibility_reason || "constraint-overlap"
             if (reason === "constraint-overlap") return "Constraint overlap"
             return reason
+        },
+        workSetupLabel() {
+            if (this.job?.has_hybrid) return "Hybrid"
+            if (this.job?.has_remote) return "Remote"
+            return "On-site"
+        },
+        visibleMetaPills() {
+            const pills = [
+                this.job?.location || "Unknown location",
+                this.workSetupLabel,
+            ]
+
+            if (this.showDebugMeta && this.job?.is_local_compatible_remote) {
+                pills.push("Location overlap")
+            }
+
+            return pills
         }
     },
     methods: {
@@ -157,6 +185,13 @@ export default {
     margin: 0;
     color: #0f172a;
     font-size: 1.05rem;
+}
+
+.job-header-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
 }
 
 .job-company {
@@ -186,6 +221,13 @@ export default {
     background: rgba(15, 118, 110, 0.08);
 }
 
+.meta-pill.posted {
+    border-color: #cbd5e1;
+    color: #334155;
+    background: #f8fafc;
+    white-space: nowrap;
+}
+
 .meta-pill.compatible {
     border-color: #0c4a6e;
     color: #0c4a6e;
@@ -195,6 +237,12 @@ export default {
 .meta-pill.info {
     border-color: #4b5563;
     color: #374151;
+    background: #f1f5f9;
+}
+
+.meta-pill.trust {
+    border-color: #334155;
+    color: #334155;
     background: #f1f5f9;
 }
 
@@ -323,6 +371,11 @@ export default {
 }
 
 @media (max-width: 700px) {
+    .job-header-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
     .job-actions {
         flex-direction: column;
     }

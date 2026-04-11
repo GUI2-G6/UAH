@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { getAccessToken } from '@/lib/auth'
+import { shouldShowDebugTools } from '@/lib/debugTools'
 
 const modules = import.meta.glob('../views/*.vue')
 
@@ -25,7 +26,10 @@ const viewRoutes = Object.keys(modules).map((path) => {
   return {
     path: routePath,
     name: lower,
-    component: modules[path]
+    component: modules[path],
+    meta: {
+      debugOnly: lower === 'dev',
+    },
   }
 })
 
@@ -54,12 +58,18 @@ router.beforeEach((to) => {
     return true
   }
 
-  if (authed) return true
-
-  return {
-    path: '/login',
-    query: to.fullPath && to.fullPath !== '/' ? { next: to.fullPath } : undefined,
+  if (!authed) {
+    return {
+      path: '/login',
+      query: to.fullPath && to.fullPath !== '/' ? { next: to.fullPath } : undefined,
+    }
   }
+
+  if (to.meta?.debugOnly && !shouldShowDebugTools()) {
+    return '/home'
+  }
+
+  return true
 })
 
 export default router

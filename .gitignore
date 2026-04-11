@@ -50,3 +50,4 @@ endpoint_inventory_backend.tsv
 endpoint_inventory_frontend_calls.tsv
 endpoint_utilization_matrix_2026-04-11.tsv
 /docs/backend/*.tsv
+/frontend/node_modules/.vite/deps

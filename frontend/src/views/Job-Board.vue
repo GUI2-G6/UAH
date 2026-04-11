@@ -1,448 +1,356 @@
 <template>
-    <div class="page">
-        <div class="greeting">
-            <h1>Job Board</h1>
-            <p>Browse and apply to jobs in one click!</p>
+    <div class="page job-board-page">
+        <div class="greeting job-board-hero">
+            <div>
+                <h1>Job Board</h1>
+                <p>Start broad, then narrow only when you need to.</p>
+            </div>
+            <div class="hero-copy">
+                <span class="hero-chip">Broad-first search</span>
+                <p>Default results search across {{ selectedCountryName }} with remote and hybrid roles included.</p>
+            </div>
         </div>
 
-        <section class="filters">
-            <div class="filter-grid">
-                <div class="filter-group">
-                    <label for="job-keyword">Keyword</label>
-                    <input
-                        id="job-keyword"
-                        name="job_keyword"
-                        v-model.trim="draftFilters.keyword"
-                        type="text"
-                        autocomplete="off"
-                        autocapitalize="none"
-                        autocorrect="off"
-                        spellcheck="false"
-                        placeholder="Title, company, location, category, level"
-                    />
+        <section class="filters job-board-filters">
+            <JobBoardPrimaryFilters
+              :draft-filters="draftFilters"
+              :country-options="countryOptions"
+              :loading="loading"
+              :location-busy="locationBusy"
+              :resolved-location="resolvedLocation"
+              :location-info="locationInfo"
+              :location-warning="locationWarning"
+              :location-error="locationError"
+              :advanced-filters-open="advancedFiltersOpen"
+              @apply="applyFilters"
+              @reset="clearFilters"
+              @set-location-mode="setLocationMode"
+              @toggle-advanced="advancedFiltersOpen = !advancedFiltersOpen"
+              @use-nearby="activateNearbyMode"
+            />
+
+            <section v-if="advancedFiltersOpen" class="advanced-filters-panel">
+                <div class="advanced-filters-header">
+                    <div>
+                        <p class="advanced-eyebrow">Advanced filters</p>
+                        <h2>Optional narrowing</h2>
+                    </div>
+                    <p>Use these when you already know how you want to trim the search.</p>
                 </div>
 
-                <div class="filter-group">
-                    <label for="job-date-preset">Posted</label>
-                    <select id="job-date-preset" name="job_date_preset" autocomplete="off" v-model="draftFilters.datePreset">
-                        <option value="any">Any time</option>
-                        <option value="7">Last 7 days</option>
-                        <option value="30">Last 30 days</option>
-                        <option value="custom">After date</option>
-                    </select>
-                </div>
-
-                <div class="filter-group" v-if="draftFilters.datePreset === 'custom'">
-                    <label for="job-custom-date">After date</label>
-                    <input
-                        id="job-custom-date"
-                        name="job_custom_after_date"
-                        v-model="draftFilters.customAfterDate"
-                        type="date"
-                        autocomplete="off"
-                    />
-                </div>
-
-                <div class="filter-group">
-                    <label>Work Setup</label>
-                    <div class="mode-row compact">
-                      <button
-                        type="button"
-                        class="mode-button"
-                        :class="{ active: draftFilters.includeHybrid }"
-                        @click="draftFilters.includeHybrid = !draftFilters.includeHybrid"
-                      >
-                        Hybrid {{ draftFilters.includeHybrid ? 'On' : 'Off' }}
-                      </button>
-                      <button
-                        type="button"
-                        class="mode-button"
-                        :class="{ active: draftFilters.includeRemote }"
-                        @click="draftFilters.includeRemote = !draftFilters.includeRemote"
-                      >
-                        Remote {{ draftFilters.includeRemote ? 'On' : 'Off' }}
-                      </button>
-                    </div>
-                    <p class="hint-text">Hybrid is enabled by default. Fully remote jobs are off by default.</p>
-                    <p class="hint-text">With Remote off, constrained remote/flexible roles may still appear if constraints overlap your selected area.</p>
-                </div>
-            </div>
-
-            <div class="filter-grid">
-                <div class="filter-group">
-                  <label for="job-categories">Categories</label>
-                  <div class="category-selector">
-                    <input
-                      id="job-categories"
-                      name="job_categories_input"
-                      v-model.trim="categoryInput"
-                      type="text"
-                      autocomplete="off"
-                      autocapitalize="none"
-                      autocorrect="off"
-                      spellcheck="false"
-                      placeholder="Search categories"
-                      @focus="openCategoryMenu"
-                      @input="onCategoryInput"
-                      @blur="closeCategoryMenuSoon"
-                      @keydown.enter.prevent="chooseCategoryFromInput"
-                      @keydown.down.prevent="moveCategorySelection(1)"
-                      @keydown.up.prevent="moveCategorySelection(-1)"
-                      @keydown.esc.prevent="categoryMenuOpen = false"
-                    />
-
-                    <div
-                      v-if="showCategoryMenu"
-                      class="category-suggestions"
-                      role="listbox"
-                      aria-label="Category suggestions"
-                    >
-                      <button
-                        v-for="(option, index) in filteredCategoryOptions"
-                        :key="option"
-                        type="button"
-                        class="category-option"
-                        :class="{ active: index === categoryActiveIndex }"
-                        @mousedown.prevent="addCategory(option)"
-                      >
-                        {{ option }}
-                      </button>
+                <div class="filter-grid">
+                    <div class="filter-group">
+                        <label for="job-date-preset">Posted</label>
+                        <select id="job-date-preset" name="job_date_preset" autocomplete="off" v-model="draftFilters.datePreset">
+                            <option value="any">Any time</option>
+                            <option value="7">Last 7 days</option>
+                            <option value="30">Last 30 days</option>
+                            <option value="custom">After date</option>
+                        </select>
                     </div>
 
-                    <p class="hint-text" v-if="categoryInfo">{{ categoryInfo }}</p>
-                    <p class="hint-text">Pick a suggested group or type a custom Muse category and press Enter.</p>
-
-                    <div class="custom-input-row">
-                      <button type="button" @click="openCategoryMappingModal" :disabled="!draftFilters.categories.length">
-                        View Group Mapping
-                      </button>
-                    </div>
-
-                    <div class="chip-list" v-if="draftFilters.categories.length">
-                      <button
-                        class="chip"
-                        type="button"
-                        v-for="category in draftFilters.categories"
-                        :key="category"
-                        @click="removeFilterValue('categories', category)"
-                        :title="`Remove ${category}`"
-                      >
-                        {{ category }} x
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="filter-group">
-                    <label for="job-levels">Levels</label>
-                    <div class="category-selector">
-                      <input
-                        id="job-levels"
-                        name="job_levels_input"
-                        v-model.trim="levelInput"
-                        type="text"
-                        autocomplete="off"
-                        autocapitalize="none"
-                        autocorrect="off"
-                        spellcheck="false"
-                        placeholder="Search levels"
-                        @focus="openLevelMenu"
-                        @input="onLevelInput"
-                        @blur="closeLevelMenuSoon"
-                        @keydown.enter.prevent="chooseLevelFromInput"
-                        @keydown.down.prevent="moveLevelSelection(1)"
-                        @keydown.up.prevent="moveLevelSelection(-1)"
-                        @keydown.esc.prevent="levelMenuOpen = false"
-                      />
-
-                      <div
-                        v-if="showLevelMenu"
-                        class="category-suggestions"
-                        role="listbox"
-                        aria-label="Level suggestions"
-                      >
-                        <button
-                          v-for="(option, index) in filteredLevelOptions"
-                          :key="option"
-                          type="button"
-                          class="category-option"
-                          :class="{ active: index === levelActiveIndex }"
-                          @mousedown.prevent="addLevel(option)"
-                        >
-                          {{ option }}
-                        </button>
-                      </div>
-
-                      <p class="hint-text" v-if="levelInfo">{{ levelInfo }}</p>
-
-                      <div class="chip-list" v-if="draftFilters.levels.length">
-                        <button
-                          class="chip"
-                          type="button"
-                          v-for="level in draftFilters.levels"
-                          :key="level"
-                          @click="removeFilterValue('levels', level)"
-                          :title="`Remove ${level}`"
-                        >
-                          {{ level }} x
-                        </button>
-                      </div>
-                    </div>
-                </div>
-
-                <div class="filter-group">
-                  <label>Location Mode</label>
-                  <div class="mode-row">
-                    <button
-                      type="button"
-                      class="mode-button"
-                      :class="{ active: draftFilters.locationMode === 'nearby' }"
-                      @click="setLocationMode('nearby')"
-                    >
-                      Nearby Me
-                    </button>
-                    <button
-                      type="button"
-                      class="mode-button"
-                      :class="{ active: draftFilters.locationMode === 'country' }"
-                      @click="setLocationMode('country')"
-                    >
-                      Within My Country
-                    </button>
-                    </div>
-
-                  <div v-if="draftFilters.locationMode === 'nearby'" class="mode-panel">
-                    <div class="custom-input-row">
-                      <button type="button" @click="activateNearbyMode" :disabled="locationBusy">
-                        Use Current Location
-                      </button>
-                    </div>
-
-                    <p class="hint-text" v-if="resolvedLocation">
-                      Center: {{ resolvedLocation.city || 'Unknown city' }} {{ resolvedLocation.country_code ? `(${resolvedLocation.country_code})` : '' }}
-                    </p>
-
-                  </div>
-
-                  <div v-if="draftFilters.locationMode === 'country'" class="mode-panel">
-                    <select id="job-country-code" name="job_country_code" autocomplete="off" v-model="draftFilters.countryCode">
-                      <option v-for="country in countryOptions" :key="country.code" :value="country.code">
-                        {{ country.name }}{{ country.location_count ? ` (${country.location_count})` : '' }}
-                      </option>
-                    </select>
-                  </div>
-
-                  <div class="custom-input-row">
-                    <button
-                      type="button"
-                      class="advanced-toggle"
-                      :aria-expanded="advancedLocationModalOpen"
-                      aria-controls="advanced-location-modal"
-                      @click="openAdvancedLocationModal"
-                    >
-                      Show advanced location options
-                    </button>
-                  </div>
-
-                  <p class="hint-text" v-if="locationInfo">{{ locationInfo }}</p>
-                  <p class="error-text" v-if="locationError">{{ locationError }}</p>
-                  <p class="warn-text" v-if="locationWarning">{{ locationWarning }}</p>
-                </div>
-            </div>
-
-            <div class="filter-grid">
-                <div class="filter-group full-width">
-                    <label for="job-company-input">Company filters</label>
-                    <div class="custom-input-row">
+                    <div class="filter-group" v-if="draftFilters.datePreset === 'custom'">
+                        <label for="job-custom-date">After date</label>
                         <input
-                            id="job-company-input"
-                            name="job_company_input"
-                            v-model.trim="companyInput"
+                            id="job-custom-date"
+                            name="job_custom_after_date"
+                            v-model="draftFilters.customAfterDate"
+                            type="date"
+                            autocomplete="off"
+                        />
+                    </div>
+
+                    <div class="filter-group">
+                      <label for="job-categories">Categories</label>
+                      <div class="category-selector">
+                        <input
+                          id="job-categories"
+                          name="job_categories_input"
+                          v-model.trim="categoryInput"
+                          type="text"
+                          autocomplete="off"
+                          autocapitalize="none"
+                          autocorrect="off"
+                          spellcheck="false"
+                          placeholder="Search categories"
+                          @focus="openCategoryMenu"
+                          @input="onCategoryInput"
+                          @blur="closeCategoryMenuSoon"
+                          @keydown.enter.prevent="chooseCategoryFromInput"
+                          @keydown.down.prevent="moveCategorySelection(1)"
+                          @keydown.up.prevent="moveCategorySelection(-1)"
+                          @keydown.esc.prevent="categoryMenuOpen = false"
+                        />
+
+                        <div
+                          v-if="showCategoryMenu"
+                          class="category-suggestions"
+                          role="listbox"
+                          aria-label="Category suggestions"
+                        >
+                          <button
+                            v-for="(option, index) in filteredCategoryOptions"
+                            :key="option"
+                            type="button"
+                            class="category-option"
+                            :class="{ active: index === categoryActiveIndex }"
+                            @mousedown.prevent="addCategory(option)"
+                          >
+                            {{ option }}
+                          </button>
+                        </div>
+
+                        <p class="hint-text" v-if="categoryInfo">{{ categoryInfo }}</p>
+                        <p class="hint-text">Pick a suggested group or type a custom Muse category and press Enter.</p>
+
+                        <div class="custom-input-row">
+                          <button type="button" class="secondary-action" @click="openCategoryMappingModal" :disabled="!draftFilters.categories.length">
+                            View group mapping
+                          </button>
+                        </div>
+
+                        <div class="chip-list" v-if="draftFilters.categories.length">
+                          <button
+                            class="chip"
+                            type="button"
+                            v-for="category in draftFilters.categories"
+                            :key="category"
+                            @click="removeFilterValue('categories', category)"
+                            :title="`Remove ${category}`"
+                          >
+                            {{ category }} x
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="job-levels">Levels</label>
+                        <div class="category-selector">
+                          <input
+                            id="job-levels"
+                            name="job_levels_input"
+                            v-model.trim="levelInput"
                             type="text"
                             autocomplete="off"
                             autocapitalize="none"
                             autocorrect="off"
                             spellcheck="false"
-                            placeholder="Add company and press Add"
-                            @keyup.enter="addCustomFilterValue('companies')"
-                        />
-                        <button type="button" @click="addCustomFilterValue('companies')">Add</button>
+                            placeholder="Search levels"
+                            @focus="openLevelMenu"
+                            @input="onLevelInput"
+                            @blur="closeLevelMenuSoon"
+                            @keydown.enter.prevent="chooseLevelFromInput"
+                            @keydown.down.prevent="moveLevelSelection(1)"
+                            @keydown.up.prevent="moveLevelSelection(-1)"
+                            @keydown.esc.prevent="levelMenuOpen = false"
+                          />
+
+                          <div
+                            v-if="showLevelMenu"
+                            class="category-suggestions"
+                            role="listbox"
+                            aria-label="Level suggestions"
+                          >
+                            <button
+                              v-for="(option, index) in filteredLevelOptions"
+                              :key="option"
+                              type="button"
+                              class="category-option"
+                              :class="{ active: index === levelActiveIndex }"
+                              @mousedown.prevent="addLevel(option)"
+                            >
+                              {{ option }}
+                            </button>
+                          </div>
+
+                          <p class="hint-text" v-if="levelInfo">{{ levelInfo }}</p>
+
+                          <div class="chip-list" v-if="draftFilters.levels.length">
+                            <button
+                              class="chip"
+                              type="button"
+                              v-for="level in draftFilters.levels"
+                              :key="level"
+                              @click="removeFilterValue('levels', level)"
+                              :title="`Remove ${level}`"
+                            >
+                              {{ level }} x
+                            </button>
+                          </div>
+                        </div>
                     </div>
-                    <div class="chip-list" v-if="draftFilters.companies.length">
-                        <button
-                            class="chip"
+                </div>
+
+                <div class="filter-grid">
+                    <div class="filter-group">
+                        <label for="job-country-code">Country</label>
+                        <select id="job-country-code" name="job_country_code" autocomplete="off" v-model="draftFilters.countryCode">
+                          <option v-for="country in countryOptions" :key="country.code" :value="country.code">
+                            {{ country.name }}{{ country.location_count ? ` (${country.location_count})` : '' }}
+                          </option>
+                        </select>
+                        <p class="hint-text">Country mode stays broad. Nearby and custom location use this as a boundary when available.</p>
+                    </div>
+
+                    <div class="filter-group" v-if="draftFilters.locationMode !== 'country'">
+                        <label for="job-radius">Search radius</label>
+                        <div class="radius-row">
+                          <input
+                            id="job-radius"
+                            v-model.number="draftFilters.locationRadius"
+                            type="range"
+                            :min="1"
+                            :max="maxRadiusForUnit"
+                            step="1"
+                          />
+                          <span>{{ Math.round(draftFilters.locationRadius) }} {{ draftFilters.radiusUnit }}</span>
+                        </div>
+                        <div class="mode-row compact">
+                          <button
                             type="button"
-                            v-for="company in draftFilters.companies"
-                            :key="company"
-                            @click="removeFilterValue('companies', company)"
-                            :title="`Remove ${company}`"
+                            class="mode-button"
+                            :class="{ active: draftFilters.radiusUnit === 'mi' }"
+                            @click="setRadiusUnit('mi')"
+                          >
+                            Miles
+                          </button>
+                          <button
+                            type="button"
+                            class="mode-button"
+                            :class="{ active: draftFilters.radiusUnit === 'km' }"
+                            @click="setRadiusUnit('km')"
+                          >
+                            Kilometers
+                          </button>
+                        </div>
+                    </div>
+
+                    <div class="filter-group">
+                        <label>Area preview</label>
+                        <button type="button" class="secondary-action" @click="previewLocationSelection" :disabled="locationBusy">
+                          {{ locationBusy ? 'Resolving area…' : 'Preview matched places' }}
+                        </button>
+                        <p v-if="locationPreviewSummary" class="hint-text">{{ locationPreviewSummary }}</p>
+                        <button
+                          v-if="hasMorePreviewCities"
+                          type="button"
+                          class="city-preview-more"
+                          @click="openCityPreviewModal"
                         >
-                            {{ company }} x
+                          Show all matched places
                         </button>
                     </div>
                 </div>
-            </div>
 
-            <div class="filter-actions">
-                <button type="button" class="primary" @click="applyFilters" :disabled="loading">
-                    Apply Filters
-                </button>
-                <button type="button" class="secondary" @click="clearFilters" :disabled="loading">
-                    Clear All
-                </button>
-            </div>
+                <div class="filter-grid">
+                    <div class="filter-group full-width">
+                        <label for="job-company-input">Company filters</label>
+                        <div class="custom-input-row">
+                            <input
+                                id="job-company-input"
+                                name="job_company_input"
+                                v-model.trim="companyInput"
+                                type="text"
+                                autocomplete="off"
+                                autocapitalize="none"
+                                autocorrect="off"
+                                spellcheck="false"
+                                placeholder="Add company and press Add"
+                                @keyup.enter="addCustomFilterValue('companies')"
+                            />
+                            <button type="button" class="secondary-action" @click="addCustomFilterValue('companies')">Add</button>
+                        </div>
+                        <div class="chip-list" v-if="draftFilters.companies.length">
+                            <button
+                                class="chip"
+                                type="button"
+                                v-for="company in draftFilters.companies"
+                                :key="company"
+                                @click="removeFilterValue('companies', company)"
+                                :title="`Remove ${company}`"
+                            >
+                                {{ company }} x
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </section>
 
-        <div
-          v-if="advancedLocationModalOpen"
-          id="advanced-location-modal"
-          class="city-modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Advanced location options"
-          @click="closeAdvancedLocationModal"
-        >
-          <div class="city-modal-dialog advanced-location-dialog" v-draggable-modal="{ handle: '.city-modal-header' }" @click.stop>
-            <div class="city-modal-header drag-handle">
-              <h2>Advanced Location Options</h2>
-              <button type="button" class="city-modal-close" @click="closeAdvancedLocationModal">Close</button>
+        <JobBoardResultsSummary
+          :loading="loading"
+          :error="error"
+          :jobs-length="jobs.length"
+          :page="page"
+          :total-jobs="totalJobs"
+          :totals-are-estimated="totalsAreEstimated"
+          :search-scope-summary="searchScopeSummary"
+          :active-filter-chips="activeFilterChips"
+          :compatibility-notice="compatibilityNotice"
+          :location-limit-notice="locationLimitNotice"
+          :can-widen-search="canWidenSearch"
+          @clear="clearFilters"
+          @remove-chip="removeActiveFilterChip"
+          @widen="widenSearch"
+        />
+
+        <JobBoardDebugPanel
+          v-if="showDebugTools"
+          :diagnostics="lastSearchDiagnostics"
+          :pretrim-location-notice="pretrimLocationNotice"
+          :filter-metadata-version="filterMetadataVersion"
+          :filter-metadata-hash="filterMetadataHash"
+        />
+
+        <div class="pagination pagination-top" v-if="!loading && !error">
+          <button type="button" @click="goToPreviousPage" :disabled="page <= 1 || loading">Previous</button>
+          <button
+            type="button"
+            v-for="pageNumber in visiblePageButtons"
+            :key="`jobs-page-top-${pageNumber}`"
+            :class="{ active: pageNumber === page }"
+            @click="goToPage(pageNumber)"
+            :disabled="loading"
+          >
+            {{ pageNumber }}
+          </button>
+          <span>of {{ totalPages }}{{ totalsAreEstimated ? ' est.' : '' }}</span>
+          <button type="button" @click="goToNextPage" :disabled="!hasNextPage || loading">Next</button>
+        </div>
+
+        <div class="dashboard">
+            <div class="empty-state" v-if="!loading && !error && !jobs.length">
+                No jobs matched the selected filters.
+                <div class="empty-state-actions">
+                    <button type="button" @click="enableRemoteAndSearch" :disabled="loading || appliedFilters.includeRemote === true">Enable Remote</button>
+                    <button type="button" @click="switchToCountryModeAndSearch" :disabled="loading || appliedFilters.locationMode === 'country'">Switch to Country</button>
+                    <button type="button" @click="clearLocationAndSearch" :disabled="loading || !hasLocationFilterApplied">Clear Location</button>
+                </div>
             </div>
+            <JobPosting
+                v-else
+                v-for="job in jobs"
+                :key="job.id"
+                :job="job"
+                :show-debug-meta="showDebugTools"
+            />
+        </div>
 
-            <p class="city-modal-subtitle">Precise location uses browser permission. Approximate location uses your IP.</p>
-
-            <div class="city-modal-scroll advanced-location-scroll">
-              <div class="mode-row">
-                <button
-                  type="button"
-                  class="mode-button"
-                  :class="{ active: draftFilters.locationMode === 'manual' }"
-                  @click="setLocationMode('manual')"
-                >
-                  Manual
-                </button>
-                <button
-                  type="button"
-                  class="mode-button"
-                  :class="{ active: draftFilters.locationMode === 'nearby' }"
-                  @click="setLocationMode('nearby')"
-                >
-                  Nearby Me
-                </button>
-                <button
-                  type="button"
-                  class="mode-button"
-                  :class="{ active: draftFilters.locationMode === 'country' }"
-                  @click="setLocationMode('country')"
-                >
-                  Within My Country
-                </button>
-              </div>
-
-              <div v-if="draftFilters.locationMode === 'manual'" class="mode-panel">
-                <input
-                  id="job-location-query"
-                  name="job_location_query"
-                  v-model.trim="draftFilters.manualLocationQuery"
-                  type="text"
-                  autocomplete="off"
-                  autocapitalize="none"
-                  autocorrect="off"
-                  spellcheck="false"
-                  placeholder="ZIP code or city (e.g., 02108 or Boston, MA)"
-                />
-              </div>
-
-              <div class="mode-panel">
-                <div class="custom-input-row">
-                  <button type="button" @click="detectViaIp" :disabled="locationBusy">
-                    Refresh Approximate Location
-                  </button>
-                </div>
-                <div class="custom-input-row">
-                  <input
-                    id="job-location-fallback"
-                    name="job_location_fallback"
-                    v-model.trim="locationFallbackInput"
-                    type="text"
-                    autocomplete="off"
-                    autocapitalize="none"
-                    autocorrect="off"
-                    spellcheck="false"
-                    placeholder="If detection fails, enter ZIP/city"
-                    @keyup.enter="resolveFallbackLocation"
-                  />
-                  <button type="button" @click="resolveFallbackLocation" :disabled="locationBusy">
-                    Use ZIP/City
-                  </button>
-                </div>
-              </div>
-
-              <div v-if="draftFilters.locationMode !== 'country'" class="mode-panel">
-                <label for="job-radius">Radius</label>
-                <div class="radius-row">
-                  <input
-                    id="job-radius"
-                    v-model.number="draftFilters.locationRadius"
-                    type="range"
-                    :min="1"
-                    :max="maxRadiusForUnit"
-                    step="1"
-                  />
-                  <span>{{ Math.round(draftFilters.locationRadius) }} {{ draftFilters.radiusUnit }}</span>
-                </div>
-                <div class="mode-row compact">
-                  <button
-                    type="button"
-                    class="mode-button"
-                    :class="{ active: draftFilters.radiusUnit === 'mi' }"
-                    @click="setRadiusUnit('mi')"
-                  >
-                    Miles
-                  </button>
-                  <button
-                    type="button"
-                    class="mode-button"
-                    :class="{ active: draftFilters.radiusUnit === 'km' }"
-                    @click="setRadiusUnit('km')"
-                  >
-                    Kilometers
-                  </button>
-                </div>
-              </div>
-
-              <div class="custom-input-row">
-                <button type="button" @click="previewLocationSelection" :disabled="locationBusy">
-                  {{ locationBusy ? 'Resolving area...' : 'Preview Area Cities' }}
-                </button>
-              </div>
-
-              <div class="city-preview" v-if="locationPreviewNames.length">
-                <div class="city-preview-header">
-                  <strong>Area Cities ({{ locationPreviewNames.length }})</strong>
-                </div>
-                <ul class="city-preview-list">
-                  <li
-                    v-for="city in visibleLocationPreviewNames"
-                    :key="`preview-city-${city}`"
-                  >
-                    {{ city }}
-                  </li>
-                </ul>
-                <button
-                  v-if="hasMorePreviewCities"
-                  type="button"
-                  class="city-preview-more"
-                  @click="openCityPreviewModal"
-                >
-                  Show {{ hiddenLocationPreviewCount }} more
-                </button>
-              </div>
-            </div>
-
-            <div class="city-modal-actions">
-              <button type="button" @click="closeAdvancedLocationModal">Close</button>
-            </div>
-          </div>
+        <div class="pagination pagination-bottom" v-if="!loading && !error">
+            <button type="button" @click="goToPreviousPage" :disabled="page <= 1 || loading">Previous</button>
+            <button
+              type="button"
+              v-for="pageNumber in visiblePageButtons"
+              :key="`jobs-page-${pageNumber}`"
+              :class="{ active: pageNumber === page }"
+              @click="goToPage(pageNumber)"
+              :disabled="loading"
+            >
+              {{ pageNumber }}
+            </button>
+            <span>of {{ totalPages }}{{ totalsAreEstimated ? ' est.' : '' }}</span>
+            <button type="button" @click="goToNextPage" :disabled="!hasNextPage || loading">Next</button>
         </div>
 
         <div
@@ -532,78 +440,31 @@
             </div>
           </div>
         </div>
-
-        <div class="jobs-meta">
-            <p v-if="loading">Loading jobs...</p>
-            <p v-else-if="error" class="error-text">{{ error }}</p>
-            <p v-else>
-              Showing {{ jobs.length }} jobs on page {{ page }}
-              <span v-if="totalJobs > 0">of {{ totalJobs }} {{ totalsAreEstimated ? 'estimated total' : 'total' }}</span>
-            </p>
-            <p v-if="pretrimLocationNotice" class="hint-text">{{ pretrimLocationNotice }}</p>
-            <p v-if="locationLimitNotice" class="warn-text">{{ locationLimitNotice }}</p>
-            <p v-if="compatibilityNotice" class="hint-text">{{ compatibilityNotice }}</p>
-        </div>
-
-        <div class="pagination pagination-top" v-if="!loading && !error">
-          <button type="button" @click="goToPreviousPage" :disabled="page <= 1 || loading">Previous</button>
-          <button
-            type="button"
-            v-for="pageNumber in visiblePageButtons"
-            :key="`jobs-page-top-${pageNumber}`"
-            :class="{ active: pageNumber === page }"
-            @click="goToPage(pageNumber)"
-            :disabled="loading"
-          >
-            {{ pageNumber }}
-          </button>
-          <span>of {{ totalPages }}{{ totalsAreEstimated ? ' est.' : '' }}</span>
-          <button type="button" @click="goToNextPage" :disabled="!hasNextPage || loading">Next</button>
-        </div>
-
-        <div class="dashboard">
-            <div class="empty-state" v-if="!loading && !error && !jobs.length">
-                No jobs matched the selected filters.
-            </div>
-            <JobPosting
-                v-else
-                v-for="job in jobs"
-                :key="job.id"
-                :job="job"
-            />
-        </div>
-
-          <div class="pagination pagination-bottom" v-if="!loading && !error">
-            <button type="button" @click="goToPreviousPage" :disabled="page <= 1 || loading">Previous</button>
-            <button
-              type="button"
-              v-for="pageNumber in visiblePageButtons"
-              :key="`jobs-page-${pageNumber}`"
-              :class="{ active: pageNumber === page }"
-              @click="goToPage(pageNumber)"
-              :disabled="loading"
-            >
-              {{ pageNumber }}
-            </button>
-            <span>of {{ totalPages }}{{ totalsAreEstimated ? ' est.' : '' }}</span>
-            <button type="button" @click="goToNextPage" :disabled="!hasNextPage || loading">Next</button>
-          </div>
     </div>
 </template>
 
 
 <script>
 import JobPosting from "../components/JobPosting.vue";
+import JobBoardPrimaryFilters from "../components/job-board/JobBoardPrimaryFilters.vue";
+import JobBoardResultsSummary from "../components/job-board/JobBoardResultsSummary.vue";
+import JobBoardDebugPanel from "../components/job-board/JobBoardDebugPanel.vue";
 import {
   getCachedLocation,
   requestBrowserLocation,
   setCachedLocation
 } from "../lib/geolocation";
 import { publishCurrentPageDiagnostics, clearCurrentPageDiagnostics } from "../lib/debugDiagnostics";
+import { subscribeDebugTools } from "../lib/debugTools";
 
 export default {
   name: "JobBoard",
-  components: { JobPosting },
+  components: {
+    JobPosting,
+    JobBoardPrimaryFilters,
+    JobBoardResultsSummary,
+    JobBoardDebugPanel,
+  },
   data() {
     const locationSourceMode = "muse"
     const uiPageSize = 10
@@ -708,8 +569,8 @@ export default {
       categories: [],
       levels: [],
       includeHybrid: true,
-      includeRemote: false,
-      locationMode: "nearby",
+      includeRemote: true,
+      locationMode: "country",
       locationRadius: 25,
       radiusUnit: "mi",
       manualLocationQuery: "",
@@ -750,6 +611,7 @@ export default {
       categoryMenuOpen: false,
       categoryActiveIndex: 0,
       categoryMappingModalOpen: false,
+      advancedFiltersOpen: false,
       levelInput: "",
       levelInfo: "",
       levelMenuOpen: false,
@@ -769,6 +631,8 @@ export default {
       locationPreviewCandidates: [],
       locationPreviewCenter: null,
       resolvedLocation: null,
+      showDebugTools: false,
+      debugToolsUnsubscribe: null,
       draftFilters: JSON.parse(JSON.stringify(defaultFilters)),
       appliedFilters: JSON.parse(JSON.stringify(defaultFilters))
     };
@@ -817,6 +681,17 @@ export default {
     },
     visibleLocationPreviewNames() {
       return (this.locationPreviewNames || []).slice(0, this.cityPreviewVisibleLimit)
+    },
+    selectedCountryName() {
+      return this.getCountryName(this.draftFilters.countryCode)
+    },
+    locationPreviewSummary() {
+      if (!this.locationPreviewNames.length) return ""
+      if (this.draftFilters.locationMode === "country") {
+        return `Previewing ${this.locationPreviewNames.length} supported locations in ${this.getCountryName(this.draftFilters.countryCode)}.`
+      }
+      const centerName = this.resolvedLocation?.city || this.draftFilters.manualLocationQuery || "your selected area"
+      return `Previewing ${this.locationPreviewNames.length} matched places around ${centerName}.`
     },
     hiddenLocationPreviewCount() {
       const hidden = (this.locationPreviewNames || []).length - this.cityPreviewVisibleLimit
@@ -902,6 +777,78 @@ export default {
       const policy = (this.lastSearchDiagnostics.constraintPolicyRemoteOff || "").trim()
       const policyHint = policy ? ` Policy: ${policy}.` : ""
       return `${overlapCount} remote role(s) remained because location constraints overlapped your selected area.${policyHint}`
+    },
+    hasLocationFilterApplied() {
+      const names = Array.isArray(this.appliedFilters.locationNames) ? this.appliedFilters.locationNames : []
+      if (names.length > 0) return true
+      return this.appliedFilters.locationMode === "manual" || this.appliedFilters.locationMode === "nearby"
+    },
+    activeFilterChips() {
+      const chips = []
+      const filters = this.appliedFilters || {}
+
+      for (const category of filters.categories || []) {
+        chips.push({ key: `category-${category}`, type: "category", value: category, label: `Category: ${category}` })
+      }
+      for (const level of filters.levels || []) {
+        chips.push({ key: `level-${level}`, type: "level", value: level, label: `Level: ${level}` })
+      }
+      for (const company of filters.companies || []) {
+        chips.push({ key: `company-${company}`, type: "company", value: company, label: `Company: ${company}` })
+      }
+
+      const keyword = String(filters.keyword || "").trim()
+      if (keyword) {
+        chips.push({ key: "keyword", type: "keyword", value: "", label: `Keyword: ${keyword}` })
+      }
+
+      const datePreset = String(filters.datePreset || "any").trim().toLowerCase()
+      if (datePreset !== "any") {
+        const label = datePreset === "custom"
+          ? `After: ${filters.customAfterDate || "custom date"}`
+          : `Posted: last ${datePreset} days`
+        chips.push({ key: "date", type: "date", value: "", label })
+      }
+
+      if (filters.includeRemote === false) {
+        chips.push({ key: "remote-off", type: "remote", value: "", label: "Remote off" })
+      }
+      if (filters.includeHybrid === false) {
+        chips.push({ key: "hybrid-off", type: "hybrid", value: "", label: "Hybrid off" })
+      }
+
+      if ((filters.locationNames || []).length > 0) {
+        chips.push({
+          key: "location-names",
+          type: "location",
+          value: "",
+          label: `Location set (${filters.locationNames.length})`,
+        })
+      }
+
+      return chips
+    },
+    canWidenSearch() {
+      const filters = this.appliedFilters || {}
+      const hasCountryMode = (filters.locationMode || "").trim().toLowerCase() === "country"
+      const hasBroadWorkSetup = filters.includeRemote === true && filters.includeHybrid === true
+      return !(hasCountryMode && hasBroadWorkSetup)
+    },
+    searchScopeSummary() {
+      const filters = this.appliedFilters || {}
+      const workSetup = this.buildWorkSetupSummary(filters)
+
+      if ((filters.locationMode || "").trim().toLowerCase() === "country") {
+        return `Searching across ${this.getCountryName(filters.countryCode)} with ${workSetup}.`
+      }
+
+      const selectedCount = (filters.locationNames || []).length
+      if (selectedCount > 0) {
+        const centerName = this.resolvedLocation?.city || filters.manualLocationQuery || "your selected area"
+        return `Searching around ${centerName} across ${selectedCount} matched locations with ${workSetup}.`
+      }
+
+      return `Searching with ${workSetup}.`
     }
   },
   methods: {
@@ -910,8 +857,8 @@ export default {
         categories: [],
         levels: [],
         includeHybrid: true,
-        includeRemote: false,
-        locationMode: "nearby",
+        includeRemote: true,
+        locationMode: "country",
         locationRadius: 25,
         radiusUnit: "mi",
         manualLocationQuery: "",
@@ -925,6 +872,105 @@ export default {
     },
     cloneFilters(filters) {
       return JSON.parse(JSON.stringify(filters))
+    },
+    getCountryName(code) {
+      const normalized = String(code || "").trim().toUpperCase()
+      const match = (this.countryOptions || []).find(country => country.code === normalized)
+      return match?.name || normalized || "your country"
+    },
+    buildWorkSetupSummary(filters = {}) {
+      const includeRemote = filters.includeRemote !== false
+      const includeHybrid = filters.includeHybrid !== false
+
+      if (includeRemote && includeHybrid) return "remote and hybrid roles included"
+      if (includeRemote) return "remote roles included"
+      if (includeHybrid) return "hybrid roles included"
+      return "on-site focused results"
+    },
+    async removeActiveFilterChip(chip) {
+      if (!chip || !chip.type) return
+
+      const removeValue = (list, value) => (list || []).filter(item => item !== value)
+
+      if (chip.type === "category") {
+        this.draftFilters.categories = removeValue(this.draftFilters.categories, chip.value)
+        this.appliedFilters.categories = removeValue(this.appliedFilters.categories, chip.value)
+      } else if (chip.type === "level") {
+        this.draftFilters.levels = removeValue(this.draftFilters.levels, chip.value)
+        this.appliedFilters.levels = removeValue(this.appliedFilters.levels, chip.value)
+      } else if (chip.type === "company") {
+        this.draftFilters.companies = removeValue(this.draftFilters.companies, chip.value)
+        this.appliedFilters.companies = removeValue(this.appliedFilters.companies, chip.value)
+      } else if (chip.type === "keyword") {
+        this.draftFilters.keyword = ""
+        this.appliedFilters.keyword = ""
+      } else if (chip.type === "date") {
+        this.draftFilters.datePreset = "any"
+        this.appliedFilters.datePreset = "any"
+        this.draftFilters.customAfterDate = ""
+        this.appliedFilters.customAfterDate = ""
+      } else if (chip.type === "remote") {
+        this.draftFilters.includeRemote = true
+        this.appliedFilters.includeRemote = true
+      } else if (chip.type === "hybrid") {
+        this.draftFilters.includeHybrid = true
+        this.appliedFilters.includeHybrid = true
+      } else if (chip.type === "location") {
+        await this.clearLocationAndSearch()
+        return
+      }
+
+      this.page = 1
+      await this.loadJobs()
+      this.publishDebugState("active-filter-chip-removed")
+    },
+    async widenSearch() {
+      this.draftFilters.includeRemote = true
+      this.appliedFilters.includeRemote = true
+      this.draftFilters.includeHybrid = true
+      this.appliedFilters.includeHybrid = true
+      this.draftFilters.locationMode = "country"
+      this.appliedFilters.locationMode = "country"
+      this.draftFilters.locationNames = []
+      this.appliedFilters.locationNames = []
+      this.locationPreviewNames = []
+      this.locationPreviewCities = []
+      this.locationPreviewCandidates = []
+      this.locationPreviewCenter = null
+      this.page = 1
+      await this.applyFilters()
+      this.publishDebugState("widen-search")
+    },
+    async enableRemoteAndSearch() {
+      this.draftFilters.includeRemote = true
+      this.appliedFilters.includeRemote = true
+      this.page = 1
+      await this.loadJobs()
+      this.publishDebugState("enable-remote")
+    },
+    async switchToCountryModeAndSearch() {
+      this.draftFilters.locationMode = "country"
+      this.appliedFilters.locationMode = "country"
+      this.page = 1
+      await this.applyFilters()
+      this.publishDebugState("switch-country-mode")
+    },
+    async clearLocationAndSearch() {
+      this.resolvedLocation = null
+      this.locationFallbackInput = ""
+      this.draftFilters.manualLocationQuery = ""
+      this.appliedFilters.manualLocationQuery = ""
+      this.draftFilters.locationNames = []
+      this.appliedFilters.locationNames = []
+      this.draftFilters.locationMode = "country"
+      this.appliedFilters.locationMode = "country"
+      this.locationPreviewNames = []
+      this.locationPreviewCities = []
+      this.locationPreviewCandidates = []
+      this.locationPreviewCenter = null
+      this.page = 1
+      await this.applyFilters()
+      this.publishDebugState("clear-location")
     },
     normalizeUnique(values) {
       const out = []
@@ -1445,9 +1491,6 @@ export default {
       if (event.key === "Escape" && this.categoryMappingModalOpen) {
         this.closeCategoryMappingModal()
       }
-      if (event.key === "Escape" && this.advancedLocationModalOpen) {
-        this.closeAdvancedLocationModal()
-      }
       if (event.key === "Escape" && this.cityPreviewModalOpen) {
         this.closeCityPreviewModal()
       }
@@ -1772,6 +1815,10 @@ export default {
           effectiveMinFilteredRatio: Number(data.effective_min_filtered_ratio || 0),
           droppedLocationCount: Number(data.dropped_location_count || 0),
           droppedLocationsSample: data.dropped_locations_sample || [],
+          droppedInvalidUrlCount: Number(data.dropped_invalid_url_count || 0),
+          urlValidationCheckedCount: Number(data.url_validation_checked_count || 0),
+          urlValidationCacheHitCount: Number(data.url_validation_cache_hit_count || 0),
+          locationRelaxedFallback: data.location_relaxed_fallback === true,
           requestedLocationsSample: data.requested_locations_sample || [],
           selectedLocationsSample: data.selected_locations_sample || [],
           cacheHit: data.cache_hit === true,
@@ -1838,7 +1885,8 @@ export default {
     async applyFilters() {
       this.locationBusy = true
       try {
-        const locationNames = await this.resolveLocationNamesFromDraft()
+        const useResolvedLocationList = this.draftFilters.locationMode !== "country"
+        const locationNames = useResolvedLocationList ? await this.resolveLocationNamesFromDraft() : []
         const preflightSelection = this.buildPreflightLocationSelection(locationNames, this.draftFilters.locationMode)
         this.pretrimLocationNotice = preflightSelection.requestedCount
           ? `Using ${preflightSelection.usedCount} of ${preflightSelection.requestedCount} resolved locations (${preflightSelection.strategy}).`
@@ -1870,6 +1918,7 @@ export default {
       this.categoryActiveIndex = 0
       this.categoryMenuOpen = false
       this.categoryMappingModalOpen = false
+      this.advancedFiltersOpen = false
       this.levelInput = ""
       this.levelInfo = ""
       this.levelActiveIndex = 0
@@ -1915,23 +1964,16 @@ export default {
   },
   async mounted() {
     window.addEventListener("keydown", this.handleGlobalKeydown)
+    this.debugToolsUnsubscribe = subscribeDebugTools((state) => {
+      this.showDebugTools = state.showDebugTools === true
+    })
     await this.fetchFilterMetadata()
     await this.fetchCountryOptions()
 
     const cached = getCachedLocation()
     if (cached?.latitude && cached?.longitude) {
       this.resolvedLocation = cached
-      this.locationInfo = `Using cached location near ${cached.city || "your area"}.`
-      await this.applyFilters()
-      this.publishDebugState("mounted-with-cache")
-      return
-    }
-
-    await this.detectViaIp()
-    if (this.resolvedLocation?.latitude && this.resolvedLocation?.longitude) {
-      await this.applyFilters()
-      this.publishDebugState("mounted-with-ip")
-      return
+      this.locationInfo = `Saved nearby location available near ${cached.city || "your area"} if you want to switch from country-wide search.`
     }
 
     await this.loadJobs()
@@ -1939,9 +1981,13 @@ export default {
   },
   beforeUnmount() {
     window.removeEventListener("keydown", this.handleGlobalKeydown)
+    if (typeof this.debugToolsUnsubscribe === "function") {
+      this.debugToolsUnsubscribe()
+    }
     clearCurrentPageDiagnostics()
   }
 }
 </script>
 
 <style scoped src="./css/Job-board.css"></style>
+

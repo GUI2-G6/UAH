@@ -93,6 +93,16 @@ class UserResponse(BaseModel):
         description="True when the account owner has successfully completed email verification.",
         examples=[True],
     )
+    is_admin: bool = Field(
+        default=False,
+        description="True when the account can access admin-only backend operations.",
+        examples=[False],
+    )
+    is_developer: bool = Field(
+        default=False,
+        description="True when the account can access developer-only frontend tools.",
+        examples=[False],
+    )
     is_active: bool = Field(
         ...,
         description="False means the account cannot authenticate until re-enabled.",

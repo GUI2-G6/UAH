@@ -1,0 +1,41 @@
+name: Notify Discord on dev push
+
+on:
+    push:
+        branches:
+            - dev
+
+jobs:
+    notify:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Send Discord notification
+              env:
+                  DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+              run: |
+                  if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+                    echo "DISCORD_WEBHOOK_URL is not set; skipping notification."
+                    exit 0
+                  fi
+
+                  COMMIT_MSG=$(echo "${{ github.event.head_commit.message }}" | head -n 1)
+                  PUSHER="${{ github.event.pusher.name }}"
+                  SHORT_SHA="${{ github.sha }}"
+                  SHORT_SHA="${SHORT_SHA:0:7}"
+                  REPO_URL="https://github.com/${{ github.repository }}"
+
+                  curl -s -X POST "$DISCORD_WEBHOOK_URL" \
+                    -H "Content-Type: application/json" \
+                    -d "{
+                      \"embeds\": [{
+                        \"title\": \"New push to dev\",
+                        \"url\": \"$REPO_URL/commit/${{ github.sha }}\",
+                        \"description\": \"\\\`$SHORT_SHA\\\` - $COMMIT_MSG\",
+                        \"color\": 5793266,
+                        \"fields\": [
+                          { \"name\": \"Pushed by\", \"value\": \"\\\`$PUSHER\\\`\", \"inline\": true },
+                          { \"name\": \"Branch\", \"value\": \"\\\`dev\\\`\", \"inline\": true }
+                        ],
+                        \"footer\": { \"text\": \"UAH - GitHub Actions\" }
+                      }]
+                    }"

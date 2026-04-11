@@ -111,7 +111,7 @@ try:
       print('  STATUS:', r.status_code)
       for m in data.get('models', []):
         size_gb = m['size'] / 1e9
-        print(f"  ✓ {m['name']} ({size_gb:.1f}GB) - {m['details']['parameter_size']} {m['details']['quantization_level']}")
+        print(f'  ✓ {m["name"]} ({size_gb:.1f}GB) - {m["details"]["parameter_size"]} {m["details"]["quantization_level"]}')
 except Exception as e:
     print('  ✗ FAILED:', type(e).__name__, str(e))
 " 2>/dev/null
@@ -341,8 +341,9 @@ menu_users() {
     echo ""
     echo "    1) List all users"
     echo "    2) Reset user password"
-    echo "    3) Show user by username"
+    echo "    3) Show user by email"
     echo "    4) Activate/deactivate user"
+    echo "    5) Toggle developer access"
     echo ""
     echo "    0) ← Back"
     echo ""
@@ -352,17 +353,17 @@ menu_users() {
         header
         echo -e "${BOLD}  All Users${NC}\n"
         docker exec uah-dev-db psql -U uah -d uah_dev -c "
-          SELECT id, username, email, first_name, is_active, created_at
+          SELECT id, username, email, first_name, is_active, is_admin, is_developer, created_at
           FROM users ORDER BY id;
         " | sed 's/^/  /'
         press_enter ;;
       2)
         header
         echo -e "${BOLD}  Reset User Password${NC}\n"
-        read -rp "  Username: " uname
+        read -rp "  Email: " user_email
         read -rsp "  New password: " upass
         echo ""
-        if [[ -n "$uname" && -n "$upass" ]]; then
+        if [[ -n "$user_email" && -n "$upass" ]]; then
           cat > /tmp/uah_pw_reset.py << PYEOF
 import sys
 sys.path.insert(0, '/app')
@@ -374,14 +375,14 @@ conn = psycopg2.connect(
     user=os.environ['PGUSER'], password=os.environ['PGPASS']
 )
 cur = conn.cursor()
-cur.execute("UPDATE users SET hashed_password=%s WHERE username=%s RETURNING username, email", (h, os.environ['USERNAME']))
+cur.execute("UPDATE users SET hashed_password=%s WHERE lower(email)=lower(%s) RETURNING email", (h, os.environ['USER_EMAIL']))
 conn.commit()
 row = cur.fetchone()
 if row:
-    print(f"  ✓ Password reset for {row[0]} ({row[1]})")
+    print(f"  ✓ Password reset for {row[0]}")
     print(f"  ✓ Verify: {verify_password(os.environ['PW'], h)}")
 else:
-    print(f"  ✗ User not found: {os.environ['USERNAME']}")
+    print(f"  ✗ User not found: {os.environ['USER_EMAIL']}")
 cur.close()
 conn.close()
 PYEOF
@@ -391,7 +392,7 @@ PYEOF
           PGDB=$(grep POSTGRES_DB "$ROOT_DIR/.env" | cut -d= -f2)
           PGUSER=$(grep POSTGRES_USER "$ROOT_DIR/.env" | cut -d= -f2)
           docker exec \
-            -e PW="$upass" -e USERNAME="$uname" \
+            -e PW="$upass" -e USER_EMAIL="$user_email" \
             -e PGHOST="$PGHOST" -e PGDB="$PGDB" \
             -e PGUSER="$PGUSER" -e PGPASS="$PGPASS" \
             uah-dev-backend python3 /tmp/uah_pw_reset.py 2>/dev/null
@@ -400,21 +401,31 @@ PYEOF
       3)
         header
         echo -e "${BOLD}  User Lookup${NC}\n"
-        read -rp "  Username: " uname
+        read -rp "  Email: " user_email
         docker exec uah-dev-db psql -U uah -d uah_dev -c "
-          SELECT id, username, email, first_name, last_name, is_active,
+          SELECT id, username, email, first_name, last_name, is_active, is_admin, is_developer,
                  email_verified, created_at, updated_at
-          FROM users WHERE username='$uname';
+          FROM users WHERE lower(email)=lower('$user_email');
         " | sed 's/^/  /'
         press_enter ;;
       4)
         header
         echo -e "${BOLD}  Toggle User Active${NC}\n"
-        read -rp "  Username: " uname
+        read -rp "  Email: " user_email
         read -rp "  Active? (true/false): " active
         docker exec uah-dev-db psql -U uah -d uah_dev -c "
-          UPDATE users SET is_active=$active WHERE username='$uname'
-          RETURNING username, is_active;
+          UPDATE users SET is_active=$active WHERE lower(email)=lower('$user_email')
+          RETURNING email, is_active;
+        " | sed 's/^/  /'
+        press_enter ;;
+      5)
+        header
+        echo -e "${BOLD}  Toggle Developer Access${NC}\n"
+        read -rp "  Email: " user_email
+        read -rp "  Developer? (true/false): " developer
+        docker exec uah-dev-db psql -U uah -d uah_dev -c "
+          UPDATE users SET is_developer=$developer WHERE lower(email)=lower('$user_email')
+          RETURNING email, is_developer;
         " | sed 's/^/  /'
         press_enter ;;
       0) return ;;
