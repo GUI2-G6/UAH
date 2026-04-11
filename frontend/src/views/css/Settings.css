@@ -66,11 +66,32 @@
   margin: 0;
 }
 
+
+
 .settings-group {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   align-items: flex-start;
+}
+
+.account-security-form {
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.credential-context {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 
 .settings-group input,
@@ -200,7 +221,7 @@
   width: min(620px, 100%);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
 .connected-account-row {
@@ -208,7 +229,7 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 14px;
+  gap: 16px;
   border: 1px solid rgba(15, 23, 42, 0.14);
   border-radius: 10px;
   padding: 12px 14px;
@@ -275,7 +296,6 @@
 
 .connected-account-actions button {
   width: auto;
-  min-width: 108px;
 }
 
 @media (max-width: 700px) {

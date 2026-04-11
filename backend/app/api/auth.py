@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 import os
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.user import UserRegister, UserLogin, UserResponse, TokenResponse
 from app.core.security import hash_password, verify_password, create_access_token, decode_access_token
+from app.core.validation import normalize_email, require_valid_email
 from app.api.deps import oauth2_scheme
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -15,7 +17,6 @@ ADMIN_EMAIL = "admincontact@uahapp.com"
 
 
 def _ensure_admin_user(db: Session) -> User:
-    admin_username = os.getenv("ADMIN_BOOTSTRAP_USERNAME")
     admin_password = os.getenv("ADMIN_BOOTSTRAP_PASSWORD")
     admin_first_name = os.getenv("ADMIN_BOOTSTRAP_FIRST_NAME")
     admin_last_name = os.getenv("ADMIN_BOOTSTRAP_LAST_NAME")
@@ -23,7 +24,6 @@ def _ensure_admin_user(db: Session) -> User:
     missing = [
         name
         for name, value in {
-            "ADMIN_BOOTSTRAP_USERNAME": admin_username,
             "ADMIN_BOOTSTRAP_PASSWORD": admin_password,
             "ADMIN_BOOTSTRAP_FIRST_NAME": admin_first_name,
             "ADMIN_BOOTSTRAP_LAST_NAME": admin_last_name,
@@ -36,18 +36,23 @@ def _ensure_admin_user(db: Session) -> User:
             detail=f"Admin bootstrap env vars missing: {', '.join(missing)}",
         )
 
-    user = db.query(User).filter(User.email == ADMIN_EMAIL).first()
+    normalized_admin_email = normalize_email(ADMIN_EMAIL)
+    user = db.query(User).filter(func.lower(User.email) == normalized_admin_email).first()
     if user:
         if not user.hashed_password:
             user.hashed_password = hash_password(admin_password)
-            db.add(user)
-            db.commit()
-            db.refresh(user)
+        if user.username != normalized_admin_email:
+            user.username = normalized_admin_email
+        if user.email != normalized_admin_email:
+            user.email = normalized_admin_email
+        db.add(user)
+        db.commit()
+        db.refresh(user)
         return user
 
     user = User(
-        email=ADMIN_EMAIL,
-        username=admin_username,
+        email=normalized_admin_email,
+        username=normalized_admin_email,
         hashed_password=hash_password(admin_password),
         first_name=admin_first_name,
         last_name=admin_last_name,
@@ -66,31 +71,26 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
     Register a new user account and return an access token.
 
     Creates a local credential-based account after validating that the submitted
-    email and username are not already in use. On success, this endpoint returns
+    email is not already in use. On success, this endpoint returns
     a bearer token and the normalized user profile so the frontend can treat
     registration as an authenticated session.
 
     Response codes:
     - 201: Account created successfully and token issued.
-    - 400: Email already registered or username already taken.
+    - 400: Email already registered.
     - 422: Request validation failed (for example, missing fields).
     - 500: Server/database error while creating the account.
     """
-    if db.query(User).filter(User.email == payload.email).first():
+    normalized_email = require_valid_email(payload.email)
+    if db.query(User).filter(func.lower(User.email) == normalized_email).first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered",
         )
 
-    if db.query(User).filter(User.username == payload.username).first():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already taken",
-        )
-
     user = User(
-        email=payload.email,
-        username=payload.username,
+        email=normalized_email,
+        username=normalized_email,
         hashed_password=hash_password(payload.password),
         first_name=payload.first_name,
         last_name=payload.last_name,
@@ -112,7 +112,7 @@ def login(
     db: Session = Depends(get_db),
 ):
     """
-    Authenticate with username and password.
+    Authenticate with email and password.
 
     Validates submitted credentials against a local account, verifies the account
     is active, and returns a signed bearer token plus profile data. This endpoint
@@ -120,16 +120,17 @@ def login(
 
     Response codes:
     - 200: Authentication succeeded and token issued.
-    - 401: Invalid username/password combination.
+    - 401: Invalid email/password combination.
     - 403: Account exists but is deactivated.
     - 422: Request validation failed.
     """
-    user = db.query(User).filter(User.username == payload.username).first()
+    identifier = require_valid_email(payload.email)
+    user = db.query(User).filter(func.lower(User.email) == identifier).first()
 
     if not user or not user.hashed_password or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password",
+            detail="Invalid email or password",
         )
 
     if not user.is_active:
@@ -159,16 +160,20 @@ def token_login(
 
     Response codes:
     - 200: Token generated successfully.
-    - 401: Invalid username/password.
+    - 401: Invalid email/password.
     - 403: Account is deactivated.
     - 422: Invalid form payload.
     """
-    user = db.query(User).filter(User.username == form_data.username).first()
+    try:
+        identifier = require_valid_email(form_data.username, field_name="username")
+    except ValueError:
+        identifier = ""
+    user = db.query(User).filter(func.lower(User.email) == identifier).first()
 
     if not user or not user.hashed_password or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password",
+            detail="Invalid email or password",
         )
 
     if not user.is_active:

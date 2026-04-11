@@ -1,7 +1,5 @@
 Trent notes
 
-add google oauth ui so real test can be done
-
 add default job board stuff and make searching less restrictive
 
 add filtering checks for job board api results which check to make sure jobs returned from api calls are filtered more at our level and jobs that resolve to
@@ -27,4 +25,10 @@ Move alerts/notifications page to below dash/home
 
 make sure all scripts are properly isolated and stuff to where they belong
 
-do a extensive sweep of site to apply proper form field attributes and fix any autofill problems.
+do a extensive sweep of site to apply proper form field attributes and fix any autofill problems.(done maybe, needs second pass)
+
+add nice regex for phone numbers and emails and stuff globally.
+
+add cool area code flag render for phone numbers idk
+
+add phone number linking ability

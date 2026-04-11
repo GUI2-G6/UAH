@@ -10,8 +10,7 @@
                 </template>
                 <div class="settings-group">
                     <p v-if="currentUser" class="signed-in">
-                        Signed in as: <strong>{{ currentUser.username || 'User' }}</strong>
-                        <span v-if="currentUser.email">({{ currentUser.email }})</span>
+                        Signed in as: <strong>{{ currentUser.email || 'Not set' }}</strong>
                     </p>
                     <p v-if="currentUser && currentUser.email" class="email-status" :class="{ 'is-verified': !!currentUser.email_verified }">
                         Email status: <strong>{{ currentUser.email_verified ? 'Verified' : 'Not verified' }}</strong>
@@ -20,9 +19,9 @@
                         Current name: <strong>{{ (currentUser.first_name || currentUser.firstName || '') + (currentUser.last_name || currentUser.lastName ? ' ' + (currentUser.last_name || currentUser.lastName) : '') || 'Not set' }}</strong>
                     </p>
                     <p>First Name</p>
-                    <input id="settings-first-name" name="first_name" type="text" v-model="firstName" autocomplete="given-name">
+                    <input id="settings-first-name" name="first_name" type="text" v-model="firstName" autocomplete="off">
                     <p>Last Name</p>
-                    <input id="settings-last-name" name="last_name" type="text" v-model="lastName" autocomplete="family-name">
+                    <input id="settings-last-name" name="last_name" type="text" v-model="lastName" autocomplete="off">
                     <button @click="changeName" :disabled="working" :class="buttonStatusClass('changeName')">Update name</button>
                     <div v-if="actionStatus.changeName.message" :class="feedbackClass('changeName')">
                         {{ actionStatus.changeName.message }}
@@ -47,7 +46,7 @@
                         <option value="no">No</option>
                     </select>
                     <p>Language</p>
-                    <select v-model="language" name="language" id="settings-language" autocomplete="language">
+                    <select v-model="language" name="language" id="settings-language" autocomplete="off">
                         <option value="en">English</option>
                         <option value="es">Spanish</option>
                         <option value="fr">French</option>
@@ -66,22 +65,24 @@
                     <h3>Account & Security</h3>
                 </template>
                 <div class="settings-group">
-                    <h4>Change Username</h4>
-                    <p v-if="currentUser" class="current-value">Current: <strong>{{ currentUser.username || 'User' }}</strong></p>
-                    <input id="settings-new-username" name="new_username" type="text" v-model="changeUsernameNew" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="New username">
-                    <input id="settings-new-username-confirm" name="confirm_new_username" type="text" v-model="changeUsernameNewConfirm" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Confirm new username">
-                    <button @click="changeUsername" :disabled="working" :class="buttonStatusClass('changeUsername')">Update username</button>
-                    <div v-if="actionStatus.changeUsername.message" :class="feedbackClass('changeUsername')">
-                        {{ actionStatus.changeUsername.message }}
-                    </div>
-                </div>
-
-                <div class="settings-group">
                     <h4>Change Email</h4>
                     <p v-if="currentUser" class="current-value">Current: <strong>{{ currentUser.email || 'Not set' }}</strong></p>
-                    <input id="settings-new-email" name="new_email" type="email" v-model="changeEmailNew" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="New email">
-                    <input id="settings-new-email-confirm" name="confirm_new_email" type="email" v-model="changeEmailNewConfirm" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Confirm new email">
-                    <button @click="changeEmail" :disabled="working" :class="buttonStatusClass('changeEmail')">Update email</button>
+                    <form @submit.prevent="changeEmail" class="account-security-form">
+                        <input
+                            v-if="currentUser && currentUser.email"
+                            class="credential-context"
+                            type="email"
+                            :value="currentUser.email"
+                            autocomplete="username"
+                            name="username"
+                            readonly
+                            tabindex="-1"
+                            aria-hidden="true"
+                        >
+                        <input id="settings-new-email" name="username" type="email" v-model="changeEmailNew" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="New email">
+                        <input id="settings-new-email-confirm" name="confirm_new_email" type="email" v-model="changeEmailNewConfirm" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Confirm new email">
+                        <button type="submit" :disabled="working" :class="buttonStatusClass('changeEmail')">Update email</button>
+                    </form>
                     <div v-if="actionStatus.changeEmail.message" :class="feedbackClass('changeEmail')">
                         {{ actionStatus.changeEmail.message }}
                     </div>
@@ -89,7 +90,18 @@
 
                 <div class="settings-group">
                     <h4>Change Password</h4>
-                    <form @submit.prevent="changePassword">
+                    <form @submit.prevent="changePassword" class="account-security-form">
+                        <input
+                            v-if="currentUser && currentUser.email"
+                            class="credential-context"
+                            type="email"
+                            :value="currentUser.email"
+                            autocomplete="username"
+                            name="username"
+                            readonly
+                            tabindex="-1"
+                            aria-hidden="true"
+                        >
                         <SecretInput id="settings-current-password" name="current_password" v-model="currentPassword" placeholder="Current password" autocomplete="current-password" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
                         <SecretInput id="settings-new-password" name="new_password" v-model="newPassword" placeholder="New password" autocomplete="new-password" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
                         <SecretInput id="settings-confirm-new-password" name="confirm_new_password" v-model="confirmNewPassword" placeholder="Confirm new password" autocomplete="new-password" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
@@ -102,11 +114,13 @@
 
                 <div class="settings-group">
                     <h4>Email Verification</h4>
-                    <button @click="sendVerification" :disabled="working" :class="buttonStatusClass('sendVerification')">Send verification token</button>
+                    <form @submit.prevent="sendVerification" class="account-security-form">
+                        <button type="submit" :disabled="working" :class="buttonStatusClass('sendVerification')">Send verification token</button>
+                    </form>
                     <div v-if="actionStatus.sendVerification.message" :class="feedbackClass('sendVerification')">
                         {{ actionStatus.sendVerification.message }}
                     </div>
-                    <form @submit.prevent="verifyEmail">
+                    <form @submit.prevent="verifyEmail" class="account-security-form">
                         <SecretInput id="settings-email-verification-token" name="email_verification_token" v-model="verifyToken" placeholder="Verification token" autocomplete="one-time-code" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
                         <button type="submit" :disabled="working" :class="buttonStatusClass('verifyEmail')">Verify email</button>
                     </form>
@@ -200,6 +214,7 @@ import Card from "../components/Card.vue";
 import ConfirmModal from "../components/ConfirmModal.vue";
 import SecretInput from "../components/SecretInput.vue";
 import { authedFetch, clearAuth, getCurrentUser, setCurrentUser } from "../lib/auth.js";
+import { assertValidEmail } from "../lib/validation.js";
 import { showToast } from '@/services/toastService.js';
 
 export default {
@@ -218,7 +233,6 @@ export default {
             working: false,
             actionStatus: {
                 changeName: { state: 'idle', message: '' },
-                changeUsername: { state: 'idle', message: '' },
                 changeEmail: { state: 'idle', message: '' },
                 changePassword: { state: 'idle', message: '' },
                 sendVerification: { state: 'idle', message: '' },
@@ -226,9 +240,6 @@ export default {
                 deleteAccount: { state: 'idle', message: '' },
             },
             _actionTimers: {},
-
-            changeUsernameNew: '',
-            changeUsernameNewConfirm: '',
 
             changeEmailNew: '',
             changeEmailNewConfirm: '',
@@ -482,8 +493,17 @@ export default {
         },
 
         async changeEmail() {
-            const newEmail = (this.changeEmailNew || '').trim()
-            const newEmailConfirm = (this.changeEmailNewConfirm || '').trim()
+            let newEmail = ''
+            let newEmailConfirm = ''
+            try {
+                newEmail = assertValidEmail(this.changeEmailNew, 'new email')
+                newEmailConfirm = assertValidEmail(this.changeEmailNewConfirm, 'confirm email')
+            } catch (e) {
+                const msg = e?.message ?? 'Please enter a valid email address'
+                this.setActionStatus('changeEmail', 'error', msg)
+                showToast(msg, 'error')
+                return
+            }
             if (!newEmail || !newEmailConfirm) {
                 const msg = 'Please enter and confirm your new email'
                 this.setActionStatus('changeEmail', 'error', msg)
@@ -492,13 +512,6 @@ export default {
             }
             if (newEmail.toLowerCase() !== newEmailConfirm.toLowerCase()) {
                 const msg = 'Emails do not match'
-                this.setActionStatus('changeEmail', 'error', msg)
-                showToast(msg, 'error')
-                return
-            }
-            const emailRegex = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i
-            if (!emailRegex.test(newEmail)) {
-                const msg = 'Please enter a valid email address'
                 this.setActionStatus('changeEmail', 'error', msg)
                 showToast(msg, 'error')
                 return
@@ -535,49 +548,6 @@ export default {
                 const msg = this.formatFailure('Update email', e)
                 this.setActionStatus('changeEmail', 'error', msg)
                 showToast(msg, 'error')
-            } finally {
-                this.working = false
-            }
-        },
-
-        async changeUsername() {
-            const newUsername = (this.changeUsernameNew || '').trim()
-            const newUsernameConfirm = (this.changeUsernameNewConfirm || '').trim()
-            if (!newUsername || !newUsernameConfirm) {
-                const msg = 'Please enter and confirm your new username'
-                this.setActionStatus('changeUsername', 'error', msg)
-                showToast(msg, 'error')
-                return
-            }
-            if (newUsername !== newUsernameConfirm) {
-                const msg = 'Usernames do not match'
-                this.setActionStatus('changeUsername', 'error', msg)
-                showToast(msg, 'error')
-                return
-            }
-            this.working = true
-            this.setActionStatus('changeUsername', 'working', 'Updating…')
-            try {
-                const res = await authedFetch('/api/account/change-username', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        new_username: newUsername,
-                    }),
-                })
-                const data = await res.json().catch(() => null)
-                if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
-
-                // Endpoint returns UserResponse
-                this.currentUser = data
-                setCurrentUser(data)
-                this.setActionStatus('changeUsername', 'success', 'Username updated')
-                showToast('Username updated successfully!', 'success')
-                this.changeUsernameNewConfirm = ''
-            } catch (e) {
-                const msg = this.formatFailure('Update username', e)
-                this.setActionStatus('changeUsername', 'error', msg)
-                showToast(msg, 'error') // ✅ add
             } finally {
                 this.working = false
             }

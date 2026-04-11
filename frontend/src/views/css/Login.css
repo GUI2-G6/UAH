@@ -27,6 +27,12 @@
   text-align: center;
 }
 
+.auth-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .auth-card h1 {
   font-size: 1.65rem;
   font-weight: 700;

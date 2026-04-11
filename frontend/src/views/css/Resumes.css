@@ -220,14 +220,14 @@
 .resume-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 12px;
   flex-shrink: 0;
 }
 
 .resume-badges {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   margin-right: 8px;
 }
 
@@ -257,7 +257,7 @@
 }
 
 .resume-actions button {
-  width: 32px;
+  min-width: 32px;
   height: 32px;
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 7px;
@@ -269,7 +269,7 @@
   color: var(--color-text-muted);
   font-size: 0.95rem;
   transition: background 0.1s, border-color 0.1s, color 0.1s;
-  padding: 0;
+  padding: 0 8px;
 }
 
 .resume-actions button:hover {

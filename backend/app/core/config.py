@@ -218,8 +218,11 @@ class Settings:
         raise RuntimeError("DEV_AUTH_TEST_ACCOUNT_ENABLED is only allowed in development/local environments.")
 
       if self.DEV_AUTH_TEST_ACCOUNT_ENABLED:
-        if not self.DEV_AUTH_TEST_USERNAME.strip():
-          raise RuntimeError("DEV_AUTH_TEST_USERNAME is required when DEV_AUTH_TEST_ACCOUNT_ENABLED=true.")
+        if not self.DEV_AUTH_TEST_EMAIL.strip() and not self.DEV_AUTH_TEST_USERNAME.strip():
+          raise RuntimeError(
+            "DEV_AUTH_TEST_EMAIL is required when DEV_AUTH_TEST_ACCOUNT_ENABLED=true "
+            "(legacy fallback: DEV_AUTH_TEST_USERNAME)."
+          )
         if not self.DEV_AUTH_TEST_PASSWORD.strip():
           raise RuntimeError("DEV_AUTH_TEST_PASSWORD is required when DEV_AUTH_TEST_ACCOUNT_ENABLED=true.")
 

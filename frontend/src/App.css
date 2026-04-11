@@ -42,6 +42,15 @@ body {
   line-height: 1.4;
 }
 
+button {
+  padding: 0 12px;
+  transition: background-color 0.2s;
+}
+
+button:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
 #uah-app {
   width: 100%;
   max-width: 100%;

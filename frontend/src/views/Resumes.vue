@@ -349,27 +349,27 @@
                 <div class="appinfo-grid">
                     <div class="field-group">
                         <label>First Name</label>
-                        <input id="resume-first-name" type="text" name="first_name" autocomplete="given-name" v-model="firstName" placeholder="John">
+                        <input id="resume-first-name" type="text" name="first_name" autocomplete="off" v-model="firstName" placeholder="John">
                     </div>
                     <div class="field-group">
                         <label>Last Name</label>
-                        <input id="resume-last-name" type="text" name="last_name" autocomplete="family-name" v-model="lastName" placeholder="Doe">
+                        <input id="resume-last-name" type="text" name="last_name" autocomplete="off" v-model="lastName" placeholder="Doe">
                     </div>
                     <div class="field-group">
                         <label>Email</label>
-                        <input id="resume-email" type="email" name="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="appEmail" placeholder="john.doe@email.com">
+                        <input id="resume-email" type="email" name="email" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="appEmail" @blur="onApplicantEmailBlur" placeholder="john.doe@email.com">
                     </div>
                     <div class="field-group">
                         <label>Phone</label>
-                        <input id="resume-phone" type="tel" name="phone" autocomplete="tel" v-model="phone" placeholder="(555) 123-4567">
+                        <input id="resume-phone" type="tel" name="phone" autocomplete="off" v-model="phone" @blur="onApplicantPhoneBlur" placeholder="(555) 123-4567">
                     </div>
                     <div class="field-group">
                         <label>LinkedIn URL</label>
-                        <input id="resume-linkedin" type="url" name="linkedin_url" autocomplete="url" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="linkedin" placeholder="linkedin.com/in/johndoe">
+                        <input id="resume-linkedin" type="url" name="linkedin_url" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="linkedin" placeholder="linkedin.com/in/johndoe">
                     </div>
                     <div class="field-group">
                         <label>Portfolio/Website</label>
-                        <input id="resume-portfolio" type="url" name="portfolio_url" autocomplete="url" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="portfolio" placeholder="johndoe.com">
+                        <input id="resume-portfolio" type="url" name="portfolio_url" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="portfolio" placeholder="johndoe.com">
                     </div>
                 </div>
             </div>
@@ -379,20 +379,20 @@
                 <h3>Address</h3>
                 <div class="field-group field-group-spaced">
                     <label>Street Address</label>
-                    <input id="resume-street-address" type="text" name="street_address" autocomplete="street-address" v-model="streetAddress" placeholder="123 Main Street">
+                    <input id="resume-street-address" type="text" name="street_address" autocomplete="off" v-model="streetAddress" placeholder="123 Main Street">
                 </div>
                 <div class="appinfo-3col">
                     <div class="field-group">
                         <label>City</label>
-                        <input id="resume-city" type="text" name="city" autocomplete="address-level2" v-model="city" placeholder="San Francisco">
+                        <input id="resume-city" type="text" name="city" autocomplete="off" v-model="city" placeholder="San Francisco">
                     </div>
                     <div class="field-group">
                         <label>State</label>
-                        <input id="resume-state" type="text" name="state" autocomplete="address-level1" v-model="appState" placeholder="CA">
+                        <input id="resume-state" type="text" name="state" autocomplete="off" v-model="appState" placeholder="CA">
                     </div>
                     <div class="field-group">
                         <label>ZIP Code</label>
-                        <input id="resume-zip" type="text" name="postal_code" autocomplete="postal-code" inputmode="numeric" v-model="zip" placeholder="94105">
+                        <input id="resume-zip" type="text" name="postal_code" autocomplete="off" inputmode="numeric" v-model="zip" placeholder="94105">
                     </div>
                 </div>
             </div>
@@ -440,7 +440,7 @@
                 <div class="appinfo-grid">
                     <div class="field-group">
                         <label>Degree</label>
-                        <input id="resume-degree" type="text" name="degree" autocomplete="organization-title" v-model="degree" placeholder="Bachelor of Science">
+                        <input id="resume-degree" type="text" name="degree" autocomplete="off" v-model="degree" placeholder="Bachelor of Science">
                     </div>
                     <div class="field-group">
                         <label>Major / Field of Study</label>
@@ -448,7 +448,7 @@
                     </div>
                     <div class="field-group appinfo-full">
                         <label>University</label>
-                        <input id="resume-university" type="text" name="university" autocomplete="organization" v-model="university" placeholder="University of Alabama in Huntsville">
+                        <input id="resume-university" type="text" name="university" autocomplete="off" v-model="university" placeholder="University of Alabama in Huntsville">
                     </div>
                     <div class="field-group">
                         <label>Graduation Year</label>
@@ -471,7 +471,7 @@
                     </div>
                     <div class="field-group">
                         <label>Current / Most Recent Job Title</label>
-                        <input id="resume-job-title" type="text" name="job_title" autocomplete="organization-title" v-model="jobTitle" placeholder="Software Engineer Intern">
+                        <input id="resume-job-title" type="text" name="job_title" autocomplete="off" v-model="jobTitle" placeholder="Software Engineer Intern">
                     </div>
                 </div>
             </div>
@@ -871,6 +871,7 @@
 <script>
 import { authedFetch, getCurrentUser, setCurrentUser } from '../lib/auth.js'
 import { publishCurrentPageDiagnostics, clearCurrentPageDiagnostics } from '../lib/debugDiagnostics'
+import { assertValidEmail, normalizePhone } from '../lib/validation.js'
 import { showToast } from '../services/toastService.js'
 
 const APPINFO_KEY = 'uah_applicant_info'
@@ -1108,6 +1109,28 @@ export default {
     },
 
     methods: {
+        normalizeApplicantContactFields() {
+            if (this.appEmail) {
+                this.appEmail = assertValidEmail(this.appEmail)
+            }
+            this.phone = normalizePhone(this.phone)
+        },
+        onApplicantEmailBlur() {
+            if (!this.appEmail) return
+            try {
+                this.appEmail = assertValidEmail(this.appEmail)
+            } catch {
+                // Keep user's raw input in place until save validation.
+            }
+        },
+        onApplicantPhoneBlur() {
+            if (!this.phone) return
+            try {
+                this.phone = normalizePhone(this.phone)
+            } catch {
+                // Keep user's raw input in place until save validation.
+            }
+        },
         isPlaceholderValue(value) {
             if (value === null || value === undefined) return true
             if (typeof value !== 'string') return false
@@ -1830,6 +1853,7 @@ export default {
             this.saveStatus = { type: '', message: '' }
             if (this._saveTimer) clearTimeout(this._saveTimer)
             try {
+                this.normalizeApplicantContactFields()
                 const payload = this.buildProfilePayload()
                 delete payload.name  // don't overwrite profile name on save
 

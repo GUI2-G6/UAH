@@ -6,16 +6,16 @@
 
             <form @submit.prevent="login">
                 <input
-                    id="login-username"
-                    name="username"
+                    id="login-email"
+                    name="email"
                     class="email-input"
-                    type="text"
-                    v-model="username"
+                    type="email"
+                    v-model="email"
                     autocomplete="username"
                     autocapitalize="none"
                     autocorrect="off"
                     spellcheck="false"
-                    placeholder="Username"
+                    placeholder="Email"
                 />
                 <SecretInput
                     v-model="password"
@@ -67,6 +67,7 @@
 <script>
     import SecretInput from "../components/SecretInput.vue";
     import { setAuth } from "../lib/auth.js";
+    import { assertValidEmail } from "../lib/validation.js";
 
     export default{
         name: "Login",
@@ -75,7 +76,7 @@
         },
         data() {
             return {
-                username: "",
+                email: "",
                 password: "",
                 loading: false,
                 oauthRedirecting: false,
@@ -97,11 +98,12 @@
                 this.loading = true
                 this.error = null
                 try {
+                    const email = assertValidEmail(this.email)
                     const res = await fetch('/api/auth/login', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            username: this.username,
+                            email,
                             password: this.password,
                         }),
                     })

@@ -53,6 +53,7 @@ import time
 from urllib.parse import urlencode
 from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from fastapi.responses import RedirectResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_admin_user
 from app.models.user import User, SavedJob
@@ -2388,12 +2389,13 @@ async def google_oauth_callback(
             _clear_google_oauth_session(request)
             return _oauth_settings_redirect("error", "google_already_linked")
 
-        email_owner = db.query(User).filter(User.email == email).first()
+        email_owner = db.query(User).filter(func.lower(User.email) == email).first()
         if email_owner and email_owner.id != user.id:
             _clear_google_oauth_session(request)
             return _oauth_settings_redirect("error", "email_conflict")
 
         user.google_id = google_id
+        user.username = (user.email or "").strip().lower()
         if picture:
             user.picture_url = picture
         if name and not user.full_name:
