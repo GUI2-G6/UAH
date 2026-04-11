@@ -63,8 +63,8 @@
                         Remote {{ draftFilters.includeRemote ? 'On' : 'Off' }}
                       </button>
                     </div>
-                    <p class="hint-text">Hybrid is enabled by default. Fully remote jobs are off by default.</p>
-                    <p class="hint-text">With Remote off, constrained remote/flexible roles may still appear if constraints overlap your selected area.</p>
+                    <p class="hint-text">Hybrid and Remote are enabled by default for broader discovery.</p>
+                    <p class="hint-text">You can still narrow to local-heavy results by turning Remote off.</p>
                 </div>
             </div>
 
@@ -533,6 +533,29 @@
           </div>
         </div>
 
+        <div class="active-filters-bar" v-if="activeFilterChips.length || canWidenSearch">
+            <div class="active-filters-content">
+                <span class="active-filters-label">Active filters</span>
+                <div class="active-filter-chip-list" v-if="activeFilterChips.length">
+                    <button
+                        type="button"
+                        class="active-filter-chip"
+                        v-for="chip in activeFilterChips"
+                        :key="chip.key"
+                        :title="`Remove ${chip.label}`"
+                        @click="removeActiveFilterChip(chip)"
+                    >
+                        {{ chip.label }} x
+                    </button>
+                </div>
+                <span v-else class="active-filters-empty">Using broad defaults</span>
+            </div>
+            <div class="active-filters-actions">
+                <button type="button" class="secondary" @click="clearFilters" :disabled="loading">Reset</button>
+                <button type="button" class="primary" @click="widenSearch" :disabled="loading || !canWidenSearch">Widen Search</button>
+            </div>
+        </div>
+
         <div class="jobs-meta">
             <p v-if="loading">Loading jobs...</p>
             <p v-else-if="error" class="error-text">{{ error }}</p>
@@ -540,6 +563,24 @@
               Showing {{ jobs.length }} jobs on page {{ page }}
               <span v-if="totalJobs > 0">of {{ totalJobs }} {{ totalsAreEstimated ? 'estimated total' : 'total' }}</span>
             </p>
+            <div class="results-state-grid" v-if="!loading && !error">
+                <div class="results-state-item">
+                    <span class="results-state-label">Source pages</span>
+                    <strong>{{ Number(lastSearchDiagnostics.sourcePagesScanned || 0) }}</strong>
+                </div>
+                <div class="results-state-item">
+                    <span class="results-state-label">Filtered out</span>
+                    <strong>{{ Number(lastSearchDiagnostics.filteredOutCount || 0) }}</strong>
+                </div>
+                <div class="results-state-item">
+                    <span class="results-state-label">Invalid links removed</span>
+                    <strong>{{ Number(lastSearchDiagnostics.droppedInvalidUrlCount || 0) }}</strong>
+                </div>
+                <div class="results-state-item" :class="{ 'is-highlight': lastSearchDiagnostics.locationRelaxedFallback === true }">
+                    <span class="results-state-label">Fallback</span>
+                    <strong>{{ lastSearchDiagnostics.locationRelaxedFallback === true ? 'Relaxed location used' : 'Not needed' }}</strong>
+                </div>
+            </div>
             <p v-if="pretrimLocationNotice" class="hint-text">{{ pretrimLocationNotice }}</p>
             <p v-if="locationLimitNotice" class="warn-text">{{ locationLimitNotice }}</p>
             <p v-if="compatibilityNotice" class="hint-text">{{ compatibilityNotice }}</p>
@@ -564,6 +605,11 @@
         <div class="dashboard">
             <div class="empty-state" v-if="!loading && !error && !jobs.length">
                 No jobs matched the selected filters.
+                <div class="empty-state-actions">
+                    <button type="button" @click="enableRemoteAndSearch" :disabled="loading || appliedFilters.includeRemote === true">Enable Remote</button>
+                    <button type="button" @click="switchToCountryModeAndSearch" :disabled="loading || appliedFilters.locationMode === 'country'">Switch to Country</button>
+                    <button type="button" @click="clearLocationAndSearch" :disabled="loading || !hasLocationFilterApplied">Clear Location</button>
+                </div>
             </div>
             <JobPosting
                 v-else
@@ -708,7 +754,7 @@ export default {
       categories: [],
       levels: [],
       includeHybrid: true,
-      includeRemote: false,
+      includeRemote: true,
       locationMode: "nearby",
       locationRadius: 25,
       radiusUnit: "mi",
@@ -902,6 +948,62 @@ export default {
       const policy = (this.lastSearchDiagnostics.constraintPolicyRemoteOff || "").trim()
       const policyHint = policy ? ` Policy: ${policy}.` : ""
       return `${overlapCount} remote role(s) remained because location constraints overlapped your selected area.${policyHint}`
+    },
+    hasLocationFilterApplied() {
+      const names = Array.isArray(this.appliedFilters.locationNames) ? this.appliedFilters.locationNames : []
+      if (names.length > 0) return true
+      return this.appliedFilters.locationMode === "manual" || this.appliedFilters.locationMode === "nearby"
+    },
+    activeFilterChips() {
+      const chips = []
+      const filters = this.appliedFilters || {}
+
+      for (const category of filters.categories || []) {
+        chips.push({ key: `category-${category}`, type: "category", value: category, label: `Category: ${category}` })
+      }
+      for (const level of filters.levels || []) {
+        chips.push({ key: `level-${level}`, type: "level", value: level, label: `Level: ${level}` })
+      }
+      for (const company of filters.companies || []) {
+        chips.push({ key: `company-${company}`, type: "company", value: company, label: `Company: ${company}` })
+      }
+
+      const keyword = String(filters.keyword || "").trim()
+      if (keyword) {
+        chips.push({ key: "keyword", type: "keyword", value: "", label: `Keyword: ${keyword}` })
+      }
+
+      const datePreset = String(filters.datePreset || "any").trim().toLowerCase()
+      if (datePreset !== "any") {
+        const label = datePreset === "custom"
+          ? `After: ${filters.customAfterDate || "custom date"}`
+          : `Posted: last ${datePreset} days`
+        chips.push({ key: "date", type: "date", value: "", label })
+      }
+
+      if (filters.includeRemote === false) {
+        chips.push({ key: "remote-off", type: "remote", value: "", label: "Remote off" })
+      }
+      if (filters.includeHybrid === false) {
+        chips.push({ key: "hybrid-off", type: "hybrid", value: "", label: "Hybrid off" })
+      }
+
+      if ((filters.locationNames || []).length > 0) {
+        chips.push({
+          key: "location-names",
+          type: "location",
+          value: "",
+          label: `Location set (${filters.locationNames.length})`,
+        })
+      }
+
+      return chips
+    },
+    canWidenSearch() {
+      const filters = this.appliedFilters || {}
+      const hasCountryMode = (filters.locationMode || "").trim().toLowerCase() === "country"
+      const hasBroadWorkSetup = filters.includeRemote === true && filters.includeHybrid === true
+      return !(hasCountryMode && hasBroadWorkSetup)
     }
   },
   methods: {
@@ -910,7 +1012,7 @@ export default {
         categories: [],
         levels: [],
         includeHybrid: true,
-        includeRemote: false,
+        includeRemote: true,
         locationMode: "nearby",
         locationRadius: 25,
         radiusUnit: "mi",
@@ -925,6 +1027,91 @@ export default {
     },
     cloneFilters(filters) {
       return JSON.parse(JSON.stringify(filters))
+    },
+    async removeActiveFilterChip(chip) {
+      if (!chip || !chip.type) return
+
+      const removeValue = (list, value) => (list || []).filter(item => item !== value)
+
+      if (chip.type === "category") {
+        this.draftFilters.categories = removeValue(this.draftFilters.categories, chip.value)
+        this.appliedFilters.categories = removeValue(this.appliedFilters.categories, chip.value)
+      } else if (chip.type === "level") {
+        this.draftFilters.levels = removeValue(this.draftFilters.levels, chip.value)
+        this.appliedFilters.levels = removeValue(this.appliedFilters.levels, chip.value)
+      } else if (chip.type === "company") {
+        this.draftFilters.companies = removeValue(this.draftFilters.companies, chip.value)
+        this.appliedFilters.companies = removeValue(this.appliedFilters.companies, chip.value)
+      } else if (chip.type === "keyword") {
+        this.draftFilters.keyword = ""
+        this.appliedFilters.keyword = ""
+      } else if (chip.type === "date") {
+        this.draftFilters.datePreset = "any"
+        this.appliedFilters.datePreset = "any"
+        this.draftFilters.customAfterDate = ""
+        this.appliedFilters.customAfterDate = ""
+      } else if (chip.type === "remote") {
+        this.draftFilters.includeRemote = true
+        this.appliedFilters.includeRemote = true
+      } else if (chip.type === "hybrid") {
+        this.draftFilters.includeHybrid = true
+        this.appliedFilters.includeHybrid = true
+      } else if (chip.type === "location") {
+        await this.clearLocationAndSearch()
+        return
+      }
+
+      this.page = 1
+      await this.loadJobs()
+      this.publishDebugState("active-filter-chip-removed")
+    },
+    async widenSearch() {
+      this.draftFilters.includeRemote = true
+      this.appliedFilters.includeRemote = true
+      this.draftFilters.includeHybrid = true
+      this.appliedFilters.includeHybrid = true
+      this.draftFilters.locationMode = "country"
+      this.appliedFilters.locationMode = "country"
+      this.draftFilters.locationNames = []
+      this.appliedFilters.locationNames = []
+      this.locationPreviewNames = []
+      this.locationPreviewCities = []
+      this.locationPreviewCandidates = []
+      this.locationPreviewCenter = null
+      this.page = 1
+      await this.applyFilters()
+      this.publishDebugState("widen-search")
+    },
+    async enableRemoteAndSearch() {
+      this.draftFilters.includeRemote = true
+      this.appliedFilters.includeRemote = true
+      this.page = 1
+      await this.loadJobs()
+      this.publishDebugState("enable-remote")
+    },
+    async switchToCountryModeAndSearch() {
+      this.draftFilters.locationMode = "country"
+      this.appliedFilters.locationMode = "country"
+      this.page = 1
+      await this.applyFilters()
+      this.publishDebugState("switch-country-mode")
+    },
+    async clearLocationAndSearch() {
+      this.resolvedLocation = null
+      this.locationFallbackInput = ""
+      this.draftFilters.manualLocationQuery = ""
+      this.appliedFilters.manualLocationQuery = ""
+      this.draftFilters.locationNames = []
+      this.appliedFilters.locationNames = []
+      this.draftFilters.locationMode = "country"
+      this.appliedFilters.locationMode = "country"
+      this.locationPreviewNames = []
+      this.locationPreviewCities = []
+      this.locationPreviewCandidates = []
+      this.locationPreviewCenter = null
+      this.page = 1
+      await this.applyFilters()
+      this.publishDebugState("clear-location")
     },
     normalizeUnique(values) {
       const out = []
@@ -1772,6 +1959,10 @@ export default {
           effectiveMinFilteredRatio: Number(data.effective_min_filtered_ratio || 0),
           droppedLocationCount: Number(data.dropped_location_count || 0),
           droppedLocationsSample: data.dropped_locations_sample || [],
+          droppedInvalidUrlCount: Number(data.dropped_invalid_url_count || 0),
+          urlValidationCheckedCount: Number(data.url_validation_checked_count || 0),
+          urlValidationCacheHitCount: Number(data.url_validation_cache_hit_count || 0),
+          locationRelaxedFallback: data.location_relaxed_fallback === true,
           requestedLocationsSample: data.requested_locations_sample || [],
           selectedLocationsSample: data.selected_locations_sample || [],
           cacheHit: data.cache_hit === true,

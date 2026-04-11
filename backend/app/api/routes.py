@@ -41,16 +41,17 @@ How DB session will be injected later:
       async def list_items(db: Session = Depends(get_db)):
           return db.query(Item).all()
 """
-from contextvars import Token
+import asyncio
 from datetime import datetime, timezone
 import hashlib
 import ipaddress
 import json
-import os, secrets, httpx
+import os
+import secrets
 import httpx
 import re
 import time
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func
@@ -189,6 +190,9 @@ MUSE_LEVEL_OPTIONS = [
 ]
 
 _JOBS_CACHE: dict[str, dict[str, Any]] = {}
+_JOB_URL_VALIDATION_CACHE: dict[str, dict[str, Any]] = {}
+
+INVALID_JOB_URL_STATUSES = {404, 410, 500, 502, 503, 504}
 
 TIMEZONE_FAMILY_ALIASES = {
     "eastern": "ET",
@@ -608,6 +612,212 @@ def _set_jobs_cache_response(signature: str, page: int, response_payload: dict[s
     entry["expires_at"] = now + ttl
     entry["last_access"] = now
     entry.setdefault("pages", {})[page] = _clone_cache_payload(response_payload)
+
+
+def _jobs_url_validation_enabled() -> bool:
+    return (
+        settings.JOBS_URL_VALIDATION_ENABLED
+        and settings.JOBS_URL_VALIDATION_MAX_CHECKS_PER_REQUEST > 0
+        and settings.JOBS_URL_VALIDATION_TIMEOUT_SECONDS > 0
+    )
+
+
+def _normalize_job_url_cache_key(url: str) -> str:
+    parsed = urlparse((url or "").strip())
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+    normalized_path = parsed.path or "/"
+    normalized_query = f"?{parsed.query}" if parsed.query else ""
+    return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}{normalized_path}{normalized_query}"
+
+
+def _is_muse_landing_job_url(url: str | None) -> bool:
+    parsed = urlparse((url or "").strip())
+    host = (parsed.netloc or "").strip().lower()
+    if host not in {"www.themuse.com", "themuse.com"}:
+        return False
+    path = (parsed.path or "").strip().lower()
+    return path.startswith("/jobs/")
+
+
+def _cleanup_job_url_validation_cache(now: float) -> None:
+    expired_keys = [
+        key for key, item in _JOB_URL_VALIDATION_CACHE.items()
+        if float(item.get("expires_at", 0.0)) <= now
+    ]
+    for key in expired_keys:
+        _JOB_URL_VALIDATION_CACHE.pop(key, None)
+
+    max_keys = max(100, settings.JOBS_CACHE_MAX_KEYS * 4)
+    if len(_JOB_URL_VALIDATION_CACHE) <= max_keys:
+        return
+
+    ordered = sorted(
+        _JOB_URL_VALIDATION_CACHE.items(),
+        key=lambda item: float(item[1].get("last_access", 0.0)),
+    )
+    for key, _ in ordered[: len(_JOB_URL_VALIDATION_CACHE) - max_keys]:
+        _JOB_URL_VALIDATION_CACHE.pop(key, None)
+
+
+def _get_job_url_validation_cache_verdict(url: str) -> Optional[str]:
+    now = time.monotonic()
+    _cleanup_job_url_validation_cache(now)
+    key = _normalize_job_url_cache_key(url)
+    if not key:
+        return None
+    entry = _JOB_URL_VALIDATION_CACHE.get(key)
+    if not entry:
+        return None
+    if float(entry.get("expires_at", 0.0)) <= now:
+        _JOB_URL_VALIDATION_CACHE.pop(key, None)
+        return None
+    entry["last_access"] = now
+    verdict = str(entry.get("verdict") or "").strip().lower()
+    return verdict or None
+
+
+def _set_job_url_validation_cache_verdict(url: str, verdict: str) -> None:
+    key = _normalize_job_url_cache_key(url)
+    if not key:
+        return
+
+    normalized_verdict = (verdict or "").strip().lower()
+    if normalized_verdict == "bad":
+        ttl = max(1, int(settings.JOBS_URL_VALIDATION_BAD_TTL_SECONDS))
+    elif normalized_verdict == "good":
+        ttl = max(1, int(settings.JOBS_URL_VALIDATION_GOOD_TTL_SECONDS))
+    else:
+        normalized_verdict = "unknown"
+        ttl = max(1, int(settings.JOBS_URL_VALIDATION_UNKNOWN_TTL_SECONDS))
+
+    now = time.monotonic()
+    _cleanup_job_url_validation_cache(now)
+    _JOB_URL_VALIDATION_CACHE[key] = {
+        "verdict": normalized_verdict,
+        "expires_at": now + ttl,
+        "last_access": now,
+    }
+
+
+def _is_job_not_found_signature(body_text: str | None) -> bool:
+    normalized = (body_text or "").strip().lower()
+    if not normalized:
+        return False
+    return "job not found" in normalized and "could not be found" in normalized
+
+
+def _classify_job_url_validation_verdict(status_code: int, body_text: str | None) -> str:
+    if status_code in INVALID_JOB_URL_STATUSES:
+        return "bad"
+    if _is_job_not_found_signature(body_text):
+        return "bad"
+    if 200 <= status_code < 400:
+        return "good"
+    return "unknown"
+
+
+async def _validate_candidate_job_urls(
+    candidates: List[tuple[dict[str, Any], str]],
+    *,
+    url_client: Optional[httpx.AsyncClient],
+    remaining_checks: int,
+) -> tuple[List[tuple[dict[str, Any], str]], dict[str, int]]:
+    stats = {
+        "checked_count": 0,
+        "cache_hit_count": 0,
+        "request_count": 0,
+        "dropped_count": 0,
+    }
+    if not candidates or remaining_checks <= 0 or not _jobs_url_validation_enabled() or url_client is None:
+        return candidates, stats
+
+    semaphore = asyncio.Semaphore(max(1, int(settings.JOBS_URL_VALIDATION_CONCURRENCY)))
+    checked_slots = 0
+    cached_verdicts: dict[int, str] = {}
+    pending: List[tuple[int, str]] = []
+    pending_by_key: dict[str, list[int]] = {}
+
+    for index, (mapped, _reason) in enumerate(candidates):
+        job_url = (mapped.get("job_url") or "").strip()
+        if not _is_muse_landing_job_url(job_url):
+            continue
+
+        key = _normalize_job_url_cache_key(job_url)
+        if not key:
+            continue
+
+        if key in pending_by_key:
+            pending_by_key[key].append(index)
+            continue
+
+        cached_verdict = _get_job_url_validation_cache_verdict(job_url)
+        if cached_verdict is not None:
+            cached_verdicts[index] = cached_verdict
+            stats["checked_count"] += 1
+            stats["cache_hit_count"] += 1
+            continue
+
+        if checked_slots >= remaining_checks:
+            continue
+
+        checked_slots += 1
+        pending_by_key[key] = [index]
+        pending.append((index, job_url))
+
+    async def _request_verdict(url: str) -> str:
+        async with semaphore:
+            try:
+                response = await url_client.get(url)
+                body_preview = (response.text or "")[:6000]
+            except Exception:
+                return "unknown"
+            return _classify_job_url_validation_verdict(response.status_code, body_preview)
+
+    request_results: dict[int, str] = {}
+    if pending:
+        verdicts = await asyncio.gather(*[_request_verdict(url) for _index, url in pending], return_exceptions=True)
+        for (index, job_url), verdict in zip(pending, verdicts):
+            resolved = verdict if isinstance(verdict, str) else "unknown"
+            request_results[index] = resolved
+            stats["checked_count"] += 1
+            stats["request_count"] += 1
+            _set_job_url_validation_cache_verdict(job_url, resolved)
+
+            cache_key = _normalize_job_url_cache_key(job_url)
+            related_indexes = pending_by_key.get(cache_key, [])
+            for related_index in related_indexes:
+                request_results[related_index] = resolved
+
+    filtered: List[tuple[dict[str, Any], str]] = []
+    for index, candidate in enumerate(candidates):
+        verdict = request_results.get(index) or cached_verdicts.get(index)
+        if verdict == "bad":
+            stats["dropped_count"] += 1
+            continue
+        filtered.append(candidate)
+
+    return filtered, stats
+
+
+def _strip_location_params(params_base: List[tuple[str, str]]) -> List[tuple[str, str]]:
+    return [item for item in params_base if item[0] != "location"]
+
+
+def _should_run_location_relaxed_fallback(
+    *,
+    page: int,
+    accepted_jobs_count: int,
+    selected_locations: List[str],
+    location_relaxed_fallback: bool,
+) -> bool:
+    if location_relaxed_fallback:
+        return False
+    if page != 1:
+        return False
+    if accepted_jobs_count > 0:
+        return False
+    return len(selected_locations) > 0
 
 
 def _is_remote_location_name(name: Optional[str]) -> bool:
@@ -1609,7 +1819,7 @@ async def search_jobs(
         None,
         description="Optional ISO date or datetime filter. Only jobs published on/after this value are returned.",
     ),
-    include_remote: bool = Query(False, description="When true, include fully remote roles that pass compatibility rules."),
+    include_remote: bool = Query(True, description="When true, include fully remote roles that pass compatibility rules."),
     include_hybrid: bool = Query(True, description="When true, include hybrid roles in the result set."),
     db: Session = Depends(get_db),
 ):
@@ -1724,167 +1934,285 @@ async def search_jobs(
     if cached_response is not None:
         return cached_response
 
-    adaptive_extra_pages = 0
-    if (
-        settings.MUSE_ADAPTIVE_PAGE_CHASE_ENABLED
-        and len(selected_locations) >= max(1, settings.MUSE_ADAPTIVE_PAGE_CHASE_BREADTH_THRESHOLD)
-    ):
-        adaptive_extra_pages = max(0, settings.MUSE_ADAPTIVE_PAGE_CHASE_EXTRA_PAGES)
+    async def _run_scan(
+        *,
+        scan_params_base: List[tuple[str, str]],
+        scan_selected_locations: List[str],
+    ) -> dict[str, Any]:
+        adaptive_extra_pages = 0
+        if (
+            settings.MUSE_ADAPTIVE_PAGE_CHASE_ENABLED
+            and len(scan_selected_locations) >= max(1, settings.MUSE_ADAPTIVE_PAGE_CHASE_BREADTH_THRESHOLD)
+        ):
+            adaptive_extra_pages = max(0, settings.MUSE_ADAPTIVE_PAGE_CHASE_EXTRA_PAGES)
 
-    max_pages = max(
-        1,
-        min(
-            settings.MUSE_PAGE_CHASE_MAX_PAGES + adaptive_extra_pages,
-            settings.MUSE_PAGE_CHASE_MAX_API_CALLS_PER_REQUEST + adaptive_extra_pages,
-        ),
-    )
-    target_results = max(1, page_size) + 1
-    min_filtered_ratio = min(max(settings.MUSE_PAGE_CHASE_MIN_FILTERED_RATIO, 0.0), 1.0)
-    if adaptive_extra_pages > 0:
-        min_filtered_ratio = min(
-            min_filtered_ratio,
-            min(max(settings.MUSE_ADAPTIVE_PAGE_CHASE_MIN_FILTERED_RATIO, 0.0), 1.0),
+        max_pages = max(
+            1,
+            min(
+                settings.MUSE_PAGE_CHASE_MAX_PAGES + adaptive_extra_pages,
+                settings.MUSE_PAGE_CHASE_MAX_API_CALLS_PER_REQUEST + adaptive_extra_pages,
+            ),
         )
-    timeout_budget = max(1.0, settings.MUSE_PAGE_CHASE_TIMEOUT_SECONDS)
+        target_results = max(1, page_size) + 1
+        min_filtered_ratio = min(max(settings.MUSE_PAGE_CHASE_MIN_FILTERED_RATIO, 0.0), 1.0)
+        if adaptive_extra_pages > 0:
+            min_filtered_ratio = min(
+                min_filtered_ratio,
+                min(max(settings.MUSE_ADAPTIVE_PAGE_CHASE_MIN_FILTERED_RATIO, 0.0), 1.0),
+            )
+        timeout_budget = max(1.0, settings.MUSE_PAGE_CHASE_TIMEOUT_SECONDS)
 
-    accepted_jobs = []
-    accepted_ids = set()
-    raw_jobs_seen = 0
-    filtered_out_count = 0
-    accepted_by_concrete_location = 0
-    accepted_by_remote_override = 0
-    accepted_by_hybrid_override = 0
-    accepted_by_constraint_overlap = 0
-    constraint_parse_high_confidence = 0
-    constraint_parse_medium_confidence = 0
-    constraint_parse_low_confidence = 0
-    source_pages_scanned = 0
-    guardrail_stop_reason = ""
-    first_payload = None
-    window_size = max_pages
-    window_start_page = ((page - 1) * window_size) + 1
-    current_page = window_start_page
-    has_more_source_pages = False
-    last_seen_page_count = current_page
-    start_time = time.monotonic()
+        accepted_jobs: List[dict[str, Any]] = []
+        accepted_ids = set()
+        filtered_out_count = 0
+        accepted_by_concrete_location = 0
+        accepted_by_remote_override = 0
+        accepted_by_hybrid_override = 0
+        accepted_by_constraint_overlap = 0
+        constraint_parse_high_confidence = 0
+        constraint_parse_medium_confidence = 0
+        constraint_parse_low_confidence = 0
+        source_pages_scanned = 0
+        guardrail_stop_reason = ""
+        first_payload = None
+        window_size = max_pages
+        window_start_page = ((page - 1) * window_size) + 1
+        current_page = window_start_page
+        has_more_source_pages = False
+        last_seen_page_count = current_page
+        start_time = time.monotonic()
+        dropped_invalid_url_count = 0
+        url_validation_checked_count = 0
+        url_validation_cache_hit_count = 0
+        url_validation_remaining_checks = max(0, int(settings.JOBS_URL_VALIDATION_MAX_CHECKS_PER_REQUEST))
 
-    async with httpx.AsyncClient(timeout=timeout_budget) as client:
-        while source_pages_scanned < max_pages:
-            params = [("page", current_page), *params_base]
-            response = await client.get(url, params=params)
-            if response.status_code != 200:
-                if source_pages_scanned == 0:
-                    raise HTTPException(status_code=500, detail="Failed to fetch jobs from The Muse API")
-                guardrail_stop_reason = f"muse_status_{response.status_code}"
-                break
+        validation_client: Optional[httpx.AsyncClient] = None
+        if _jobs_url_validation_enabled():
+            validation_client = httpx.AsyncClient(
+                timeout=max(0.2, float(settings.JOBS_URL_VALIDATION_TIMEOUT_SECONDS)),
+                follow_redirects=True,
+            )
 
-            payload = response.json()
-            if first_payload is None:
-                first_payload = payload
+        try:
+            async with httpx.AsyncClient(timeout=timeout_budget) as client:
+                while source_pages_scanned < max_pages:
+                    params = [("page", current_page), *scan_params_base]
+                    response = await client.get(url, params=params)
+                    if response.status_code != 200:
+                        if source_pages_scanned == 0:
+                            raise HTTPException(status_code=500, detail="Failed to fetch jobs from The Muse API")
+                        guardrail_stop_reason = f"muse_status_{response.status_code}"
+                        break
 
-            source_pages_scanned += 1
-            raw_jobs = payload.get("results", []) or []
-            raw_jobs_seen += len(raw_jobs)
-            page_filtered = 0
+                    payload = response.json()
+                    if first_payload is None:
+                        first_payload = payload
 
-            for raw_job in raw_jobs:
-                mapped = _map_muse_job(raw_job)
-                if not _job_matches_keyword(mapped, normalized_keyword_query):
-                    page_filtered += 1
-                    continue
-                if not _job_matches_posted_after(mapped, parsed_posted_after):
-                    page_filtered += 1
-                    continue
+                    source_pages_scanned += 1
+                    raw_jobs = payload.get("results", []) or []
+                    page_filtered = 0
+                    page_candidates: List[tuple[dict[str, Any], str]] = []
 
-                constraints = mapped.get("location_constraints") or {}
-                confidence = constraints.get("confidence")
-                if confidence == "high":
-                    constraint_parse_high_confidence += 1
-                elif confidence == "medium":
-                    constraint_parse_medium_confidence += 1
-                else:
-                    constraint_parse_low_confidence += 1
+                    for raw_job in raw_jobs:
+                        mapped = _map_muse_job(raw_job)
+                        if not _job_matches_keyword(mapped, normalized_keyword_query):
+                            page_filtered += 1
+                            continue
+                        if not _job_matches_posted_after(mapped, parsed_posted_after):
+                            page_filtered += 1
+                            continue
 
-                constraint_compatible, compatibility_reason = _evaluate_local_compatibility(
-                    constraints=constraints,
-                    selected_locations=selected_locations,
-                    selected_country_code=(location_country_code or "").strip().upper(),
-                )
-                confidence_ok_for_filter = _confidence_meets_threshold(
-                    constraints.get("confidence", "low"),
-                    settings.CONSTRAINT_FILTER_MIN_CONFIDENCE,
-                )
-                use_constraint_compatibility = (
-                    settings.CONSTRAINT_COMPATIBILITY_ENABLED
-                    and confidence_ok_for_filter
-                    and constraint_compatible
-                )
-                mapped["is_local_compatible_remote"] = constraint_compatible
-                mapped["local_compatibility_reason"] = compatibility_reason
+                        constraints = mapped.get("location_constraints") or {}
+                        confidence = constraints.get("confidence")
+                        if confidence == "high":
+                            constraint_parse_high_confidence += 1
+                        elif confidence == "medium":
+                            constraint_parse_medium_confidence += 1
+                        else:
+                            constraint_parse_low_confidence += 1
 
-                allowed, allow_reason = _is_job_allowed_by_preferences(
-                    has_remote=mapped.get("has_remote", False),
-                    has_hybrid=mapped.get("has_hybrid", False),
-                    include_remote=include_remote,
-                    include_hybrid=include_hybrid,
-                    job_locations=mapped.get("all_location_names", []) or [],
-                    selected_locations=selected_locations,
-                    allow_local_compatible_remote=(not include_remote and use_constraint_compatibility),
-                )
+                        constraint_compatible, compatibility_reason = _evaluate_local_compatibility(
+                            constraints=constraints,
+                            selected_locations=scan_selected_locations,
+                            selected_country_code=(location_country_code or "").strip().upper(),
+                        )
+                        confidence_ok_for_filter = _confidence_meets_threshold(
+                            constraints.get("confidence", "low"),
+                            settings.CONSTRAINT_FILTER_MIN_CONFIDENCE,
+                        )
+                        use_constraint_compatibility = (
+                            settings.CONSTRAINT_COMPATIBILITY_ENABLED
+                            and confidence_ok_for_filter
+                            and constraint_compatible
+                        )
+                        mapped["is_local_compatible_remote"] = constraint_compatible
+                        mapped["local_compatibility_reason"] = compatibility_reason
 
-                if not allowed:
-                    page_filtered += 1
-                    continue
+                        allowed, allow_reason = _is_job_allowed_by_preferences(
+                            has_remote=mapped.get("has_remote", False),
+                            has_hybrid=mapped.get("has_hybrid", False),
+                            include_remote=include_remote,
+                            include_hybrid=include_hybrid,
+                            job_locations=mapped.get("all_location_names", []) or [],
+                            selected_locations=scan_selected_locations,
+                            allow_local_compatible_remote=(not include_remote and use_constraint_compatibility),
+                        )
 
-                if allow_reason == "concrete_location":
-                    accepted_by_concrete_location += 1
-                elif allow_reason == "remote_override":
-                    accepted_by_remote_override += 1
-                elif allow_reason == "hybrid_override":
-                    accepted_by_hybrid_override += 1
-                elif allow_reason == "constraint_overlap":
-                    accepted_by_constraint_overlap += 1
+                        if not allowed:
+                            page_filtered += 1
+                            continue
 
-                job_id = mapped.get("id")
-                if job_id in accepted_ids:
-                    continue
+                        page_candidates.append((mapped, allow_reason))
 
-                accepted_ids.add(job_id)
-                accepted_jobs.append(mapped)
+                    page_dropped_invalid = 0
+                    if page_candidates and validation_client is not None and url_validation_remaining_checks > 0:
+                        page_candidates, validation_stats = await _validate_candidate_job_urls(
+                            page_candidates,
+                            url_client=validation_client,
+                            remaining_checks=url_validation_remaining_checks,
+                        )
+                        page_dropped_invalid = int(validation_stats.get("dropped_count") or 0)
+                        dropped_invalid_url_count += page_dropped_invalid
+                        url_validation_checked_count += int(validation_stats.get("checked_count") or 0)
+                        url_validation_cache_hit_count += int(validation_stats.get("cache_hit_count") or 0)
+                        url_validation_remaining_checks = max(
+                            0,
+                            url_validation_remaining_checks - int(validation_stats.get("request_count") or 0),
+                        )
 
-            filtered_out_count += page_filtered
+                    for mapped, allow_reason in page_candidates:
+                        job_id = mapped.get("id")
+                        if job_id in accepted_ids:
+                            continue
 
-            if len(accepted_jobs) >= target_results:
-                guardrail_stop_reason = "target_reached"
-                break
+                        accepted_ids.add(job_id)
+                        accepted_jobs.append(mapped)
+                        if allow_reason == "concrete_location":
+                            accepted_by_concrete_location += 1
+                        elif allow_reason == "remote_override":
+                            accepted_by_remote_override += 1
+                        elif allow_reason == "hybrid_override":
+                            accepted_by_hybrid_override += 1
+                        elif allow_reason == "constraint_overlap":
+                            accepted_by_constraint_overlap += 1
 
-            total_on_page = len(raw_jobs)
-            filtered_ratio = (page_filtered / total_on_page) if total_on_page else 0.0
-            next_page = (payload.get("page") or current_page) + 1
-            page_count = payload.get("page_count") or current_page
-            has_more_source_pages = next_page <= page_count
-            last_seen_page_count = page_count
+                    filtered_out_count += page_filtered
 
-            if not settings.MUSE_PAGE_CHASE_ENABLED:
-                guardrail_stop_reason = "disabled"
-                break
-            if filtered_ratio < min_filtered_ratio:
-                guardrail_stop_reason = "low_filtered_ratio"
-                break
-            if next_page > page_count:
-                guardrail_stop_reason = "page_count_end"
-                break
-            if time.monotonic() - start_time >= timeout_budget:
-                guardrail_stop_reason = "timeout_budget"
-                break
+                    if len(accepted_jobs) >= target_results:
+                        guardrail_stop_reason = "target_reached"
+                        break
 
-            current_page = next_page
+                    total_on_page = len(raw_jobs)
+                    effective_filtered_for_guardrail = page_filtered + page_dropped_invalid
+                    filtered_ratio = (effective_filtered_for_guardrail / total_on_page) if total_on_page else 0.0
+                    next_page = (payload.get("page") or current_page) + 1
+                    page_count = payload.get("page_count") or current_page
+                    has_more_source_pages = next_page <= page_count
+                    last_seen_page_count = page_count
 
-    if first_payload is None:
-        raise HTTPException(status_code=500, detail="Failed to fetch jobs from The Muse API")
+                    if not settings.MUSE_PAGE_CHASE_ENABLED:
+                        guardrail_stop_reason = "disabled"
+                        break
+                    if filtered_ratio < min_filtered_ratio:
+                        guardrail_stop_reason = "low_filtered_ratio"
+                        break
+                    if next_page > page_count:
+                        guardrail_stop_reason = "page_count_end"
+                        break
+                    if time.monotonic() - start_time >= timeout_budget:
+                        guardrail_stop_reason = "timeout_budget"
+                        break
 
-    if not guardrail_stop_reason:
-        guardrail_stop_reason = "max_pages_reached"
+                    current_page = next_page
+        finally:
+            if validation_client is not None:
+                await validation_client.aclose()
+
+        if first_payload is None:
+            raise HTTPException(status_code=500, detail="Failed to fetch jobs from The Muse API")
+        if not guardrail_stop_reason:
+            guardrail_stop_reason = "max_pages_reached"
+
+        return {
+            "accepted_jobs": accepted_jobs,
+            "filtered_out_count": filtered_out_count,
+            "accepted_by_concrete_location": accepted_by_concrete_location,
+            "accepted_by_remote_override": accepted_by_remote_override,
+            "accepted_by_hybrid_override": accepted_by_hybrid_override,
+            "accepted_by_constraint_overlap": accepted_by_constraint_overlap,
+            "constraint_parse_high_confidence": constraint_parse_high_confidence,
+            "constraint_parse_medium_confidence": constraint_parse_medium_confidence,
+            "constraint_parse_low_confidence": constraint_parse_low_confidence,
+            "source_pages_scanned": source_pages_scanned,
+            "guardrail_stop_reason": guardrail_stop_reason,
+            "first_payload": first_payload,
+            "window_size": window_size,
+            "window_start_page": window_start_page,
+            "has_more_source_pages": has_more_source_pages,
+            "source_page_count": last_seen_page_count,
+            "adaptive_extra_pages": adaptive_extra_pages,
+            "effective_max_pages": max_pages,
+            "effective_min_filtered_ratio": min_filtered_ratio,
+            "dropped_invalid_url_count": dropped_invalid_url_count,
+            "url_validation_checked_count": url_validation_checked_count,
+            "url_validation_cache_hit_count": url_validation_cache_hit_count,
+        }
+
+    location_relaxed_fallback = False
+    effective_selected_locations = list(selected_locations)
+    effective_params_base = list(params_base)
+    scan_result = await _run_scan(
+        scan_params_base=effective_params_base,
+        scan_selected_locations=effective_selected_locations,
+    )
+
+    if _should_run_location_relaxed_fallback(
+        page=page,
+        accepted_jobs_count=len(scan_result["accepted_jobs"]),
+        selected_locations=selected_locations,
+        location_relaxed_fallback=location_relaxed_fallback,
+    ):
+        location_relaxed_fallback = True
+        effective_selected_locations = []
+        effective_params_base = _strip_location_params(params_base)
+        scan_result = await _run_scan(
+            scan_params_base=effective_params_base,
+            scan_selected_locations=effective_selected_locations,
+        )
+
+    accepted_jobs = scan_result["accepted_jobs"]
+    first_payload = scan_result["first_payload"]
+    source_pages_scanned = int(scan_result["source_pages_scanned"])
+    filtered_out_count = int(scan_result["filtered_out_count"])
+    accepted_by_concrete_location = int(scan_result["accepted_by_concrete_location"])
+    accepted_by_remote_override = int(scan_result["accepted_by_remote_override"])
+    accepted_by_hybrid_override = int(scan_result["accepted_by_hybrid_override"])
+    accepted_by_constraint_overlap = int(scan_result["accepted_by_constraint_overlap"])
+    constraint_parse_high_confidence = int(scan_result["constraint_parse_high_confidence"])
+    constraint_parse_medium_confidence = int(scan_result["constraint_parse_medium_confidence"])
+    constraint_parse_low_confidence = int(scan_result["constraint_parse_low_confidence"])
+    guardrail_stop_reason = scan_result["guardrail_stop_reason"]
+    has_more_source_pages = bool(scan_result["has_more_source_pages"])
+    last_seen_page_count = int(scan_result["source_page_count"])
+    adaptive_extra_pages = int(scan_result["adaptive_extra_pages"])
+    max_pages = int(scan_result["effective_max_pages"])
+    min_filtered_ratio = float(scan_result["effective_min_filtered_ratio"])
+    window_start_page = int(scan_result["window_start_page"])
+    window_size = int(scan_result["window_size"])
+    dropped_invalid_url_count = int(scan_result["dropped_invalid_url_count"])
+    url_validation_checked_count = int(scan_result["url_validation_checked_count"])
+    url_validation_cache_hit_count = int(scan_result["url_validation_cache_hit_count"])
+
+    effective_location_canonicalization = dict(location_canonicalization)
+    if location_relaxed_fallback:
+        effective_location_canonicalization["strategy"] = (
+            f"{effective_location_canonicalization.get('strategy') or 'none'}-relaxed-fallback"
+        )
+        effective_location_canonicalization["canonicalized_count"] = 0
+        effective_location_canonicalization["dropped_count"] = 0
+        effective_location_canonicalization["dropped_locations_sample"] = []
+        effective_location_canonicalization["strict_state_blocked_count"] = 0
+        effective_location_canonicalization["state_diversity_count"] = 0
 
     # Returns structured response with original pagination info and guarded-fetch diagnostics.
     page_jobs = accepted_jobs[:page_size]
@@ -1925,21 +2253,21 @@ async def search_jobs(
         "has_next_page": has_next_page_filtered,
         "has_previous_page": page > 1,
         "requested_location_count": requested_location_count,
-        "location_params_used": len(selected_locations),
-        "used_location_count": len(selected_locations),
+        "location_params_used": len(effective_selected_locations),
+        "used_location_count": len(effective_selected_locations),
         "location_params_truncated": location_params_truncated,
-        "dropped_location_count": int(location_canonicalization.get("dropped_count") or 0),
-        "dropped_locations_sample": location_canonicalization.get("dropped_locations_sample") or [],
+        "dropped_location_count": int(effective_location_canonicalization.get("dropped_count") or 0),
+        "dropped_locations_sample": effective_location_canonicalization.get("dropped_locations_sample") or [],
         "location_mode": (location_mode or "").strip().lower(),
         "location_country_code": (location_country_code or "").strip().upper(),
-        "location_selection_strategy": location_canonicalization.get("strategy"),
+        "location_selection_strategy": effective_location_canonicalization.get("strategy"),
         "requested_locations_sample": raw_location_inputs[:12],
-        "selected_locations_sample": selected_locations[:12],
-        "canonicalized_location_count": int(location_canonicalization.get("canonicalized_count") or 0),
-        "transformed_location_count": int(location_canonicalization.get("transformed_count") or 0),
-        "unmatched_location_count": int(location_canonicalization.get("unmatched_count") or 0),
-        "strict_state_blocked_count": int(location_canonicalization.get("strict_state_blocked_count") or 0),
-        "selected_state_diversity_count": int(location_canonicalization.get("state_diversity_count") or 0),
+        "selected_locations_sample": effective_selected_locations[:12],
+        "canonicalized_location_count": int(effective_location_canonicalization.get("canonicalized_count") or 0),
+        "transformed_location_count": int(effective_location_canonicalization.get("transformed_count") or 0),
+        "unmatched_location_count": int(effective_location_canonicalization.get("unmatched_count") or 0),
+        "strict_state_blocked_count": int(effective_location_canonicalization.get("strict_state_blocked_count") or 0),
+        "selected_state_diversity_count": int(effective_location_canonicalization.get("state_diversity_count") or 0),
         "accepted_by_concrete_location": accepted_by_concrete_location,
         "accepted_by_remote_override": accepted_by_remote_override,
         "accepted_by_hybrid_override": accepted_by_hybrid_override,
@@ -1959,6 +2287,10 @@ async def search_jobs(
         "has_more_source_pages": has_more_source_pages,
         "has_next_page_possible_raw": has_more_source_pages,
         "source_page_count": last_seen_page_count,
+        "dropped_invalid_url_count": dropped_invalid_url_count,
+        "url_validation_checked_count": url_validation_checked_count,
+        "url_validation_cache_hit_count": url_validation_cache_hit_count,
+        "location_relaxed_fallback": location_relaxed_fallback,
         "keyword_query": normalized_keyword_query,
         "posted_after": posted_after_iso,
         "jobs_filter_metadata_version": filter_metadata.get("metadata_version"),
