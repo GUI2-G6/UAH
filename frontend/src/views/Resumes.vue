@@ -99,7 +99,7 @@
                     <div class="parse-method-group">
                         <div class="parse-method-header">
                             <label class="parse-method-label">Parse Pipeline</label>
-                            <button class="btn-secondary btn-compact" type="button" @click="showPipelineDetails = true">View Details</button>
+                            <button class="btn-secondary btn-compact parse-details-btn" type="button" @click="showPipelineDetails = true">View Details</button>
                         </div>
                         <div class="method-toggle method-toggle-3">
                             <button :class="{ active: parseMethod === 'local' }" @click="parseMethod = 'local'">Local AI</button>
