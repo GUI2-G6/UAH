@@ -33,12 +33,12 @@
             </button>
             <!--Notification-Button-->
             <button width="50px" height="50px" class="burger-item" @click="goTo('/notifications')" title="Alerts">
-                <img src="../images/placeholder/REMINDERICON_LIGHT.png" alt="Notifications" width="40px" height="38px">
+                <img src="../images/Bell.png" alt="Notifications" width="40px" height="38px">
                 <span v-if="active" class="label">Alerts</span>
             </button>
             <!--Settings-Button-->
             <button width="50px" height="50px" class="burger-item" @click="goTo('/settings')" title="Settings">
-                <img src="../images/placeholder/SETTING_LIGHT.png" alt="Settings" width="40px" height="38px">
+                <img src="../images/Gears.png" alt="Settings" width="40px" height="38px">
                 <span v-if="active" class="label">Settings</span>
             </button>
         </div>
