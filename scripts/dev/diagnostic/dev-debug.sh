@@ -343,6 +343,7 @@ menu_users() {
     echo "    2) Reset user password"
     echo "    3) Show user by username"
     echo "    4) Activate/deactivate user"
+    echo "    5) Toggle developer access"
     echo ""
     echo "    0) ← Back"
     echo ""
@@ -352,7 +353,7 @@ menu_users() {
         header
         echo -e "${BOLD}  All Users${NC}\n"
         docker exec uah-dev-db psql -U uah -d uah_dev -c "
-          SELECT id, username, email, first_name, is_active, created_at
+          SELECT id, username, email, first_name, is_active, is_admin, is_developer, created_at
           FROM users ORDER BY id;
         " | sed 's/^/  /'
         press_enter ;;
@@ -402,7 +403,7 @@ PYEOF
         echo -e "${BOLD}  User Lookup${NC}\n"
         read -rp "  Username: " uname
         docker exec uah-dev-db psql -U uah -d uah_dev -c "
-          SELECT id, username, email, first_name, last_name, is_active,
+          SELECT id, username, email, first_name, last_name, is_active, is_admin, is_developer,
                  email_verified, created_at, updated_at
           FROM users WHERE username='$uname';
         " | sed 's/^/  /'
@@ -415,6 +416,16 @@ PYEOF
         docker exec uah-dev-db psql -U uah -d uah_dev -c "
           UPDATE users SET is_active=$active WHERE username='$uname'
           RETURNING username, is_active;
+        " | sed 's/^/  /'
+        press_enter ;;
+      5)
+        header
+        echo -e "${BOLD}  Toggle Developer Access${NC}\n"
+        read -rp "  Username: " uname
+        read -rp "  Developer? (true/false): " developer
+        docker exec uah-dev-db psql -U uah -d uah_dev -c "
+          UPDATE users SET is_developer=$developer WHERE username='$uname'
+          RETURNING username, is_developer;
         " | sed 's/^/  /'
         press_enter ;;
       0) return ;;

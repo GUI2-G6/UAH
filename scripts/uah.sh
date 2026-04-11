@@ -2364,7 +2364,7 @@ Debug:
   bash scripts/uah.sh <env> debug logs [backend|frontend|cloudflared|redis|db] [--tail N] [--follow] [--raw|--errors|--filtered]
   bash scripts/uah.sh <env> debug queue [status|clear|clear-redis|clear-stuck|active|recent|failed|retry <id>|test-parse <local|cloud|rules>]
   bash scripts/uah.sh <env> debug database [isolation|user-count|resume-count|parse-stats|recent|raw <SQL>|size]
-  bash scripts/uah.sh dev debug users [list|show <username>|toggle-active <username> <true|false>|reset-password <username> <password>]
+  bash scripts/uah.sh dev debug users [list|show <username>|toggle-active <username> <true|false>|toggle-developer <username> <true|false>|reset-password <username> <password>]
   bash scripts/uah.sh <env> debug network [show-topology|show-routes|show-docker-user|show-vpn-iptables|apply-route|rollback-route|check-route]
   bash scripts/uah.sh beta debug network [apply-bridge|remove-bridge|full-reapply|rollback-all]
 
