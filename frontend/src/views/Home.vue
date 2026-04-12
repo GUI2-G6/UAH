@@ -43,8 +43,19 @@
             </Card>
             <Card class="card big-card">
                 <template #header>
-                    <h2>Recent Applications</h2>
+                    <h2 id="tracked-applications">Tracked Applications</h2>
                 </template>
+                <Card class="application">
+                    <Application :application="{
+                    company: 'Google',
+                    role: 'Software Engineer',
+                    dateSent: '4/11/2026',
+                    statusStep: 4,
+                    maxStep: 4,
+                    statusText: 'Accepted!',
+                    noResponse: false
+                    }" />
+                </Card>
             </Card>
         </div>
     </div>
@@ -52,6 +63,7 @@
 
 <script>
     import Card from "../components/Card.vue"
+    import Application from "../components/Application.vue"
     import { getCurrentUser } from "../lib/auth.js";
 
     export default{
@@ -68,7 +80,8 @@
             }
         },
         components: {
-            Card
+            Card,
+            Application
         },
     computed: {
         displayName() {

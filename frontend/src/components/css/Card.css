@@ -33,11 +33,16 @@
   border-bottom: 1px solid var(--border-color-light);
 }
 
+.card .application {
+  margin:20px;
+  padding:10px;
+}
 
 .big-card {
   grid-column: 1 / -1;
   min-height: 240px;
   height: auto;
+  background-color:rgb(241, 241, 241)
 }
 
 @media (max-width: 600px) {
