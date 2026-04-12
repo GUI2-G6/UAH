@@ -20,10 +20,50 @@
   padding: 16px;
 }
 
+.home-card {
+  width: 100%;
+  min-width: 0;
+}
+
+.home-card :deep(.ui-card__header h2) {
+  margin: 0;
+}
+
+.home-stat-card {
+  min-height: 220px;
+}
+
+.home-stat-card :deep(.ui-card__body) {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+
+.home-stat-card :deep(.ui-card__tab h3) {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.home-card--wide {
+  grid-column: 1 / -1;
+  min-height: 240px;
+}
+
+.home-card--wide :deep(.ui-card__body) {
+  padding-top: 18px;
+}
+
+.home-application-card {
+  --ui-card-bg: rgba(255, 255, 255, 0.96);
+  --ui-card-padding: 12px;
+  margin-top: 4px;
+}
+
 #applied, 
 #interviews, 
 #offers, 
 #rejected {
+  margin: 0;
   font-size:75px;
   text-align:right;
   font-weight:bold;
@@ -63,5 +103,9 @@
 @media (max-width: 600px) {
   .dashboard {
     grid-template-columns: 1fr;
+  }
+
+  .home-card--wide {
+    min-height: 180px;
   }
 }

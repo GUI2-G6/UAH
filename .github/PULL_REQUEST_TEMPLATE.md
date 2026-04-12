@@ -30,3 +30,5 @@ Describe what you tested and how:
 
 ## Notes for Reviewer
 <!-- Anything the reviewer should pay special attention to, known limitations, or follow-up issues to create -->
+
+If this PR changes `frontend/src/components/Card.vue` or `frontend/src/components/css/Card.css`, include regression notes for Home, Settings, Notifications, Applicant Information, and Job Board.

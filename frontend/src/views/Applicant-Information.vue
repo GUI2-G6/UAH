@@ -5,7 +5,7 @@
             <h2>Store your information for quick autofill in job applications</h2>
         </div>
         <div class="dashboard">
-            <Card>                
+            <Card class="applicant-card">                
                 <template #header>
                     <h3>Personal Information</h3>
                 </template>
@@ -25,7 +25,7 @@
                 </div>
             </Card>
 
-            <Card>
+            <Card class="applicant-card">
                 <template #header>
                     <h3>Address</h3>
                 </template>
@@ -41,7 +41,7 @@
                 </div>
             </Card>
 
-            <Card>
+            <Card class="applicant-card">
                 <div class="appInfo-group">
                     <h3>Professional Summary</h3>
                     <span>Summary</span>
@@ -50,7 +50,7 @@
                 </div>
             </Card>
 
-            <Card>
+            <Card class="applicant-card">
                 <div class="appInfo-group">
                     <h3>Work Authorization</h3>
                     <p>Work Authorization Status</p>
@@ -72,7 +72,7 @@
             </Card>
 
 
-            <Card>
+            <Card class="applicant-card">
                 <div class="appInfo-group">
                 <h3>Education</h3>
                     <p>Degree</p>
@@ -88,11 +88,11 @@
                 </div>
             </Card>
 
-            <Card>
+            <Card class="applicant-card">
                 <h3>Skills and Languages</h3>
             </Card>
 
-            <Card>
+            <Card class="applicant-card">
                 <h3>Current Experience</h3>
                 <p>Years of Experience</p>
                 <input id="applicant-years-experience" type="text" name="years_experience" inputmode="numeric" autocomplete="off" v-model="currentUser.yearsExperience" placeholder="Years of Experience">
@@ -102,7 +102,7 @@
                 <input id="applicant-current-company" type="text" name="current_company" autocomplete="off" v-model="currentUser.currentCompany" placeholder="Current Company">
             </Card>
 
-            <Card>
+            <Card class="applicant-card">
                 <h3>Job Preferences</h3>
                 <p>Desired Salary Range</p>
                 <input id="applicant-desired-salary-range" type="text" name="desired_salary_range" autocomplete="off" v-model="currentUser.salaryRange" placeholder="Desired Salary Range">

@@ -55,6 +55,24 @@ Security notes:
 npm run build
 ```
 
+## Shared Card Contract
+
+- `frontend/src/components/Card.vue` is the shared structural card primitive.
+- Its internal class contract is namespaced as `ui-card*`; do not target bare `.card` or `.big-card`.
+- Public variants are limited to:
+  - `default` for dashboard and form cards
+  - `job` for job listing cards
+  - `minimal` for inset or nested cards
+- Page-level tuning must happen through caller-owned classes and these documented CSS variables:
+  - `--ui-card-bg`
+  - `--ui-card-border`
+  - `--ui-card-shadow`
+  - `--ui-card-padding`
+  - `--ui-card-header-bg`
+  - `--ui-card-header-padding`
+- Do not restyle shared internals globally.
+- Run `npm run check:cards` before opening a PR that changes shared card consumers or the card primitive.
+
 ## Job Board Notes
 
 - Filter metadata is backend-owned via `GET /api/jobs/filter-metadata` and includes:

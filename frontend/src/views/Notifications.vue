@@ -5,16 +5,16 @@
             <p>Keep track of your follow-ups and deadlines</p> <!-- Add links to actual variables here! -->
         </div>
         <div class="dashboard">
-            <Card class="big-card">
+            <Card class="notifications-card notifications-card--wide">
                 <h2>No pending reminders. Great job keeping on top of things!</h2>
             </Card>
-            <Card>
+            <Card class="notifications-card">
                 <h2>Total Pending: 0</h2>
             </Card>
-            <Card>
+            <Card class="notifications-card">
                 <h2>Action Required: 0</h2>
             </Card>
-            <Card>
+            <Card class="notifications-card">
                 <h2>Upcoming: 0</h2>
             </Card>
         </div>

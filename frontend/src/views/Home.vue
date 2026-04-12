@@ -5,7 +5,7 @@
             <p>Good afternoon, {{displayName}}! You have 1 new reminder for today. Welcome!</p> <!-- Add links to actual variables here! -->
         </div>
         <div class="dashboard">
-            <Card>
+            <Card class="home-card home-stat-card">
                 <template #header>
                     <h2>Applications</h2>
                 </template>
@@ -14,7 +14,7 @@
                 </template>
                 <p id="applied">{{ stats.applied }}</p>
             </Card>
-            <Card>
+            <Card class="home-card home-stat-card">
                 <template #header>
                     <h2>Interviews</h2>
                 </template>
@@ -23,7 +23,7 @@
                 </template>
                 <p id="interviews">{{ stats.interviews }}</p>
             </Card>
-            <Card>
+            <Card class="home-card home-stat-card">
                 <template #header>
                     <h2>Offers</h2>
                 </template>  
@@ -32,7 +32,7 @@
                 </template>
                 <p id="offers">{{ stats.offers }}</p>
             </Card>
-            <Card>
+            <Card class="home-card home-stat-card">
                 <template #header>
                     <h2>Rejected</h2>
                 </template>
@@ -41,11 +41,11 @@
                 </template>
                 <p id="rejected">{{ stats.rejected }}</p>
             </Card>
-            <Card class="card big-card">
+            <Card class="home-card home-card--wide">
                 <template #header>
                     <h2 id="tracked-applications">Tracked Applications</h2>
                 </template>
-                <Card class="application">
+                <Card variant="minimal" class="home-application-card">
                     <Application :application="{
                     company: 'Google',
                     role: 'Software Engineer',

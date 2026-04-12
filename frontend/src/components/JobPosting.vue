@@ -1,6 +1,6 @@
 <template>
     <div>
-        <Card>
+        <Card variant="job" class="job-posting-card">
             <template #header>
                 <div class="job-header-row">
                     <h3 class="job-title">{{ job.title }}</h3>
@@ -181,6 +181,10 @@ export default {
 </script>
 
 <style scoped>
+.job-posting-card {
+    width: 100%;
+}
+
 .job-title {
     margin: 0;
     color: #0f172a;

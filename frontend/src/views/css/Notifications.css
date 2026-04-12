@@ -21,6 +21,24 @@
   align-content: start;
 }
 
+.notifications-card {
+  --ui-card-bg: #f5f5f5;
+  --ui-card-border: 1px solid rgba(15, 23, 42, 0.08);
+  --ui-card-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  --ui-card-padding: 24px;
+  width: 100%;
+  min-width: 0;
+}
+
+.notifications-card :deep(.ui-card__body h2) {
+  margin: 0;
+}
+
+.notifications-card--wide {
+  grid-column: 1 / -1;
+  min-height: 220px;
+}
+
 @media (max-width: 768px) {
   .greeting {
     padding: 16px;

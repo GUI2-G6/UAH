@@ -4,7 +4,7 @@
             <h1>Settings</h1>
         </div>
         <div class="dashboard">
-            <Card>
+            <Card class="settings-card settings-card--profile">
                 <template #header>
                     <h3>Profile Settings</h3>
                 </template>
@@ -60,7 +60,7 @@
                     </select>
                 </div>
             </Card>
-            <Card>
+            <Card class="settings-card settings-card--security">
                 <template #header>
                     <h3>Account & Security</h3>
                 </template>
@@ -137,7 +137,7 @@
                     </div>
                 </div>
             </Card>
-            <Card>
+            <Card class="settings-card settings-card--integrations">
                 <template #header>
                     <h3>Connected Accounts</h3>
                 </template>
