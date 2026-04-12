@@ -12,6 +12,8 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 SUPPORTED_PARSE_METHODS = ("cloud", "local", "rules")
+LOCAL_PIPELINE_UNAVAILABLE_MESSAGE = "Local AI is unavailable right now."
+LOCAL_PIPELINE_PROBE_TIMEOUT_SECONDS = 1.5
 PLACEHOLDER_VALUES = {
     "null",
     "none",
@@ -497,6 +499,87 @@ async def categorize_with_local_llm(md_text: str) -> dict:
             "error_code": "LLM_INVALID_JSON",
             "message": "AI returned malformed data. Please try again.",
         }
+
+
+def _local_pipeline_probe_urls() -> list[str]:
+    urls: list[str] = []
+    seen: set[str] = set()
+
+    for base_url in (settings.LOCAL_OCR_URL, settings.LOCAL_LLM_URL):
+        cleaned = (base_url or "").strip().rstrip("/")
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        urls.append(f"{cleaned}/api/tags")
+
+    return urls
+
+
+async def _probe_local_pipeline_endpoint(url: str) -> bool:
+    try:
+        async with httpx.AsyncClient(
+            timeout=LOCAL_PIPELINE_PROBE_TIMEOUT_SECONDS,
+            follow_redirects=True,
+        ) as client:
+            response = await client.get(url)
+
+        if 200 <= response.status_code < 300:
+            return True
+
+        logger.warning(
+            "Local pipeline probe returned status %s for %s",
+            response.status_code,
+            url,
+        )
+    except httpx.TimeoutException as exc:
+        logger.info("Local pipeline probe timed out for %s: %s", url, exc)
+    except httpx.HTTPError as exc:
+        logger.info("Local pipeline probe failed for %s: %s", url, exc)
+    except Exception as exc:
+        logger.warning(
+            "Local pipeline probe errored for %s: %s: %s",
+            url,
+            type(exc).__name__,
+            exc,
+        )
+
+    return False
+
+
+async def get_pipeline_availability() -> dict:
+    probe_urls = _local_pipeline_probe_urls()
+
+    local_available = False
+    if probe_urls:
+        results = await asyncio.gather(
+            *[_probe_local_pipeline_endpoint(url) for url in probe_urls],
+            return_exceptions=True,
+        )
+        local_available = True
+        for url, result in zip(probe_urls, results):
+            if result is True:
+                continue
+            if isinstance(result, Exception):
+                logger.warning(
+                    "Local pipeline probe raised for %s: %s: %s",
+                    url,
+                    type(result).__name__,
+                    result,
+                )
+            local_available = False
+
+    return {
+        "local": {
+            "available": local_available,
+            "message": None if local_available else LOCAL_PIPELINE_UNAVAILABLE_MESSAGE,
+        },
+        "cloud": {
+            "available": True,
+        },
+        "rules": {
+            "available": True,
+        },
+    }
 
 
 async def ocr_pdf_dispatch(pdf_bytes: bytes) -> dict:

@@ -499,6 +499,7 @@ menu_users() {
     echo "    3) Show user by email"
     echo "    4) Activate/deactivate user"
     echo "    5) Toggle developer access"
+    echo "    6) Toggle admin access"
     echo ""
     echo "    0) ← Back"
     echo ""
@@ -581,6 +582,16 @@ PYEOF
         docker exec uah-beta-db psql -U uah -d uah_beta -c "
           UPDATE users SET is_developer=$developer WHERE lower(email)=lower('$user_email')
           RETURNING email, is_developer;
+        " | sed 's/^/  /'
+        press_enter ;;
+      6)
+        header
+        echo -e "${BOLD}  Toggle Admin Access${NC}\n"
+        read -rp "  Email: " user_email
+        read -rp "  Admin? (true/false): " admin
+        docker exec uah-beta-db psql -U uah -d uah_beta -c "
+          UPDATE users SET is_admin=$admin WHERE lower(email)=lower('$user_email')
+          RETURNING email, is_admin;
         " | sed 's/^/  /'
         press_enter ;;
       0) return ;;

@@ -102,10 +102,11 @@
                             <button class="btn-secondary btn-compact parse-details-btn" type="button" @click="showPipelineDetails = true">View Details</button>
                         </div>
                         <div class="method-toggle method-toggle-3">
-                            <button :class="{ active: parseMethod === 'local' }" @click="parseMethod = 'local'">Local AI</button>
+                            <button :class="{ active: parseMethod === 'local' }" :disabled="!isLocalParseMethodAvailable" @click="parseMethod = 'local'">Local AI</button>
                             <button :class="{ active: parseMethod === 'cloud' }" @click="parseMethod = 'cloud'">Cloud AI (ZAI)</button>
                             <button :class="{ active: parseMethod === 'rules' }" @click="parseMethod = 'rules'">Rules-based</button>
                         </div>
+                        <p v-if="!isLocalParseMethodAvailable && localParseMethodUnavailableMessage" class="parse-method-note parse-method-note-unavailable">{{ localParseMethodUnavailableMessage }}</p>
                         <p class="parse-method-summary">{{ selectedParseMethodDescription }}</p>
                     </div>
 
@@ -1043,6 +1044,18 @@ export default {
             if (this.parseAttempt <= 0) return 'Attempt 1'
             return `Retry ${this.parseAttempt}`
         },
+        pipelineAvailability() {
+            return this.queueStatus?.pipeline_availability || null
+        },
+        isLocalParseMethodAvailable() {
+            return this.pipelineAvailability?.local?.available !== false
+        },
+        localParseMethodUnavailableMessage() {
+            if (this.isLocalParseMethodAvailable) return ''
+            const message = this.pipelineAvailability?.local?.message
+            if (typeof message === 'string' && message.trim()) return message.trim()
+            return 'Local AI is unavailable right now.'
+        },
         selectedParseMethodDescription() {
             const map = {
                 local: 'Local AI uses UAH local OCR + local parsing with isolated queue visibility.',
@@ -1194,6 +1207,18 @@ export default {
             tick()
         },
 
+        applyQueueStatus(status) {
+            this.queueStatus = status
+
+            if (!this.queueStatus?.can_view_global && this.queueScope === 'global') {
+                this.queueScope = 'user'
+            }
+
+            if (status?.pipeline_availability?.local?.available === false && this.parseMethod === 'local') {
+                this.parseMethod = 'cloud'
+            }
+        },
+
         async loadQueueStatus() {
             if (this.activeTab !== 'imported') return
 
@@ -1203,11 +1228,7 @@ export default {
                 const focusMethod = encodeURIComponent(this.parseJobMethod || this.parseMethod || 'local')
                 const res = await authedFetch(`/api/resume/queue/status?scope=${encodeURIComponent(this.queueScope)}&focus_method=${focusMethod}`)
                 if (!res.ok) throw new Error(`HTTP ${res.status}`)
-                this.queueStatus = await res.json()
-
-                if (!this.queueStatus?.can_view_global && this.queueScope === 'global') {
-                    this.queueScope = 'user'
-                }
+                this.applyQueueStatus(await res.json())
             } catch (e) {
                 if (e.message === 'Session expired' || e.message === 'Not authenticated') {
                     this.$router.push('/login')
@@ -1416,7 +1437,7 @@ export default {
         openUploadModal() {
             this.uploadStep = 'select'
             this.pendingFile = null
-            this.parseMethod = 'local'
+            this.parseMethod = this.isLocalParseMethodAvailable ? 'local' : 'cloud'
             this.uploadError = null
             this.isDragOver = false
             this.$nextTick(() => {
@@ -1475,6 +1496,12 @@ export default {
         },
         async doUpload() {
             if (!this.pendingFile || this.uploading) return
+            const selectedMethod = this.parseMethod === 'local' && !this.isLocalParseMethodAvailable
+                ? 'cloud'
+                : this.parseMethod
+            if (selectedMethod !== this.parseMethod) {
+                this.parseMethod = selectedMethod
+            }
             this.uploading = true
             this.uploadError = null
             try {
@@ -1495,7 +1522,7 @@ export default {
                 const parseRes = await authedFetch(`/api/resume/${resumeId}/parse-async`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ method: this.parseMethod }),
+                    body: JSON.stringify({ method: selectedMethod }),
                 })
                 const parseData = await parseRes.json().catch(() => null)
                 if (!parseRes.ok) {
@@ -1507,7 +1534,7 @@ export default {
                 this.parseStatus = 'queued'
                 this.parseStageLabel = 'Queued…'
                 this.parseError = null
-                this.parseJobMethod = this.parseMethod
+                this.parseJobMethod = selectedMethod
                 this.uploadStep = 'parsing'
                 this.uploading = false
                 this.publishDebugState('parse-started')
@@ -1529,7 +1556,7 @@ export default {
                 const job = await res.json()
 
                 if (job.queue_snapshot && this.queueScope !== 'global') {
-                    this.queueStatus = job.queue_snapshot
+                    this.applyQueueStatus(job.queue_snapshot)
                 }
 
                 this.parseStatus = job.status

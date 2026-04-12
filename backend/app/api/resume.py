@@ -25,7 +25,11 @@ from app.services.parse_queue import (
     get_worker_status,
 )
 from app.services.resume_parser import (
-    ocr_pdf_dispatch, normalize_parse_method, parse_markdown_by_method, validate_and_fix, get_parse_input_text,
+    get_pipeline_availability,
+    normalize_parse_method,
+    parse_markdown_by_method,
+    validate_and_fix,
+    get_parse_input_text,
     check_portal_required,
 )
 
@@ -183,6 +187,7 @@ async def _build_queue_status_payload(
         }
 
     queue_depth_total = int(queue_depths.get("total", 0))
+    pipeline_availability = await get_pipeline_availability()
     payload = {
         "scope": effective_scope,
         "requested_scope": requested_scope,
@@ -238,6 +243,7 @@ async def _build_queue_status_payload(
             },
             "load_total": len(ordered_active_jobs) + queue_depth_total,
         },
+        "pipeline_availability": pipeline_availability,
         "local_queue_note": "Local queue load matters most when UAH parses with Local AI.",
         "global_queue": global_queue,
         "latest_active_job_redis_status": latest_active_job_redis_status,
@@ -252,17 +258,16 @@ async def upload_resume(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Upload a resume PDF, run OCR extraction, and store parsed markdown.
+    Upload a resume PDF and store it for later parsing.
 
-    Accepts a PDF file, enforces upload limits/cooldowns, calls OCR, and stores
-    both binary PDF content and OCR markdown for later parsing.
+    Accepts a PDF file, enforces upload limits/cooldowns, and stores the
+    original PDF. OCR/text preparation happens during parse execution so the
+    selected parse method controls downstream dependencies.
 
     Response codes:
-    - 201: Resume uploaded and OCR text stored successfully.
+    - 201: Resume uploaded successfully.
     - 400: File type invalid or file exceeds max size.
-    - 422: OCR completed but returned no usable text.
     - 429: Upload rate or per-user resume limit exceeded.
-    - 502: Upstream OCR service failure.
     """
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
@@ -286,45 +291,10 @@ async def upload_resume(
     if len(pdf_bytes) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File too large, max 5MB")
 
-    ocr_result = await ocr_pdf_dispatch(pdf_bytes)
-    if not ocr_result.get("ok"):
-        error_code = ocr_result.get("error_code") or "OCR_EXTRACTION_FAILED"
-        status_code = int(ocr_result.get("status_code") or 502)
-        public_message = "Could not extract text from the uploaded PDF."
-        if error_code == "OCR_NOT_CONFIGURED":
-            public_message = "Resume OCR service is not configured. Please contact support."
-        elif error_code == "OCR_TIMEOUT":
-            public_message = "Resume OCR request timed out. Please retry in a moment."
-
-        raise HTTPException(
-            status_code=status_code,
-            detail={
-                "code": "OCR_EXTRACTION_FAILED",
-                "message": public_message,
-                "debug": {
-                    "error_code": error_code,
-                    "status_code": status_code,
-                    "exception_type": ocr_result.get("exception_type"),
-                    "response_excerpt": ocr_result.get("response_excerpt"),
-                },
-            },
-        )
-
-    md_text = ocr_result.get("md_results", "")
-    if not md_text:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "code": "OCR_EMPTY_RESULTS",
-                "message": "OCR completed but no text was detected in this PDF.",
-            },
-        )
-
     resume = Resume(
         user_id=current_user.id,
         file_name=file.filename,
         pdf_data=pdf_bytes,
-        raw_markdown=md_text,
     )
     db.add(resume)
     db.commit()
