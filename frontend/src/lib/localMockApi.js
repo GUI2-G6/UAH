@@ -749,6 +749,7 @@ function buildQueueSnapshot(state, focusMethod = 'local', includeGlobalQueue = t
     queue_total: activeJobs.length,
     created_at: job.created_at,
   }))
+  const localAvailable = parseBoolean(import.meta.env.VITE_LOCAL_MOCK_LOCAL_AI_AVAILABLE, true)
 
   const snapshot = {
     can_view_global: true,
@@ -768,6 +769,18 @@ function buildQueueSnapshot(state, focusMethod = 'local', includeGlobalQueue = t
     },
     worker_status: {
       mode: 'mock',
+    },
+    pipeline_availability: {
+      local: {
+        available: localAvailable,
+        message: localAvailable ? null : 'Local AI is unavailable right now.',
+      },
+      cloud: {
+        available: true,
+      },
+      rules: {
+        available: true,
+      },
     },
     local_queue_note: 'Queue metrics are simulated in local mock mode.',
     cloud_behavior: {

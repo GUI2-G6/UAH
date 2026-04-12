@@ -640,6 +640,19 @@
   color: var(--color-primary-700);
 }
 
+.method-toggle button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  border-color: rgba(148, 163, 184, 0.45);
+  color: #94a3b8;
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.method-toggle button:disabled:hover {
+  border-color: rgba(148, 163, 184, 0.45);
+  color: #94a3b8;
+}
+
 .method-toggle button:focus-visible {
   outline: 2px solid rgba(37, 99, 235, 0.45);
   outline-offset: 2px;
@@ -668,6 +681,16 @@
   margin: 8px 0 0 0;
   font-size: 0.8rem;
   color: #64748b;
+}
+
+.parse-method-note {
+  margin: 8px 0 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.parse-method-note-unavailable {
+  color: #92400e;
 }
 
 .inline-actions {
