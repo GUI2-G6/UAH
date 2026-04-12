@@ -189,6 +189,43 @@
         </table>
       </div>
 
+      <div class="service-card parse-methods-card" v-if="diagnostics?.services?.parse_methods">
+        <div class="card-header">
+          <h3>
+            <span
+              class="dot"
+              :class="statusDotClass(diagnostics.services.parse_methods.status)"
+            ></span>
+            Parse Methods
+          </h3>
+          <span class="badge" :class="diagnostics.services.parse_methods.status">
+            {{ diagnostics.services.parse_methods.status }}
+          </span>
+        </div>
+        <div class="parse-method-grid">
+          <div
+            v-for="method in parseMethodCards"
+            :key="method.key"
+            class="parse-method-card"
+            :class="method.toneClass"
+          >
+            <div class="parse-method-card-header">
+              <span class="badge parse-method-badge" :class="method.toneClass">
+                {{ method.label }}
+              </span>
+              <span class="badge" :class="method.status">
+                {{ method.status }}
+              </span>
+            </div>
+            <p class="parse-method-availability">
+              <span class="dot-sm" :class="statusDotClass(method.status)"></span>
+              {{ method.available ? 'Available' : 'Unavailable' }}
+            </p>
+            <p class="parse-method-message">{{ method.message }}</p>
+          </div>
+        </div>
+      </div>
+
       <div class="service-card">
         <div class="card-header">
           <h3>
@@ -261,6 +298,24 @@ export default {
   async mounted() {
     await this.fetchDiagnostics()
   },
+  computed: {
+    parseMethodCards() {
+      const methods = this.diagnostics?.services?.parse_methods?.methods
+      if (!methods) return []
+
+      return ['cloud', 'local', 'rules'].map((key) => {
+        const info = methods[key] || {}
+        return {
+          key,
+          label: this.parseMethodLabel(key),
+          available: Boolean(info.available),
+          status: info.status || (info.available ? 'healthy' : 'degraded'),
+          message: info.message || `${this.parseMethodLabel(key)} parsing status is unavailable.`,
+          toneClass: this.parseMethodToneClass(key),
+        }
+      })
+    },
+  },
   methods: {
     goBack() {
       // Prefer actual history navigation.
@@ -271,6 +326,21 @@ export default {
 
       const token = getAccessToken()
       this.$router.push(token ? '/home' : '/login')
+    },
+    parseMethodLabel(key) {
+      if (key === 'cloud') return 'Cloud'
+      if (key === 'rules') return 'Rules'
+      return 'Local'
+    },
+    parseMethodToneClass(key) {
+      if (key === 'cloud') return 'method-cloud'
+      if (key === 'rules') return 'method-rules'
+      return 'method-local'
+    },
+    statusDotClass(status) {
+      if (status === 'healthy') return 'green'
+      if (status === 'degraded') return 'yellow'
+      return 'red'
     },
     async fetchDiagnostics() {
       this.loading = true

@@ -851,6 +851,7 @@ function advanceParseJobState(state, job) {
 }
 
 function makeDiagnosticsPayload() {
+  const localAvailable = parseBoolean(import.meta.env.VITE_LOCAL_MOCK_LOCAL_AI_AVAILABLE, true)
   return {
     overall: 'healthy',
     services: {
@@ -881,6 +882,26 @@ function makeDiagnosticsPayload() {
         dns_resolution: {
           localhost: { resolved: true, ip: '127.0.0.1' },
           'api.local': { resolved: true, ip: '127.0.0.1' },
+        },
+      },
+      parse_methods: {
+        status: localAvailable ? 'healthy' : 'degraded',
+        methods: {
+          cloud: {
+            available: true,
+            status: 'healthy',
+            message: 'Cloud AI parsing is available.',
+          },
+          local: {
+            available: localAvailable,
+            status: localAvailable ? 'healthy' : 'degraded',
+            message: localAvailable ? 'Local AI parsing is available.' : 'Local AI is unavailable right now.',
+          },
+          rules: {
+            available: true,
+            status: 'healthy',
+            message: 'Deterministic rules parsing is available.',
+          },
         },
       },
     },

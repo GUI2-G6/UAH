@@ -78,6 +78,7 @@ from app.services.muse_location_index import (
     list_supported_locations_for_country,
     refresh_muse_location_index,
 )
+from app.services.resume_parser import get_pipeline_availability
 from app.core.config import settings
 from app.models.muse_location import MuseSupportedLocation
 
@@ -2852,6 +2853,14 @@ async def diagnostics(current_user: User = Depends(require_admin_user)):
         "services": {},
     }
 
+    method_availability = await get_pipeline_availability()
+    parse_method_statuses = []
+    parse_method_messages = {
+        "cloud": "Cloud AI parsing is available.",
+        "local": "Local AI parsing is available.",
+        "rules": "Deterministic rules parsing is available.",
+    }
+
     # --- Backend info ---
     result["services"]["backend"] = {
         "status": "healthy",
@@ -2938,6 +2947,23 @@ async def diagnostics(current_user: User = Depends(require_admin_user)):
     result["services"]["network"] = {
         "status": "healthy" if all(r["resolved"] for r in network_results.values()) else "degraded",
         "dns_resolution": network_results,
+    }
+
+    parse_method_entries = {}
+    for method_key in ("cloud", "local", "rules"):
+        method_info = method_availability.get(method_key) or {}
+        method_available = bool(method_info.get("available"))
+        method_status = "healthy" if method_available else "degraded"
+        parse_method_statuses.append(method_status)
+        parse_method_entries[method_key] = {
+            "available": method_available,
+            "status": method_status,
+            "message": method_info.get("message") or parse_method_messages[method_key],
+        }
+
+    result["services"]["parse_methods"] = {
+        "status": "healthy" if all(status == "healthy" for status in parse_method_statuses) else "degraded",
+        "methods": parse_method_entries,
     }
 
     # --- Overall status ---
