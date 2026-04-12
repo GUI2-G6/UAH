@@ -23,9 +23,20 @@ def decode_access_token(token: str) -> dict | None:
     except JWTError:
         return None
 
-def create_verification_token(user_id: int, purpose: str) -> str:
+def create_verification_token(
+    user_id: int,
+    purpose: str,
+    *,
+    expires_delta: timedelta | None = None,
+    jti: str | None = None,
+    email: str | None = None,
+) -> str:
     data = {"sub": str(user_id), "purpose": purpose}
-    expire = datetime.now(timezone.utc) + timedelta(hours=24)
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(hours=24))
+    if jti:
+        data["jti"] = jti
+    if email:
+        data["email"] = email
     data.update({"exp": expire})
     return jwt.encode(data, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 

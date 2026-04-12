@@ -81,6 +81,11 @@ def _ensure_users_table_columns(engine) -> None:
             "is_developer": "BOOLEAN DEFAULT FALSE",
             "gmail_refresh_token": "TEXT",
             "gmail_email": "VARCHAR(255)",
+            "password_reset_token_id": "VARCHAR(255)",
+            "password_reset_expires_at": "TIMESTAMPTZ",
+            "email_verify_token_id": "VARCHAR(255)",
+            "email_verify_target_email": "VARCHAR(255)",
+            "email_verify_expires_at": "TIMESTAMPTZ",
             "created_at": "TIMESTAMPTZ DEFAULT now()",
             "updated_at": "TIMESTAMPTZ DEFAULT now()",
         }

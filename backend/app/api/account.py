@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime, timedelta, timezone
+import secrets
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.db.session import get_db
@@ -15,14 +18,132 @@ from app.core.security import (
     create_verification_token, decode_verification_token,
 )
 from app.core.config import settings
-from app.core.validation import require_valid_email
+from app.core.rate_limit import enforce_ip_rate_limit, enforce_subject_rate_limit
+from app.core.validation import normalize_email, require_valid_email
 from app.services.email import send_email, EmailNotConfiguredError
 
 router = APIRouter(prefix="/api/account", tags=["account"])
 
+ACCOUNT_TOKEN_TTL = timedelta(hours=24)
+FORGOT_PASSWORD_IP_LIMIT = 8
+FORGOT_PASSWORD_IP_WINDOW_SECONDS = 900
+FORGOT_PASSWORD_EMAIL_LIMIT = 4
+FORGOT_PASSWORD_EMAIL_WINDOW_SECONDS = 1800
+RESET_PASSWORD_IP_LIMIT = 12
+RESET_PASSWORD_IP_WINDOW_SECONDS = 900
+RESET_PASSWORD_TOKEN_LIMIT = 6
+RESET_PASSWORD_TOKEN_WINDOW_SECONDS = 1800
+SEND_VERIFICATION_IP_LIMIT = 6
+SEND_VERIFICATION_IP_WINDOW_SECONDS = 900
+SEND_VERIFICATION_USER_LIMIT = 4
+SEND_VERIFICATION_USER_WINDOW_SECONDS = 1800
+VERIFY_EMAIL_IP_LIMIT = 12
+VERIFY_EMAIL_IP_WINDOW_SECONDS = 900
+VERIFY_EMAIL_TOKEN_LIMIT = 6
+VERIFY_EMAIL_TOKEN_WINDOW_SECONDS = 1800
+CHANGE_PASSWORD_IP_LIMIT = 8
+CHANGE_PASSWORD_IP_WINDOW_SECONDS = 900
+CHANGE_PASSWORD_USER_LIMIT = 5
+CHANGE_PASSWORD_USER_WINDOW_SECONDS = 1800
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _normalize_utc_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _datetime_has_expired(value: datetime | None) -> bool:
+    expires_at = _normalize_utc_datetime(value)
+    if expires_at is None:
+        return True
+    return expires_at <= _utcnow()
+
+
+def _clear_password_reset_state(user: User) -> None:
+    user.password_reset_token_id = None
+    user.password_reset_expires_at = None
+
+
+def _clear_email_verification_state(user: User) -> None:
+    user.email_verify_token_id = None
+    user.email_verify_target_email = None
+    user.email_verify_expires_at = None
+
+
+def _issue_password_reset_token(user: User) -> str:
+    token_id = secrets.token_urlsafe(32)
+    expires_at = _utcnow() + ACCOUNT_TOKEN_TTL
+    user.password_reset_token_id = token_id
+    user.password_reset_expires_at = expires_at
+    return create_verification_token(
+        user.id,
+        purpose="password_reset",
+        expires_delta=ACCOUNT_TOKEN_TTL,
+        jti=token_id,
+    )
+
+
+def _issue_email_verification_token(user: User, target_email: str) -> str:
+    normalized_target_email = require_valid_email(target_email, field_name="target_email")
+    token_id = secrets.token_urlsafe(32)
+    expires_at = _utcnow() + ACCOUNT_TOKEN_TTL
+    user.email_verify_token_id = token_id
+    user.email_verify_target_email = normalized_target_email
+    user.email_verify_expires_at = expires_at
+    return create_verification_token(
+        user.id,
+        purpose="email_verify",
+        expires_delta=ACCOUNT_TOKEN_TTL,
+        jti=token_id,
+        email=normalized_target_email,
+    )
+
+
+def _password_reset_token_is_valid(user: User, decoded: dict | None) -> bool:
+    if not decoded:
+        return False
+
+    token_id = str(decoded.get("jti") or "").strip()
+    stored_token_id = str(user.password_reset_token_id or "").strip()
+    if not token_id or not stored_token_id or token_id != stored_token_id:
+        return False
+
+    return not _datetime_has_expired(user.password_reset_expires_at)
+
+
+def _email_verification_token_is_valid(user: User, decoded: dict | None) -> bool:
+    if not decoded:
+        return False
+
+    token_id = str(decoded.get("jti") or "").strip()
+    stored_token_id = str(user.email_verify_token_id or "").strip()
+    if not token_id or not stored_token_id or token_id != stored_token_id:
+        return False
+
+    token_email = normalize_email(decoded.get("email"))
+    stored_target_email = normalize_email(user.email_verify_target_email)
+    current_email = normalize_email(user.email)
+    if not token_email or not stored_target_email or token_email != stored_target_email:
+        return False
+    if not current_email or current_email != stored_target_email:
+        return False
+
+    return not _datetime_has_expired(user.email_verify_expires_at)
+
 
 @router.post("/forgot-password", response_model=MessageResponse)
-def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
+def forgot_password(
+    payload: ForgotPasswordRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """
     Begin password reset flow for an email address.
 
@@ -34,13 +155,27 @@ def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db
     - 200: Reset flow accepted (message always returned).
     - 500: Email infrastructure not configured or send failure.
     """
+    enforce_ip_rate_limit(
+        "account:forgot-password",
+        request,
+        limit=FORGOT_PASSWORD_IP_LIMIT,
+        window_seconds=FORGOT_PASSWORD_IP_WINDOW_SECONDS,
+    )
+    enforce_subject_rate_limit(
+        "account:forgot-password:email",
+        payload.email,
+        limit=FORGOT_PASSWORD_EMAIL_LIMIT,
+        window_seconds=FORGOT_PASSWORD_EMAIL_WINDOW_SECONDS,
+    )
+
     normalized_email = require_valid_email(payload.email)
     user = db.query(User).filter(func.lower(User.email) == normalized_email).first()
 
     if not user:
         return MessageResponse(message="If that email exists, a reset link has been sent")
 
-    token = create_verification_token(user.id, purpose="password_reset")
+    token = _issue_password_reset_token(user)
+    db.commit()
 
     if not settings.EMAILS_ENABLED:
         return MessageResponse(message=f"Reset token (dev only): {token}")
@@ -69,7 +204,11 @@ def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db
 
 
 @router.post("/reset-password", response_model=MessageResponse)
-def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+def reset_password(
+    payload: ResetPasswordRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """
     Complete password reset using a verification token.
 
@@ -81,6 +220,19 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
     - 400: Token is invalid or expired.
     - 404: Token is valid but target user does not exist.
     """
+    enforce_ip_rate_limit(
+        "account:reset-password",
+        request,
+        limit=RESET_PASSWORD_IP_LIMIT,
+        window_seconds=RESET_PASSWORD_IP_WINDOW_SECONDS,
+    )
+    enforce_subject_rate_limit(
+        "account:reset-password:token",
+        payload.token,
+        limit=RESET_PASSWORD_TOKEN_LIMIT,
+        window_seconds=RESET_PASSWORD_TOKEN_WINDOW_SECONDS,
+    )
+
     decoded = decode_verification_token(payload.token, expected_purpose="password_reset")
     if decoded is None:
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
@@ -88,8 +240,11 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
     user = db.query(User).filter(User.id == int(decoded["sub"])).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if not _password_reset_token_is_valid(user, decoded):
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
     user.hashed_password = hash_password(payload.new_password)
+    _clear_password_reset_state(user)
     db.commit()
     return MessageResponse(message="Password has been reset successfully")
 
@@ -97,6 +252,7 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
 @router.put("/change-password", response_model=MessageResponse)
 def change_password(
     payload: ChangePasswordRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -111,6 +267,19 @@ def change_password(
     - 400: Account is OAuth-only and has no local password.
     - 401: Current password is incorrect.
     """
+    enforce_ip_rate_limit(
+        "account:change-password",
+        request,
+        limit=CHANGE_PASSWORD_IP_LIMIT,
+        window_seconds=CHANGE_PASSWORD_IP_WINDOW_SECONDS,
+    )
+    enforce_subject_rate_limit(
+        "account:change-password:user",
+        current_user.id,
+        limit=CHANGE_PASSWORD_USER_LIMIT,
+        window_seconds=CHANGE_PASSWORD_USER_WINDOW_SECONDS,
+    )
+
     if not current_user.hashed_password:
         raise HTTPException(status_code=400, detail="Account uses OAuth login, no password to change")
 
@@ -118,6 +287,7 @@ def change_password(
         raise HTTPException(status_code=401, detail="Current password is incorrect")
 
     current_user.hashed_password = hash_password(payload.new_password)
+    _clear_password_reset_state(current_user)
     db.commit()
     return MessageResponse(message="Password changed successfully")
 
@@ -146,7 +316,8 @@ def change_email(
     old_email = current_user.email
 
     if not current_user.email_verified:
-        token = create_verification_token(current_user.id, purpose="email_verify")
+        token = _issue_email_verification_token(current_user, old_email)
+        db.commit()
         if not settings.EMAILS_ENABLED:
             return MessageResponse(
                 message=f"You must verify your current email first. Verification token (dev only): {token}"
@@ -171,6 +342,7 @@ def change_email(
     current_user.email = normalized_new_email
     current_user.username = normalized_new_email
     current_user.email_verified = False
+    _clear_email_verification_state(current_user)
     db.commit()
 
     if settings.EMAILS_ENABLED and old_email:
@@ -232,6 +404,7 @@ def change_name(
 
 @router.post("/send-verification", response_model=MessageResponse)
 def send_verification_email(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -247,13 +420,27 @@ def send_verification_email(
     - 400: User has no email address configured.
     - 500: Email configuration or delivery failure.
     """
+    enforce_ip_rate_limit(
+        "account:send-verification",
+        request,
+        limit=SEND_VERIFICATION_IP_LIMIT,
+        window_seconds=SEND_VERIFICATION_IP_WINDOW_SECONDS,
+    )
+    enforce_subject_rate_limit(
+        "account:send-verification:user",
+        current_user.id,
+        limit=SEND_VERIFICATION_USER_LIMIT,
+        window_seconds=SEND_VERIFICATION_USER_WINDOW_SECONDS,
+    )
+
     if current_user.email_verified:
         return MessageResponse(message="Email is already verified")
 
     if not current_user.email:
         raise HTTPException(status_code=400, detail="No email set on this account")
 
-    token = create_verification_token(current_user.id, purpose="email_verify")
+    token = _issue_email_verification_token(current_user, current_user.email)
+    db.commit()
 
     if not settings.EMAILS_ENABLED:
         return MessageResponse(message=f"Verification token (dev only): {token}")
@@ -281,7 +468,11 @@ def send_verification_email(
 
 
 @router.post("/verify-email", response_model=MessageResponse)
-def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)):
+def verify_email(
+    payload: VerifyEmailRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """
     Verify an email address using a signed verification token.
 
@@ -293,6 +484,19 @@ def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)):
     - 400: Token is invalid, malformed, or expired.
     - 404: Token subject user not found.
     """
+    enforce_ip_rate_limit(
+        "account:verify-email",
+        request,
+        limit=VERIFY_EMAIL_IP_LIMIT,
+        window_seconds=VERIFY_EMAIL_IP_WINDOW_SECONDS,
+    )
+    enforce_subject_rate_limit(
+        "account:verify-email:token",
+        payload.token,
+        limit=VERIFY_EMAIL_TOKEN_LIMIT,
+        window_seconds=VERIFY_EMAIL_TOKEN_WINDOW_SECONDS,
+    )
+
     decoded = decode_verification_token(payload.token, expected_purpose="email_verify")
     if decoded is None:
         raise HTTPException(status_code=400, detail="Invalid or expired verification token")
@@ -300,8 +504,11 @@ def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == int(decoded["sub"])).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if not _email_verification_token_is_valid(user, decoded):
+        raise HTTPException(status_code=400, detail="Invalid or expired verification token")
 
     user.email_verified = True
+    _clear_email_verification_state(user)
     db.commit()
     return MessageResponse(message="Email verified successfully")
 

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -8,9 +8,23 @@ from app.models.user import User
 from app.schemas.user import UserRegister, UserLogin, UserResponse, TokenResponse
 from app.core.security import hash_password, verify_password, create_access_token, decode_access_token
 from app.core.validation import normalize_email, require_valid_email
+from app.core.rate_limit import enforce_ip_rate_limit, enforce_subject_rate_limit
 from app.api.deps import oauth2_scheme
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+REGISTER_IP_LIMIT = 12
+REGISTER_IP_WINDOW_SECONDS = 600
+REGISTER_EMAIL_LIMIT = 4
+REGISTER_EMAIL_WINDOW_SECONDS = 1800
+LOGIN_IP_LIMIT = 20
+LOGIN_IP_WINDOW_SECONDS = 300
+LOGIN_IDENTIFIER_LIMIT = 8
+LOGIN_IDENTIFIER_WINDOW_SECONDS = 300
+TOKEN_IP_LIMIT = 20
+TOKEN_IP_WINDOW_SECONDS = 300
+TOKEN_IDENTIFIER_LIMIT = 8
+TOKEN_IDENTIFIER_WINDOW_SECONDS = 300
 
 
 ADMIN_EMAIL = "admincontact@uahapp.com"
@@ -67,7 +81,11 @@ def _ensure_admin_user(db: Session) -> User:
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-def register(payload: UserRegister, db: Session = Depends(get_db)):
+def register(
+    payload: UserRegister,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """
     Register a new user account and return an access token.
 
@@ -82,6 +100,19 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
     - 422: Request validation failed (for example, missing fields).
     - 500: Server/database error while creating the account.
     """
+    enforce_ip_rate_limit(
+        "auth:register",
+        request,
+        limit=REGISTER_IP_LIMIT,
+        window_seconds=REGISTER_IP_WINDOW_SECONDS,
+    )
+    enforce_subject_rate_limit(
+        "auth:register:email",
+        payload.email,
+        limit=REGISTER_EMAIL_LIMIT,
+        window_seconds=REGISTER_EMAIL_WINDOW_SECONDS,
+    )
+
     normalized_email = require_valid_email(payload.email)
     if db.query(User).filter(func.lower(User.email) == normalized_email).first():
         raise HTTPException(
@@ -110,6 +141,7 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
 @router.post("/login", response_model=TokenResponse)
 def login(
     payload: UserLogin,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """
@@ -125,6 +157,19 @@ def login(
     - 403: Account exists but is deactivated.
     - 422: Request validation failed.
     """
+    enforce_ip_rate_limit(
+        "auth:login",
+        request,
+        limit=LOGIN_IP_LIMIT,
+        window_seconds=LOGIN_IP_WINDOW_SECONDS,
+    )
+    enforce_subject_rate_limit(
+        "auth:login:identifier",
+        payload.email,
+        limit=LOGIN_IDENTIFIER_LIMIT,
+        window_seconds=LOGIN_IDENTIFIER_WINDOW_SECONDS,
+    )
+
     identifier = require_valid_email(payload.email)
     user = db.query(User).filter(func.lower(User.email) == identifier).first()
 
@@ -149,6 +194,7 @@ def login(
 
 @router.post("/token")
 def token_login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
@@ -165,6 +211,19 @@ def token_login(
     - 403: Account is deactivated.
     - 422: Invalid form payload.
     """
+    enforce_ip_rate_limit(
+        "auth:token",
+        request,
+        limit=TOKEN_IP_LIMIT,
+        window_seconds=TOKEN_IP_WINDOW_SECONDS,
+    )
+    enforce_subject_rate_limit(
+        "auth:token:identifier",
+        form_data.username,
+        limit=TOKEN_IDENTIFIER_LIMIT,
+        window_seconds=TOKEN_IDENTIFIER_WINDOW_SECONDS,
+    )
+
     try:
         identifier = require_valid_email(form_data.username, field_name="username")
     except ValueError:

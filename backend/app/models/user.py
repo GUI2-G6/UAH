@@ -25,6 +25,12 @@ class User(Base):
     gmail_refresh_token = Column(Text, nullable=True)
     gmail_email = Column(String(255), nullable=True)
 
+    password_reset_token_id = Column(String(255), nullable=True)
+    password_reset_expires_at = Column(DateTime(timezone=True), nullable=True)
+    email_verify_token_id = Column(String(255), nullable=True)
+    email_verify_target_email = Column(String(255), nullable=True)
+    email_verify_expires_at = Column(DateTime(timezone=True), nullable=True)
+
     email_verified = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
