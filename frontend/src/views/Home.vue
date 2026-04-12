@@ -2,7 +2,7 @@
     <div class="page">
         <div class="greeting">
             <h1>Home</h1>
-            <p>Good afternoon, Test User Demo! You have 1 new reminder for today. Welcome!</p> <!-- Add links to actual variables here! -->
+            <p>Good afternoon, {{displayName}}! You have 1 new reminder for today. Welcome!</p> <!-- Add links to actual variables here! -->
         </div>
         <div class="dashboard">
             <Card>
@@ -12,28 +12,39 @@
                 <template #tab>
                     <h3>Updated: 7/4/2026</h3>
                 </template>
-                <p>{{ stats.applied }}</p>
+                <p id="applied">{{ stats.applied }}</p>
             </Card>
             <Card>
                 <template #header>
                     <h2>Interviews</h2>
                 </template>
-                <p>{{ stats.interviews }}</p>
+                <template #tab>
+                    <h3>Updated: 4/11/2026</h3>
+                </template>
+                <p id="interviews">{{ stats.interviews }}</p>
             </Card>
             <Card>
                 <template #header>
                     <h2>Offers</h2>
                 </template>  
-                <p>{{ stats.offers }}</p>
+                <template #tab>
+                    <h3>Updated: 8/2/1992</h3>
+                </template>
+                <p id="offers">{{ stats.offers }}</p>
             </Card>
             <Card>
                 <template #header>
                     <h2>Rejected</h2>
                 </template>
-                <p>{{ stats.rejected }}</p>
+                <template #tab>
+                    <h3>Updated: 4/11/2026</h3>
+                </template>
+                <p id="rejected">{{ stats.rejected }}</p>
             </Card>
-            <Card class="big-card">
-                <h2>Recent Applications</h2>
+            <Card class="card big-card">
+                <template #header>
+                    <h2>Recent Applications</h2>
+                </template>
             </Card>
         </div>
     </div>
@@ -41,9 +52,12 @@
 
 <script>
     import Card from "../components/Card.vue"
+    import { getCurrentUser } from "../lib/auth.js";
+
     export default{
         data() {
             return {
+                user: getCurrentUser(),
                 stats: {
                     applied: 1,
                     interviews: 2,
@@ -56,6 +70,16 @@
         components: {
             Card
         },
+    computed: {
+        displayName() {
+            const first = this.user?.first_name || this.user?.firstName || ""
+            const last = this.user?.last_name || this.user?.lastName || ""
+
+            const full = `${first} ${last}`.trim()
+
+            return full || this.user?.email || "User"
+        }
+    },
         name: "Home"
     }
 </script>

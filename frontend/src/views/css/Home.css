@@ -20,6 +20,16 @@
   padding: 16px;
 }
 
+#applied, 
+#interviews, 
+#offers, 
+#rejected {
+  font-size:75px;
+  text-align:right;
+  font-weight:bold;
+  color:rgba(63, 98, 236);
+}
+
 @media (max-width: 768px) {
   .greeting {
     padding: 16px;
