@@ -16,6 +16,12 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     is_developer = Column(Boolean, default=False)
 
+    email_notifications = Column(Boolean, nullable=False, default=True, server_default='true')
+    reminder_notifications = Column(Boolean, nullable=False, default=True, server_default='true')
+    status_update_emails = Column(Boolean, nullable=False, default=True, server_default='true')
+    language = Column(String(10), nullable=False, default="en", server_default="'en'")
+    timezone = Column(String(64), nullable=False, default="America/New_York", server_default="'America/New_York'")
+
     linkedIn_id = Column(String(255), unique=True, nullable=True)
     google_id = Column(String(255), unique=True, nullable=True)
 

@@ -24,4 +24,5 @@ python-multipart==0.0.22
 python-dotenv==1.0.1
 redis==5.0.1
 pypdf==6.10.0
+alembic==1.11.1
 

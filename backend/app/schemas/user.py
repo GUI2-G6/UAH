@@ -103,6 +103,31 @@ class UserResponse(BaseModel):
         description="True when the account can access developer-only frontend tools.",
         examples=[False],
     )
+    email_notifications: bool = Field(
+        default=True,
+        description="Whether the user receives general email notifications.",
+        examples=[True],
+    )
+    reminder_notifications: bool = Field(
+        default=True,
+        description="Whether the user receives reminder notifications.",
+        examples=[True],
+    )
+    status_update_emails: bool = Field(
+        default=True,
+        description="Whether the user receives application status update emails.",
+        examples=[True],
+    )
+    language: str = Field(
+        default="en",
+        description="Preferred interface language.",
+        examples=["en"],
+    )
+    timezone: str = Field(
+        default="America/New_York",
+        description="Preferred timezone identifier.",
+        examples=["America/New_York"],
+    )
     is_active: bool = Field(
         ...,
         description="False means the account cannot authenticate until re-enabled.",
@@ -111,6 +136,79 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class UserPreferencesResponse(BaseModel):
+    email_notifications: bool = Field(
+        default=True,
+        description="Whether the user receives general email notifications.",
+        examples=[True],
+    )
+    reminder_notifications: bool = Field(
+        default=True,
+        description="Whether the user receives reminder notifications.",
+        examples=[True],
+    )
+    status_update_emails: bool = Field(
+        default=True,
+        description="Whether the user receives application status update emails.",
+        examples=[True],
+    )
+    language: str = Field(
+        default="en",
+        description="Preferred interface language.",
+        examples=["en"],
+    )
+    timezone: str = Field(
+        default="America/New_York",
+        description="Preferred timezone identifier.",
+        examples=["America/New_York"],
+    )
+
+    class Config:
+        from_attributes = True
+
+class UpdatePreferencesRequest(BaseModel):
+    email_notifications: bool | None = Field(
+        default=None,
+        description="Set whether the user should receive general email notifications.",
+        examples=[True],
+    )
+    reminder_notifications: bool | None = Field(
+        default=None,
+        description="Set whether the user should receive reminder notifications.",
+        examples=[True],
+    )
+    status_update_emails: bool | None = Field(
+        default=None,
+        description="Set whether the user should receive application status update emails.",
+        examples=[True],
+    )
+    language: str | None = Field(
+        default=None,
+        description="Set the preferred language.",
+        examples=["en"],
+    )
+    timezone: str | None = Field(
+        default=None,
+        description="Set the preferred timezone identifier.",
+        examples=["America/New_York"],
+    )
+
+    @field_validator("language")
+    @classmethod
+    def validate_language(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        return normalized or None
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 class TokenResponse(BaseModel):
     access_token: str = Field(

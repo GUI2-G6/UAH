@@ -11,7 +11,8 @@ from app.schemas.user import (
     ChangePasswordRequest, ResetPasswordRequest, ForgotPasswordRequest,
     ChangeEmailRequest, ChangeUsernameRequest, VerifyEmailRequest,
     ChangeNameRequest,
-    MessageResponse, UserResponse,
+    MessageResponse, UserResponse, UserPreferencesResponse,
+    UpdatePreferencesRequest,
 )
 from app.core.security import (
     hash_password, verify_password,
@@ -377,6 +378,39 @@ def change_username(
         status_code=status.HTTP_410_GONE,
         detail="Username updates are deprecated. Email is now the sign-in identifier.",
     )
+
+
+@router.get("/preferences", response_model=UserPreferencesResponse)
+def get_preferences(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Retrieve saved notification and display preferences for the current user.
+
+    Response codes:
+    - 200: Preferences returned successfully.
+    """
+    return current_user
+
+
+@router.put("/preferences", response_model=UserPreferencesResponse)
+def update_preferences(
+    payload: UpdatePreferencesRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Update one or more account preferences for the current user.
+
+    Partial updates are accepted so the client can submit only changed fields.
+    """
+    changes = payload.model_dump(exclude_none=True)
+    if changes:
+        for key, value in changes.items():
+            setattr(current_user, key, value)
+        db.commit()
+        db.refresh(current_user)
+    return current_user
 
 
 @router.put("/change-name", response_model=UserResponse)
