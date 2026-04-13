@@ -6,6 +6,7 @@ from cryptography.fernet import Fernet
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
+from urllib.parse import urlencode
 from app.db.session import get_db
 from app.models.user import User
 from app.api.deps import get_current_user
@@ -41,15 +42,20 @@ def _decrypt_token(encrypted: str) -> str:
     return _get_fernet().decrypt(encrypted.encode()).decode()
 
 
-@router.get("/connect")
-async def gmail_connect(request: Request, current_user: User = Depends(get_current_user)):
-    if not settings.GMAIL_CLIENT_ID or not settings.GMAIL_REDIRECT_URI:
-        raise HTTPException(status_code=500, detail="Gmail integration not configured")
+def _clear_gmail_oauth_session(request: Request) -> None:
+    request.session.pop("gmail_oauth_state", None)
+    request.session.pop("gmail_oauth_user_id", None)
 
-    state = secrets.token_urlsafe(16)
-    request.session["gmail_oauth_state"] = state
-    request.session["gmail_oauth_user_id"] = current_user.id
 
+def _gmail_settings_redirect(service_state: str, reason: str | None = None) -> RedirectResponse:
+    public_url = (settings.PUBLIC_APP_URL or "").rstrip("/")
+    query = {"service": "gmail", "service_state": service_state}
+    if reason:
+        query["service_reason"] = reason
+    return RedirectResponse(f"{public_url}/settings?{urlencode(query)}")
+
+
+def _build_gmail_authorization_url(state: str) -> str:
     params = {
         "client_id": settings.GMAIL_CLIENT_ID,
         "redirect_uri": settings.GMAIL_REDIRECT_URI,
@@ -60,7 +66,33 @@ async def gmail_connect(request: Request, current_user: User = Depends(get_curre
         "state": state,
     }
     query = "&".join(f"{k}={v}" for k, v in params.items())
-    return RedirectResponse(f"{GOOGLE_AUTH_URL}?{query}")
+    return f"{GOOGLE_AUTH_URL}?{query}"
+
+
+def _start_gmail_connect(request: Request, current_user: User) -> str:
+    if not settings.GMAIL_CLIENT_ID or not settings.GMAIL_REDIRECT_URI:
+        raise RuntimeError("not_configured")
+
+    state = secrets.token_urlsafe(16)
+    request.session["gmail_oauth_state"] = state
+    request.session["gmail_oauth_user_id"] = current_user.id
+    return _build_gmail_authorization_url(state)
+
+
+@router.get("/connect")
+async def gmail_connect(request: Request, current_user: User = Depends(get_current_user)):
+    try:
+        return RedirectResponse(_start_gmail_connect(request, current_user))
+    except RuntimeError as exc:
+        return _gmail_settings_redirect("error", str(exc) or "not_configured")
+
+
+@router.post("/connect/start")
+async def gmail_connect_start(request: Request, current_user: User = Depends(get_current_user)):
+    try:
+        return {"authorization_url": _start_gmail_connect(request, current_user)}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc) or "not_configured")
 
 
 @router.get("/callback")
@@ -74,41 +106,51 @@ async def gmail_callback(
     user_id = request.session.get("gmail_oauth_user_id")
 
     if not expected_state or state != expected_state or not user_id:
-        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
+        _clear_gmail_oauth_session(request)
+        return _gmail_settings_redirect("error", "invalid_state")
 
-    async with httpx.AsyncClient() as client:
-        token_resp = await client.post(GOOGLE_TOKEN_URL, data={
-            "code": code,
-            "client_id": settings.GMAIL_CLIENT_ID,
-            "client_secret": settings.GMAIL_CLIENT_SECRET,
-            "redirect_uri": settings.GMAIL_REDIRECT_URI,
-            "grant_type": "authorization_code",
-        })
-        token_data = token_resp.json()
+    try:
+        async with httpx.AsyncClient() as client:
+            token_resp = await client.post(GOOGLE_TOKEN_URL, data={
+                "code": code,
+                "client_id": settings.GMAIL_CLIENT_ID,
+                "client_secret": settings.GMAIL_CLIENT_SECRET,
+                "redirect_uri": settings.GMAIL_REDIRECT_URI,
+                "grant_type": "authorization_code",
+            })
+            token_data = token_resp.json()
+    except Exception:
+        _clear_gmail_oauth_session(request)
+        return _gmail_settings_redirect("error", "token_exchange_failed")
 
     refresh_token = token_data.get("refresh_token")
     access_token = token_data.get("access_token")
 
     if not refresh_token or not access_token:
-        raise HTTPException(status_code=400, detail="Failed to get Gmail tokens")
+        _clear_gmail_oauth_session(request)
+        return _gmail_settings_redirect("error", "missing_tokens")
 
-    async with httpx.AsyncClient() as client:
-        profile = await client.get(
-            "https://www.googleapis.com/oauth2/v3/userinfo",
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
-        gmail_email = profile.json().get("email", "")
+    try:
+        async with httpx.AsyncClient() as client:
+            profile = await client.get(
+                "https://www.googleapis.com/oauth2/v3/userinfo",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            gmail_email = profile.json().get("email", "")
+    except Exception:
+        _clear_gmail_oauth_session(request)
+        return _gmail_settings_redirect("error", "profile_fetch_failed")
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        _clear_gmail_oauth_session(request)
+        return _gmail_settings_redirect("error", "user_not_found")
 
     user.gmail_refresh_token = _encrypt_token(refresh_token)
     user.gmail_email = gmail_email
     db.commit()
-
-    public_url = (settings.PUBLIC_APP_URL or "").rstrip("/")
-    return RedirectResponse(f"{public_url}/settings?gmail=connected")
+    _clear_gmail_oauth_session(request)
+    return _gmail_settings_redirect("connected")
 
 
 @router.get("/status")

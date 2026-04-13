@@ -339,9 +339,13 @@ function createDefaultUser(overrides = {}) {
     id: 1,
     username: defaultEmail,
     email: defaultEmail,
+    hashed_password: 'mock-password-hash',
     email_verified: true,
     is_admin: true,
     is_developer: true,
+    google_id: null,
+    gmail_refresh_token: null,
+    gmail_email: null,
     first_name: 'Local',
     last_name: 'Developer',
     phone: '',
@@ -908,6 +912,221 @@ function makeDiagnosticsPayload() {
   }
 }
 
+function mockGmailConfigured() {
+  return true
+}
+
+function buildMockConnectedAccounts(state) {
+  const googleConnected = Boolean(state.user.google_id)
+  const hasPassword = Boolean(state.user.hashed_password)
+  return {
+    providers: [
+      {
+        provider: 'google',
+        label: 'Google',
+        connected: googleConnected,
+        account_email: googleConnected ? state.user.email : null,
+        can_connect: !googleConnected,
+        can_disconnect: googleConnected && hasPassword,
+        disconnect_disabled_reason: googleConnected && !hasPassword
+          ? 'Set a password before disconnecting your only sign-in method.'
+          : null,
+        coming_soon: false,
+      },
+      {
+        provider: 'linkedin',
+        label: 'LinkedIn',
+        connected: false,
+        account_email: null,
+        can_connect: false,
+        can_disconnect: false,
+        disconnect_disabled_reason: null,
+        coming_soon: true,
+      },
+    ],
+    has_password: hasPassword,
+  }
+}
+
+function buildMockServiceAction({ key, label, enabled = true, style = 'primary', method = null, href = null }) {
+  return { key, label, enabled, style, method, href }
+}
+
+function buildMockServiceDetail(state, serviceKey) {
+  const normalized = normalizeTextLower(serviceKey)
+  const gmailConnected = Boolean(state.user.gmail_refresh_token)
+  const gmailConfigured = mockGmailConfigured()
+
+  if (normalized === 'gmail') {
+    const connected = gmailConnected
+    const status = connected ? 'connected' : (gmailConfigured ? 'available' : 'needs_attention')
+    const accountLabel = connected
+      ? (state.user.gmail_email || state.user.email)
+      : (gmailConfigured ? 'No Gmail mailbox connected yet.' : 'Gmail OAuth is not configured for this environment.')
+    return {
+      key: 'gmail',
+      label: 'Gmail Updates',
+      status,
+      connected,
+      account_label: accountLabel,
+      availability: 'available',
+      description: 'Connect Gmail so UAH can prepare for inbox-driven job update workflows and future email-based status intelligence.',
+      capabilities: [
+        'Recognize job-update emails like application receipts, interview invites, and decisions.',
+        'Enrich your future application timeline with inbox-derived signals.',
+        'Help surface job communication context without making Gmail your sign-in method.',
+      ],
+      permissions: [
+        'Read-only Gmail mailbox access via Google OAuth.',
+        'Google account email is used to label the mailbox connection in Settings.',
+        'Disconnecting removes the stored refresh token and stops future mailbox access.',
+      ],
+      readiness: connected
+        ? {
+            title: 'Ready for mailbox-powered updates',
+            description: 'UAH can use this mailbox connection for future job-update scanning, status inference, and timeline enrichment without asking you to reconnect.',
+            tone: 'positive',
+          }
+        : (gmailConfigured
+            ? {
+                title: 'Available to connect',
+                description: 'Connect Gmail when you want UAH ready for inbox-based job update features. Nothing is scanned automatically in this phase.',
+                tone: 'neutral',
+              }
+            : {
+                title: 'Needs environment setup',
+                description: 'An administrator still needs to configure Gmail OAuth credentials for this environment before users can opt in.',
+                tone: 'warning',
+              }),
+      planned_features: [
+        'Inbox-powered application status detection',
+        'Timeline enrichment from recruiter communications',
+        'Optional service-level scan controls and summaries in a later phase',
+      ],
+      actions: connected
+        ? [buildMockServiceAction({ key: 'disconnect', label: 'Disconnect', style: 'secondary', method: 'DELETE', href: '/api/integrations/gmail/disconnect' })]
+        : [gmailConfigured
+            ? buildMockServiceAction({ key: 'connect', label: 'Connect', style: 'primary', method: 'POST', href: '/api/integrations/gmail/connect/start' })
+            : buildMockServiceAction({ key: 'unavailable', label: 'Unavailable', enabled: false, style: 'muted' })],
+    }
+  }
+
+  if (normalized === 'calendar_sync') {
+    return {
+      key: 'calendar_sync',
+      label: 'Calendar Sync',
+      status: 'coming_soon',
+      connected: false,
+      account_label: 'Planned for a future release.',
+      availability: 'coming_soon',
+      description: 'Calendar Sync will help UAH coordinate interview timing, reminders, and event context when the service launches.',
+      capabilities: [
+        'Match interview invites to tracked applications.',
+        'Highlight upcoming conversations and scheduling windows.',
+        'Reduce manual copy-and-paste between recruiting emails and your calendar.',
+      ],
+      permissions: [
+        'No calendar access is requested in this release.',
+        'Any future calendar permissions will be explained clearly before opt-in.',
+      ],
+      readiness: {
+        title: 'On the roadmap',
+        description: 'This service is being designed for a future release and is not yet connectable.',
+        tone: 'muted',
+      },
+      planned_features: [
+        'Interview scheduling awareness',
+        'Reminder and event enrichment',
+        'Meeting context linked back to job applications',
+      ],
+      actions: [buildMockServiceAction({ key: 'coming_soon', label: 'Coming soon', enabled: false, style: 'muted' })],
+    }
+  }
+
+  if (normalized === 'resume_imports') {
+    return {
+      key: 'resume_imports',
+      label: 'Resume Imports',
+      status: 'coming_soon',
+      connected: false,
+      account_label: 'Planned for a future release.',
+      availability: 'coming_soon',
+      description: 'Resume Imports will make it easier to bring documents into UAH from external services without rebuilding your profile by hand.',
+      capabilities: [
+        'Import resumes and supporting documents from connected storage providers.',
+        'Keep document sources organized for future autofill workflows.',
+        'Reduce friction when refreshing resumes across multiple applications.',
+      ],
+      permissions: [
+        'No document-provider access is requested in this release.',
+        'Future providers will explain exactly which files or folders are shared.',
+      ],
+      readiness: {
+        title: 'Planned for later',
+        description: 'This service is intentionally listed early so Settings reads as a reusable integrations hub from day one.',
+        tone: 'muted',
+      },
+      planned_features: [
+        'External resume import flows',
+        'Document source organization',
+        'Future profile/document sync helpers',
+      ],
+      actions: [buildMockServiceAction({ key: 'coming_soon', label: 'Coming soon', enabled: false, style: 'muted' })],
+    }
+  }
+
+  return null
+}
+
+function listMockServiceSummaries(state) {
+  const gmailDetail = buildMockServiceDetail(state, 'gmail')
+  const calendarDetail = buildMockServiceDetail(state, 'calendar_sync')
+  const resumeImportsDetail = buildMockServiceDetail(state, 'resume_imports')
+
+  return [
+    {
+      key: gmailDetail.key,
+      label: gmailDetail.label,
+      category: 'communication',
+      status: gmailDetail.status,
+      connected: gmailDetail.connected,
+      availability: gmailDetail.availability,
+      summary: gmailDetail.connected
+        ? 'Mailbox ready for future job-update scanning and timeline enrichment.'
+        : (mockGmailConfigured()
+            ? 'Opt in to read-only inbox access so UAH can prepare for job update workflows.'
+            : 'Gmail support exists, but this environment still needs OAuth configuration before users can connect.'),
+      account_label: gmailDetail.account_label,
+      primary_action: gmailDetail.actions[0],
+      can_view_details: true,
+    },
+    {
+      key: calendarDetail.key,
+      label: calendarDetail.label,
+      category: 'productivity',
+      status: calendarDetail.status,
+      connected: false,
+      availability: calendarDetail.availability,
+      summary: 'Prepare for future interview scheduling and reminder enrichment.',
+      account_label: calendarDetail.account_label,
+      primary_action: calendarDetail.actions[0],
+      can_view_details: true,
+    },
+    {
+      key: resumeImportsDetail.key,
+      label: resumeImportsDetail.label,
+      category: 'documents',
+      status: resumeImportsDetail.status,
+      connected: false,
+      availability: resumeImportsDetail.availability,
+      summary: 'Bring resumes and related documents into UAH from future connected sources.',
+      account_label: resumeImportsDetail.account_label,
+      primary_action: resumeImportsDetail.actions[0],
+      can_view_details: true,
+    },
+  ]
+}
+
 function queryValues(params, key) {
   return params.getAll(key).map((value) => normalizeText(value)).filter(Boolean)
 }
@@ -1251,6 +1470,87 @@ async function handleMockApiRequest(request, requestUrl, state) {
 
   if (pathname === '/api/auth/me' && method === 'GET') {
     return toJsonResponse(state.user)
+  }
+
+  if (pathname === '/api/auth/connected-accounts' && method === 'GET') {
+    return toJsonResponse(buildMockConnectedAccounts(state))
+  }
+
+  if (pathname === '/api/auth/google/connect/start' && method === 'POST') {
+    state.user = {
+      ...state.user,
+      google_id: state.user.google_id || 'mock-google-account',
+    }
+    saveState(state)
+    return toJsonResponse({
+      authorization_url: `${window.location.origin}/settings?accounts=connected&provider=google`,
+    })
+  }
+
+  if (pathname === '/api/auth/google/disconnect' && method === 'DELETE') {
+    if (!state.user.google_id) {
+      return toJsonResponse({ message: 'Google account already disconnected' })
+    }
+
+    if (!state.user.hashed_password) {
+      return toJsonResponse(
+        { detail: 'Cannot disconnect Google without another sign-in method. Set a password first.' },
+        400
+      )
+    }
+
+    state.user = {
+      ...state.user,
+      google_id: null,
+    }
+    saveState(state)
+    return toJsonResponse({ message: 'Google account disconnected' })
+  }
+
+  if (pathname === '/api/integrations/services' && method === 'GET') {
+    return toJsonResponse(listMockServiceSummaries(state))
+  }
+
+  const integrationServiceMatch = pathname.match(/^\/api\/integrations\/services\/([^/]+)$/)
+  if (integrationServiceMatch && method === 'GET') {
+    const detail = buildMockServiceDetail(state, integrationServiceMatch[1])
+    if (!detail) {
+      return toJsonResponse({ detail: 'Service not found' }, 404)
+    }
+    return toJsonResponse(detail)
+  }
+
+  if (pathname === '/api/integrations/gmail/status' && method === 'GET') {
+    return toJsonResponse({
+      connected: Boolean(state.user.gmail_refresh_token),
+      email: state.user.gmail_email,
+    })
+  }
+
+  if (pathname === '/api/integrations/gmail/connect/start' && method === 'POST') {
+    if (!mockGmailConfigured()) {
+      return toJsonResponse({ detail: 'not_configured' }, 400)
+    }
+
+    state.user = {
+      ...state.user,
+      gmail_refresh_token: 'mock-gmail-refresh-token',
+      gmail_email: state.user.email,
+    }
+    saveState(state)
+    return toJsonResponse({
+      authorization_url: `${window.location.origin}/settings?service=gmail&service_state=connected`,
+    })
+  }
+
+  if (pathname === '/api/integrations/gmail/disconnect' && method === 'DELETE') {
+    state.user = {
+      ...state.user,
+      gmail_refresh_token: null,
+      gmail_email: null,
+    }
+    saveState(state)
+    return toJsonResponse({ message: 'Gmail disconnected' })
   }
 
   if (pathname === '/api/account/change-name' && method === 'PUT') {

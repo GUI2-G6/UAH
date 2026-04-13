@@ -171,6 +171,14 @@
                             <p class="panel-eyebrow">Library</p>
                             <h3>Imported Resumes</h3>
                         </div>
+                        <button
+                            v-if="libraryHasOverflow"
+                            class="btn-secondary btn-compact"
+                            type="button"
+                            @click="showLibraryModal = true"
+                        >
+                            View All
+                        </button>
                     </div>
                 </template>
 
@@ -181,7 +189,7 @@
                 <div v-else-if="resumesError" class="upload-error">{{ resumesError }}</div>
 
                 <div v-else-if="resumes.length" class="resume-list">
-                    <div v-for="r in resumes" :key="r.id" class="resume-list-item">
+                    <div v-for="r in libraryPreviewResumes" :key="r.id" class="resume-list-item">
                         <div class="pdf-icon">PDF</div>
                         <div class="resume-meta">
                             <p class="resume-name">{{ r.file_name }}</p>
@@ -203,6 +211,15 @@
                             </button>
                         </div>
                     </div>
+                </div>
+
+                <div v-if="libraryHasOverflow" class="library-preview-footer">
+                    <p class="library-preview-note">
+                        Showing {{ libraryPreviewResumes.length }} of {{ resumes.length }} resumes.
+                    </p>
+                    <button class="btn-secondary" type="button" @click="showLibraryModal = true">
+                        Expand Library
+                    </button>
                 </div>
 
                 <div v-else class="empty-state">
@@ -957,6 +974,53 @@
             @confirm="confirmJobInfoLeave"
         />
 
+        <div v-if="showLibraryModal" class="modal-overlay" @click.self="showLibraryModal = false">
+            <div class="modal-box library-modal-box" v-draggable-modal="{ handle: '.modal-drag-header' }">
+                <div class="modal-drag-header library-modal-header">
+                    <div>
+                        <h2>Imported Resume Library</h2>
+                        <p class="subtitle">Browse all imported resumes in one place without stretching the main page layout.</p>
+                    </div>
+                    <button class="btn-secondary btn-compact" @click="showLibraryModal = false">Close</button>
+                </div>
+
+                <div v-if="resumesLoading" class="loading-row">
+                    <div class="spinner"></div> Loading resumes…
+                </div>
+
+                <div v-else-if="resumesError" class="upload-error">{{ resumesError }}</div>
+
+                <div v-else-if="resumes.length" class="resume-list resume-list--modal">
+                    <div v-for="r in resumes" :key="`modal-${r.id}`" class="resume-list-item">
+                        <div class="pdf-icon">PDF</div>
+                        <div class="resume-meta">
+                            <p class="resume-name">{{ r.file_name }}</p>
+                            <p class="resume-date">Uploaded {{ formatDate(r.created_at) }}</p>
+                        </div>
+                        <div class="resume-badges">
+                            <span :class="['badge', badgeClass(r)]">{{ badgeText(r) }}</span>
+                            <span v-if="r.parse_method" :class="['badge', 'parse-method-badge', parseMethodToneClass(r.parse_method)]">{{ parseMethodTagLabel(r.parse_method) }}</span>
+                        </div>
+                        <div class="resume-actions">
+                            <button title="View parsed data" @click="viewResume(r.id)">View</button>
+                            <button
+                                title="Delete resume"
+                                class="delete-btn"
+                                :class="{ 'confirm-delete': deletingId === r.id }"
+                                @click="handleDelete(r.id)"
+                            >
+                                {{ deletingId === r.id ? 'Confirm Delete' : 'Delete' }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-else class="empty-state">
+                    <p>No resumes yet. Import a PDF to get started.</p>
+                </div>
+            </div>
+        </div>
+
     </div><!-- /.page -->
 </template>
 
@@ -987,6 +1051,7 @@ export default {
             resumesLoading: false,
             resumesError: null,
             deletingId: null,
+            showLibraryModal: false,
 
             // Inline upload
             uploadStep: 'select',   // 'select' | 'confirm'
@@ -1126,6 +1191,12 @@ export default {
         },
         portalReadyCount() {
             return this.resumes.filter(r => r.portal_ready).length
+        },
+        libraryPreviewResumes() {
+            return this.resumes.slice(0, 3)
+        },
+        libraryHasOverflow() {
+            return this.resumes.length > 3
         },
         latestUploadDate() {
             if (!this.resumes.length) return '—'
@@ -1620,6 +1691,7 @@ export default {
 
         // ── View modal ──────────────────────────────────────
         async viewResume(id) {
+            this.showLibraryModal = false
             this._viewResumeId = id
             this.showViewModal = true
             this.viewLoading = true
@@ -1695,6 +1767,7 @@ export default {
 
         // ── Inline upload ───────────────────────────────────
         openUploadModal() {
+            this.showLibraryModal = false
             this.uploadStep = 'select'
             this.pendingFile = null
             this.parseMethod = this.isLocalParseMethodAvailable ? 'local' : 'cloud'

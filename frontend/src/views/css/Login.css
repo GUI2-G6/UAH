@@ -6,7 +6,7 @@
 
 .page {
   min-height: 100vh;
-  background-color: var(--color-surface-muted);
+  background: var(--app-page-background);
   display: flex;
   flex-direction: column;
   align-items: center;
