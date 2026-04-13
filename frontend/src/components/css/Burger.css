@@ -5,7 +5,7 @@
 }
 
 #burger > img:hover {
-  background-color: rgb(194, 232, 255);
+  background-color: rgb(194, 255, 251);
   border-radius: 8px;
 }
 
@@ -77,7 +77,7 @@
 }
 
 .burger-button:hover {
-  background-color: rgb(194, 232, 255);
+  background-color: rgb(194, 255, 251);
 }
 
 /*Burger items*/
@@ -112,7 +112,7 @@
 }
 
 .burger-item:hover {
-  background-color: rgb(194, 232, 255);
+  background-color: rgb(194, 255, 251);
   border-radius: 8px;
 }
 
