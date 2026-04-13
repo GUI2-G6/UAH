@@ -15,9 +15,9 @@
                     <p>Last Name</p>
                     <input id="applicant-last-name" type="text" name="last_name" autocomplete="off" v-model="lastName">
                     <p>Email</p>
-                    <input id="applicant-email" type="email" name="email" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="currentUser.email">
+                    <input id="applicant-email" type="email" name="email" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="currentUser.email" @blur="normalizeContactField('email')">
                     <p>Phone</p>
-                    <input id="applicant-phone" type="tel" name="phone" autocomplete="off" v-model="currentUser.phone">
+                    <input id="applicant-phone" type="tel" name="phone" autocomplete="off" v-model="currentUser.phone" @blur="normalizeContactField('phone')">
                     <p>LinkedIN URL</p>
                     <input id="applicant-linkedin-url" type="url" name="linkedin_url" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="currentUser.linkedin">
                     <p>Portfolio/Website</p>
@@ -138,6 +138,7 @@
 import Card from "../components/Card.vue";
 import ConfirmModal from "../components/ConfirmModal.vue";
 import { authedFetch, clearAuth, getCurrentUser, setCurrentUser, syncCurrentUser } from "../lib/auth.js";
+import { assertValidEmail, normalizePhone } from "../lib/validation.js";
 
 export default {
   name: "ApplicantInformation",
@@ -223,6 +224,21 @@ export default {
             if (!msg) return `${label} failed`
             if (msg.startsWith('HTTP ')) return `${label} failed (${msg})`
             return `${label} failed: ${msg}`
+        },
+        normalizeContactField(fieldKey) {
+            if (!this.currentUser) return
+
+            try {
+                if (fieldKey === 'email') {
+                    this.currentUser.email = this.currentUser.email ? assertValidEmail(this.currentUser.email) : ''
+                    return
+                }
+                if (fieldKey === 'phone') {
+                    this.currentUser.phone = this.currentUser.phone ? normalizePhone(this.currentUser.phone) : ''
+                }
+            } catch {
+                // Keep the user's raw value in place until a save flow validates it.
+            }
         },
         async loadUser() {
             this.currentUser = getCurrentUser()

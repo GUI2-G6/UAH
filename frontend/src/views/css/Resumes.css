@@ -146,6 +146,31 @@
   flex-wrap: wrap;
 }
 
+.resumes-page .library-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px 12px;
+}
+
+.resumes-page .sort-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.resumes-page .sort-control select {
+  min-height: 36px;
+  border: 1px solid rgba(203, 213, 225, 0.95);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 8px 10px;
+}
+
 .resumes-page .panel-header--stacked {
   align-items: flex-start;
 }
@@ -2587,6 +2612,10 @@
   color: #1d4ed8;
 }
 
+.resumes-page .field-group--select select {
+  cursor: pointer;
+}
+
 .resumes-page .field-group {
   min-width: 0;
   gap: 6px;
@@ -2610,6 +2639,39 @@
 .resumes-page .field-group--locked select:disabled {
   color: #334155;
   -webkit-text-fill-color: #334155;
+}
+
+.resumes-page .contact-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.resumes-page .contact-link {
+  color: var(--color-primary-600);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.resumes-page .contact-link:hover {
+  color: var(--color-primary-700);
+  text-decoration: underline;
+}
+
+.resumes-page .phone-country-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.1);
+  border: 1px solid rgba(15, 118, 110, 0.25);
+  color: #0f766e;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
 }
 
 .resumes-page .field-group--editing input,
@@ -2717,6 +2779,16 @@
 
   .resumes-page .library-modal-header {
     flex-direction: column;
+  }
+
+  .resumes-page .library-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .resumes-page .sort-control {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .resumes-page .resume-list-item {
