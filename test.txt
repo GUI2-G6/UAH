@@ -1,37 +1,24 @@
 
 
-
-make cannotical definitions for each page we currently have so we make sure our understandings are all aligned between devs and implementation.
-
-
-
-make sure all scripts are properly isolated and stuff to where they belong
-
-
 add nice regex for phone numbers and emails and stuff globally.
 
 add cool area code flag render for phone numbers idk
 
 add phone number linking ability
 
-padding on view details button is odd 
 
 standardize connected accounts button/card sizes
 
-make sure resume page ui stuff is mobile friendly
 
 
 NATURAL LANGUAGE MODEL FILTER APPLICATION?? yes this
 
 pin drop map featue for job search
 
-fix artifact on save disclosures page
 
 add simple sorting on the resumes page 
 
 "
-
-
 we can add a credit to the site for those icons btw nick if youd like
 Nicholas Johnson — 1:21 PM
 sure, you can add that anywhere
@@ -41,5 +28,8 @@ any thing you want linked to it? just your full name? or an email, github, linke
 Nicholas Johnson — 1:22 PM
 did you use a gradient on the back of the page? i may make the burger a gradient too just for conistency
 just enough so she knows it wasnt stolen/ai
-
 "
+
+fix dropdowns in resume profile stuff to make them usable
+
+one more pass on filters and stuff's function
