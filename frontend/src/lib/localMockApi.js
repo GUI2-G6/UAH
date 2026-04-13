@@ -115,9 +115,112 @@ const CATEGORY_GROUP_BY_NAME = CATEGORY_GROUPS.reduce((acc, group) => {
   return acc
 }, {})
 
+const PROVIDER_ATTRIBUTION_FIXTURES = {
+  the_muse: {
+    provider: 'the_muse',
+    default_state: 'active',
+    sweep_mode: 'category',
+    scheduled_interval_minutes: null,
+    ingest_enabled: true,
+    display_enabled: true,
+    scheduled_enabled: true,
+    status: 'active',
+    attribution: {
+      label: 'The Muse',
+      url: 'https://www.themuse.com',
+      required: true,
+      logo_url: null,
+    },
+  },
+  arbeitnow: {
+    provider: 'arbeitnow',
+    default_state: 'active',
+    sweep_mode: 'global',
+    scheduled_interval_minutes: 120,
+    ingest_enabled: true,
+    display_enabled: true,
+    scheduled_enabled: true,
+    status: 'active',
+    attribution: {
+      label: 'Arbeitnow',
+      url: 'https://www.arbeitnow.com',
+      required: false,
+      logo_url: null,
+    },
+  },
+  findwork: {
+    provider: 'findwork',
+    default_state: 'dormant',
+    sweep_mode: 'global',
+    scheduled_interval_minutes: 240,
+    ingest_enabled: false,
+    display_enabled: false,
+    scheduled_enabled: false,
+    status: 'dormant',
+    attribution: {
+      label: 'Findwork',
+      url: 'https://findwork.dev',
+      required: false,
+      logo_url: null,
+    },
+  },
+  jooble: {
+    provider: 'jooble',
+    default_state: 'dormant',
+    sweep_mode: 'matrix',
+    scheduled_interval_minutes: 360,
+    ingest_enabled: false,
+    display_enabled: false,
+    scheduled_enabled: false,
+    status: 'dormant',
+    attribution: {
+      label: 'Jooble',
+      url: 'https://jooble.org',
+      required: false,
+      logo_url: null,
+    },
+  },
+  adzuna: {
+    provider: 'adzuna',
+    default_state: 'dormant',
+    sweep_mode: 'category',
+    scheduled_interval_minutes: 720,
+    ingest_enabled: false,
+    display_enabled: false,
+    scheduled_enabled: false,
+    status: 'dormant',
+    attribution: {
+      label: 'Jobs by Adzuna',
+      url: 'https://www.adzuna.co.uk',
+      required: true,
+      logo_url: 'https://www.adzuna.co.uk/press.html',
+      salary_label: 'Adzuna Jobsworth',
+      salary_url: 'https://www.adzuna.co.uk/jobs/salary-predictor.html',
+    },
+  },
+  careerjet: {
+    provider: 'careerjet',
+    default_state: 'dormant',
+    sweep_mode: 'disabled',
+    scheduled_interval_minutes: null,
+    ingest_enabled: false,
+    display_enabled: false,
+    scheduled_enabled: false,
+    status: 'dormant',
+    attribution: {
+      label: 'Careerjet',
+      url: 'https://www.careerjet.com',
+      required: false,
+      logo_url: null,
+    },
+  },
+}
+
 const JOB_FIXTURES = [
   {
     id: 'mock-job-1001',
+    provider: 'the_muse',
+    provider_job_id: '7619281',
     name: 'Frontend Engineer (Vue)',
     short_name: 'Frontend Engineer',
     company: 'Atlas Systems',
@@ -134,11 +237,17 @@ const JOB_FIXTURES = [
     local_compatibility_reason: 'Remote-friendly in selected region',
     location_constraints: { countries: ['US'], states: ['AL', 'TX'] },
     publication_date: '2026-04-05T09:00:00Z',
-    job_url: 'https://example.com/jobs/mock-job-1001',
+    provider_url: 'https://www.themuse.com/jobs/atlas-systems/frontend-engineer-vue',
+    job_url: 'https://www.themuse.com/jobs/atlas-systems/frontend-engineer-vue',
+    apply_url: 'https://jobs.ashbyhq.com/atlas-systems/frontend-123',
+    apply_portal: 'ashby',
+    source_tags: ['provider:the_muse', 'apply_portal:ashby'],
     contents: 'Build and ship frontend features with Vue and modern tooling.',
   },
   {
     id: 'mock-job-1002',
+    provider: 'arbeitnow',
+    provider_job_id: 'backend-python-engineer',
     name: 'Backend Python Engineer',
     short_name: 'Backend Engineer',
     company: 'Data Forge',
@@ -155,11 +264,17 @@ const JOB_FIXTURES = [
     local_compatibility_reason: '',
     location_constraints: { countries: ['US'], states: ['TX'] },
     publication_date: '2026-04-02T11:30:00Z',
-    job_url: 'https://example.com/jobs/mock-job-1002',
+    provider_url: 'https://jobs.ashbyhq.com/data-forge/backend-python-1002',
+    job_url: 'https://jobs.ashbyhq.com/data-forge/backend-python-1002',
+    apply_url: 'https://jobs.ashbyhq.com/data-forge/backend-python-1002',
+    apply_portal: 'ashby',
+    source_tags: ['provider:arbeitnow', 'apply_portal:ashby'],
     contents: 'Own API performance and queue reliability.',
   },
   {
     id: 'mock-job-1003',
+    provider: 'the_muse',
+    provider_job_id: '7619282',
     name: 'Product Designer',
     short_name: 'Product Designer',
     company: 'Northwind Studio',
@@ -176,11 +291,17 @@ const JOB_FIXTURES = [
     local_compatibility_reason: 'No hard location lock',
     location_constraints: { countries: ['US', 'CA'] },
     publication_date: '2026-04-06T13:45:00Z',
-    job_url: 'https://example.com/jobs/mock-job-1003',
+    provider_url: 'https://www.themuse.com/jobs/northwind-studio/product-designer',
+    job_url: 'https://www.themuse.com/jobs/northwind-studio/product-designer',
+    apply_url: 'https://boards.greenhouse.io/northwind/jobs/1003',
+    apply_portal: 'greenhouse',
+    source_tags: ['provider:the_muse', 'apply_portal:greenhouse'],
     contents: 'Design recruiting workflows and dashboard UX.',
   },
   {
     id: 'mock-job-1004',
+    provider: 'arbeitnow',
+    provider_job_id: 'data-analyst',
     name: 'Data Analyst',
     short_name: 'Data Analyst',
     company: 'Peak Metrics',
@@ -197,11 +318,17 @@ const JOB_FIXTURES = [
     local_compatibility_reason: 'Remote with occasional office visits',
     location_constraints: { countries: ['US'] },
     publication_date: '2026-03-31T15:15:00Z',
-    job_url: 'https://example.com/jobs/mock-job-1004',
+    provider_url: 'https://jobs.lever.co/peak-metrics/1004',
+    job_url: 'https://jobs.lever.co/peak-metrics/1004',
+    apply_url: 'https://jobs.lever.co/peak-metrics/1004',
+    apply_portal: 'lever',
+    source_tags: ['provider:arbeitnow', 'apply_portal:lever'],
     contents: 'Create analytics for hiring funnel performance.',
   },
   {
     id: 'mock-job-1005',
+    provider: 'the_muse',
+    provider_job_id: '7619283',
     name: 'Security Engineer',
     short_name: 'Security Engineer',
     company: 'ShieldOps',
@@ -218,11 +345,17 @@ const JOB_FIXTURES = [
     local_compatibility_reason: '',
     location_constraints: { countries: ['US'] },
     publication_date: '2026-04-01T08:20:00Z',
-    job_url: 'https://example.com/jobs/mock-job-1005',
+    provider_url: 'https://www.themuse.com/jobs/shieldops/security-engineer',
+    job_url: 'https://www.themuse.com/jobs/shieldops/security-engineer',
+    apply_url: 'https://www.themuse.com/jobs/shieldops/security-engineer',
+    apply_portal: 'company_site',
+    source_tags: ['provider:the_muse'],
     contents: 'Develop secure defaults and incident tooling.',
   },
   {
     id: 'mock-job-1006',
+    provider: 'arbeitnow',
+    provider_job_id: 'qa-automation-engineer',
     name: 'QA Automation Engineer',
     short_name: 'QA Automation',
     company: 'Blue Pine Labs',
@@ -239,7 +372,11 @@ const JOB_FIXTURES = [
     local_compatibility_reason: 'Remote-allowed in North America',
     location_constraints: { countries: ['CA', 'US'] },
     publication_date: '2026-04-07T10:05:00Z',
-    job_url: 'https://example.com/jobs/mock-job-1006',
+    provider_url: 'https://jobs.workable.com/blue-pine-labs/1006',
+    job_url: 'https://jobs.workable.com/blue-pine-labs/1006',
+    apply_url: 'https://jobs.workable.com/blue-pine-labs/1006',
+    apply_portal: 'workable',
+    source_tags: ['provider:arbeitnow', 'apply_portal:workable'],
     contents: 'Automate regression and smoke suites.',
   },
 ]
@@ -1386,6 +1523,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
         '/api/auth/login': {},
         '/api/jobs/filter-metadata': {},
         '/api/jobs/search': {},
+        '/api/providers/attribution': {},
       },
     })
   }
@@ -1923,6 +2061,12 @@ async function handleMockApiRequest(request, requestUrl, state) {
 
   if (pathname === '/api/jobs/filter-metadata' && method === 'GET') {
     return toJsonResponse(buildMockFilterMetadata())
+  }
+
+  if (pathname === '/api/providers/attribution' && method === 'GET') {
+    return toJsonResponse({
+      providers: Object.values(PROVIDER_ATTRIBUTION_FIXTURES).map((provider) => asJson(provider)),
+    })
   }
 
   if (pathname === '/api/geolocation/ip' && method === 'GET') {
