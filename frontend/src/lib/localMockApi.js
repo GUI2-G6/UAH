@@ -1,4 +1,5 @@
 import { getAccessToken, getCurrentUser, setAuth } from './auth.js'
+import { assertValidEmail, normalizePhone } from './validation.js'
 
 const MOCK_STATE_KEY = 'uah_mock_state_v1'
 
@@ -1354,6 +1355,22 @@ async function parseJsonBody(request) {
   }
 }
 
+function normalizeProfileContactPayload(body = {}) {
+  const next = { ...body }
+
+  if (Object.prototype.hasOwnProperty.call(next, 'email')) {
+    const rawEmail = typeof next.email === 'string' ? next.email.trim() : next.email
+    next.email = rawEmail ? assertValidEmail(rawEmail) : ''
+  }
+
+  if (Object.prototype.hasOwnProperty.call(next, 'phone')) {
+    const rawPhone = typeof next.phone === 'string' ? next.phone.trim() : next.phone
+    next.phone = rawPhone ? normalizePhone(rawPhone) : ''
+  }
+
+  return next
+}
+
 async function handleMockApiRequest(request, requestUrl, state) {
   const method = coerceMethod(request.method)
   const pathname = requestUrl.pathname
@@ -1577,7 +1594,13 @@ async function handleMockApiRequest(request, requestUrl, state) {
 
   if (pathname === '/api/account/change-email' && method === 'PUT') {
     const body = await parseJsonBody(request)
-    const nextEmail = normalizeTextLower(body.new_email)
+    let nextEmail = ''
+
+    try {
+      nextEmail = assertValidEmail(body.new_email, 'new email')
+    } catch (error) {
+      return toJsonResponse({ detail: error?.message || 'Please enter a valid email address' }, 400)
+    }
 
     if (!nextEmail) {
       return toJsonResponse({ detail: 'new_email is required' }, 400)
@@ -1774,7 +1797,12 @@ async function handleMockApiRequest(request, requestUrl, state) {
   }
 
   if ((pathname === '/api/applicant-profile/' || pathname === '/api/applicant-profile') && method === 'POST') {
-    const body = await parseJsonBody(request)
+    let body = await parseJsonBody(request)
+    try {
+      body = normalizeProfileContactPayload(body)
+    } catch (error) {
+      return toJsonResponse({ detail: error?.message || 'Please enter valid contact details' }, 400)
+    }
     const id = state.nextIds.profile
     state.nextIds.profile += 1
 
@@ -1815,7 +1843,12 @@ async function handleMockApiRequest(request, requestUrl, state) {
       return toJsonResponse({ detail: 'Profile not found' }, 404)
     }
 
-    const body = await parseJsonBody(request)
+    let body = await parseJsonBody(request)
+    try {
+      body = normalizeProfileContactPayload(body)
+    } catch (error) {
+      return toJsonResponse({ detail: error?.message || 'Please enter valid contact details' }, 400)
+    }
     state.profiles[profileIndex] = {
       ...state.profiles[profileIndex],
       ...body,

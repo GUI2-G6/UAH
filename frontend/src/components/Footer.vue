@@ -1,6 +1,7 @@
 <template>
     <footer class="footer">
         <p>&copy; 2026 UAH. All rights reserved.</p>
+        <p class="footer-credit">Icons credited to Nicholas Johnson.</p>
     <nav>
         <router-link to="/status">Status</router-link>
         <button v-if="showDebugTools" type="button" class="footer-link-button footer-link-button-dev" @click="$emit('open-debug-view')">Debug Tools · Dev only</button>

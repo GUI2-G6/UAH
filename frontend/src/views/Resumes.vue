@@ -171,14 +171,25 @@
                             <p class="panel-eyebrow">Library</p>
                             <h3>Imported Resumes</h3>
                         </div>
-                        <button
-                            v-if="libraryHasOverflow"
-                            class="btn-secondary btn-compact"
-                            type="button"
-                            @click="showLibraryModal = true"
-                        >
-                            View All
-                        </button>
+                        <div class="library-header-actions">
+                            <label v-if="resumes.length" class="sort-control">
+                                <span>Sort</span>
+                                <select v-model="resumeSort" name="resume_sort" autocomplete="off">
+                                    <option value="newest">Newest first</option>
+                                    <option value="oldest">Oldest first</option>
+                                    <option value="name-asc">File name A-Z</option>
+                                    <option value="name-desc">File name Z-A</option>
+                                </select>
+                            </label>
+                            <button
+                                v-if="libraryHasOverflow"
+                                class="btn-secondary btn-compact"
+                                type="button"
+                                @click="showLibraryModal = true"
+                            >
+                                View All
+                            </button>
+                        </div>
                     </div>
                 </template>
 
@@ -188,7 +199,7 @@
 
                 <div v-else-if="resumesError" class="upload-error">{{ resumesError }}</div>
 
-                <div v-else-if="resumes.length" class="resume-list">
+                <div v-else-if="sortedResumes.length" class="resume-list">
                     <div v-for="r in libraryPreviewResumes" :key="r.id" class="resume-list-item">
                         <div class="pdf-icon">PDF</div>
                         <div class="resume-meta">
@@ -355,7 +366,7 @@
 
                 <p class="profile-switcher-copy">Switch the active profile or create a new one before editing the sections below.</p>
                 <div class="autosave-status-row">
-                    <p class="autosave-hint">Double-click any field to edit. Changes autosave when you click away.</p>
+                    <p class="autosave-hint">Double-click text fields to edit. Dropdowns autosave as soon as you choose an option.</p>
                     <div
                         v-if="applicantSavingField || saveStatus.message"
                         :class="[
@@ -505,9 +516,9 @@
             <Card class="resume-card resume-section resume-section--authorization" variant="job">
                 <template #header><h3>Work Authorization</h3></template>
                 <div class="appinfo-grid">
-                    <div :class="['field-group', applicantFieldGroupClass('workAuth')]" @dblclick="unlockApplicantField('workAuth', 'resume-work-authorization')" title="Double-click to edit">
+                    <div :class="['field-group', 'field-group--select']" title="Choose an option to autosave">
                         <label>Authorization Status</label>
-                        <select id="resume-work-authorization" name="authorization_status" autocomplete="off" v-model="workAuth" :disabled="isApplicantFieldLocked('workAuth')" @blur="handleApplicantFieldBlur('workAuth')">
+                        <select id="resume-work-authorization" name="authorization_status" autocomplete="off" v-model="workAuth" :disabled="working" @change="handleApplicantSelectChange('workAuth')">
                             <option value="">Select…</option>
                             <option>US Citizen</option>
                             <option>Green Card</option>
@@ -517,9 +528,9 @@
                             <option>Require Sponsorship</option>
                         </select>
                     </div>
-                    <div :class="['field-group', applicantFieldGroupClass('requiresSponsorship')]" @dblclick="unlockApplicantField('requiresSponsorship', 'resume-requires-sponsorship')" title="Double-click to edit">
+                    <div :class="['field-group', 'field-group--select']" title="Choose an option to autosave">
                         <label>Requires Sponsorship?</label>
-                        <select id="resume-requires-sponsorship" name="requires_sponsorship" autocomplete="off" v-model="requiresSponsorship" :disabled="isApplicantFieldLocked('requiresSponsorship')" @blur="handleApplicantFieldBlur('requiresSponsorship')">
+                        <select id="resume-requires-sponsorship" name="requires_sponsorship" autocomplete="off" v-model="requiresSponsorship" :disabled="working" @change="handleApplicantSelectChange('requiresSponsorship')">
                             <option value="">Select…</option>
                             <option>Yes</option>
                             <option>No</option>
@@ -606,9 +617,9 @@
             <Card class="resume-card resume-section resume-section--demographics" variant="job">
                 <template #header><h3>Demographics (Optional)</h3></template>
                 <div class="appinfo-grid">
-                    <div :class="['field-group', applicantFieldGroupClass('demographicGender')]" @dblclick="unlockApplicantField('demographicGender', 'resume-demographic-gender')" title="Double-click to edit">
+                    <div :class="['field-group', 'field-group--select']" title="Choose an option to autosave">
                         <label>Gender Identity (Optional)</label>
-                        <select id="resume-demographic-gender" name="demographic_gender" autocomplete="off" v-model="demographicGender" :disabled="isApplicantFieldLocked('demographicGender')" @blur="handleApplicantFieldBlur('demographicGender')">
+                        <select id="resume-demographic-gender" name="demographic_gender" autocomplete="off" v-model="demographicGender" :disabled="working" @change="handleApplicantSelectChange('demographicGender')">
                             <option value="">Prefer not to answer</option>
                             <option>Female</option>
                             <option>Male</option>
@@ -616,9 +627,9 @@
                             <option>Another identity</option>
                         </select>
                     </div>
-                    <div :class="['field-group', applicantFieldGroupClass('demographicEthnicity')]" @dblclick="unlockApplicantField('demographicEthnicity', 'resume-demographic-ethnicity')" title="Double-click to edit">
+                    <div :class="['field-group', 'field-group--select']" title="Choose an option to autosave">
                         <label>Ethnicity / Race (Optional)</label>
-                        <select id="resume-demographic-ethnicity" name="demographic_ethnicity" autocomplete="off" v-model="demographicEthnicity" :disabled="isApplicantFieldLocked('demographicEthnicity')" @blur="handleApplicantFieldBlur('demographicEthnicity')">
+                        <select id="resume-demographic-ethnicity" name="demographic_ethnicity" autocomplete="off" v-model="demographicEthnicity" :disabled="working" @change="handleApplicantSelectChange('demographicEthnicity')">
                             <option value="">Prefer not to answer</option>
                             <option>American Indian or Alaska Native</option>
                             <option>Asian</option>
@@ -834,11 +845,36 @@
                                 </div>
                                 <div class="view-field">
                                     <label>Email</label>
-                                    <p>{{ displayValue(viewingResume.structured_data.personal_info.email) }}</p>
+                                    <p>
+                                        <a
+                                            v-if="emailHref(viewingResume.structured_data.personal_info.email)"
+                                            class="contact-link"
+                                            :href="emailHref(viewingResume.structured_data.personal_info.email)"
+                                        >
+                                            {{ displayValue(viewingResume.structured_data.personal_info.email) }}
+                                        </a>
+                                        <span v-else>{{ displayValue(viewingResume.structured_data.personal_info.email) }}</span>
+                                    </p>
                                 </div>
                                 <div class="view-field">
                                     <label>Phone</label>
-                                    <p>{{ displayValue(viewingResume.structured_data.personal_info.phone) }}</p>
+                                    <p class="contact-line">
+                                        <span
+                                            v-if="phoneCountryBadge(viewingResume.structured_data.personal_info.phone)"
+                                            class="phone-country-badge"
+                                            :title="phoneCountryBadge(viewingResume.structured_data.personal_info.phone).label"
+                                        >
+                                            {{ phoneCountryBadge(viewingResume.structured_data.personal_info.phone).code }}
+                                        </span>
+                                        <a
+                                            v-if="phoneHref(viewingResume.structured_data.personal_info.phone)"
+                                            class="contact-link"
+                                            :href="phoneHref(viewingResume.structured_data.personal_info.phone)"
+                                        >
+                                            {{ displayValue(viewingResume.structured_data.personal_info.phone) }}
+                                        </a>
+                                        <span v-else>{{ displayValue(viewingResume.structured_data.personal_info.phone) }}</span>
+                                    </p>
                                 </div>
                                 <div class="view-field">
                                     <label>Location</label>
@@ -981,7 +1017,18 @@
                         <h2>Imported Resume Library</h2>
                         <p class="subtitle">Browse all imported resumes in one place without stretching the main page layout.</p>
                     </div>
-                    <button class="btn-secondary btn-compact" @click="showLibraryModal = false">Close</button>
+                    <div class="library-header-actions">
+                        <label v-if="resumes.length" class="sort-control">
+                            <span>Sort</span>
+                            <select v-model="resumeSort" name="resume_sort_modal" autocomplete="off">
+                                <option value="newest">Newest first</option>
+                                <option value="oldest">Oldest first</option>
+                                <option value="name-asc">File name A-Z</option>
+                                <option value="name-desc">File name Z-A</option>
+                            </select>
+                        </label>
+                        <button class="btn-secondary btn-compact" @click="showLibraryModal = false">Close</button>
+                    </div>
                 </div>
 
                 <div v-if="resumesLoading" class="loading-row">
@@ -990,8 +1037,8 @@
 
                 <div v-else-if="resumesError" class="upload-error">{{ resumesError }}</div>
 
-                <div v-else-if="resumes.length" class="resume-list resume-list--modal">
-                    <div v-for="r in resumes" :key="`modal-${r.id}`" class="resume-list-item">
+                <div v-else-if="sortedResumes.length" class="resume-list resume-list--modal">
+                    <div v-for="r in sortedResumes" :key="`modal-${r.id}`" class="resume-list-item">
                         <div class="pdf-icon">PDF</div>
                         <div class="resume-meta">
                             <p class="resume-name">{{ r.file_name }}</p>
@@ -1030,7 +1077,7 @@ import Card from '../components/Card.vue'
 import ConfirmModal from '../components/ConfirmModal.vue'
 import { authedFetch, getCurrentUser, setCurrentUser } from '../lib/auth.js'
 import { publishCurrentPageDiagnostics, clearCurrentPageDiagnostics } from '../lib/debugDiagnostics'
-import { assertValidEmail, normalizePhone } from '../lib/validation.js'
+import { assertValidEmail, buildMailtoHref, buildPhoneHref, inferPhoneCountry, normalizePhone } from '../lib/validation.js'
 import { showToast } from '../services/toastService.js'
 
 const APPINFO_KEY = 'uah_applicant_info'
@@ -1052,6 +1099,7 @@ export default {
             resumesError: null,
             deletingId: null,
             showLibraryModal: false,
+            resumeSort: 'newest',
 
             // Inline upload
             uploadStep: 'select',   // 'select' | 'confirm'
@@ -1192,15 +1240,33 @@ export default {
         portalReadyCount() {
             return this.resumes.filter(r => r.portal_ready).length
         },
+        sortedResumes() {
+            const resumes = [...this.resumes]
+
+            if (this.resumeSort === 'oldest') {
+                return resumes.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+            }
+
+            if (this.resumeSort === 'name-asc') {
+                return resumes.sort((a, b) => (a.file_name || '').localeCompare(b.file_name || '', undefined, { sensitivity: 'base' }))
+            }
+
+            if (this.resumeSort === 'name-desc') {
+                return resumes.sort((a, b) => (b.file_name || '').localeCompare(a.file_name || '', undefined, { sensitivity: 'base' }))
+            }
+
+            return resumes.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        },
         libraryPreviewResumes() {
-            return this.resumes.slice(0, 3)
+            return this.sortedResumes.slice(0, 3)
         },
         libraryHasOverflow() {
             return this.resumes.length > 3
         },
         latestUploadDate() {
             if (!this.resumes.length) return '—'
-            return this.formatDate(this.resumes[0].created_at)
+            const latest = [...this.resumes].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
+            return latest ? this.formatDate(latest.created_at) : '—'
         },
         parseProgressPercent() {
             if (this.parseStatus === 'queued' && this.parseQueuePosition && this.parseQueueTotal) {
@@ -1388,6 +1454,19 @@ export default {
                 this.applicantSavingField = ''
             }
         },
+        async handleApplicantSelectChange(fieldKey) {
+            this.applicantSavingField = fieldKey
+            const saved = await this.saveApplicantInfo({
+                successMessage: 'Changes autosaved.',
+                showToastOnSuccess: true,
+                showToastOnError: true,
+                isAutosave: true,
+                savingFieldKey: fieldKey,
+            })
+            if (saved) {
+                this.applicantSavingField = ''
+            }
+        },
         serializeApplicantPayload(payload = this.buildProfilePayload()) {
             return JSON.stringify(payload)
         },
@@ -1492,6 +1571,15 @@ export default {
         displayValue(value) {
             const cleaned = this.cleanTextValue(value)
             return cleaned || '—'
+        },
+        emailHref(value) {
+            return buildMailtoHref(this.cleanTextValue(value))
+        },
+        phoneHref(value) {
+            return buildPhoneHref(this.cleanTextValue(value))
+        },
+        phoneCountryBadge(value) {
+            return inferPhoneCountry(this.cleanTextValue(value))
         },
 
         parseMethodTagLabel(method) {
@@ -2235,6 +2323,7 @@ export default {
                 showToastOnSuccess = false,
                 showToastOnError = false,
                 isAutosave = false,
+                savingFieldKey = '',
             } = options
             this.working = true
             this.saveStatus = { type: '', message: '' }
@@ -2248,7 +2337,7 @@ export default {
                     return true
                 }
                 if (isAutosave) {
-                    this.applicantSavingField = this.applicantEditingField
+                    this.applicantSavingField = savingFieldKey || this.applicantEditingField
                 }
                 delete payload.name  // don't overwrite profile name on save
 
