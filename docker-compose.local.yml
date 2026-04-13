@@ -99,6 +99,7 @@ services:
       GMAIL_REDIRECT_URI: ${GMAIL_REDIRECT_URI:-}
 
       MUSE_API_KEY: ${MUSE_API_KEY:-}
+      THE_MUSE_API_KEY: ${THE_MUSE_API_KEY:-}
       ZAI_API_KEY: ${ZAI_API_KEY:-}
       ZAI_OCR_URL: ${ZAI_OCR_URL:-https://api.z.ai/api/paas/v4/layout_parsing}
       ZAI_LLM_URL: ${ZAI_LLM_URL:-https://api.z.ai/api/paas/v4/chat/completions}
@@ -152,6 +153,17 @@ services:
       MUSE_LOCATION_INDEX_SCAN_MAX_PAGES: ${MUSE_LOCATION_INDEX_SCAN_MAX_PAGES:-25}
       MUSE_LOCATION_INDEX_TIMEOUT_SECONDS: ${MUSE_LOCATION_INDEX_TIMEOUT_SECONDS:-10}
       MUSE_LOCATION_INDEX_RETENTION_DAYS: ${MUSE_LOCATION_INDEX_RETENTION_DAYS:-45}
+      THE_MUSE_RATE_LIMIT_PER_HOUR: ${THE_MUSE_RATE_LIMIT_PER_HOUR:-1000}
+      JOB_SYNC_ENABLED: ${JOB_SYNC_ENABLED:-true}
+      JOB_SYNC_STALE_THRESHOLD_HOURS: ${JOB_SYNC_STALE_THRESHOLD_HOURS:-6}
+      JOB_SYNC_SOFT_DELETE_MISSES: ${JOB_SYNC_SOFT_DELETE_MISSES:-3}
+      JOB_SYNC_HARD_PURGE_DAYS: ${JOB_SYNC_HARD_PURGE_DAYS:-180}
+      JOB_SYNC_DISPATCH_INTERVAL_SECONDS: ${JOB_SYNC_DISPATCH_INTERVAL_SECONDS:-300}
+      JOB_SYNC_CLEANUP_INTERVAL_SECONDS: ${JOB_SYNC_CLEANUP_INTERVAL_SECONDS:-3600}
+      JOB_SYNC_LOCK_TTL_SECONDS: ${JOB_SYNC_LOCK_TTL_SECONDS:-900}
+      JOB_SYNC_CLEANUP_LOCK_TTL_SECONDS: ${JOB_SYNC_CLEANUP_LOCK_TTL_SECONDS:-1800}
+      JOB_SYNC_CATEGORY_SCHEDULE_JSON: ${JOB_SYNC_CATEGORY_SCHEDULE_JSON:-}
+      JOB_SYNC_ENABLED_PROVIDERS_JSON: '${JOB_SYNC_ENABLED_PROVIDERS_JSON:-["the_muse"]}'
       GEO_IP_PROVIDER: ${GEO_IP_PROVIDER:-ipapi}
       IPSTACK_API_KEY: ${IPSTACK_API_KEY:-}
       GEOLOCATION_AUTO_BUILD_DATASET: ${GEOLOCATION_AUTO_BUILD_DATASET:-true}
@@ -162,6 +174,114 @@ services:
       - ./backend:/app
     ports:
       - "127.0.0.1:${LOCAL_BACKEND_HOST_PORT:-8000}:8000"
+    networks:
+      - uah-local
+
+  redis-local:
+    profiles: ["jobs"]
+    image: redis:7-alpine
+    container_name: uah-local-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${LOCAL_REDIS_HOST_PORT:-6379}:6379"
+    networks:
+      - uah-local
+
+  celery-worker-local:
+    profiles: ["jobs"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: uah-local-celery-worker
+    restart: unless-stopped
+    command: ["celery", "-A", "app.worker", "worker", "--loglevel=info", "--concurrency=2"]
+    depends_on:
+      db-local:
+        condition: service_healthy
+      redis-local:
+        condition: service_started
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-uah}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+      POSTGRES_DB: ${POSTGRES_DB:-uah_dev}
+      POSTGRES_HOST: db-local
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      ENVIRONMENT: ${ENVIRONMENT:-local}
+      ENV: ${ENV:-local}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY required}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET required}
+      AUTH_NAMESPACE: ${AUTH_NAMESPACE:-local}
+      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-uah_auth_local}
+      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-uah_session_local}
+      SESSION_COOKIE_SAMESITE: ${SESSION_COOKIE_SAMESITE:-lax}
+      SESSION_COOKIE_PATH: ${SESSION_COOKIE_PATH:-/}
+      SESSION_COOKIE_HTTPS_ONLY: ${SESSION_COOKIE_HTTPS_ONLY:-false}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:5173}
+      REDIS_URL: ${REDIS_URL:-redis://redis-local:6379/0}
+      MUSE_API_KEY: ${MUSE_API_KEY:-}
+      THE_MUSE_API_KEY: ${THE_MUSE_API_KEY:-}
+      THE_MUSE_RATE_LIMIT_PER_HOUR: ${THE_MUSE_RATE_LIMIT_PER_HOUR:-1000}
+      JOB_SYNC_ENABLED: ${JOB_SYNC_ENABLED:-true}
+      JOB_SYNC_STALE_THRESHOLD_HOURS: ${JOB_SYNC_STALE_THRESHOLD_HOURS:-6}
+      JOB_SYNC_SOFT_DELETE_MISSES: ${JOB_SYNC_SOFT_DELETE_MISSES:-3}
+      JOB_SYNC_HARD_PURGE_DAYS: ${JOB_SYNC_HARD_PURGE_DAYS:-180}
+      JOB_SYNC_DISPATCH_INTERVAL_SECONDS: ${JOB_SYNC_DISPATCH_INTERVAL_SECONDS:-300}
+      JOB_SYNC_CLEANUP_INTERVAL_SECONDS: ${JOB_SYNC_CLEANUP_INTERVAL_SECONDS:-3600}
+      JOB_SYNC_LOCK_TTL_SECONDS: ${JOB_SYNC_LOCK_TTL_SECONDS:-900}
+      JOB_SYNC_CLEANUP_LOCK_TTL_SECONDS: ${JOB_SYNC_CLEANUP_LOCK_TTL_SECONDS:-1800}
+      JOB_SYNC_CATEGORY_SCHEDULE_JSON: ${JOB_SYNC_CATEGORY_SCHEDULE_JSON:-}
+      JOB_SYNC_ENABLED_PROVIDERS_JSON: '${JOB_SYNC_ENABLED_PROVIDERS_JSON:-["the_muse"]}'
+    volumes:
+      - ./backend:/app
+    networks:
+      - uah-local
+
+  celery-beat-local:
+    profiles: ["jobs"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: uah-local-celery-beat
+    restart: unless-stopped
+    command: ["celery", "-A", "app.worker", "beat", "--loglevel=info", "--scheduler", "celery.beat.PersistentScheduler"]
+    depends_on:
+      celery-worker-local:
+        condition: service_started
+      redis-local:
+        condition: service_started
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-uah}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+      POSTGRES_DB: ${POSTGRES_DB:-uah_dev}
+      POSTGRES_HOST: db-local
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      ENVIRONMENT: ${ENVIRONMENT:-local}
+      ENV: ${ENV:-local}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY required}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET required}
+      AUTH_NAMESPACE: ${AUTH_NAMESPACE:-local}
+      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-uah_auth_local}
+      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-uah_session_local}
+      SESSION_COOKIE_SAMESITE: ${SESSION_COOKIE_SAMESITE:-lax}
+      SESSION_COOKIE_PATH: ${SESSION_COOKIE_PATH:-/}
+      SESSION_COOKIE_HTTPS_ONLY: ${SESSION_COOKIE_HTTPS_ONLY:-false}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:5173}
+      REDIS_URL: ${REDIS_URL:-redis://redis-local:6379/0}
+      MUSE_API_KEY: ${MUSE_API_KEY:-}
+      THE_MUSE_API_KEY: ${THE_MUSE_API_KEY:-}
+      THE_MUSE_RATE_LIMIT_PER_HOUR: ${THE_MUSE_RATE_LIMIT_PER_HOUR:-1000}
+      JOB_SYNC_ENABLED: ${JOB_SYNC_ENABLED:-true}
+      JOB_SYNC_STALE_THRESHOLD_HOURS: ${JOB_SYNC_STALE_THRESHOLD_HOURS:-6}
+      JOB_SYNC_SOFT_DELETE_MISSES: ${JOB_SYNC_SOFT_DELETE_MISSES:-3}
+      JOB_SYNC_HARD_PURGE_DAYS: ${JOB_SYNC_HARD_PURGE_DAYS:-180}
+      JOB_SYNC_DISPATCH_INTERVAL_SECONDS: ${JOB_SYNC_DISPATCH_INTERVAL_SECONDS:-300}
+      JOB_SYNC_CLEANUP_INTERVAL_SECONDS: ${JOB_SYNC_CLEANUP_INTERVAL_SECONDS:-3600}
+      JOB_SYNC_LOCK_TTL_SECONDS: ${JOB_SYNC_LOCK_TTL_SECONDS:-900}
+      JOB_SYNC_CLEANUP_LOCK_TTL_SECONDS: ${JOB_SYNC_CLEANUP_LOCK_TTL_SECONDS:-1800}
+      JOB_SYNC_CATEGORY_SCHEDULE_JSON: ${JOB_SYNC_CATEGORY_SCHEDULE_JSON:-}
+      JOB_SYNC_ENABLED_PROVIDERS_JSON: '${JOB_SYNC_ENABLED_PROVIDERS_JSON:-["the_muse"]}'
+    volumes:
+      - ./backend:/app
     networks:
       - uah-local
 

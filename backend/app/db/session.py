@@ -27,6 +27,7 @@ Important:
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import threading
 
 from sqlalchemy import create_engine
@@ -70,6 +71,16 @@ def SessionLocal():
     """Backward-compatible helper that returns a new DB session."""
     init_engine()
     return _SessionMaker()
+
+
+@contextmanager
+def session_scope():
+    """Yield a DB session and ensure it always closes."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 def get_db():

@@ -110,6 +110,18 @@ With the virtual environment activated, install the backend libraries:
 python -m pip install -r requirements.txt
 ```
 
+## Step 3.5: Apply Migrations
+
+The jobs aggregation backend now uses Alembic for the local jobs catalog tables instead of relying on startup `create_all()` behavior.
+
+Run migrations from `backend/` after installing dependencies:
+
+```bash
+alembic upgrade head
+```
+
+If you are using host-run backend development, make sure `POSTGRES_HOST=localhost` is set in the current shell before running Alembic so it targets your local Postgres container.
+
 ## Step 4: Run the Backend
 
 Before running the FastAPI server, you need to map PostgreSQL's host to `localhost` so Python knows where to find the database container you started in Step 1.
@@ -165,6 +177,40 @@ npm run dev:backend
 Then open [http://localhost:5173](http://localhost:5173). The Vite dev server proxies `/api`, `/docs`, and `/openapi.json` to `http://localhost:8000`.
 
 If you want frontend-only renderability without backend dependency, use `npm run dev` instead (mock mode).
+
+## Optional: Run Job Sync Worker And Scheduler
+
+The local jobs catalog is refreshed by Celery worker/beat processes backed by Redis.
+
+Host-run example:
+
+```bash
+# terminal 1, from repo root
+docker compose -f docker-compose.local.yml --profile jobs up -d redis-local
+
+# terminal 2, from backend/
+set REDIS_URL=redis://localhost:6379/0
+celery -A app.worker worker --loglevel=info --concurrency=2
+
+# terminal 3, from backend/
+set REDIS_URL=redis://localhost:6379/0
+celery -A app.worker beat --loglevel=info --scheduler celery.beat.PersistentScheduler
+```
+
+Compose-only local path:
+
+```bash
+docker compose -f docker-compose.local.yml --profile jobs up -d db-local redis-local celery-worker-local celery-beat-local
+```
+
+Key env vars for jobs sync:
+
+- `THE_MUSE_API_KEY`
+- `THE_MUSE_RATE_LIMIT_PER_HOUR`
+- `JOB_SYNC_STALE_THRESHOLD_HOURS`
+- `JOB_SYNC_SOFT_DELETE_MISSES`
+- `JOB_SYNC_HARD_PURGE_DAYS`
+- `JOB_SYNC_CATEGORY_SCHEDULE_JSON`
 
 ## Teardown
 

@@ -21,6 +21,7 @@ from contextlib import asynccontextmanager
 import logging
 from fastapi import FastAPI
 from app.api.routes import router as api_router
+from app.api.jobs import router as jobs_router
 from app.api.auth import router as auth_router
 from app.api.account import router as account_router
 from app.api.resume import router as resume_router
@@ -35,8 +36,25 @@ from app.services.geolocation import ensure_city_dataset
 from app.services.muse_location_index import ensure_muse_location_index
 from app.services.parse_queue import start_queue_worker, stop_queue_worker, reconcile_stale_parse_jobs
 import app.models  # noqa: F401 — ensure all models are registered
+from app.models.user import User, SavedJob
+from app.models.resume import Resume
+from app.models.parse_job import ParseJob
+from app.models.applicant_profile import ApplicantProfile
+from app.models.muse_location import MuseSupportedLocation
+from app.models.apply_session import ApplySession, ApplySessionEvent
 
 logger = logging.getLogger(__name__)
+
+LEGACY_STARTUP_TABLES = [
+    User.__table__,
+    SavedJob.__table__,
+    Resume.__table__,
+    ParseJob.__table__,
+    ApplicantProfile.__table__,
+    MuseSupportedLocation.__table__,
+    ApplySession.__table__,
+    ApplySessionEvent.__table__,
+]
 
 # Fail fast on missing critical secrets when running the backend.
 settings.require_secrets()
@@ -302,7 +320,7 @@ async def lifespan(app: FastAPI):
     engine = get_engine()
 
     # Create all tables on startup
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=engine, tables=LEGACY_STARTUP_TABLES)
     _ensure_users_table_columns(engine)
     _ensure_resumes_table_columns(engine)
     _enforce_email_first_identity_mirror()
@@ -376,6 +394,7 @@ app.add_middleware(
 # include them here with appropriate prefixes and tags.
 # ---------------------------------------------------------------------------
 app.include_router(api_router, prefix="/api")
+app.include_router(jobs_router, prefix="/api")
 app.include_router(auth_router)
 app.include_router(account_router)
 app.include_router(resume_router)
