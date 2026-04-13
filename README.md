@@ -123,6 +123,7 @@ Open `http://127.0.0.1:5173`.
 - API calls are handled by an in-browser mock API layer.
 - This path is isolated from dev/beta/prod infrastructure.
 - Non-local frontend builds default to backend mode.
+- Mock mode still uses browser storage for its fake JWT; deployed stacks now use a backend-issued `HttpOnly` auth cookie instead.
 
 ### Optional local backend passthrough mode
 
@@ -574,20 +575,24 @@ Copy the appropriate template values into a real root `.env` before running serv
 | `COMPOSE_PROJECT_NAME` | docker compose | Project namespace |
 | `ENV` | reference | Current environment |
 | `AUTH_NAMESPACE` | backend, frontend build | Environment auth namespace (`dev`, `beta`, `prod`) |
+| `AUTH_COOKIE_NAME` | backend | `HttpOnly` browser auth cookie name for API sessions |
 | `SESSION_COOKIE_NAME` | backend | Environment-scoped session cookie name (must not be `session`) |
 | `SESSION_COOKIE_SAMESITE` | backend | Session cookie SameSite policy (`lax`, `strict`, `none`) |
 | `SESSION_COOKIE_PATH` | backend | Session cookie path (usually `/`) |
 | `SESSION_COOKIE_HTTPS_ONLY` | backend | Use secure-only session cookie flag |
+| `GMAIL_TOKEN_ENCRYPTION_KEY` | backend | Dedicated encryption key for persisted Gmail refresh tokens |
 | `VITE_AUTH_NAMESPACE` | frontend build | Frontend auth storage namespace key suffix |
 | `VITE_LOCAL_MODE` | frontend build/runtime | Frontend API mode (`backend` for deployed stacks, `mock` for local-only UI runs) |
 | `DEV_DOMAIN` | reference | Domain for dev access |
 
-Compose now requires `AUTH_NAMESPACE` and `SESSION_COOKIE_NAME` for backend startup.
+Compose now requires environment-scoped auth naming for backend startup.
 Use environment-scoped values such as:
 
-- Dev: `AUTH_NAMESPACE=dev`, `SESSION_COOKIE_NAME=uah_session_dev`
-- Beta: `AUTH_NAMESPACE=beta`, `SESSION_COOKIE_NAME=uah_session_beta`
-- Prod: `AUTH_NAMESPACE=prod`, `SESSION_COOKIE_NAME=uah_session_prod`
+- Dev: `AUTH_NAMESPACE=dev`, `AUTH_COOKIE_NAME=uah_auth_dev`, `SESSION_COOKIE_NAME=uah_session_dev`
+- Beta: `AUTH_NAMESPACE=beta`, `AUTH_COOKIE_NAME=uah_auth_beta`, `SESSION_COOKIE_NAME=uah_session_beta`
+- Prod: `AUTH_NAMESPACE=prod`, `AUTH_COOKIE_NAME=uah_auth_prod`, `SESSION_COOKIE_NAME=uah_session_prod`
+
+For remote environments, keep `SESSION_COOKIE_HTTPS_ONLY=true` and set a dedicated `GMAIL_TOKEN_ENCRYPTION_KEY` if Gmail integration is enabled.
 
 > **Never commit `.env` to git.** It contains credentials.
 

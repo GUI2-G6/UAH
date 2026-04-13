@@ -1222,6 +1222,10 @@ async function handleMockApiRequest(request, requestUrl, state) {
     }, 201)
   }
 
+  if (pathname === '/api/auth/logout' && method === 'POST') {
+    return toJsonResponse({ message: 'Logged out' })
+  }
+
   if (pathname === '/api/account/forgot-password' && method === 'POST') {
     return toJsonResponse({
       message: 'Reset token generated for local mode',

@@ -15,6 +15,7 @@ services:
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-beta}
       ENV: ${ENV:-beta}
+      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-uah_auth_beta}
       REDIS_URL: ${BETA_REDIS_URL:-redis://uah-beta-redis:6379/0}
       PARSE_QUEUE_NAME: ${BETA_PARSE_QUEUE_NAME:-uah:beta:parse_jobs}
       PARSE_QUEUE_NAME_CLOUD: ${BETA_PARSE_QUEUE_NAME_CLOUD:-uah:beta:parse_jobs:cloud}
