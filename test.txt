@@ -22,3 +22,7 @@ make sure resume page ui stuff is mobile friendly
 
 
 NATURAL LANGUAGE MODEL FILTER APPLICATION?? yes this
+
+pin drop map featue for job search
+
+fix artifact on save disclosures page

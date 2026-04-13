@@ -5,6 +5,387 @@
   min-height: 100vh;
 }
 
+/* Facelift overrides */
+.page.resumes-page {
+  background:
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.08), transparent 28%),
+    linear-gradient(180deg, #f8fafc 0%, #eef4f8 100%);
+}
+
+.resumes-page .resume-hero {
+  width: min(100%, 1360px);
+  margin: 0 auto;
+  padding: 28px var(--space-4) 18px;
+  border-bottom: none;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.resumes-page .resume-hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.resumes-page .resume-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.resumes-page .resume-nav-shell {
+  width: min(100%, 1360px);
+  margin: 0 auto;
+  padding: 0 var(--space-4) var(--space-3);
+}
+
+.resumes-page .resume-nav {
+  border: 1px solid rgba(203, 213, 225, 0.85);
+  border-radius: 18px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.76);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
+  gap: 8px;
+  border-bottom: none;
+}
+
+.resumes-page .resume-nav button {
+  flex: 1 1 190px;
+  margin-bottom: 0;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}
+
+.resumes-page .resume-nav button.active {
+  background: var(--color-primary-600);
+  color: #fff;
+  box-shadow: 0 10px 20px rgba(37, 99, 235, 0.22);
+}
+
+.resumes-page .dashboard {
+  width: min(100%, 1360px);
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 0 var(--space-4) var(--space-4);
+  background: transparent;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+  align-content: start;
+}
+
+.resumes-page .dashboard > * {
+  min-width: 0;
+}
+
+.resumes-page .dashboard-span-full {
+  grid-column: 1 / -1;
+}
+
+.resumes-page .dashboard-span-2 {
+  grid-column: 1 / -1;
+}
+
+.resumes-page .resume-column--insights {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.resumes-page .resume-card {
+  width: 100%;
+  min-width: 0;
+  --ui-card-bg: rgba(255, 255, 255, 0.94);
+  --ui-card-border: 1px solid rgba(203, 213, 225, 0.78);
+  --ui-card-shadow: 0 14px 28px rgba(15, 23, 42, 0.06);
+  --ui-card-padding: 20px;
+  --ui-card-header-padding: 20px 20px 0;
+}
+
+.resumes-page .resume-card :deep(.ui-card__header) {
+  background: transparent;
+  border-bottom: none;
+}
+
+.resumes-page .resume-card :deep(.ui-card__header h3) {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.resumes-page .resume-card :deep(.ui-card__body) {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.resumes-page .resume-card--profile-bar :deep(.ui-card__body),
+.resumes-page .resume-section :deep(.ui-card__body),
+.resumes-page .resume-card--eeo :deep(.ui-card__body) {
+  gap: 16px;
+}
+
+.resumes-page .resume-card--save :deep(.ui-card__body) {
+  gap: 0;
+}
+
+.resumes-page .resume-card--compliance :deep(.ui-card__body) {
+  padding-top: 0;
+}
+
+.resumes-page .panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.resumes-page .panel-header--stacked {
+  align-items: flex-start;
+}
+
+.resumes-page .panel-eyebrow {
+  margin: 0 0 6px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #0f766e;
+}
+
+.resumes-page .panel-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--color-primary-700);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.resumes-page .panel-copy,
+.resumes-page .profile-switcher-copy,
+.resumes-page .task-mode-note {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.resumes-page .task-mode-note {
+  padding: 14px 16px;
+  border: 1px solid rgba(59, 130, 246, 0.18);
+  border-radius: var(--radius-md);
+  background: rgba(239, 246, 255, 0.86);
+}
+
+.resumes-page .stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.resumes-page .stats-grid .stat-card:last-child {
+  grid-column: 1 / -1;
+}
+
+.resumes-page .stat-card {
+  border: 1px solid rgba(203, 213, 225, 0.8);
+  border-radius: 14px;
+  padding: 16px;
+  background: rgba(248, 250, 252, 0.92);
+  box-shadow: none;
+}
+
+.resumes-page .stat-card .stat-label {
+  color: #64748b;
+}
+
+.resumes-page .stat-card .stat-value {
+  color: #0f172a;
+}
+
+.resumes-page .stat-value-small {
+  font-size: 1rem;
+}
+
+.resumes-page .resume-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.resumes-page .resume-list-item {
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: rgba(248, 250, 252, 0.72);
+}
+
+.resumes-page .resume-list-item:hover {
+  background: rgba(241, 245, 249, 0.92);
+}
+
+.resumes-page .empty-state {
+  padding: 18px 0 4px;
+  text-align: left;
+}
+
+.resumes-page .queue-scope-toggle {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.resumes-page .queue-scope-toggle button {
+  border-radius: 999px;
+  padding: 6px 12px;
+}
+
+.resumes-page .queue-scope-toggle button.active {
+  background: rgba(37, 99, 235, 0.12);
+}
+
+.resumes-page .profile-switcher {
+  margin-bottom: 0;
+  background: rgba(248, 250, 252, 0.82);
+  border: 1px solid rgba(203, 213, 225, 0.75);
+}
+
+.resumes-page .field-group-spaced {
+  margin-bottom: 0;
+}
+
+.resumes-page .field-group label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+}
+
+.resumes-page .field-group input,
+.resumes-page .field-group select,
+.resumes-page .field-group textarea,
+.resumes-page .profile-select,
+.resumes-page .new-profile-input {
+  border: 1px solid rgba(203, 213, 225, 0.95);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 10px 12px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.resumes-page .field-group input:focus,
+.resumes-page .field-group select:focus,
+.resumes-page .field-group textarea:focus,
+.resumes-page .profile-select:focus,
+.resumes-page .new-profile-input:focus {
+  outline: none;
+  border-color: var(--color-primary-600);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+}
+
+.resumes-page .textarea-summary {
+  min-height: 128px;
+}
+
+.resumes-page .textarea-tall {
+  min-height: 170px;
+}
+
+.resumes-page .eeo-banner {
+  margin: 0;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.resumes-page .option-row {
+  background: rgba(248, 250, 252, 0.86);
+  border-color: rgba(203, 213, 225, 0.9);
+}
+
+.resumes-page .option-row.selected {
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.resumes-page .jobinfo-save-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.resumes-page .jobinfo-save-row .save-error {
+  color: #b91c1c;
+}
+
+.resumes-page .jobinfo-save-row .save-success {
+  margin: 0;
+}
+
+.resumes-page .dashboard .loading-row {
+  justify-content: flex-start;
+  padding: 8px 0;
+}
+
+@media (max-width: 767px) {
+  .resumes-page .resume-hero,
+  .resumes-page .resume-nav-shell,
+  .resumes-page .dashboard {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .resumes-page .resume-hero-actions {
+    width: 100%;
+  }
+
+  .resumes-page .resume-hero-actions .btn-primary {
+    width: 100%;
+  }
+
+  .resumes-page .resume-nav button {
+    flex-basis: 100%;
+  }
+
+  .resumes-page .panel-header {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 479px) {
+  .resumes-page .resume-hero,
+  .resumes-page .resume-nav-shell,
+  .resumes-page .dashboard {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .resumes-page .resume-nav {
+    padding: 6px;
+  }
+
+  .resumes-page .resume-list-item {
+    padding: 12px;
+  }
+
+  .resumes-page .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .resumes-page .stats-grid .stat-card:last-child {
+    grid-column: auto;
+  }
+}
+
 .greeting {
   border-bottom: solid 2px var(--border-color-light);
   padding: var(--space-4);
@@ -1795,5 +2176,920 @@
     grid-template-columns: 1fr;
     gap: 4px;
     align-items: flex-start;
+  }
+}
+
+/* ── Canonical Resume Page Responsive Layer ─────────────── */
+.resumes-page {
+  overflow-x: clip;
+}
+
+.resumes-page .resume-hero,
+.resumes-page .resume-nav-shell,
+.resumes-page .dashboard {
+  width: min(100%, 1360px);
+  max-width: 1360px;
+  box-sizing: border-box;
+}
+
+.resumes-page .resume-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 24px 24px 14px;
+}
+
+.resumes-page .resume-hero-copy,
+.resumes-page .greeting-left,
+.resumes-page .resume-hero-copy p,
+.resumes-page .dashboard > *,
+.resumes-page .resume-card,
+.resumes-page .resume-section,
+.resumes-page .resume-column--insights,
+.resumes-page .queue-metric-card,
+.resumes-page .file-preview-row,
+.resumes-page .profile-switcher,
+.resumes-page .option-row {
+  min-width: 0;
+}
+
+.resumes-page .greeting-left p {
+  max-width: 60ch;
+}
+
+.resumes-page .resume-hero-actions {
+  justify-self: end;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.resumes-page .resume-hero-actions .btn-primary {
+  max-width: 100%;
+}
+
+.resumes-page .resume-nav-shell {
+  padding: 0 24px 16px;
+  overflow: hidden;
+}
+
+.resumes-page .resume-nav {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.resumes-page .resume-nav button {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.resumes-page .dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  padding: 0 24px 24px;
+  align-items: start;
+}
+
+.resumes-page .dashboard-span-full {
+  grid-column: 1 / -1;
+}
+
+.resumes-page .resume-list-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "icon meta actions"
+    "icon badges actions";
+  align-items: start;
+  gap: 12px 16px;
+  padding: 14px 16px;
+}
+
+.resumes-page .resume-list-item .pdf-icon {
+  grid-area: icon;
+}
+
+.resumes-page .resume-meta {
+  grid-area: meta;
+}
+
+.resumes-page .resume-meta .resume-name {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: break-word;
+  word-break: normal;
+  line-height: 1.35;
+}
+
+.resumes-page .resume-badges {
+  grid-area: badges;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.resumes-page .resume-actions {
+  grid-area: actions;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  justify-self: end;
+}
+
+.resumes-page .resume-actions button {
+  min-width: 72px;
+  min-height: 36px;
+  padding: 0 12px;
+  color: #475569;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.resumes-page .resume-actions button.delete-btn.confirm-delete {
+  width: auto;
+  max-width: 100%;
+}
+
+.resumes-page .dashboard--imported {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "workflow"
+    "note"
+    "stats"
+    "queue"
+    "library";
+}
+
+.resumes-page .dashboard--imported .resume-card--workflow {
+  grid-area: workflow;
+}
+
+.resumes-page .dashboard--imported .resume-card--workflow.dashboard-span-full {
+  grid-column: 1 / -1;
+}
+
+.resumes-page .dashboard--imported .task-mode-note {
+  grid-area: note;
+}
+
+.resumes-page .dashboard--imported .resume-card--library {
+  grid-area: library;
+}
+
+.resumes-page .dashboard--imported .resume-card--stats {
+  grid-area: stats;
+}
+
+.resumes-page .dashboard--imported .resume-card--queue {
+  grid-area: queue;
+}
+
+.resumes-page .resume-card--workflow :deep(.ui-card__body) {
+  gap: 20px;
+}
+
+.resumes-page .resume-card--workflow .drop-zone {
+  width: 100%;
+  min-height: 220px;
+  justify-content: center;
+  padding: 32px 24px;
+}
+
+.resumes-page .resume-card--stats .stats-grid {
+  grid-template-columns: 1fr;
+}
+
+.resumes-page .resume-card--stats .stats-grid .stat-card:last-child {
+  grid-column: auto;
+}
+
+.resumes-page .file-preview-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+}
+
+.resumes-page .file-preview-row .file-info .file-name {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: break-word;
+  word-break: normal;
+  line-height: 1.35;
+}
+
+.resumes-page .file-preview-row .clear-btn {
+  inline-size: 36px;
+  block-size: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  justify-self: end;
+}
+
+.resumes-page .parse-method-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.resumes-page .parse-method-header {
+  align-items: start;
+  gap: 10px 12px;
+}
+
+.resumes-page .parse-method-label,
+.resumes-page .parse-method-note,
+.resumes-page .parse-method-summary {
+  margin: 0;
+}
+
+.resumes-page .parse-method-note,
+.resumes-page .parse-method-summary,
+.resumes-page .queue-stage-text,
+.resumes-page .queue-details-line,
+.resumes-page .entry-status,
+.resumes-page .save-feedback,
+.resumes-page .jobinfo-save-row .save-error,
+.resumes-page .jobinfo-save-row .save-success {
+  overflow-wrap: anywhere;
+}
+
+.resumes-page .method-toggle {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.resumes-page .method-toggle-3 button {
+  min-width: 0;
+}
+
+.resumes-page .method-toggle button {
+  min-height: 44px;
+  padding: 10px 12px;
+  white-space: normal;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.resumes-page .inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 12px;
+}
+
+.resumes-page .resume-card--queue .panel-header--stacked {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px 16px;
+}
+
+.resumes-page .queue-scope-toggle {
+  max-width: 100%;
+}
+
+.resumes-page .queue-scope-toggle button {
+  min-height: 38px;
+}
+
+.resumes-page .queue-metrics-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.resumes-page .queue-global-entry {
+  grid-template-columns: 52px minmax(0, 120px) minmax(0, 1fr);
+  gap: 10px 12px;
+}
+
+.resumes-page .dashboard--applicant {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.resumes-page .dashboard--applicant .resume-section,
+.resumes-page .dashboard--jobinfo .resume-card--eeo {
+  align-self: start;
+}
+
+.resumes-page .profile-switcher {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+  padding: 16px 18px;
+}
+
+.resumes-page .autosave-status-row,
+.resumes-page .jobinfo-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+
+.resumes-page .autosave-status-row > *,
+.resumes-page .jobinfo-status-row > *,
+.resumes-page .queue-details,
+.resumes-page .queue-details-body,
+.resumes-page .queue-global-list,
+.resumes-page .queue-global-entry,
+.resumes-page .queue-global-entry > * {
+  min-width: 0;
+}
+
+.resumes-page .autosave-hint {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.resumes-page .profile-switcher-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.resumes-page .profile-switcher-label {
+  margin: 0;
+}
+
+.resumes-page .profile-select,
+.resumes-page .new-profile-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.resumes-page .new-profile-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 0;
+}
+
+.resumes-page .save-feedback {
+  margin: 0;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: rgba(226, 232, 240, 0.72);
+  color: #334155;
+}
+
+.resumes-page .save-feedback.is-success {
+  background: rgba(34, 197, 94, 0.12);
+  color: #166534;
+}
+
+.resumes-page .save-feedback.is-error {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+}
+
+.resumes-page .save-feedback.is-saving {
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+}
+
+.resumes-page .field-group {
+  min-width: 0;
+  gap: 6px;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.resumes-page .field-group--locked {
+  cursor: pointer;
+}
+
+.resumes-page .field-group--locked input,
+.resumes-page .field-group--locked textarea,
+.resumes-page .field-group--locked select {
+  background: rgba(248, 250, 252, 0.96);
+  border-style: dashed;
+  color: #334155;
+  cursor: pointer;
+  opacity: 1;
+}
+
+.resumes-page .field-group--locked select:disabled {
+  color: #334155;
+  -webkit-text-fill-color: #334155;
+}
+
+.resumes-page .field-group--editing input,
+.resumes-page .field-group--editing textarea,
+.resumes-page .field-group--editing select {
+  border-color: rgba(37, 99, 235, 0.9);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.resumes-page .field-group textarea {
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.resumes-page .resume-section textarea:not(.textarea-summary):not(.textarea-tall) {
+  min-height: 120px;
+}
+
+.resumes-page .textarea-summary {
+  min-height: 150px;
+}
+
+.resumes-page .textarea-tall {
+  min-height: 220px;
+}
+
+.resumes-page .appinfo-grid,
+.resumes-page .appinfo-3col {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px 18px;
+}
+
+.resumes-page .dashboard--jobinfo {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.resumes-page .eeo-header-row {
+  align-items: start;
+}
+
+.resumes-page .option-row {
+  align-items: start;
+  gap: 12px;
+  padding: 12px 14px;
+  line-height: 1.45;
+}
+
+.resumes-page .option-row .radio-dot {
+  margin-top: 2px;
+}
+
+.resumes-page .view-sub-nav {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.resumes-page .view-sub-nav button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.resumes-page .pipeline-cards {
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 390px) {
+  .resumes-page .resume-hero,
+  .resumes-page .resume-nav-shell,
+  .resumes-page .dashboard {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .resumes-page .resume-hero {
+    gap: 14px;
+  }
+
+  .resumes-page .resume-nav {
+    padding: 6px;
+  }
+
+  .resumes-page .resume-nav button {
+    min-width: 152px;
+    padding-inline: 12px;
+    font-size: 0.84rem;
+  }
+
+  .resumes-page .resume-list-item {
+    gap: 10px;
+    padding: 12px;
+  }
+}
+
+@media (min-width: 391px) and (max-width: 599px) {
+  .resumes-page .resume-hero,
+  .resumes-page .resume-nav-shell,
+  .resumes-page .dashboard {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .resumes-page .resume-hero {
+    gap: 14px 18px;
+  }
+
+  .resumes-page .resume-nav button {
+    min-width: 170px;
+  }
+}
+
+@media (max-width: 599px) {
+  .resumes-page .resume-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .resumes-page .resume-hero-actions {
+    justify-self: stretch;
+    justify-content: flex-start;
+  }
+
+  .resumes-page .resume-hero-actions .btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .resumes-page .resume-nav {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .resumes-page .resume-nav button {
+    flex: 0 0 auto;
+  }
+
+  .resumes-page .resume-list-item {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      "icon meta"
+      "badges badges"
+      "actions actions";
+    align-items: start;
+  }
+
+  .resumes-page .resume-actions {
+    justify-content: flex-start;
+    min-width: 0;
+  }
+
+  .resumes-page .file-preview-row {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      "icon info"
+      "remove remove";
+  }
+
+  .resumes-page .file-preview-row .pdf-icon {
+    grid-area: icon;
+  }
+
+  .resumes-page .file-preview-row .file-info {
+    grid-area: info;
+  }
+
+  .resumes-page .file-preview-row .clear-btn {
+    grid-area: remove;
+    justify-self: start;
+  }
+
+  .resumes-page .parse-method-header {
+    flex-direction: column;
+  }
+
+  .resumes-page .parse-details-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .resumes-page .method-toggle {
+    grid-template-columns: 1fr;
+  }
+
+  .resumes-page .inline-actions {
+    flex-direction: column;
+  }
+
+  .resumes-page .inline-actions button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .resumes-page .resume-card--queue .panel-header--stacked,
+  .resumes-page .profile-switcher-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .resumes-page .profile-switcher-row .btn-compact,
+  .resumes-page .profile-switcher-row .delete-profile-btn {
+    justify-self: start;
+  }
+
+  .resumes-page .new-profile-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .resumes-page .new-profile-input {
+    grid-column: 1 / -1;
+  }
+
+  .resumes-page .new-profile-row .btn-primary,
+  .resumes-page .new-profile-row .btn-secondary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .resumes-page .queue-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .resumes-page .queue-global-entry {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "position"
+      "method"
+      "status";
+  }
+
+  .resumes-page .entry-position {
+    grid-area: position;
+  }
+
+  .resumes-page .entry-method {
+    grid-area: method;
+  }
+
+  .resumes-page .entry-status {
+    grid-area: status;
+  }
+
+}
+
+@media (min-width: 600px) and (max-width: 1023px) {
+  .resumes-page .dashboard--imported {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "workflow"
+      "note"
+      "stats"
+      "queue"
+      "library";
+  }
+
+  .resumes-page .appinfo-grid,
+  .resumes-page .appinfo-3col {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .resumes-page .profile-switcher-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .resumes-page .profile-switcher-label {
+    grid-column: 1 / -1;
+  }
+
+  .resumes-page .queue-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .resumes-page .queue-global-entry {
+    grid-template-columns: 52px minmax(0, 1fr);
+    grid-template-areas:
+      "position method"
+      "status status";
+    align-items: start;
+  }
+
+  .resumes-page .entry-position {
+    grid-area: position;
+  }
+
+  .resumes-page .entry-method {
+    grid-area: method;
+  }
+
+  .resumes-page .entry-status {
+    grid-area: status;
+  }
+}
+
+@media (min-width: 600px) and (max-width: 899px) {
+  .resumes-page .dashboard--imported {
+    grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+    grid-template-areas:
+      "workflow workflow"
+      "note note"
+      "stats queue"
+      "library library";
+  }
+
+  .resumes-page .method-toggle {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .resumes-page .method-toggle-3 button:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .resumes-page .resume-card--queue .panel-header--stacked {
+    grid-template-columns: 1fr;
+  }
+
+  .resumes-page .dashboard--jobinfo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 900px) and (max-width: 1179px) {
+  .resumes-page .dashboard--imported {
+    grid-template-columns: minmax(0, 1.18fr) minmax(280px, 0.82fr);
+    grid-template-areas:
+      "workflow stats"
+      "library queue"
+      "note note";
+    gap: 22px;
+  }
+
+  .resumes-page .dashboard--imported .resume-card--queue .queue-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .resumes-page .dashboard--imported .resume-card--queue .panel-header--stacked {
+    grid-template-columns: 1fr;
+  }
+
+  .resumes-page .dashboard--imported .resume-list-item {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      "icon meta"
+      "icon badges"
+      "actions actions";
+    gap: 12px 16px;
+  }
+
+  .resumes-page .dashboard--imported .resume-actions {
+    justify-content: flex-start;
+    justify-self: stretch;
+  }
+
+  .resumes-page .dashboard--applicant {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px;
+  }
+
+  .resumes-page .dashboard--applicant .resume-card--profile-bar,
+  .resumes-page .dashboard--applicant .resume-section--summary,
+  .resumes-page .dashboard--applicant .resume-section--skills,
+  .resumes-page .dashboard--applicant .resume-section--education,
+  .resumes-page .dashboard--applicant .resume-section--education-history,
+  .resumes-page .dashboard--applicant .resume-section--employment-history,
+  .resumes-page .dashboard--applicant .resume-section--demographics,
+  .resumes-page .dashboard--applicant .dashboard-span-2 {
+    grid-column: 1 / -1;
+  }
+
+  .resumes-page .dashboard--applicant .resume-section--personal,
+  .resumes-page .dashboard--applicant .resume-section--address,
+  .resumes-page .dashboard--applicant .resume-section--authorization,
+  .resumes-page .dashboard--applicant .resume-section--experience {
+    grid-column: span 1;
+  }
+
+  .resumes-page .appinfo-grid,
+  .resumes-page .appinfo-3col {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .resumes-page .autosave-status-row,
+  .resumes-page .jobinfo-status-row {
+    align-items: flex-start;
+  }
+
+  .resumes-page .dashboard--jobinfo {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "compliance compliance"
+      "veteran disability"
+      "california california";
+    gap: 22px;
+  }
+
+  .resumes-page .dashboard--jobinfo .resume-card--compliance {
+    grid-area: compliance;
+  }
+
+  .resumes-page .dashboard--jobinfo .resume-card--eeo-veteran {
+    grid-area: veteran;
+  }
+
+  .resumes-page .dashboard--jobinfo .resume-card--eeo-disability {
+    grid-area: disability;
+  }
+
+  .resumes-page .dashboard--jobinfo .resume-card--eeo-california {
+    grid-area: california;
+  }
+}
+
+@media (min-width: 1180px) {
+  .resumes-page .dashboard--imported {
+    grid-template-columns: minmax(0, 1.42fr) minmax(300px, 0.78fr);
+    grid-template-areas:
+      "workflow stats"
+      "library queue"
+      "note note";
+    gap: 24px;
+  }
+
+  .resumes-page .dashboard--applicant {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+  }
+
+  .resumes-page .dashboard--imported .resume-card--queue .queue-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .resumes-page .dashboard--imported .resume-card--queue .panel-header--stacked {
+    grid-template-columns: 1fr;
+  }
+
+  .resumes-page .dashboard--imported .resume-list-item {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 12px 18px;
+  }
+
+  .resumes-page .dashboard--applicant .resume-card--profile-bar,
+  .resumes-page .dashboard--applicant .resume-section--summary,
+  .resumes-page .dashboard--applicant .resume-section--skills,
+  .resumes-page .dashboard--applicant .resume-section--education,
+  .resumes-page .dashboard--applicant .resume-section--education-history,
+  .resumes-page .dashboard--applicant .resume-section--employment-history,
+  .resumes-page .dashboard--applicant .resume-section--demographics,
+  .resumes-page .dashboard--applicant .dashboard-span-2 {
+    grid-column: 1 / -1;
+  }
+
+  .resumes-page .dashboard--applicant .resume-section--personal,
+  .resumes-page .dashboard--applicant .resume-section--address,
+  .resumes-page .dashboard--applicant .resume-section--authorization,
+  .resumes-page .dashboard--applicant .resume-section--experience {
+    grid-column: span 1;
+  }
+
+  .resumes-page .appinfo-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .resumes-page .appinfo-3col {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr) minmax(0, 0.75fr);
+  }
+  .resumes-page .dashboard--jobinfo {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-areas:
+      "compliance compliance compliance"
+      "veteran disability california";
+  }
+
+  .resumes-page .dashboard--jobinfo .resume-card--compliance {
+    grid-area: compliance;
+  }
+
+  .resumes-page .dashboard--jobinfo .resume-card--eeo-veteran {
+    grid-area: veteran;
+  }
+
+  .resumes-page .dashboard--jobinfo .resume-card--eeo-disability {
+    grid-area: disability;
+  }
+
+  .resumes-page .dashboard--jobinfo .resume-card--eeo-california {
+    grid-area: california;
+  }
+
+  .resumes-page .dashboard--jobinfo .resume-card--eeo {
+    height: 100%;
+  }
+
+  .resumes-page .pipeline-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }

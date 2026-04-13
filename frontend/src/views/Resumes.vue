@@ -1,43 +1,52 @@
 <template>
-    <div class="page">
+    <div class="page resumes-page">
 
-        <!-- ── Greeting ──────────────────────────────────────── -->
-        <div class="greeting">
-            <div class="greeting-left">
-                <h1>Resumes</h1>
-                <p>Manage UAH resumes and application information</p>
+        <div class="greeting resume-hero">
+            <div class="resume-hero-copy">
+                <div class="greeting-left">
+                    <h1>Resumes</h1>
+                    <p>{{ activeTabSummary }}</p>
+                </div>
             </div>
-            <button v-if="activeTab === 'imported'" class="btn-primary" @click="openUploadModal">
-                + Import New Resume
-            </button>
-            <button v-if="activeTab === 'applicant'" class="btn-primary" :disabled="working" @click="saveApplicantInfo">
-                {{ working ? 'Saving…' : 'Save All' }}
-            </button>
         </div>
 
-        <!-- ── Tab nav ───────────────────────────────────────── -->
-        <nav class="resume-nav">
-            <button :class="{ active: activeTab === 'imported' }" @click="activeTab = 'imported'">
-                Imported Resumes
-            </button>
-            <button :class="{ active: activeTab === 'applicant' }" @click="activeTab = 'applicant'">
-                Applicant Information
-            </button>
-            <button :class="{ active: activeTab === 'jobinfo' }" @click="activeTab = 'jobinfo'">
-                Job Application Info
-            </button>
-        </nav>
+        <div class="resume-nav-shell">
+            <nav class="resume-nav">
+                <button :class="{ active: activeTab === 'imported' }" @click="requestTabChange('imported')">
+                    Imported Resumes
+                </button>
+                <button :class="{ active: activeTab === 'applicant' }" @click="requestTabChange('applicant')">
+                    Applicant Information
+                </button>
+                <button :class="{ active: activeTab === 'jobinfo' }" @click="requestTabChange('jobinfo')">
+                    Mandatory Disclosures
+                </button>
+            </nav>
+        </div>
 
         <!-- ════════════════════════════════════════════════════
              TAB 1 — Imported Resumes
         ═════════════════════════════════════════════════════ -->
-        <div v-if="activeTab === 'imported'" class="dashboard">
+        <div v-if="activeTab === 'imported'" class="dashboard dashboard--imported">
 
-            <div ref="inlineImportSection" class="appinfo-card inline-import-card">
-                <h3>Import Resume</h3>
+            <Card
+                ref="inlineImportSection"
+                class="resume-card resume-card--workflow"
+                :class="{ 'dashboard-span-full': !showImportSecondaryPanels }"
+                variant="job"
+            >
+                <template #header>
+                    <div class="panel-header">
+                        <div>
+                            <p class="panel-eyebrow">Workflow</p>
+                            <h3>Import Resume</h3>
+                        </div>
+                    </div>
+                </template>
+
                 <p class="subtitle import-subtitle">Upload a UAH resume PDF and follow the staged flow: Select file, Confirm settings, Parse, then review readiness.</p>
 
-                <div class="upload-stage-row" v-if="activeTab === 'imported'">
+                <div class="upload-stage-row">
                     <span :class="['stage-pill', uploadStep === 'select' ? 'active' : '']">1. Select</span>
                     <span :class="['stage-pill', uploadStep === 'confirm' ? 'active' : '']">2. Confirm</span>
                     <span :class="['stage-pill', uploadStep === 'parsing' ? 'active' : '']">3. Parsing</span>
@@ -150,43 +159,101 @@
                 </template>
 
                 <div v-if="uploadError" class="upload-error">{{ uploadError }}</div>
-            </div>
+            </Card>
 
-            <p v-if="!showImportSecondaryPanels" class="task-mode-note">
+            <p v-if="!showImportSecondaryPanels" class="task-mode-note dashboard-span-full">
                 Upload focus mode is active. Queue diagnostics and summary metrics will return after this import step.
             </p>
-
-            <!-- Stats row -->
-            <div class="stats-row" v-if="showImportSecondaryPanels">
-                <div class="stat-card">
-                    <div class="stat-label">Total Resumes</div>
-                    <div class="stat-value">{{ resumes.length }}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Portal Ready</div>
-                    <div class="stat-value">{{ portalReadyCount }}/{{ resumes.length }}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Latest Upload</div>
-                    <div class="stat-value stat-value-small">{{ latestUploadDate }}</div>
-                </div>
-            </div>
-
-            <div class="queue-panel-card" v-if="showImportSecondaryPanels">
-                <div class="queue-panel-header">
-                    <div>
-                        <h4>Parse Queue</h4>
-                        <p>Track queue load, method-level activity, and your environment-scoped parse position in real time.</p>
+            <Card v-if="showImportSecondaryPanels" class="resume-card resume-card--library" variant="job">
+                <template #header>
+                    <div class="panel-header">
+                        <div>
+                            <p class="panel-eyebrow">Library</p>
+                            <h3>Imported Resumes</h3>
+                        </div>
                     </div>
-                    <div class="queue-scope-toggle">
-                        <button :class="{ active: queueScope === 'user' }" @click="setQueueScope('user')">My Queue</button>
-                        <button
-                            v-if="canViewGlobalQueue"
-                            :class="{ active: queueScope === 'global' }"
-                            @click="setQueueScope('global')"
-                        >Global Queue</button>
+                </template>
+
+                <div v-if="resumesLoading" class="loading-row">
+                    <div class="spinner"></div> Loading resumes…
+                </div>
+
+                <div v-else-if="resumesError" class="upload-error">{{ resumesError }}</div>
+
+                <div v-else-if="resumes.length" class="resume-list">
+                    <div v-for="r in resumes" :key="r.id" class="resume-list-item">
+                        <div class="pdf-icon">PDF</div>
+                        <div class="resume-meta">
+                            <p class="resume-name">{{ r.file_name }}</p>
+                            <p class="resume-date">Uploaded {{ formatDate(r.created_at) }}</p>
+                        </div>
+                        <div class="resume-badges">
+                            <span :class="['badge', badgeClass(r)]">{{ badgeText(r) }}</span>
+                            <span v-if="r.parse_method" :class="['badge', 'parse-method-badge', parseMethodToneClass(r.parse_method)]">{{ parseMethodTagLabel(r.parse_method) }}</span>
+                        </div>
+                        <div class="resume-actions">
+                            <button title="View parsed data" @click="viewResume(r.id)">View</button>
+                            <button
+                                title="Delete resume"
+                                class="delete-btn"
+                                :class="{ 'confirm-delete': deletingId === r.id }"
+                                @click="handleDelete(r.id)"
+                            >
+                                {{ deletingId === r.id ? 'Confirm Delete' : 'Delete' }}
+                            </button>
+                        </div>
                     </div>
                 </div>
+
+                <div v-else class="empty-state">
+                    <p>No resumes yet. Import a PDF to get started.</p>
+                </div>
+            </Card>
+
+            <Card v-if="showImportSecondaryPanels" class="resume-card resume-card--stats" variant="job">
+                <template #header>
+                    <div class="panel-header">
+                        <div>
+                            <p class="panel-eyebrow">Insights</p>
+                            <h3>Resume Summary</h3>
+                        </div>
+                    </div>
+                </template>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Total Resumes</div>
+                        <div class="stat-value">{{ resumes.length }}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Portal Ready</div>
+                        <div class="stat-value">{{ portalReadyCount }}/{{ resumes.length }}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Latest Upload</div>
+                        <div class="stat-value stat-value-small">{{ latestUploadDate }}</div>
+                    </div>
+                </div>
+            </Card>
+
+            <Card v-if="showImportSecondaryPanels" class="resume-card resume-card--queue" variant="job">
+                <template #header>
+                    <div class="panel-header panel-header--stacked">
+                        <div>
+                            <p class="panel-eyebrow">Insights</p>
+                            <h3>Parse Queue</h3>
+                            <p class="panel-copy">Track queue load, method-level activity, and your environment-scoped parse position in real time.</p>
+                        </div>
+                        <div class="queue-scope-toggle">
+                            <button :class="{ active: queueScope === 'user' }" @click="setQueueScope('user')">My Queue</button>
+                            <button
+                                v-if="canViewGlobalQueue"
+                                :class="{ active: queueScope === 'global' }"
+                                @click="setQueueScope('global')"
+                            >Global Queue</button>
+                        </div>
+                    </div>
+                </template>
 
                 <div v-if="queueLoading && !queueStatus" class="loading-row queue-loading-row">
                     <div class="spinner"></div> Loading queue status...
@@ -248,48 +315,7 @@
                         </div>
                     </details>
                 </template>
-            </div>
-
-            <!-- Loading -->
-            <div v-if="resumesLoading" class="loading-row">
-                <div class="spinner"></div> Loading resumes…
-            </div>
-
-            <!-- Error -->
-            <div v-else-if="resumesError" class="upload-error">{{ resumesError }}</div>
-
-            <!-- List -->
-            <div v-else-if="resumes.length" class="resume-list-card">
-                <div v-for="r in resumes" :key="r.id" class="resume-list-item">
-                    <div class="pdf-icon">PDF</div>
-                    <div class="resume-meta">
-                        <p class="resume-name">{{ r.file_name }}</p>
-                        <p class="resume-date">Uploaded {{ formatDate(r.created_at) }}</p>
-                    </div>
-                    <div class="resume-badges">
-                        <span :class="['badge', badgeClass(r)]">{{ badgeText(r) }}</span>
-                        <span v-if="r.parse_method" :class="['badge', 'parse-method-badge', parseMethodToneClass(r.parse_method)]">{{ parseMethodTagLabel(r.parse_method) }}</span>
-                    </div>
-                    <div class="resume-actions">
-                        <button title="View parsed data" @click="viewResume(r.id)">View</button>
-                        <button
-                            title="Delete resume"
-                            class="delete-btn"
-                            :class="{ 'confirm-delete': deletingId === r.id }"
-                            @click="handleDelete(r.id)"
-                        >
-                            {{ deletingId === r.id ? 'Confirm Delete' : 'Delete' }}
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Empty -->
-            <div v-else class="resume-list-card">
-                <div class="empty-state">
-                    <p>No resumes yet. Import a PDF to get started.</p>
-                </div>
-            </div>
+            </Card>
 
         </div><!-- /tab imported -->
 
@@ -297,123 +323,174 @@
         <!-- ════════════════════════════════════════════════════
              TAB 2 — Applicant Information
         ═════════════════════════════════════════════════════ -->
-        <div v-if="activeTab === 'applicant'" class="dashboard">
+        <div v-if="activeTab === 'applicant'" class="dashboard dashboard--applicant">
 
-            <!-- Profile switcher -->
-            <div v-if="profiles.length > 0" class="profile-switcher">
-                <div class="profile-switcher-row">
-                    <label class="profile-switcher-label">Active Profile:</label>
-                    <select
-                        id="resume-active-profile"
-                        name="active_profile"
-                        class="profile-select"
-                        autocomplete="off"
-                        :value="activeProfileId"
-                        @change="switchProfile(Number($event.target.value))"
+            <Card class="resume-card resume-card--profile-bar dashboard-span-full" variant="job">
+                <template #header>
+                    <div class="panel-header">
+                        <div>
+                            <p class="panel-eyebrow">Profiles</p>
+                            <h3>Applicant Profiles</h3>
+                        </div>
+                        <span class="panel-badge">{{ profiles.length }} saved</span>
+                    </div>
+                </template>
+
+                <p class="profile-switcher-copy">Switch the active profile or create a new one before editing the sections below.</p>
+                <div class="autosave-status-row">
+                    <p class="autosave-hint">Double-click any field to edit. Changes autosave when you click away.</p>
+                    <div
+                        v-if="applicantSavingField || saveStatus.message"
+                        :class="[
+                            'save-feedback',
+                            applicantSavingField ? 'is-saving' : saveStatus.type === 'success' ? 'is-success' : 'is-error'
+                        ]"
                     >
-                        <option v-for="p in profiles" :key="p.id" :value="p.id">
-                            {{ p.name }}{{ p.is_active ? ' (active)' : '' }}
-                        </option>
-                    </select>
-                    <button class="btn-secondary btn-compact" @click="showNewProfileInput = !showNewProfileInput" title="New profile">+</button>
-                    <button
-                        v-if="profiles.length > 1 && !isDefaultProfile(activeProfileId)"
-                        class="btn-secondary btn-compact delete-profile-btn"
-                        @click="deleteProfile(activeProfileId)"
-                        title="Delete current profile"
-                    >Delete</button>
+                        {{ applicantSavingField ? 'Saving changes…' : saveStatus.message }}
+                    </div>
                 </div>
-                <div v-if="showNewProfileInput" class="new-profile-row">
-                    <input
-                        id="resume-new-profile-name"
-                        name="new_profile_name"
-                        v-model="newProfileName"
-                        type="text"
+
+                <div v-if="profilesLoading" class="loading-row profile-loading-row">
+                    <div class="spinner"></div> Loading profiles…
+                </div>
+
+                <div v-else-if="profiles.length > 0" class="profile-switcher">
+                    <div class="profile-switcher-row">
+                        <label class="profile-switcher-label">Active Profile:</label>
+                        <select
+                            id="resume-active-profile"
+                            name="active_profile"
+                            class="profile-select"
+                            autocomplete="off"
+                            :value="activeProfileId"
+                            @change="switchProfile(Number($event.target.value))"
+                        >
+                            <option v-for="p in profiles" :key="p.id" :value="p.id">
+                                {{ p.name }}{{ p.is_active ? ' (active)' : '' }}
+                            </option>
+                        </select>
+                        <button class="btn-secondary btn-compact" @click="showNewProfileInput = !showNewProfileInput" title="New profile">+</button>
+                        <button
+                            v-if="profiles.length > 1 && !isDefaultProfile(activeProfileId)"
+                            class="btn-secondary btn-compact delete-profile-btn"
+                            @click="deleteProfile(activeProfileId)"
+                            title="Delete current profile"
+                        >Delete</button>
+                    </div>
+                    <div v-if="showNewProfileInput" class="new-profile-row">
+                        <input
+                            id="resume-new-profile-name"
+                            name="new_profile_name"
+                            v-model="newProfileName"
+                            type="text"
+                            autocomplete="off"
+                            placeholder="New profile name…"
+                            class="new-profile-input"
+                            @keyup.enter="createNewProfile"
+                        />
+                        <button class="btn-primary btn-compact" @click="createNewProfile" :disabled="!newProfileName.trim()">Create</button>
+                        <button class="btn-secondary btn-compact" @click="showNewProfileInput = false">Cancel</button>
+                    </div>
+                </div>
+
+                <p v-else class="not-parsed-message">Preparing your applicant profile…</p>
+            </Card>
+
+            <Card class="resume-card resume-section resume-section--summary dashboard-span-2" variant="job">
+                <template #header><h3>Professional Summary</h3></template>
+                <div
+                    :class="['field-group', applicantFieldGroupClass('summary')]"
+                    @dblclick="unlockApplicantField('summary', 'resume-professional-summary')"
+                    title="Double-click to edit"
+                >
+                    <label>Summary</label>
+                    <textarea
+                        id="resume-professional-summary"
+                        name="professional_summary"
                         autocomplete="off"
-                        placeholder="New profile name…"
-                        class="new-profile-input"
-                        @keyup.enter="createNewProfile"
-                    />
-                    <button class="btn-primary btn-compact" @click="createNewProfile" :disabled="!newProfileName.trim()">Create</button>
-                    <button class="btn-secondary btn-compact" @click="showNewProfileInput = false">Cancel</button>
+                        v-model="summary"
+                        class="textarea-summary"
+                        :readonly="isApplicantFieldLocked('summary')"
+                        @blur="handleApplicantFieldBlur('summary')"
+                        placeholder="Brief professional summary highlighting your key skills and experience…"
+                    ></textarea>
                 </div>
-            </div>
+            </Card>
 
-            <!-- Save feedback -->
-            <div v-if="saveStatus.message" :class="['save-feedback', saveStatus.type === 'success' ? 'is-success' : 'is-error']">
-                {{ saveStatus.message }}
-            </div>
-
-            <!-- Personal Information -->
-            <div class="appinfo-card">
-                <h3>Personal Information</h3>
+            <Card class="resume-card resume-section resume-section--personal" variant="job">
+                <template #header><h3>Personal Information</h3></template>
                 <div class="appinfo-grid">
-                    <div class="field-group">
+                    <div :class="['field-group', applicantFieldGroupClass('firstName')]" @dblclick="unlockApplicantField('firstName', 'resume-first-name')" title="Double-click to edit">
                         <label>First Name</label>
-                        <input id="resume-first-name" type="text" name="first_name" autocomplete="off" v-model="firstName" placeholder="John">
+                        <input id="resume-first-name" type="text" name="first_name" autocomplete="off" v-model="firstName" :readonly="isApplicantFieldLocked('firstName')" @blur="handleApplicantFieldBlur('firstName')" placeholder="John">
                     </div>
-                    <div class="field-group">
+                    <div :class="['field-group', applicantFieldGroupClass('lastName')]" @dblclick="unlockApplicantField('lastName', 'resume-last-name')" title="Double-click to edit">
                         <label>Last Name</label>
-                        <input id="resume-last-name" type="text" name="last_name" autocomplete="off" v-model="lastName" placeholder="Doe">
+                        <input id="resume-last-name" type="text" name="last_name" autocomplete="off" v-model="lastName" :readonly="isApplicantFieldLocked('lastName')" @blur="handleApplicantFieldBlur('lastName')" placeholder="Doe">
                     </div>
-                    <div class="field-group">
+                    <div :class="['field-group', applicantFieldGroupClass('appEmail')]" @dblclick="unlockApplicantField('appEmail', 'resume-email')" title="Double-click to edit">
                         <label>Email</label>
-                        <input id="resume-email" type="email" name="email" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="appEmail" @blur="onApplicantEmailBlur" placeholder="john.doe@email.com">
+                        <input id="resume-email" type="email" name="email" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="appEmail" :readonly="isApplicantFieldLocked('appEmail')" @blur="handleApplicantFieldBlur('appEmail')" placeholder="john.doe@email.com">
                     </div>
-                    <div class="field-group">
+                    <div :class="['field-group', applicantFieldGroupClass('phone')]" @dblclick="unlockApplicantField('phone', 'resume-phone')" title="Double-click to edit">
                         <label>Phone</label>
-                        <input id="resume-phone" type="tel" name="phone" autocomplete="off" v-model="phone" @blur="onApplicantPhoneBlur" placeholder="(555) 123-4567">
+                        <input id="resume-phone" type="tel" name="phone" autocomplete="off" v-model="phone" :readonly="isApplicantFieldLocked('phone')" @blur="handleApplicantFieldBlur('phone')" placeholder="(555) 123-4567">
                     </div>
-                    <div class="field-group">
+                    <div :class="['field-group', applicantFieldGroupClass('linkedin')]" @dblclick="unlockApplicantField('linkedin', 'resume-linkedin')" title="Double-click to edit">
                         <label>LinkedIn URL</label>
-                        <input id="resume-linkedin" type="url" name="linkedin_url" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="linkedin" placeholder="linkedin.com/in/johndoe">
+                        <input id="resume-linkedin" type="url" name="linkedin_url" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="linkedin" :readonly="isApplicantFieldLocked('linkedin')" @blur="handleApplicantFieldBlur('linkedin')" placeholder="linkedin.com/in/johndoe">
                     </div>
-                    <div class="field-group">
+                    <div :class="['field-group', applicantFieldGroupClass('portfolio')]" @dblclick="unlockApplicantField('portfolio', 'resume-portfolio')" title="Double-click to edit">
                         <label>Portfolio/Website</label>
-                        <input id="resume-portfolio" type="url" name="portfolio_url" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="portfolio" placeholder="johndoe.com">
+                        <input id="resume-portfolio" type="url" name="portfolio_url" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" v-model="portfolio" :readonly="isApplicantFieldLocked('portfolio')" @blur="handleApplicantFieldBlur('portfolio')" placeholder="johndoe.com">
                     </div>
                 </div>
-            </div>
+            </Card>
 
-            <!-- Address -->
-            <div class="appinfo-card">
-                <h3>Address</h3>
-                <div class="field-group field-group-spaced">
+            <Card class="resume-card resume-section resume-section--address" variant="job">
+                <template #header><h3>Address</h3></template>
+                <div :class="['field-group', 'field-group-spaced', applicantFieldGroupClass('streetAddress')]" @dblclick="unlockApplicantField('streetAddress', 'resume-street-address')" title="Double-click to edit">
                     <label>Street Address</label>
-                    <input id="resume-street-address" type="text" name="street_address" autocomplete="off" v-model="streetAddress" placeholder="123 Main Street">
+                    <input id="resume-street-address" type="text" name="street_address" autocomplete="off" v-model="streetAddress" :readonly="isApplicantFieldLocked('streetAddress')" @blur="handleApplicantFieldBlur('streetAddress')" placeholder="123 Main Street">
                 </div>
                 <div class="appinfo-3col">
-                    <div class="field-group">
+                    <div :class="['field-group', applicantFieldGroupClass('city')]" @dblclick="unlockApplicantField('city', 'resume-city')" title="Double-click to edit">
                         <label>City</label>
-                        <input id="resume-city" type="text" name="city" autocomplete="off" v-model="city" placeholder="San Francisco">
+                        <input id="resume-city" type="text" name="city" autocomplete="off" v-model="city" :readonly="isApplicantFieldLocked('city')" @blur="handleApplicantFieldBlur('city')" placeholder="San Francisco">
                     </div>
-                    <div class="field-group">
+                    <div :class="['field-group', applicantFieldGroupClass('appState')]" @dblclick="unlockApplicantField('appState', 'resume-state')" title="Double-click to edit">
                         <label>State</label>
-                        <input id="resume-state" type="text" name="state" autocomplete="off" v-model="appState" placeholder="CA">
+                        <input id="resume-state" type="text" name="state" autocomplete="off" v-model="appState" :readonly="isApplicantFieldLocked('appState')" @blur="handleApplicantFieldBlur('appState')" placeholder="CA">
                     </div>
-                    <div class="field-group">
+                    <div :class="['field-group', applicantFieldGroupClass('zip')]" @dblclick="unlockApplicantField('zip', 'resume-zip')" title="Double-click to edit">
                         <label>ZIP Code</label>
-                        <input id="resume-zip" type="text" name="postal_code" autocomplete="off" inputmode="numeric" v-model="zip" placeholder="94105">
+                        <input id="resume-zip" type="text" name="postal_code" autocomplete="off" inputmode="numeric" v-model="zip" :readonly="isApplicantFieldLocked('zip')" @blur="handleApplicantFieldBlur('zip')" placeholder="94105">
                     </div>
                 </div>
-            </div>
+            </Card>
 
-            <!-- Professional Summary -->
-            <div class="appinfo-card">
-                <h3>Professional Summary</h3>
-                <div class="field-group">
-                    <label>Summary</label>
-                    <textarea id="resume-professional-summary" name="professional_summary" autocomplete="off" v-model="summary" class="textarea-summary" placeholder="Brief professional summary highlighting your key skills and experience…"></textarea>
+            <Card class="resume-card resume-section resume-section--skills dashboard-span-2" variant="job">
+                <template #header><h3>Skills and Certifications</h3></template>
+                <div :class="['field-group', 'field-group-spaced', applicantFieldGroupClass('skillsText')]" @dblclick="unlockApplicantField('skillsText', 'resume-skills')" title="Double-click to edit">
+                    <label>Skills (comma-separated)</label>
+                    <textarea id="resume-skills" name="skills_text" autocomplete="off" v-model="skillsText" :readonly="isApplicantFieldLocked('skillsText')" @blur="handleApplicantFieldBlur('skillsText')" placeholder="Python, SQL, FastAPI, Vue.js, Docker"></textarea>
                 </div>
-            </div>
+                <div :class="['field-group', 'field-group-spaced', applicantFieldGroupClass('certificationsText')]" @dblclick="unlockApplicantField('certificationsText', 'resume-certifications')" title="Double-click to edit">
+                    <label>Certifications and Licenses</label>
+                    <textarea id="resume-certifications" name="certifications_text" autocomplete="off" v-model="certificationsText" :readonly="isApplicantFieldLocked('certificationsText')" @blur="handleApplicantFieldBlur('certificationsText')" placeholder="AWS Certified Cloud Practitioner - Amazon - 2025"></textarea>
+                </div>
+                <div :class="['field-group', applicantFieldGroupClass('professionalLinksText')]" @dblclick="unlockApplicantField('professionalLinksText', 'resume-professional-links')" title="Double-click to edit">
+                    <label>Professional Links</label>
+                    <textarea id="resume-professional-links" name="professional_links_text" autocomplete="off" v-model="professionalLinksText" :readonly="isApplicantFieldLocked('professionalLinksText')" @blur="handleApplicantFieldBlur('professionalLinksText')" placeholder="LinkedIn: https://...&#10;GitHub: https://...&#10;Portfolio: https://..."></textarea>
+                </div>
+            </Card>
 
-            <!-- Work Authorization -->
-            <div class="appinfo-card">
-                <h3>Work Authorization</h3>
+            <Card class="resume-card resume-section resume-section--authorization" variant="job">
+                <template #header><h3>Work Authorization</h3></template>
                 <div class="appinfo-grid">
-                    <div class="field-group">
+                    <div :class="['field-group', applicantFieldGroupClass('workAuth')]" @dblclick="unlockApplicantField('workAuth', 'resume-work-authorization')" title="Double-click to edit">
                         <label>Authorization Status</label>
-                        <select id="resume-work-authorization" name="authorization_status" autocomplete="off" v-model="workAuth">
+                        <select id="resume-work-authorization" name="authorization_status" autocomplete="off" v-model="workAuth" :disabled="isApplicantFieldLocked('workAuth')" @blur="handleApplicantFieldBlur('workAuth')">
                             <option value="">Select…</option>
                             <option>US Citizen</option>
                             <option>Green Card</option>
@@ -423,9 +500,9 @@
                             <option>Require Sponsorship</option>
                         </select>
                     </div>
-                    <div class="field-group">
+                    <div :class="['field-group', applicantFieldGroupClass('requiresSponsorship')]" @dblclick="unlockApplicantField('requiresSponsorship', 'resume-requires-sponsorship')" title="Double-click to edit">
                         <label>Requires Sponsorship?</label>
-                        <select id="resume-requires-sponsorship" name="requires_sponsorship" autocomplete="off" v-model="requiresSponsorship">
+                        <select id="resume-requires-sponsorship" name="requires_sponsorship" autocomplete="off" v-model="requiresSponsorship" :disabled="isApplicantFieldLocked('requiresSponsorship')" @blur="handleApplicantFieldBlur('requiresSponsorship')">
                             <option value="">Select…</option>
                             <option>Yes</option>
                             <option>No</option>
@@ -433,69 +510,51 @@
                         </select>
                     </div>
                 </div>
-            </div>
+            </Card>
 
-            <!-- Education -->
-            <div class="appinfo-card">
-                <h3>Education</h3>
+            <Card class="resume-card resume-section resume-section--experience" variant="job">
+                <template #header><h3>Current Experience</h3></template>
                 <div class="appinfo-grid">
-                    <div class="field-group">
-                        <label>Degree</label>
-                        <input id="resume-degree" type="text" name="degree" autocomplete="off" v-model="degree" placeholder="Bachelor of Science">
-                    </div>
-                    <div class="field-group">
-                        <label>Major / Field of Study</label>
-                        <input id="resume-major" type="text" name="major" autocomplete="off" v-model="major" placeholder="Computer Science">
-                    </div>
-                    <div class="field-group appinfo-full">
-                        <label>University</label>
-                        <input id="resume-university" type="text" name="university" autocomplete="off" v-model="university" placeholder="University of Alabama in Huntsville">
-                    </div>
-                    <div class="field-group">
-                        <label>Graduation Year</label>
-                        <input id="resume-graduation-year" type="text" name="graduation_year" inputmode="numeric" autocomplete="off" v-model="gradYear" placeholder="2026">
-                    </div>
-                    <div class="field-group">
-                        <label>GPA (optional)</label>
-                        <input id="resume-gpa" type="text" name="gpa" inputmode="decimal" autocomplete="off" v-model="gpa" placeholder="3.8">
-                    </div>
-                </div>
-            </div>
-
-            <!-- Current Experience -->
-            <div class="appinfo-card">
-                <h3>Current Experience</h3>
-                <div class="appinfo-grid">
-                    <div class="field-group">
+                    <div :class="['field-group', applicantFieldGroupClass('yearsExperience')]" @dblclick="unlockApplicantField('yearsExperience', 'resume-years-experience')" title="Double-click to edit">
                         <label>Years of Experience</label>
-                        <input id="resume-years-experience" type="text" name="years_experience" inputmode="numeric" autocomplete="off" v-model="yearsExperience" placeholder="2">
+                        <input id="resume-years-experience" type="text" name="years_experience" inputmode="numeric" autocomplete="off" v-model="yearsExperience" :readonly="isApplicantFieldLocked('yearsExperience')" @blur="handleApplicantFieldBlur('yearsExperience')" placeholder="2">
                     </div>
-                    <div class="field-group">
+                    <div :class="['field-group', applicantFieldGroupClass('jobTitle')]" @dblclick="unlockApplicantField('jobTitle', 'resume-job-title')" title="Double-click to edit">
                         <label>Current / Most Recent Job Title</label>
-                        <input id="resume-job-title" type="text" name="job_title" autocomplete="off" v-model="jobTitle" placeholder="Software Engineer Intern">
+                        <input id="resume-job-title" type="text" name="job_title" autocomplete="off" v-model="jobTitle" :readonly="isApplicantFieldLocked('jobTitle')" @blur="handleApplicantFieldBlur('jobTitle')" placeholder="Software Engineer Intern">
                     </div>
                 </div>
-            </div>
+            </Card>
 
-            <div class="appinfo-card">
-                <h3>Skills and Certifications</h3>
-                <div class="field-group field-group-spaced">
-                    <label>Skills (comma-separated)</label>
-                    <textarea id="resume-skills" name="skills_text" autocomplete="off" v-model="skillsText" placeholder="Python, SQL, FastAPI, Vue.js, Docker"></textarea>
+            <Card class="resume-card resume-section resume-section--education" variant="job">
+                <template #header><h3>Education</h3></template>
+                <div class="appinfo-grid">
+                    <div :class="['field-group', applicantFieldGroupClass('degree')]" @dblclick="unlockApplicantField('degree', 'resume-degree')" title="Double-click to edit">
+                        <label>Degree</label>
+                        <input id="resume-degree" type="text" name="degree" autocomplete="off" v-model="degree" :readonly="isApplicantFieldLocked('degree')" @blur="handleApplicantFieldBlur('degree')" placeholder="Bachelor of Science">
+                    </div>
+                    <div :class="['field-group', applicantFieldGroupClass('major')]" @dblclick="unlockApplicantField('major', 'resume-major')" title="Double-click to edit">
+                        <label>Major / Field of Study</label>
+                        <input id="resume-major" type="text" name="major" autocomplete="off" v-model="major" :readonly="isApplicantFieldLocked('major')" @blur="handleApplicantFieldBlur('major')" placeholder="Computer Science">
+                    </div>
+                    <div :class="['field-group', 'appinfo-full', applicantFieldGroupClass('university')]" @dblclick="unlockApplicantField('university', 'resume-university')" title="Double-click to edit">
+                        <label>University</label>
+                        <input id="resume-university" type="text" name="university" autocomplete="off" v-model="university" :readonly="isApplicantFieldLocked('university')" @blur="handleApplicantFieldBlur('university')" placeholder="University of Alabama in Huntsville">
+                    </div>
+                    <div :class="['field-group', applicantFieldGroupClass('gradYear')]" @dblclick="unlockApplicantField('gradYear', 'resume-graduation-year')" title="Double-click to edit">
+                        <label>Graduation Year</label>
+                        <input id="resume-graduation-year" type="text" name="graduation_year" inputmode="numeric" autocomplete="off" v-model="gradYear" :readonly="isApplicantFieldLocked('gradYear')" @blur="handleApplicantFieldBlur('gradYear')" placeholder="2026">
+                    </div>
+                    <div :class="['field-group', applicantFieldGroupClass('gpa')]" @dblclick="unlockApplicantField('gpa', 'resume-gpa')" title="Double-click to edit">
+                        <label>GPA (optional)</label>
+                        <input id="resume-gpa" type="text" name="gpa" inputmode="decimal" autocomplete="off" v-model="gpa" :readonly="isApplicantFieldLocked('gpa')" @blur="handleApplicantFieldBlur('gpa')" placeholder="3.8">
+                    </div>
                 </div>
-                <div class="field-group field-group-spaced">
-                    <label>Certifications and Licenses</label>
-                    <textarea id="resume-certifications" name="certifications_text" autocomplete="off" v-model="certificationsText" placeholder="AWS Certified Cloud Practitioner - Amazon - 2025"></textarea>
-                </div>
-                <div class="field-group">
-                    <label>Professional Links</label>
-                    <textarea id="resume-professional-links" name="professional_links_text" autocomplete="off" v-model="professionalLinksText" placeholder="LinkedIn: https://...&#10;GitHub: https://...&#10;Portfolio: https://..."></textarea>
-                </div>
-            </div>
+            </Card>
 
-            <div class="appinfo-card">
-                <h3>Education History (Additional Entries)</h3>
-                <div class="field-group">
+            <Card class="resume-card resume-section resume-section--education-history dashboard-span-2" variant="job">
+                <template #header><h3>Education History (Additional Entries)</h3></template>
+                <div :class="['field-group', applicantFieldGroupClass('educationHistoryText')]" @dblclick="unlockApplicantField('educationHistoryText', 'resume-education-history')" title="Double-click to edit">
                     <label>Education History</label>
                     <textarea
                         id="resume-education-history"
@@ -503,14 +562,16 @@
                         autocomplete="off"
                         class="textarea-tall"
                         v-model="educationHistoryText"
+                        :readonly="isApplicantFieldLocked('educationHistoryText')"
+                        @blur="handleApplicantFieldBlur('educationHistoryText')"
                         placeholder="School | Degree | Field | Start Date | End Date&#10;Example University | B.S. | Computer Science | August 2022 | May 2026"
                     ></textarea>
                 </div>
-            </div>
+            </Card>
 
-            <div class="appinfo-card">
-                <h3>Employment History (Additional Entries)</h3>
-                <div class="field-group">
+            <Card class="resume-card resume-section resume-section--employment-history dashboard-span-2" variant="job">
+                <template #header><h3>Employment History (Additional Entries)</h3></template>
+                <div :class="['field-group', applicantFieldGroupClass('employmentHistoryText')]" @dblclick="unlockApplicantField('employmentHistoryText', 'resume-employment-history')" title="Double-click to edit">
                     <label>Employment History</label>
                     <textarea
                         id="resume-employment-history"
@@ -518,17 +579,19 @@
                         autocomplete="off"
                         class="textarea-tall"
                         v-model="employmentHistoryText"
+                        :readonly="isApplicantFieldLocked('employmentHistoryText')"
+                        @blur="handleApplicantFieldBlur('employmentHistoryText')"
                         placeholder="Company | Title | Location | Start Date | End Date&#10;Tech Corp | Software Engineer Intern | Boston, MA | June 2024 | August 2024"
                     ></textarea>
                 </div>
-            </div>
+            </Card>
 
-            <div class="appinfo-card">
-                <h3>Demographics (Optional)</h3>
+            <Card class="resume-card resume-section resume-section--demographics" variant="job">
+                <template #header><h3>Demographics (Optional)</h3></template>
                 <div class="appinfo-grid">
-                    <div class="field-group">
+                    <div :class="['field-group', applicantFieldGroupClass('demographicGender')]" @dblclick="unlockApplicantField('demographicGender', 'resume-demographic-gender')" title="Double-click to edit">
                         <label>Gender Identity (Optional)</label>
-                        <select id="resume-demographic-gender" name="demographic_gender" autocomplete="off" v-model="demographicGender">
+                        <select id="resume-demographic-gender" name="demographic_gender" autocomplete="off" v-model="demographicGender" :disabled="isApplicantFieldLocked('demographicGender')" @blur="handleApplicantFieldBlur('demographicGender')">
                             <option value="">Prefer not to answer</option>
                             <option>Female</option>
                             <option>Male</option>
@@ -536,9 +599,9 @@
                             <option>Another identity</option>
                         </select>
                     </div>
-                    <div class="field-group">
+                    <div :class="['field-group', applicantFieldGroupClass('demographicEthnicity')]" @dblclick="unlockApplicantField('demographicEthnicity', 'resume-demographic-ethnicity')" title="Double-click to edit">
                         <label>Ethnicity / Race (Optional)</label>
-                        <select id="resume-demographic-ethnicity" name="demographic_ethnicity" autocomplete="off" v-model="demographicEthnicity">
+                        <select id="resume-demographic-ethnicity" name="demographic_ethnicity" autocomplete="off" v-model="demographicEthnicity" :disabled="isApplicantFieldLocked('demographicEthnicity')" @blur="handleApplicantFieldBlur('demographicEthnicity')">
                             <option value="">Prefer not to answer</option>
                             <option>American Indian or Alaska Native</option>
                             <option>Asian</option>
@@ -550,7 +613,7 @@
                         </select>
                     </div>
                 </div>
-            </div>
+            </Card>
 
         </div><!-- /tab applicant -->
 
@@ -558,27 +621,51 @@
         <!-- ════════════════════════════════════════════════════
              TAB 3 — Job Application Info (EEO)
         ═════════════════════════════════════════════════════ -->
-        <div v-if="activeTab === 'jobinfo'" class="dashboard">
+        <div v-if="activeTab === 'jobinfo'" class="dashboard dashboard--jobinfo">
 
-            <div class="eeo-banner">
-                Required: Federal and state laws require employers to collect this information for equal employment
-                opportunity reporting. Your responses are confidential and will not affect your application.
-            </div>
+            <Card class="resume-card resume-card--compliance dashboard-span-full" variant="minimal">
+                <template #header>
+                    <div class="panel-header">
+                        <div>
+                            <p class="panel-eyebrow">Disclosures</p>
+                            <h3>Mandatory Disclosures</h3>
+                        </div>
+                    </div>
+                </template>
 
-            <!-- Veteran Status -->
-            <div class="eeo-card">
-                <div class="eeo-header-row">
-                    <div>
-                        <h3>Veteran Status <span class="required-mark">*</span></h3>
-                        <p class="eeo-subtitle">Protected veteran status under VEVRAA</p>
+                <div class="eeo-banner">
+                    Required: Federal and state laws require employers to collect this information for equal employment
+                    opportunity reporting. Your responses are confidential and will not affect your application.
+                </div>
+                <div class="jobinfo-status-row">
+                    <p class="autosave-hint">Selections save automatically when chosen. If you leave this section after making changes, we’ll remind you what changed.</p>
+                    <div
+                        v-if="jobInfoSaving || jobInfoError || jobInfoSuccess"
+                        :class="[
+                            'save-feedback',
+                            jobInfoSaving ? 'is-saving' : jobInfoError ? 'is-error' : 'is-success'
+                        ]"
+                    >
+                        {{ jobInfoSaving ? 'Saving disclosures…' : (jobInfoError || jobInfoSuccess) }}
                     </div>
                 </div>
+            </Card>
+
+            <Card class="resume-card resume-card--eeo resume-card--eeo-veteran" variant="job">
+                <template #header>
+                    <div class="eeo-header-row">
+                        <div>
+                            <h3>Veteran Status <span class="required-mark">*</span></h3>
+                            <p class="eeo-subtitle">Protected veteran status under VEVRAA</p>
+                        </div>
+                    </div>
+                </template>
                 <div
                     v-for="opt in veteranOptions"
                     :key="opt"
                     class="option-row"
                     :class="{ selected: veteranStatus === opt }"
-                    @click="veteranStatus = opt"
+                    @click="selectDisclosure('veteranStatus', opt)"
                 >
                     <div class="radio-dot"></div>
                     {{ opt }}
@@ -587,54 +674,49 @@
                     Protected veterans include: Disabled veterans, recently separated veterans, active duty wartime
                     or campaign badge veterans, and Armed Forces service medal veterans.
                 </p>
-            </div>
+            </Card>
 
-            <!-- Disability Status -->
-            <div class="eeo-card">
-                <div class="eeo-header-row">
-                    <div>
-                        <h3>Disability Status <span class="required-mark">*</span></h3>
-                        <p class="eeo-subtitle">Voluntary self-identification under Section 503</p>
+            <Card class="resume-card resume-card--eeo resume-card--eeo-disability" variant="job">
+                <template #header>
+                    <div class="eeo-header-row">
+                        <div>
+                            <h3>Disability Status <span class="required-mark">*</span></h3>
+                            <p class="eeo-subtitle">Voluntary self-identification under Section 503</p>
+                        </div>
                     </div>
-                </div>
+                </template>
                 <div
                     v-for="opt in disabilityOptions"
                     :key="opt"
                     class="option-row"
                     :class="{ selected: disabilityStatus === opt }"
-                    @click="disabilityStatus = opt"
+                    @click="selectDisclosure('disabilityStatus', opt)"
                 >
                     <div class="radio-dot"></div>
                     {{ opt }}
                 </div>
-            </div>
+            </Card>
 
-            <!-- California Resident -->
-            <div class="eeo-card">
-                <div class="eeo-header-row">
-                    <div>
-                        <h3>California Resident <span class="required-mark">*</span></h3>
-                        <p class="eeo-subtitle">Required for CCPA compliance</p>
+            <Card class="resume-card resume-card--eeo resume-card--eeo-california" variant="job">
+                <template #header>
+                    <div class="eeo-header-row">
+                        <div>
+                            <h3>California Resident <span class="required-mark">*</span></h3>
+                            <p class="eeo-subtitle">Required for CCPA compliance</p>
+                        </div>
                     </div>
-                </div>
+                </template>
                 <div
                     v-for="opt in californiaOptions"
                     :key="opt"
                     class="option-row"
                     :class="{ selected: californiaResident === opt }"
-                    @click="californiaResident = opt"
+                    @click="selectDisclosure('californiaResident', opt)"
                 >
                     <div class="radio-dot"></div>
                     {{ opt }}
                 </div>
-            </div>
-
-            <!-- Save -->
-            <div class="jobinfo-save-row">
-                <button class="btn-primary" @click="saveJobInfo">Save Information</button>
-                <span v-if="jobInfoError" class="save-error">{{ jobInfoError }}</span>
-                <span v-if="jobInfoSuccess" class="save-success">{{ jobInfoSuccess }}</span>
-            </div>
+            </Card>
 
         </div><!-- /tab jobinfo -->
 
@@ -865,11 +947,23 @@
             </div>
         </div>
 
+        <ConfirmModal
+            v-if="jobInfoConfirmVisible"
+            title="Leave Mandatory Disclosures?"
+            :message="jobInfoLeaveConfirmMessage"
+            cancel-text="Stay Here"
+            confirm-text="Leave Section"
+            @cancel="cancelJobInfoLeave"
+            @confirm="confirmJobInfoLeave"
+        />
+
     </div><!-- /.page -->
 </template>
 
 
 <script>
+import Card from '../components/Card.vue'
+import ConfirmModal from '../components/ConfirmModal.vue'
 import { authedFetch, getCurrentUser, setCurrentUser } from '../lib/auth.js'
 import { publishCurrentPageDiagnostics, clearCurrentPageDiagnostics } from '../lib/debugDiagnostics'
 import { assertValidEmail, normalizePhone } from '../lib/validation.js'
@@ -879,6 +973,10 @@ const APPINFO_KEY = 'uah_applicant_info'
 
 export default {
     name: 'Resumes',
+    components: {
+        Card,
+        ConfirmModal,
+    },
 
     data() {
         return {
@@ -965,6 +1063,9 @@ export default {
             demographicGender: '',
             demographicEthnicity: '',
             working: false,
+            applicantEditingField: '',
+            applicantSavingField: '',
+            lastApplicantSavedSignature: '',
             saveStatus: { type: '', message: '' },
             _saveTimer: null,
             showNewProfileInput: false,
@@ -988,6 +1089,17 @@ export default {
             veteranStatus: '',
             disabilityStatus: '',
             californiaResident: '',
+            jobInfoSaving: false,
+            jobInfoSessionBaseline: {
+                veteranStatus: '',
+                disabilityStatus: '',
+                californiaResident: '',
+            },
+            jobInfoChangedFields: [],
+            jobInfoConfirmVisible: false,
+            pendingTabTarget: '',
+            pendingRouteTarget: '',
+            bypassJobInfoLeaveConfirm: false,
             jobInfoError: '',
             jobInfoSuccess: '',
             _jobInfoTimer: null,
@@ -995,6 +1107,23 @@ export default {
     },
 
     computed: {
+        activeTabSummary() {
+            const map = {
+                imported: 'Import, parse, and review resume readiness in a layout that matches the rest of UAH.',
+                applicant: 'Keep reusable applicant profile data organized for portal autofill and resume-driven updates.',
+                jobinfo: 'Review and confirm your mandatory disclosures with instant autosave feedback.',
+            }
+            return map[this.activeTab] || 'Manage UAH resumes and application information.'
+        },
+        jobInfoLeaveConfirmMessage() {
+            const changed = this.jobInfoChangedFields
+                .map((field) => this.jobInfoFieldLabel(field))
+                .join(', ')
+            if (!changed) {
+                return 'Your mandatory disclosures were autosaved. Leave this section?'
+            }
+            return `You changed ${changed}. These disclosures were autosaved. Leave this section?`
+        },
         portalReadyCount() {
             return this.resumes.filter(r => r.portal_ready).length
         },
@@ -1121,7 +1250,79 @@ export default {
         clearCurrentPageDiagnostics()
     },
 
+    beforeRouteLeave(to) {
+        if (this.bypassJobInfoLeaveConfirm) {
+            this.bypassJobInfoLeaveConfirm = false
+            return true
+        }
+        if (this.shouldConfirmJobInfoLeave()) {
+            this.openJobInfoLeaveConfirm({ routeTarget: to?.fullPath || '/home' })
+            return false
+        }
+        return true
+    },
+
     methods: {
+        requestTabChange(tab) {
+            if (tab === this.activeTab) return
+            if (this.activeTab === 'jobinfo' && tab !== 'jobinfo' && this.shouldConfirmJobInfoLeave()) {
+                this.openJobInfoLeaveConfirm({ tabTarget: tab })
+                return
+            }
+            this.setActiveTab(tab)
+        },
+        setActiveTab(tab) {
+            this.activeTab = tab
+            if (tab === 'jobinfo') {
+                this.startJobInfoSession()
+            }
+            this.publishDebugState(`tab-${tab}`)
+        },
+        isApplicantFieldLocked(fieldKey) {
+            return this.applicantEditingField !== fieldKey
+        },
+        applicantFieldGroupClass(fieldKey) {
+            return {
+                'field-group--locked': this.isApplicantFieldLocked(fieldKey),
+                'field-group--editing': this.applicantEditingField === fieldKey,
+            }
+        },
+        unlockApplicantField(fieldKey, controlId) {
+            if (this.working) return
+            this.applicantEditingField = fieldKey
+            this.$nextTick(() => {
+                const control = document.getElementById(controlId)
+                control?.focus?.()
+                if (control && typeof control.select === 'function' && control.tagName !== 'SELECT') {
+                    control.select()
+                }
+            })
+        },
+        async handleApplicantFieldBlur(fieldKey) {
+            if (this.applicantEditingField !== fieldKey) return
+            if (fieldKey === 'appEmail') {
+                this.onApplicantEmailBlur()
+            }
+            if (fieldKey === 'phone') {
+                this.onApplicantPhoneBlur()
+            }
+            const saved = await this.saveApplicantInfo({
+                successMessage: 'Changes autosaved.',
+                showToastOnSuccess: true,
+                showToastOnError: true,
+                isAutosave: true,
+            })
+            if (saved) {
+                this.applicantEditingField = ''
+                this.applicantSavingField = ''
+            }
+        },
+        serializeApplicantPayload(payload = this.buildProfilePayload()) {
+            return JSON.stringify(payload)
+        },
+        syncApplicantSavedSignature() {
+            this.lastApplicantSavedSignature = this.serializeApplicantPayload()
+        },
         normalizeApplicantContactFields() {
             if (this.appEmail) {
                 this.appEmail = assertValidEmail(this.appEmail)
@@ -1143,6 +1344,65 @@ export default {
             } catch {
                 // Keep user's raw input in place until save validation.
             }
+        },
+        currentJobInfoState() {
+            return {
+                veteranStatus: this.veteranStatus || '',
+                disabilityStatus: this.disabilityStatus || '',
+                californiaResident: this.californiaResident || '',
+            }
+        },
+        startJobInfoSession() {
+            this.jobInfoError = ''
+            this.jobInfoSuccess = ''
+            this.jobInfoSessionBaseline = { ...this.currentJobInfoState() }
+            this.jobInfoChangedFields = []
+        },
+        refreshJobInfoChangedFields() {
+            const current = this.currentJobInfoState()
+            this.jobInfoChangedFields = Object.keys(this.jobInfoSessionBaseline).filter(
+                (field) => (current[field] || '') !== (this.jobInfoSessionBaseline[field] || '')
+            )
+        },
+        jobInfoFieldLabel(fieldKey) {
+            const labels = {
+                veteranStatus: 'Veteran Status',
+                disabilityStatus: 'Disability Status',
+                californiaResident: 'California Resident',
+            }
+            return labels[fieldKey] || fieldKey
+        },
+        shouldConfirmJobInfoLeave() {
+            return this.activeTab === 'jobinfo' && this.jobInfoChangedFields.length > 0
+        },
+        openJobInfoLeaveConfirm({ tabTarget = '', routeTarget = '' } = {}) {
+            this.pendingTabTarget = tabTarget
+            this.pendingRouteTarget = routeTarget
+            this.jobInfoConfirmVisible = true
+        },
+        cancelJobInfoLeave() {
+            this.pendingTabTarget = ''
+            this.pendingRouteTarget = ''
+            this.jobInfoConfirmVisible = false
+        },
+        confirmJobInfoLeave() {
+            const tabTarget = this.pendingTabTarget
+            const routeTarget = this.pendingRouteTarget
+            this.cancelJobInfoLeave()
+            this.startJobInfoSession()
+            if (tabTarget) {
+                this.setActiveTab(tabTarget)
+                return
+            }
+            if (routeTarget) {
+                this.bypassJobInfoLeaveConfirm = true
+                this.$router.push(routeTarget)
+            }
+        },
+        async selectDisclosure(fieldKey, value) {
+            if (this[fieldKey] === value) return
+            this[fieldKey] = value
+            await this.saveJobInfo(fieldKey)
         },
         isPlaceholderValue(value) {
             if (value === null || value === undefined) return true
@@ -1429,7 +1689,7 @@ export default {
         },
         goToApplicantInfo() {
             this.closeViewModal()
-            this.activeTab = 'applicant'
+            this.requestTabChange('applicant')
             this.publishDebugState('navigate-to-applicant-from-readiness')
         },
 
@@ -1441,7 +1701,8 @@ export default {
             this.uploadError = null
             this.isDragOver = false
             this.$nextTick(() => {
-                this.$refs.inlineImportSection?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                const target = this.$refs.inlineImportSection?.$el || this.$refs.inlineImportSection
+                target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
             })
             this.publishDebugState('upload-open')
         },
@@ -1719,6 +1980,8 @@ export default {
 
         populateFormFromProfile(p) {
             this.activeProfileId = p.id
+            this.applicantEditingField = ''
+            this.applicantSavingField = ''
             this.firstName = p.first_name || ''
             this.lastName = p.last_name || ''
             this.appEmail = p.email || ''
@@ -1749,6 +2012,10 @@ export default {
             this.veteranStatus = p.veteran_status || ''
             this.disabilityStatus = p.disability_status || ''
             this.californiaResident = p.california_resident || ''
+            this.syncApplicantSavedSignature()
+            if (this.activeTab === 'jobinfo') {
+                this.startJobInfoSession()
+            }
         },
 
         buildProfilePayload() {
@@ -1773,6 +2040,8 @@ export default {
 
         loadApplicantInfoFromLocal() {
             this.currentUser = getCurrentUser()
+            this.applicantEditingField = ''
+            this.applicantSavingField = ''
             if (this.currentUser) {
                 this.firstName = this.currentUser.first_name || this.currentUser.firstName || ''
                 this.lastName = this.currentUser.last_name || this.currentUser.lastName || ''
@@ -1801,6 +2070,10 @@ export default {
                     this.veteranStatus = d.veteranStatus || ''; this.disabilityStatus = d.disabilityStatus || ''; this.californiaResident = d.californiaResident || ''
                 }
             } catch { /* ignore */ }
+            this.syncApplicantSavedSignature()
+            if (this.activeTab === 'jobinfo') {
+                this.startJobInfoSession()
+            }
         },
 
         async switchProfile(profileId) {
@@ -1810,9 +2083,11 @@ export default {
                 if (!res.ok) throw new Error(`HTTP ${res.status}`)
                 await this.loadProfileData(profileId)
                 await this.refreshProfileList()
+                showToast('Profile switched.', 'success')
                 this.publishDebugState('profile-switched')
             } catch (e) {
                 this.saveStatus = { type: 'error', message: 'Failed to switch profile.' }
+                showToast('Failed to switch profile.', 'error')
             }
         },
 
@@ -1844,8 +2119,11 @@ export default {
                 this.newProfileName = ''
                 await this.switchProfile(profile.id)
                 await this.refreshProfileList()
+                this.saveStatus = { type: 'success', message: 'Profile created.' }
+                showToast('Profile created.', 'success')
             } catch (e) {
                 this.saveStatus = { type: 'error', message: e.message || 'Failed to create profile.' }
+                showToast(e.message || 'Failed to create profile.', 'error')
             }
         },
         isDefaultProfile(profileId) {
@@ -1869,19 +2147,36 @@ export default {
                     const active = this.profiles.find(p => p.is_active) || this.profiles[0]
                     await this.loadProfileData(active.id)
                 }
+                this.saveStatus = { type: 'success', message: 'Profile deleted.' }
+                showToast('Profile deleted.', 'success')
                 this.publishDebugState('profile-deleted')
             } catch (e) {
                 this.saveStatus = { type: 'error', message: 'Failed to delete profile.' }
+                showToast('Failed to delete profile.', 'error')
             }
         },
 
-        async saveApplicantInfo() {
+        async saveApplicantInfo(options = {}) {
+            const {
+                successMessage = 'Information saved.',
+                showToastOnSuccess = false,
+                showToastOnError = false,
+                isAutosave = false,
+            } = options
             this.working = true
             this.saveStatus = { type: '', message: '' }
             if (this._saveTimer) clearTimeout(this._saveTimer)
             try {
                 this.normalizeApplicantContactFields()
                 const payload = this.buildProfilePayload()
+                const nextSignature = this.serializeApplicantPayload(payload)
+                if (nextSignature === this.lastApplicantSavedSignature) {
+                    this.applicantSavingField = ''
+                    return true
+                }
+                if (isAutosave) {
+                    this.applicantSavingField = this.applicantEditingField
+                }
                 delete payload.name  // don't overwrite profile name on save
 
                 if (this.activeProfileId) {
@@ -1924,46 +2219,81 @@ export default {
                     await this.refreshProfileList()
                 }
 
-                this.saveStatus = { type: 'success', message: 'Information saved.' }
+                this.syncApplicantSavedSignature()
+                this.saveStatus = { type: 'success', message: successMessage }
+                if (showToastOnSuccess) {
+                    showToast(successMessage, 'success')
+                }
                 this.publishDebugState('applicant-save-success')
+                return true
             } catch (e) {
                 if (e.message === 'Session expired' || e.message === 'Not authenticated') {
                     this.$router.push('/login')
-                    return
+                    return false
                 }
                 this.saveStatus = { type: 'error', message: e.message ?? 'Save failed.' }
+                if (showToastOnError) {
+                    showToast(this.saveStatus.message, 'error')
+                }
                 this.publishDebugState('applicant-save-error')
+                return false
             } finally {
                 this.working = false
-                this._saveTimer = setTimeout(() => { this.saveStatus = { type: '', message: '' } }, 3500)
+                if (this.applicantSavingField || this.saveStatus.message) {
+                    this._saveTimer = setTimeout(() => {
+                        this.saveStatus = { type: '', message: '' }
+                        this.applicantSavingField = ''
+                    }, 3500)
+                }
             }
         },
 
         // ── Job Application Info ────────────────────────────
-        saveJobInfo() {
+        async saveJobInfo(changedField = '') {
             this.jobInfoError = ''
             this.jobInfoSuccess = ''
             if (this._jobInfoTimer) clearTimeout(this._jobInfoTimer)
-            if (!this.veteranStatus || !this.disabilityStatus || !this.californiaResident) {
-                this.jobInfoError = 'Please complete all required fields before saving.'
-                this.publishDebugState('jobinfo-validation-error')
-                return
+            this.jobInfoSaving = true
+            try {
+                const payload = {
+                    veteran_status: this.veteranStatus,
+                    disability_status: this.disabilityStatus,
+                    california_resident: this.californiaResident,
+                }
+                if (this.activeProfileId) {
+                    const res = await authedFetch(`/api/applicant-profile/${this.activeProfileId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    })
+                    if (!res.ok) {
+                        const data = await res.json().catch(() => null)
+                        throw new Error(data?.detail || `HTTP ${res.status}`)
+                    }
+                } else {
+                    const saved = await this.saveApplicantInfo({
+                        successMessage: 'Mandatory disclosures autosaved.',
+                        showToastOnSuccess: false,
+                        showToastOnError: false,
+                        isAutosave: true,
+                    })
+                    if (!saved) throw new Error('Failed to save mandatory disclosures.')
+                }
+                this.syncApplicantSavedSignature()
+                this.refreshJobInfoChangedFields()
+                this.jobInfoSuccess = 'Autosaved just now.'
+                if (changedField) {
+                    showToast(`${this.jobInfoFieldLabel(changedField)} saved.`, 'success')
+                }
+                this.publishDebugState('jobinfo-save-success')
+                this._jobInfoTimer = setTimeout(() => { this.jobInfoSuccess = '' }, 3500)
+            } catch (e) {
+                this.jobInfoError = e.message || 'Failed to save mandatory disclosures.'
+                showToast(this.jobInfoError, 'error')
+                this.publishDebugState('jobinfo-save-error')
+            } finally {
+                this.jobInfoSaving = false
             }
-            // Save EEO data to the active profile
-            if (this.activeProfileId) {
-                authedFetch(`/api/applicant-profile/${this.activeProfileId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        veteran_status: this.veteranStatus,
-                        disability_status: this.disabilityStatus,
-                        california_resident: this.californiaResident,
-                    }),
-                }).catch(() => {})
-            }
-            this.jobInfoSuccess = 'Information saved.'
-            this.publishDebugState('jobinfo-save-success')
-            this._jobInfoTimer = setTimeout(() => { this.jobInfoSuccess = '' }, 3500)
         },
 
         // ── Helpers ─────────────────────────────────────────
