@@ -3,7 +3,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 import unittest
+from unittest.mock import MagicMock, patch
 
+from sqlalchemy.exc import IntegrityError
+
+import app.services.ingest as ingest_module
 from app.schemas.job import NormalizedJob
 from app.services.ingest import (
     _build_job_payload,
@@ -16,6 +20,7 @@ from app.services.ingest import (
     needs_link_health_backfill,
     needs_stale_audit,
     quality_check,
+    upsert_job,
 )
 
 
@@ -37,6 +42,104 @@ def _job(**overrides) -> NormalizedJob:
     }
     payload.update(overrides)
     return NormalizedJob(**payload)
+
+
+_DEFAULT_REFERENCE_TIME = datetime(2026, 4, 13, 12, 0, tzinfo=timezone.utc)
+_USE_COMPUTED_HASH = object()
+
+
+def _payload(
+    job: NormalizedJob,
+    *,
+    existing=None,
+    reference_time: datetime = _DEFAULT_REFERENCE_TIME,
+    dedup_hash=_USE_COMPUTED_HASH,
+    is_active: bool = True,
+) -> dict:
+    effective_dedup_hash = dedup_hash
+    if effective_dedup_hash is _USE_COMPUTED_HASH:
+        effective_dedup_hash = compute_dedup_hash(job.title, job.company)
+    return {
+        "id": getattr(existing, "id", None) or "job-row-id",
+        "provider": job.provider,
+        "provider_job_id": job.provider_job_id,
+        "provider_url": job.provider_url,
+        "provider_url_status": "good",
+        "provider_url_checked_at": reference_time,
+        "provider_url_error": None,
+        "apply_url": "https://jobs.example.com/apply/123",
+        "apply_host": "jobs.example.com",
+        "apply_portal": "ashby",
+        "apply_url_status": "good",
+        "apply_url_checked_at": reference_time,
+        "apply_url_error": None,
+        "source_tags": [f"provider:{job.provider}", "apply_portal:ashby"],
+        "title": job.title,
+        "company": job.company,
+        "company_url": job.company_url,
+        "location": job.location,
+        "is_remote": bool(job.is_remote),
+        "job_type": job.job_type,
+        "experience_level": job.experience_level,
+        "categories": list(job.categories),
+        "description": job.description,
+        "short_description": "Short description",
+        "quality_score": 0.92,
+        "quality_flags": [],
+        "consecutive_misses": 0,
+        "first_seen_at": getattr(existing, "first_seen_at", None) or reference_time,
+        "last_seen_at": reference_time,
+        "published_at": job.published_at,
+        "first_published_at": job.published_at,
+        "content_fingerprint": "content-fingerprint",
+        "last_content_change_at": reference_time,
+        "is_active": is_active,
+        "is_featured": getattr(existing, "is_featured", False),
+        "display_tier": "active" if is_active else "hidden",
+        "staleness_status": "fresh",
+        "staleness_flags": [],
+        "staleness_checked_at": reference_time,
+        "repost_count": int(getattr(existing, "repost_count", 0) or 0),
+        "dedup_hash": effective_dedup_hash,
+    }
+
+
+class _FakeInsertStatement:
+    def __init__(self, payload: dict):
+        self.payload = dict(payload)
+        self.index_elements = None
+        self.set_values = None
+
+    def on_conflict_do_update(self, *, index_elements, set_):
+        self.index_elements = list(index_elements)
+        self.set_values = dict(set_)
+        return self
+
+
+class _FakeInsertBuilder:
+    def values(self, **payload):
+        return _FakeInsertStatement(payload)
+
+
+def _fake_insert(_model):
+    return _FakeInsertBuilder()
+
+
+def _query_with_result(result):
+    query = MagicMock()
+    query.filter.return_value = query
+    query.order_by.return_value = query
+    query.first.return_value = result
+    return query
+
+
+def _dedup_hash_integrity_error() -> IntegrityError:
+    class _Orig(Exception):
+        def __init__(self):
+            self.diag = SimpleNamespace(constraint_name="idx_jobs_dedup_hash")
+            super().__init__('duplicate key value violates unique constraint "idx_jobs_dedup_hash"')
+
+    return IntegrityError("INSERT", {}, _Orig())
 
 
 class IngestServiceTests(unittest.TestCase):
@@ -215,6 +318,215 @@ class IngestServiceTests(unittest.TestCase):
 
         self.assertTrue(needs_link_health_backfill(row, reference_time=now))
         self.assertTrue(needs_stale_audit(row, reference_time=now))
+
+    @patch.object(ingest_module, "insert", side_effect=_fake_insert)
+    @patch.object(ingest_module, "_build_job_payload")
+    @patch.object(ingest_module, "_evaluate_job_link_health", return_value={"provider_url_status": "good"})
+    @patch.object(ingest_module, "get_provider_controls", return_value=SimpleNamespace(ingest_enabled=True))
+    def test_upsert_same_provider_collision_nulls_hash_and_increments_canonical(
+        self,
+        _controls,
+        _link_health,
+        build_payload,
+        _insert,
+    ):
+        job = _job(provider_job_id="21463732")
+        owner = SimpleNamespace(
+            id="owner-row",
+            provider=job.provider,
+            provider_job_id="17669155",
+            repost_count=2,
+        )
+        build_payload.return_value = {"should_store": True, "payload": _payload(job)}
+
+        existing_query = _query_with_result(None)
+        owner_query = _query_with_result(owner)
+        db = MagicMock()
+        db.query.side_effect = [existing_query, owner_query]
+
+        with patch.object(ingest_module.settings, "JOB_DEDUP_ENABLED", True):
+            state, created = upsert_job(job, db_session=db, provider_adapter=object())
+
+        self.assertEqual(state, "inserted")
+        self.assertTrue(created)
+        self.assertEqual(owner.repost_count, 3)
+        self.assertEqual(db.execute.call_count, 1)
+        statement = db.execute.call_args.args[0]
+        self.assertIsNone(statement.payload["dedup_hash"])
+        self.assertIsNone(statement.set_values["dedup_hash"])
+        db.rollback.assert_not_called()
+        db.commit.assert_called_once()
+
+    @patch.object(ingest_module, "insert", side_effect=_fake_insert)
+    @patch.object(ingest_module, "_build_job_payload")
+    @patch.object(ingest_module, "_evaluate_job_link_health", return_value={"provider_url_status": "good"})
+    @patch.object(ingest_module, "get_provider_controls", return_value=SimpleNamespace(ingest_enabled=True))
+    def test_upsert_same_provider_duplicate_repeat_sync_does_not_reincrement_canonical(
+        self,
+        _controls,
+        _link_health,
+        build_payload,
+        _insert,
+    ):
+        existing = SimpleNamespace(
+            id="duplicate-row",
+            dedup_hash=None,
+            repost_count=0,
+            first_seen_at=_DEFAULT_REFERENCE_TIME,
+        )
+        owner = SimpleNamespace(
+            id="owner-row",
+            provider="the_muse",
+            provider_job_id="17669155",
+            repost_count=5,
+        )
+        job = _job(provider_job_id="21463732")
+        build_payload.return_value = {"should_store": True, "payload": _payload(job, existing=existing)}
+
+        existing_query = _query_with_result(existing)
+        owner_query = _query_with_result(owner)
+        db = MagicMock()
+        db.query.side_effect = [existing_query, owner_query]
+
+        with patch.object(ingest_module.settings, "JOB_DEDUP_ENABLED", True):
+            state, created = upsert_job(job, db_session=db, provider_adapter=object())
+
+        self.assertEqual(state, "updated")
+        self.assertFalse(created)
+        self.assertEqual(owner.repost_count, 5)
+        statement = db.execute.call_args.args[0]
+        self.assertIsNone(statement.payload["dedup_hash"])
+        self.assertIsNone(statement.set_values["dedup_hash"])
+        db.commit.assert_called_once()
+
+    @patch.object(ingest_module, "_build_job_payload")
+    @patch.object(ingest_module, "_evaluate_job_link_health", return_value={"provider_url_status": "good"})
+    @patch.object(ingest_module, "get_provider_controls", return_value=SimpleNamespace(ingest_enabled=True))
+    def test_upsert_cross_provider_duplicate_keeps_existing_short_circuit_behavior(
+        self,
+        _controls,
+        _link_health,
+        build_payload,
+    ):
+        job = _job(provider="the_muse", provider_job_id="21463732")
+        existing = SimpleNamespace(
+            id="existing-row",
+            dedup_hash=compute_dedup_hash(job.title, job.company),
+            is_active=True,
+            display_tier="active",
+            last_seen_at=None,
+            consecutive_misses=4,
+        )
+        owner = SimpleNamespace(
+            id="owner-row",
+            provider="findwork",
+            provider_job_id="17669155",
+            repost_count=2,
+            is_active=True,
+            display_tier="stale",
+            last_seen_at=None,
+            consecutive_misses=3,
+            source_tags=["provider:findwork"],
+        )
+        build_payload.return_value = {"should_store": True, "payload": _payload(job, existing=existing)}
+
+        existing_query = _query_with_result(existing)
+        owner_query = _query_with_result(owner)
+        db = MagicMock()
+        db.query.side_effect = [existing_query, owner_query]
+
+        with patch.object(ingest_module.settings, "JOB_DEDUP_ENABLED", True):
+            state, created = upsert_job(job, db_session=db, provider_adapter=object())
+
+        self.assertEqual(state, "duplicate")
+        self.assertFalse(created)
+        self.assertFalse(existing.is_active)
+        self.assertIsNone(existing.dedup_hash)
+        self.assertIn("duplicate_provider:the_muse", owner.source_tags)
+        db.execute.assert_not_called()
+        db.commit.assert_called_once()
+
+    @patch.object(ingest_module, "insert", side_effect=_fake_insert)
+    @patch.object(ingest_module, "_build_job_payload")
+    @patch.object(ingest_module, "_evaluate_job_link_health", return_value={"provider_url_status": "good"})
+    @patch.object(ingest_module, "get_provider_controls", return_value=SimpleNamespace(ingest_enabled=True))
+    def test_upsert_inactive_duplicate_reactivation_does_not_reclaim_hash(
+        self,
+        _controls,
+        _link_health,
+        build_payload,
+        _insert,
+    ):
+        job = _job(provider_job_id="21463732")
+        dedup_hash = compute_dedup_hash(job.title, job.company)
+        existing = SimpleNamespace(
+            id="inactive-duplicate-row",
+            dedup_hash=dedup_hash,
+            repost_count=1,
+            first_seen_at=_DEFAULT_REFERENCE_TIME,
+            is_active=False,
+        )
+        owner = SimpleNamespace(
+            id="owner-row",
+            provider=job.provider,
+            provider_job_id="17669155",
+            repost_count=7,
+        )
+        build_payload.return_value = {
+            "should_store": True,
+            "payload": _payload(job, existing=existing, dedup_hash=dedup_hash, is_active=True),
+        }
+
+        existing_query = _query_with_result(existing)
+        owner_query = _query_with_result(owner)
+        db = MagicMock()
+        db.query.side_effect = [existing_query, owner_query]
+
+        with patch.object(ingest_module.settings, "JOB_DEDUP_ENABLED", True):
+            state, created = upsert_job(job, db_session=db, provider_adapter=object())
+
+        self.assertEqual(state, "updated")
+        self.assertFalse(created)
+        self.assertEqual(owner.repost_count, 8)
+        statement = db.execute.call_args.args[0]
+        self.assertTrue(statement.set_values["is_active"])
+        self.assertIsNone(statement.payload["dedup_hash"])
+        self.assertIsNone(statement.set_values["dedup_hash"])
+        db.commit.assert_called_once()
+
+    @patch.object(ingest_module, "insert", side_effect=_fake_insert)
+    @patch.object(ingest_module, "_build_job_payload")
+    @patch.object(ingest_module, "_evaluate_job_link_health", return_value={"provider_url_status": "good"})
+    @patch.object(ingest_module, "get_provider_controls", return_value=SimpleNamespace(ingest_enabled=True))
+    def test_upsert_retries_once_with_null_hash_after_dedup_constraint_error(
+        self,
+        _controls,
+        _link_health,
+        build_payload,
+        _insert,
+    ):
+        job = _job(provider_job_id="21463732")
+        build_payload.return_value = {"should_store": True, "payload": _payload(job)}
+
+        existing_query = _query_with_result(None)
+        owner_query = _query_with_result(None)
+        db = MagicMock()
+        db.query.side_effect = [existing_query, owner_query]
+        db.execute.side_effect = [_dedup_hash_integrity_error(), None]
+
+        with patch.object(ingest_module.settings, "JOB_DEDUP_ENABLED", True):
+            state, created = upsert_job(job, db_session=db, provider_adapter=object())
+
+        self.assertEqual(state, "inserted")
+        self.assertTrue(created)
+        self.assertEqual(db.execute.call_count, 2)
+        first_statement = db.execute.call_args_list[0].args[0]
+        second_statement = db.execute.call_args_list[1].args[0]
+        self.assertIsNotNone(first_statement.payload["dedup_hash"])
+        self.assertIsNone(second_statement.payload["dedup_hash"])
+        self.assertIsNone(second_statement.set_values["dedup_hash"])
+        db.rollback.assert_called_once()
+        db.commit.assert_called_once()
 
 
 if __name__ == "__main__":

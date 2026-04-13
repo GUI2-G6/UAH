@@ -9,6 +9,7 @@ import uuid
 
 from sqlalchemy import and_, or_
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import IntegrityError
 
 from app.api.routes import _expand_category_for_muse
 from app.core.config import settings
@@ -44,6 +45,8 @@ _DEDUP_NOISE_WORDS = (
     "corporation",
     "co",
 )
+
+_DEDUP_HASH_CONSTRAINT_NAME = "idx_jobs_dedup_hash"
 
 
 def compute_display_tier(*, is_active: bool, last_seen_at: datetime | None, reference_time: datetime | None = None) -> str:
@@ -425,6 +428,116 @@ def _build_job_payload(job: NormalizedJob, *, existing: Job | None, link_health:
     }
 
 
+def _resolve_active_dedup_owner(*, db, dedup_hash: str, existing: Job | None) -> Job | None:
+    """Return the active row that currently owns a dedup hash, excluding the current row."""
+    query = (
+        db.query(Job)
+        .filter(
+            Job.dedup_hash == dedup_hash,
+            Job.is_active.is_(True),
+        )
+        .order_by(Job.first_seen_at.asc(), Job.id.asc())
+    )
+    if existing is not None:
+        query = query.filter(Job.id != existing.id)
+    return query.first()
+
+
+def _should_increment_same_provider_repost_count(*, existing: Job | None) -> bool:
+    """Only bump the canonical row when a row first becomes a same-provider duplicate."""
+    if existing is None:
+        return True
+    return bool(existing.dedup_hash)
+
+
+def _refresh_cross_provider_duplicate(
+    *,
+    duplicate_owner: Job,
+    existing: Job | None,
+    job: NormalizedJob,
+    reference_time: datetime,
+) -> None:
+    duplicate_owner.last_seen_at = reference_time
+    duplicate_owner.consecutive_misses = 0
+    duplicate_owner.display_tier = compute_display_tier(
+        is_active=bool(duplicate_owner.is_active),
+        last_seen_at=reference_time,
+        reference_time=reference_time,
+    )
+    duplicate_owner.source_tags = _merge_unique_values(
+        list(duplicate_owner.source_tags or []),
+        [f"duplicate_provider:{job.provider}"],
+    )
+    if existing is not None and existing.id != duplicate_owner.id:
+        existing.is_active = False
+        existing.display_tier = compute_display_tier(
+            is_active=False,
+            last_seen_at=reference_time,
+            reference_time=reference_time,
+        )
+        existing.last_seen_at = reference_time
+        existing.consecutive_misses = 0
+        existing.dedup_hash = None
+
+
+def _job_upsert_values(payload: dict) -> dict:
+    return {
+        "provider_url": payload["provider_url"],
+        "provider_url_status": payload["provider_url_status"],
+        "provider_url_checked_at": payload["provider_url_checked_at"],
+        "provider_url_error": payload["provider_url_error"],
+        "apply_url": payload["apply_url"],
+        "apply_host": payload["apply_host"],
+        "apply_portal": payload["apply_portal"],
+        "apply_url_status": payload["apply_url_status"],
+        "apply_url_checked_at": payload["apply_url_checked_at"],
+        "apply_url_error": payload["apply_url_error"],
+        "source_tags": payload["source_tags"],
+        "title": payload["title"],
+        "company": payload["company"],
+        "company_url": payload["company_url"],
+        "location": payload["location"],
+        "is_remote": payload["is_remote"],
+        "job_type": payload["job_type"],
+        "experience_level": payload["experience_level"],
+        "categories": payload["categories"],
+        "description": payload["description"],
+        "short_description": payload["short_description"],
+        "quality_score": payload["quality_score"],
+        "quality_flags": payload["quality_flags"],
+        "consecutive_misses": 0,
+        "last_seen_at": payload["last_seen_at"],
+        "published_at": payload["published_at"],
+        "first_published_at": payload["first_published_at"],
+        "content_fingerprint": payload["content_fingerprint"],
+        "last_content_change_at": payload["last_content_change_at"],
+        "is_active": payload["is_active"],
+        "display_tier": payload["display_tier"],
+        "staleness_status": payload["staleness_status"],
+        "staleness_flags": payload["staleness_flags"],
+        "staleness_checked_at": payload["staleness_checked_at"],
+        "repost_count": payload["repost_count"],
+        "dedup_hash": payload["dedup_hash"],
+    }
+
+
+def _build_job_upsert_statement(payload: dict):
+    statement = insert(Job).values(**payload)
+    return statement.on_conflict_do_update(
+        index_elements=["provider", "provider_job_id"],
+        set_=_job_upsert_values(payload),
+    )
+
+
+def _is_dedup_hash_integrity_error(exc: IntegrityError) -> bool:
+    orig = getattr(exc, "orig", None)
+    diag = getattr(orig, "diag", None)
+    constraint_name = getattr(diag, "constraint_name", None)
+    if constraint_name == _DEDUP_HASH_CONSTRAINT_NAME:
+        return True
+    return _DEDUP_HASH_CONSTRAINT_NAME in str(exc)
+
+
 def upsert_job(job: NormalizedJob, db_session=None, provider_adapter=None) -> tuple[str, bool]:
     """Insert or update a normalized job and refresh its link-health and stale-listing metadata."""
     controls = get_provider_controls(job.provider)
@@ -448,96 +561,43 @@ def upsert_job(job: NormalizedJob, db_session=None, provider_adapter=None) -> tu
         dedup_hash = payload.get("dedup_hash")
         duplicate_owner = None
         if settings.JOB_DEDUP_ENABLED and dedup_hash:
-            duplicate_query = (
-                db.query(Job)
-                .filter(
-                    Job.dedup_hash == dedup_hash,
-                    Job.is_active.is_(True),
-                    Job.provider != job.provider,
-                )
-                .order_by(Job.first_seen_at.asc(), Job.id.asc())
-            )
-            if existing is not None:
-                duplicate_query = duplicate_query.filter(Job.id != existing.id)
-            duplicate_owner = duplicate_query.first()
+            duplicate_owner = _resolve_active_dedup_owner(db=db, dedup_hash=dedup_hash, existing=existing)
 
         if duplicate_owner is not None:
-            duplicate_owner.last_seen_at = reference_time
-            duplicate_owner.consecutive_misses = 0
-            duplicate_owner.display_tier = compute_display_tier(
-                is_active=bool(duplicate_owner.is_active),
-                last_seen_at=reference_time,
-                reference_time=reference_time,
-            )
-            duplicate_owner.source_tags = _merge_unique_values(
-                list(duplicate_owner.source_tags or []),
-                [f"duplicate_provider:{job.provider}"],
-            )
-            if existing is not None and existing.id != duplicate_owner.id:
-                existing.is_active = False
-                existing.display_tier = compute_display_tier(
-                    is_active=False,
-                    last_seen_at=reference_time,
+            if duplicate_owner.provider != job.provider:
+                _refresh_cross_provider_duplicate(
+                    duplicate_owner=duplicate_owner,
+                    existing=existing,
+                    job=job,
                     reference_time=reference_time,
                 )
-                existing.last_seen_at = reference_time
-                existing.consecutive_misses = 0
-                existing.dedup_hash = None
-            db.commit()
-            if settings.JOB_DEDUP_LOG_COLLISIONS:
-                logger.info(
-                    "Cross-provider dedup matched %s/%s to %s/%s via %s",
-                    job.provider,
-                    job.provider_job_id,
-                    duplicate_owner.provider,
-                    duplicate_owner.provider_job_id,
-                    dedup_hash,
-                )
-            return "duplicate", False
+                db.commit()
+                if settings.JOB_DEDUP_LOG_COLLISIONS:
+                    logger.info(
+                        "Cross-provider dedup matched %s/%s to %s/%s via %s",
+                        job.provider,
+                        job.provider_job_id,
+                        duplicate_owner.provider,
+                        duplicate_owner.provider_job_id,
+                        dedup_hash,
+                    )
+                return "duplicate", False
 
-        statement = insert(Job).values(**payload)
-        statement = statement.on_conflict_do_update(
-            index_elements=["provider", "provider_job_id"],
-            set_={
-                "provider_url": payload["provider_url"],
-                "provider_url_status": payload["provider_url_status"],
-                "provider_url_checked_at": payload["provider_url_checked_at"],
-                "provider_url_error": payload["provider_url_error"],
-                "apply_url": payload["apply_url"],
-                "apply_host": payload["apply_host"],
-                "apply_portal": payload["apply_portal"],
-                "apply_url_status": payload["apply_url_status"],
-                "apply_url_checked_at": payload["apply_url_checked_at"],
-                "apply_url_error": payload["apply_url_error"],
-                "source_tags": payload["source_tags"],
-                "title": payload["title"],
-                "company": payload["company"],
-                "company_url": payload["company_url"],
-                "location": payload["location"],
-                "is_remote": payload["is_remote"],
-                "job_type": payload["job_type"],
-                "experience_level": payload["experience_level"],
-                "categories": payload["categories"],
-                "description": payload["description"],
-                "short_description": payload["short_description"],
-                "quality_score": payload["quality_score"],
-                "quality_flags": payload["quality_flags"],
-                "consecutive_misses": 0,
-                "last_seen_at": payload["last_seen_at"],
-                "published_at": payload["published_at"],
-                "first_published_at": payload["first_published_at"],
-                "content_fingerprint": payload["content_fingerprint"],
-                "last_content_change_at": payload["last_content_change_at"],
-                "is_active": payload["is_active"],
-                "display_tier": payload["display_tier"],
-                "staleness_status": payload["staleness_status"],
-                "staleness_flags": payload["staleness_flags"],
-                "staleness_checked_at": payload["staleness_checked_at"],
-                "repost_count": payload["repost_count"],
-                "dedup_hash": payload["dedup_hash"],
-            },
-        )
-        db.execute(statement)
+            if existing is None or existing.id != duplicate_owner.id:
+                if _should_increment_same_provider_repost_count(existing=existing):
+                    duplicate_owner.repost_count = int(duplicate_owner.repost_count or 0) + 1
+                payload["dedup_hash"] = None
+
+        statement = _build_job_upsert_statement(payload)
+        try:
+            db.execute(statement)
+        except IntegrityError as exc:
+            db.rollback()
+            if not _is_dedup_hash_integrity_error(exc):
+                raise
+            payload["dedup_hash"] = None
+            statement = _build_job_upsert_statement(payload)
+            db.execute(statement)
         db.commit()
         return ("updated", False) if existing is not None else ("inserted", True)
 
