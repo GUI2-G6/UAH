@@ -104,6 +104,98 @@ DEBUG_REDIS_CONTAINER=""
 DEBUG_DB_NAME=""
 DEBUG_MAIN_NETWORK=""
 DEBUG_LOG_ALT_SERVICE=""
+PROVIDER_CONFIG_MUTATED=false
+
+PROVIDER_NAMES=(
+  "the_muse"
+  "arbeitnow"
+  "findwork"
+  "jooble"
+  "adzuna"
+  "careerjet"
+)
+PROVIDER_DEFAULT_CATEGORIES=(
+  "tech"
+  "product"
+  "finance"
+  "business and operations"
+  "sales and marketing"
+  "people"
+  "customer and support"
+)
+declare -A PROVIDER_LABELS=(
+  ["the_muse"]="The Muse"
+  ["arbeitnow"]="Arbeitnow"
+  ["findwork"]="Findwork"
+  ["jooble"]="Jooble"
+  ["adzuna"]="Jobs by Adzuna"
+  ["careerjet"]="Careerjet"
+)
+declare -A PROVIDER_SWEEP_MODES=(
+  ["the_muse"]="category"
+  ["arbeitnow"]="global"
+  ["findwork"]="global"
+  ["jooble"]="matrix"
+  ["adzuna"]="category"
+  ["careerjet"]="disabled"
+)
+declare -A PROVIDER_DEFAULT_STATES=(
+  ["the_muse"]="active"
+  ["arbeitnow"]="active"
+  ["findwork"]="dormant"
+  ["jooble"]="dormant"
+  ["adzuna"]="dormant"
+  ["careerjet"]="dormant"
+)
+declare -A PROVIDER_MUTATION_ALLOWED=(
+  ["the_muse"]="true"
+  ["arbeitnow"]="true"
+  ["findwork"]="true"
+  ["jooble"]="true"
+  ["adzuna"]="true"
+  ["careerjet"]="false"
+)
+declare -A PROVIDER_EDITABLE_FIELDS=(
+  ["the_muse"]="api_key rate_limit_per_hour"
+  ["arbeitnow"]="inter_request_delay"
+  ["findwork"]="api_key inter_request_delay"
+  ["jooble"]="api_key inter_request_delay page_size"
+  ["adzuna"]="app_id app_key daily_request_budget"
+  ["careerjet"]=""
+)
+declare -A PROVIDER_SECRET_FIELDS=(
+  ["the_muse"]="api_key"
+  ["arbeitnow"]=""
+  ["findwork"]="api_key"
+  ["jooble"]="api_key"
+  ["adzuna"]="app_key"
+  ["careerjet"]=""
+)
+declare -A PROVIDER_REQUIRED_FIELDS=(
+  ["the_muse"]="api_key"
+  ["arbeitnow"]=""
+  ["findwork"]=""
+  ["jooble"]="api_key"
+  ["adzuna"]="app_id app_key"
+  ["careerjet"]=""
+)
+declare -A PROVIDER_OPTIONAL_FIELDS=(
+  ["the_muse"]=""
+  ["arbeitnow"]=""
+  ["findwork"]="api_key"
+  ["jooble"]=""
+  ["adzuna"]=""
+  ["careerjet"]=""
+)
+declare -A PROVIDER_STATUS_SOURCE=()
+declare -A PROVIDER_STATUS_INGEST=()
+declare -A PROVIDER_STATUS_DISPLAY=()
+declare -A PROVIDER_STATUS_SCHEDULED=()
+declare -A PROVIDER_STATUS_STATE=()
+declare -A PROVIDER_STATUS_CREDENTIALS=()
+declare -A PROVIDER_STATUS_CREDENTIAL_STATE=()
+declare -A PROVIDER_CONTROL_OVERRIDES=()
+declare -A PROVIDER_LEGACY_SCHEDULED=()
 
 append_unique_build_service() {
   local service_name="$1"
@@ -2095,6 +2187,1525 @@ ensure_env_confirmation() {
   done
 }
 
+provider_known() {
+  local provider_name="${1:-}"
+  [[ -n "$provider_name" && -n "${PROVIDER_LABELS[$provider_name]+set}" ]]
+}
+
+provider_label() {
+  local provider_name="$1"
+  echo "${PROVIDER_LABELS[$provider_name]-$provider_name}"
+}
+
+provider_sweep_mode() {
+  local provider_name="$1"
+  echo "${PROVIDER_SWEEP_MODES[$provider_name]-unknown}"
+}
+
+provider_default_state() {
+  local provider_name="$1"
+  echo "${PROVIDER_DEFAULT_STATES[$provider_name]-dormant}"
+}
+
+provider_mutation_allowed() {
+  local provider_name="$1"
+  [[ "${PROVIDER_MUTATION_ALLOWED[$provider_name]-false}" == "true" ]]
+}
+
+provider_note() {
+  local provider_name="$1"
+
+  case "$provider_name" in
+    the_muse)
+      echo "Public jobs API with category sweeps and direct API-key auth."
+      ;;
+    arbeitnow)
+      echo "No-auth global feed; pacing protects against Cloudflare burst blocking."
+      ;;
+    findwork)
+      echo "Global jobs feed; token is optional in config but useful for steady access."
+      ;;
+    jooble)
+      echo "Matrix sweeps over keywords and locations; API key is required."
+      ;;
+    adzuna)
+      echo "Category sweeps with app_id/app_key auth and a daily background budget."
+      ;;
+    careerjet)
+      echo "Intentionally unsupported for background ingest because it needs real end-user traffic context."
+      ;;
+    *)
+      echo ""
+      ;;
+  esac
+}
+
+provider_field_label() {
+  case "$1" in
+    api_key)
+      echo "API key"
+      ;;
+    app_id)
+      echo "App ID"
+      ;;
+    app_key)
+      echo "App key"
+      ;;
+    rate_limit_per_hour)
+      echo "Rate limit per hour"
+      ;;
+    inter_request_delay)
+      echo "Inter-request delay"
+      ;;
+    daily_request_budget)
+      echo "Daily request budget"
+      ;;
+    page_size)
+      echo "Page size"
+      ;;
+    *)
+      echo "$1"
+      ;;
+  esac
+}
+
+provider_field_env_key() {
+  local provider_name="$1"
+  local field_name="$2"
+
+  case "$provider_name:$field_name" in
+    the_muse:api_key)
+      echo "THE_MUSE_API_KEY"
+      ;;
+    the_muse:rate_limit_per_hour)
+      echo "THE_MUSE_RATE_LIMIT_PER_HOUR"
+      ;;
+    arbeitnow:inter_request_delay)
+      echo "ARBEITNOW_INTER_REQUEST_DELAY"
+      ;;
+    findwork:api_key)
+      echo "FINDWORK_API_KEY"
+      ;;
+    findwork:inter_request_delay)
+      echo "FINDWORK_INTER_REQUEST_DELAY"
+      ;;
+    jooble:api_key)
+      echo "JOOBLE_API_KEY"
+      ;;
+    jooble:inter_request_delay)
+      echo "JOOBLE_INTER_REQUEST_DELAY"
+      ;;
+    jooble:page_size)
+      echo "JOOBLE_PAGE_SIZE"
+      ;;
+    adzuna:app_id)
+      echo "ADZUNA_APP_ID"
+      ;;
+    adzuna:app_key)
+      echo "ADZUNA_APP_KEY"
+      ;;
+    adzuna:daily_request_budget)
+      echo "ADZUNA_DAILY_REQUEST_BUDGET"
+      ;;
+    *)
+      echo ""
+      ;;
+  esac
+}
+
+provider_field_is_editable() {
+  local provider_name="$1"
+  local field_name="$2"
+  [[ " ${PROVIDER_EDITABLE_FIELDS[$provider_name]-} " == *" $field_name "* ]]
+}
+
+provider_field_is_secret() {
+  local provider_name="$1"
+  local field_name="$2"
+  [[ " ${PROVIDER_SECRET_FIELDS[$provider_name]-} " == *" $field_name "* ]]
+}
+
+provider_field_is_required() {
+  local provider_name="$1"
+  local field_name="$2"
+  [[ " ${PROVIDER_REQUIRED_FIELDS[$provider_name]-} " == *" $field_name "* ]]
+}
+
+provider_field_is_optional() {
+  local provider_name="$1"
+  local field_name="$2"
+  [[ " ${PROVIDER_OPTIONAL_FIELDS[$provider_name]-} " == *" $field_name "* ]]
+}
+
+provider_mask_secret_value() {
+  local value="${1:-}"
+  local value_length
+
+  if [[ -z "$value" ]]; then
+    echo "<empty>"
+    return
+  fi
+
+  value_length=${#value}
+  if (( value_length <= 4 )); then
+    printf '%*s\n' "$value_length" '' | tr ' ' '*'
+    return
+  fi
+
+  printf '%*s%s\n' "$((value_length - 4))" '' "${value: -4}" | tr ' ' '*'
+}
+
+provider_require_python3() {
+  if command -v python3 >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "python3 is required for provider JSON editing helpers." >&2
+  return 1
+}
+
+provider_get_field_value() {
+  local provider_name="$1"
+  local field_name="$2"
+  local env_key
+
+  env_key="$(provider_field_env_key "$provider_name" "$field_name")"
+  if [[ -z "$env_key" ]]; then
+    echo ""
+    return
+  fi
+
+  get_env_value_or_default "$env_key" ""
+}
+
+provider_display_field_value() {
+  local provider_name="$1"
+  local field_name="$2"
+  local value
+
+  value="$(provider_get_field_value "$provider_name" "$field_name")"
+  if provider_field_is_secret "$provider_name" "$field_name"; then
+    provider_mask_secret_value "$value"
+    return
+  fi
+
+  display_env_value "$value"
+}
+
+provider_validate_field_value() {
+  local provider_name="$1"
+  local field_name="$2"
+  local value="$3"
+
+  if ! provider_field_is_editable "$provider_name" "$field_name"; then
+    echo "Field '$field_name' is not editable for provider '$provider_name'." >&2
+    return 1
+  fi
+
+  case "$field_name" in
+    rate_limit_per_hour|daily_request_budget|page_size)
+      if ! [[ "$value" =~ ^[0-9]+$ ]] || (( value < 1 )); then
+        echo "Field '$field_name' requires a positive integer." >&2
+        return 1
+      fi
+      ;;
+    inter_request_delay)
+      if ! [[ "$value" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+        echo "Field '$field_name' requires a positive numeric value." >&2
+        return 1
+      fi
+      ;;
+    api_key|app_id|app_key)
+      if [[ -z "$value" ]]; then
+        echo "Field '$field_name' cannot be empty when set." >&2
+        return 1
+      fi
+      ;;
+    *)
+      ;;
+  esac
+
+  return 0
+}
+
+provider_write_env_value() {
+  local key="$1"
+  local value="$2"
+  local env_file="$ROOT_DIR/.env"
+
+  if [[ ! -f "$env_file" ]]; then
+    touch "$env_file"
+  fi
+
+  env_file_set_key_value "$env_file" "$key" "$value"
+}
+
+provider_controls_raw_json() {
+  get_env_value_or_default JOB_PROVIDER_CONTROLS_JSON "{}"
+}
+
+provider_sync_enabled_raw_json() {
+  get_env_value_or_default JOB_SYNC_ENABLED_PROVIDERS_JSON "[]"
+}
+
+provider_reset_override_cache() {
+  PROVIDER_CONTROL_OVERRIDES=()
+  PROVIDER_LEGACY_SCHEDULED=()
+}
+
+provider_load_override_cache() {
+  local raw_controls
+  local raw_sync
+  local provider_name
+  local field_name
+  local value
+
+  provider_reset_override_cache
+  provider_require_python3 || return 1
+
+  raw_controls="$(provider_controls_raw_json)"
+  while IFS=$'\t' read -r provider_name field_name value; do
+    [[ -z "$provider_name" || -z "$field_name" ]] && continue
+    PROVIDER_CONTROL_OVERRIDES["$provider_name:$field_name"]="$value"
+  done < <(
+    PROVIDER_JSON_INPUT="$raw_controls" python3 - <<'PY'
+import json
+import os
+
+raw = os.environ.get("PROVIDER_JSON_INPUT", "").strip()
+if not raw:
+    raise SystemExit(0)
+try:
+    parsed = json.loads(raw)
+except json.JSONDecodeError:
+    raise SystemExit(0)
+if not isinstance(parsed, dict):
+    raise SystemExit(0)
+for provider_name, value in parsed.items():
+    if not isinstance(provider_name, str) or not isinstance(value, dict):
+        continue
+    provider_key = provider_name.strip().lower()
+    if not provider_key:
+        continue
+    for field_name, field_value in value.items():
+        if not isinstance(field_name, str):
+            continue
+        normalized_field = field_name.strip().lower()
+        if not normalized_field:
+            continue
+        if isinstance(field_value, bool):
+            rendered = "true" if field_value else "false"
+        elif isinstance(field_value, (int, float)):
+            rendered = "true" if bool(field_value) else "false"
+        elif isinstance(field_value, str):
+            rendered = field_value.strip().lower()
+        else:
+            rendered = str(field_value).strip().lower()
+        if rendered in {"true", "false"}:
+            print(f"{provider_key}\t{normalized_field}\t{rendered}")
+PY
+  )
+
+  raw_sync="$(provider_sync_enabled_raw_json)"
+  while IFS= read -r provider_name; do
+    [[ -z "$provider_name" ]] && continue
+    PROVIDER_LEGACY_SCHEDULED["$provider_name"]="true"
+  done < <(
+    PROVIDER_JSON_INPUT="$raw_sync" python3 - <<'PY'
+import json
+import os
+
+raw = os.environ.get("PROVIDER_JSON_INPUT", "").strip()
+if not raw:
+    raise SystemExit(0)
+try:
+    parsed = json.loads(raw)
+except json.JSONDecodeError:
+    raise SystemExit(0)
+if not isinstance(parsed, list):
+    raise SystemExit(0)
+for value in parsed:
+    provider = str(value).strip().lower()
+    if provider:
+        print(provider)
+PY
+  )
+}
+
+provider_default_toggle_value() {
+  local provider_name="$1"
+  local field_name="$2"
+  local default_state
+
+  default_state="$(provider_default_state "$provider_name")"
+
+  case "$field_name" in
+    ingest_enabled|display_enabled)
+      if [[ "$default_state" == "active" ]]; then
+        echo "true"
+      else
+        echo "false"
+      fi
+      ;;
+    scheduled_enabled)
+      if [[ "$default_state" == "active" && "$(provider_sweep_mode "$provider_name")" != "disabled" ]]; then
+        echo "true"
+      else
+        echo "false"
+      fi
+      ;;
+    *)
+      echo "false"
+      ;;
+  esac
+}
+
+provider_compute_local_credentials() {
+  local provider_name="$1"
+  local field_name
+  local env_key
+  local value
+  local -a missing_required=()
+  local -a missing_optional=()
+
+  if [[ "$provider_name" == "careerjet" ]]; then
+    PROVIDER_STATUS_CREDENTIALS["$provider_name"]="unsupported"
+    PROVIDER_STATUS_CREDENTIAL_STATE["$provider_name"]="warn"
+    return
+  fi
+
+  if [[ -z "${PROVIDER_REQUIRED_FIELDS[$provider_name]-}" && -z "${PROVIDER_OPTIONAL_FIELDS[$provider_name]-}" ]]; then
+    PROVIDER_STATUS_CREDENTIALS["$provider_name"]="not required"
+    PROVIDER_STATUS_CREDENTIAL_STATE["$provider_name"]="ok"
+    return
+  fi
+
+  for field_name in ${PROVIDER_REQUIRED_FIELDS[$provider_name]-}; do
+    env_key="$(provider_field_env_key "$provider_name" "$field_name")"
+    value="$(get_env_value_or_default "$env_key" "")"
+    if [[ -z "$value" ]]; then
+      missing_required+=("$field_name")
+    fi
+  done
+
+  for field_name in ${PROVIDER_OPTIONAL_FIELDS[$provider_name]-}; do
+    env_key="$(provider_field_env_key "$provider_name" "$field_name")"
+    value="$(get_env_value_or_default "$env_key" "")"
+    if [[ -z "$value" ]]; then
+      missing_optional+=("$field_name")
+    fi
+  done
+
+  if (( ${#missing_required[@]} > 0 )); then
+    PROVIDER_STATUS_CREDENTIALS["$provider_name"]="missing required: ${missing_required[*]}"
+    PROVIDER_STATUS_CREDENTIAL_STATE["$provider_name"]="error"
+    return
+  fi
+
+  if (( ${#missing_optional[@]} > 0 )); then
+    PROVIDER_STATUS_CREDENTIALS["$provider_name"]="optional empty: ${missing_optional[*]}"
+    PROVIDER_STATUS_CREDENTIAL_STATE["$provider_name"]="warn"
+    return
+  fi
+
+  PROVIDER_STATUS_CREDENTIALS["$provider_name"]="present"
+  PROVIDER_STATUS_CREDENTIAL_STATE["$provider_name"]="ok"
+}
+
+provider_load_local_status_cache() {
+  local provider_name
+  local ingest_enabled
+  local display_enabled
+  local scheduled_enabled
+  local status
+
+  provider_load_override_cache || return 1
+
+  PROVIDER_STATUS_SOURCE=()
+  PROVIDER_STATUS_INGEST=()
+  PROVIDER_STATUS_DISPLAY=()
+  PROVIDER_STATUS_SCHEDULED=()
+  PROVIDER_STATUS_STATE=()
+  PROVIDER_STATUS_CREDENTIALS=()
+  PROVIDER_STATUS_CREDENTIAL_STATE=()
+
+  for provider_name in "${PROVIDER_NAMES[@]}"; do
+    ingest_enabled="${PROVIDER_CONTROL_OVERRIDES[$provider_name:ingest_enabled]-$(provider_default_toggle_value "$provider_name" "ingest_enabled")}"
+    display_enabled="${PROVIDER_CONTROL_OVERRIDES[$provider_name:display_enabled]-$(provider_default_toggle_value "$provider_name" "display_enabled")}"
+    scheduled_enabled="${PROVIDER_CONTROL_OVERRIDES[$provider_name:scheduled_enabled]-$(provider_default_toggle_value "$provider_name" "scheduled_enabled")}"
+
+    if [[ -n "${PROVIDER_LEGACY_SCHEDULED[$provider_name]+set}" && "$(provider_sweep_mode "$provider_name")" != "disabled" ]]; then
+      scheduled_enabled="true"
+    fi
+
+    if [[ "$ingest_enabled" != "true" ]]; then
+      scheduled_enabled="false"
+    fi
+
+    if [[ "$ingest_enabled" == "true" && "$display_enabled" == "true" ]] && { [[ "$scheduled_enabled" == "true" ]] || [[ "$(provider_default_state "$provider_name")" == "dormant" ]]; }; then
+      status="active"
+    elif [[ "$ingest_enabled" != "true" && "$display_enabled" != "true" && "$scheduled_enabled" != "true" ]]; then
+      status="dormant"
+    else
+      status="partial"
+    fi
+
+    PROVIDER_STATUS_SOURCE["$provider_name"]="env"
+    PROVIDER_STATUS_INGEST["$provider_name"]="$ingest_enabled"
+    PROVIDER_STATUS_DISPLAY["$provider_name"]="$display_enabled"
+    PROVIDER_STATUS_SCHEDULED["$provider_name"]="$scheduled_enabled"
+    PROVIDER_STATUS_STATE["$provider_name"]="$status"
+    provider_compute_local_credentials "$provider_name"
+  done
+}
+
+provider_try_overlay_live_status() {
+  local env_name="$1"
+  local backend_container
+  local provider_name
+  local label
+  local default_state
+  local sweep_mode
+  local scheduled_interval
+  local ingest_enabled
+  local display_enabled
+  local scheduled_enabled
+  local status
+  local required
+  local url
+
+  if ! command -v docker >/dev/null 2>&1; then
+    return 1
+  fi
+
+  backend_container="$(startup_backend_container_name "$env_name")"
+  if ! is_container_running "$backend_container"; then
+    return 1
+  fi
+
+  while IFS=$'\t' read -r provider_name label default_state sweep_mode scheduled_interval ingest_enabled display_enabled scheduled_enabled status required url; do
+    [[ -z "$provider_name" ]] && continue
+    PROVIDER_STATUS_SOURCE["$provider_name"]="api"
+    PROVIDER_STATUS_INGEST["$provider_name"]="$ingest_enabled"
+    PROVIDER_STATUS_DISPLAY["$provider_name"]="$display_enabled"
+    PROVIDER_STATUS_SCHEDULED["$provider_name"]="$scheduled_enabled"
+    PROVIDER_STATUS_STATE["$provider_name"]="$status"
+  done < <(
+    docker exec -i "$backend_container" python3 - <<'PY'
+import json
+import sys
+import urllib.request
+
+try:
+    with urllib.request.urlopen("http://localhost:8000/api/jobs/providers/attribution", timeout=5) as response:
+        payload = json.load(response)
+except Exception:
+    raise SystemExit(1)
+
+for item in payload.get("providers") or []:
+    attr = item.get("attribution") or {}
+    fields = [
+        str(item.get("provider") or "").strip().lower(),
+        str(attr.get("label") or "").replace("\t", " ").replace("\n", " "),
+        str(item.get("default_state") or ""),
+        str(item.get("sweep_mode") or ""),
+        "" if item.get("scheduled_interval_minutes") is None else str(item.get("scheduled_interval_minutes")),
+        "true" if item.get("ingest_enabled") else "false",
+        "true" if item.get("display_enabled") else "false",
+        "true" if item.get("scheduled_enabled") else "false",
+        str(item.get("status") or ""),
+        "true" if attr.get("required") else "false",
+        str(attr.get("url") or ""),
+    ]
+    print("\t".join(fields))
+PY
+  ) || return 1
+
+  return 0
+}
+
+provider_refresh_status_cache() {
+  local env_name="$1"
+  local mode="${2:-auto}"
+
+  provider_load_local_status_cache || return 1
+
+  case "$mode" in
+    env)
+      ;;
+    auto|live)
+      provider_try_overlay_live_status "$env_name" || true
+      ;;
+    *)
+      ;;
+  esac
+
+  return 0
+}
+
+provider_credentials_summary() {
+  local provider_name="$1"
+  echo "${PROVIDER_STATUS_CREDENTIALS[$provider_name]-unknown}"
+}
+
+provider_status_counts() {
+  local active=0
+  local partial=0
+  local dormant=0
+  local provider_name
+  local status
+
+  for provider_name in "${PROVIDER_NAMES[@]}"; do
+    status="${PROVIDER_STATUS_STATE[$provider_name]-dormant}"
+    case "$status" in
+      active)
+        active=$((active + 1))
+        ;;
+      partial)
+        partial=$((partial + 1))
+        ;;
+      *)
+        dormant=$((dormant + 1))
+        ;;
+    esac
+  done
+
+  echo "$active $partial $dormant"
+}
+
+provider_summary_label() {
+  local env_name="$1"
+  local mode="${2:-auto}"
+  local active
+  local partial
+  local dormant
+  local first_provider=""
+  local source="env"
+  local provider_name
+
+  provider_refresh_status_cache "$env_name" "$mode" || return 1
+  read -r active partial dormant < <(provider_status_counts)
+
+  for provider_name in "${PROVIDER_NAMES[@]}"; do
+    first_provider="$provider_name"
+    break
+  done
+  if [[ -n "$first_provider" ]]; then
+    source="${PROVIDER_STATUS_SOURCE[$first_provider]-env}"
+  fi
+
+  echo "Providers: ${active} active, ${partial} partial, ${dormant} dormant (source: ${source})"
+}
+
+provider_print_status_table() {
+  local provider_name
+  local index=1
+  local ingest_enabled
+  local display_enabled
+  local scheduled_enabled
+  local status
+  local credentials
+  local source
+
+  printf "  %-3s %-12s %-16s %-9s %-8s %-8s %-10s %-14s %-30s\n" "#" "Provider" "Label" "Sweep" "Ingest" "Display" "Scheduled" "State" "Credentials"
+  printf "  %-3s %-12s %-16s %-9s %-8s %-8s %-10s %-14s %-30s\n" "---" "------------" "----------------" "---------" "--------" "--------" "----------" "--------------" "------------------------------"
+  for provider_name in "${PROVIDER_NAMES[@]}"; do
+    ingest_enabled="${PROVIDER_STATUS_INGEST[$provider_name]-false}"
+    display_enabled="${PROVIDER_STATUS_DISPLAY[$provider_name]-false}"
+    scheduled_enabled="${PROVIDER_STATUS_SCHEDULED[$provider_name]-false}"
+    status="${PROVIDER_STATUS_STATE[$provider_name]-dormant}"
+    credentials="$(provider_credentials_summary "$provider_name")"
+    source="${PROVIDER_STATUS_SOURCE[$provider_name]-env}"
+    printf "  %-3s %-12s %-16s %-9s %-8s %-8s %-10s %-14s %-30s\n" \
+      "$index" \
+      "$provider_name" \
+      "$(clip_text "$(provider_label "$provider_name")" 16)" \
+      "$(provider_sweep_mode "$provider_name")" \
+      "$ingest_enabled" \
+      "$display_enabled" \
+      "$scheduled_enabled" \
+      "$(clip_text "$status/$source" 14)" \
+      "$(clip_text "$credentials" 30)"
+    index=$((index + 1))
+  done
+}
+
+provider_assert_known() {
+  local provider_name="$1"
+
+  if provider_known "$provider_name"; then
+    return 0
+  fi
+
+  echo "Unknown provider '$provider_name'." >&2
+  echo "Known providers: ${PROVIDER_NAMES[*]}" >&2
+  return 1
+}
+
+provider_assert_mutable() {
+  local provider_name="$1"
+
+  provider_assert_known "$provider_name" || return 1
+  if provider_mutation_allowed "$provider_name"; then
+    return 0
+  fi
+
+  echo "Provider '$provider_name' is intentionally read-only in uah.sh." >&2
+  echo "$(provider_note "$provider_name")" >&2
+  return 1
+}
+
+provider_write_controls_triplet() {
+  local provider_name="$1"
+  local ingest_enabled="$2"
+  local display_enabled="$3"
+  local scheduled_enabled="$4"
+  local raw_controls
+  local updated_controls
+
+  provider_require_python3 || return 1
+  raw_controls="$(provider_controls_raw_json)"
+  updated_controls="$(
+    PROVIDER_JSON_INPUT="$raw_controls" \
+    PROVIDER_NAME="$provider_name" \
+    PROVIDER_INGEST="$ingest_enabled" \
+    PROVIDER_DISPLAY="$display_enabled" \
+    PROVIDER_SCHEDULED="$scheduled_enabled" \
+    python3 - <<'PY'
+import json
+import os
+
+raw = os.environ.get("PROVIDER_JSON_INPUT", "").strip()
+provider_name = os.environ["PROVIDER_NAME"].strip().lower()
+data = {}
+if raw:
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        parsed = {}
+    if isinstance(parsed, dict):
+        data = parsed
+
+data[provider_name] = {
+    "ingest_enabled": os.environ["PROVIDER_INGEST"].strip().lower() == "true",
+    "display_enabled": os.environ["PROVIDER_DISPLAY"].strip().lower() == "true",
+    "scheduled_enabled": os.environ["PROVIDER_SCHEDULED"].strip().lower() == "true",
+}
+print(json.dumps(data, separators=(",", ":"), sort_keys=True))
+PY
+  )" || return 1
+
+  provider_write_env_value "JOB_PROVIDER_CONTROLS_JSON" "$updated_controls"
+  PROVIDER_CONFIG_MUTATED=true
+  return 0
+}
+
+provider_sync_legacy_scheduled_env() {
+  local provider_name
+  local scheduled_enabled
+  local ingest_enabled
+  local legacy_json="["
+  local first_item=true
+
+  provider_load_override_cache || return 1
+
+  for provider_name in "${PROVIDER_NAMES[@]}"; do
+    ingest_enabled="${PROVIDER_CONTROL_OVERRIDES[$provider_name:ingest_enabled]-$(provider_default_toggle_value "$provider_name" "ingest_enabled")}"
+    scheduled_enabled="${PROVIDER_CONTROL_OVERRIDES[$provider_name:scheduled_enabled]-$(provider_default_toggle_value "$provider_name" "scheduled_enabled")}"
+    if [[ "$ingest_enabled" != "true" ]]; then
+      scheduled_enabled="false"
+    fi
+    if [[ "$scheduled_enabled" == "true" && "$(provider_sweep_mode "$provider_name")" != "disabled" ]]; then
+      if [[ "$first_item" == true ]]; then
+        first_item=false
+      else
+        legacy_json+=","
+      fi
+      legacy_json+="\"$provider_name\""
+    fi
+  done
+  legacy_json+="]"
+
+  provider_write_env_value "JOB_SYNC_ENABLED_PROVIDERS_JSON" "$legacy_json"
+  return 0
+}
+
+provider_update_control_state() {
+  local env_name="$1"
+  local provider_name="$2"
+  local action="$3"
+  local apply_ingest="$4"
+  local apply_display="$5"
+  local apply_scheduled="$6"
+  local ingest_enabled
+  local display_enabled
+  local scheduled_enabled
+
+  provider_assert_mutable "$provider_name" || return 1
+  provider_refresh_status_cache "$env_name" "env" || true
+
+  ingest_enabled="${PROVIDER_STATUS_INGEST[$provider_name]-$(provider_default_toggle_value "$provider_name" "ingest_enabled")}"
+  display_enabled="${PROVIDER_STATUS_DISPLAY[$provider_name]-$(provider_default_toggle_value "$provider_name" "display_enabled")}"
+  scheduled_enabled="${PROVIDER_STATUS_SCHEDULED[$provider_name]-$(provider_default_toggle_value "$provider_name" "scheduled_enabled")}"
+
+  if [[ "$apply_ingest" == "true" ]]; then
+    if [[ "$action" == "enable" ]]; then
+      ingest_enabled="true"
+    else
+      ingest_enabled="false"
+    fi
+  fi
+
+  if [[ "$apply_display" == "true" ]]; then
+    if [[ "$action" == "enable" ]]; then
+      display_enabled="true"
+    else
+      display_enabled="false"
+    fi
+  fi
+
+  if [[ "$apply_scheduled" == "true" ]]; then
+    if [[ "$action" == "enable" ]]; then
+      scheduled_enabled="true"
+    else
+      scheduled_enabled="false"
+    fi
+  fi
+
+  if [[ "$scheduled_enabled" == "true" ]]; then
+    ingest_enabled="true"
+  fi
+  if [[ "$ingest_enabled" != "true" ]]; then
+    scheduled_enabled="false"
+  fi
+
+  provider_write_controls_triplet "$provider_name" "$ingest_enabled" "$display_enabled" "$scheduled_enabled" || return 1
+  provider_sync_legacy_scheduled_env || return 1
+  provider_refresh_status_cache "$env_name" "env" || true
+  return 0
+}
+
+provider_set_config_field() {
+  local provider_name="$1"
+  local field_name="$2"
+  local value="$3"
+  local env_key
+
+  provider_assert_mutable "$provider_name" || return 1
+  provider_validate_field_value "$provider_name" "$field_name" "$value" || return 1
+  env_key="$(provider_field_env_key "$provider_name" "$field_name")"
+  if [[ -z "$env_key" ]]; then
+    echo "No env mapping exists for $provider_name.$field_name." >&2
+    return 1
+  fi
+
+  provider_write_env_value "$env_key" "$value"
+  PROVIDER_CONFIG_MUTATED=true
+  return 0
+}
+
+provider_clear_config_field() {
+  local provider_name="$1"
+  local field_name="$2"
+  local env_key
+
+  provider_assert_mutable "$provider_name" || return 1
+  if ! provider_field_is_editable "$provider_name" "$field_name"; then
+    echo "Field '$field_name' is not editable for provider '$provider_name'." >&2
+    return 1
+  fi
+  if ! provider_field_is_secret "$provider_name" "$field_name"; then
+    echo "Field '$field_name' is not treated as a secret clearable field." >&2
+    return 1
+  fi
+
+  env_key="$(provider_field_env_key "$provider_name" "$field_name")"
+  provider_write_env_value "$env_key" ""
+  PROVIDER_CONFIG_MUTATED=true
+  return 0
+}
+
+provider_restart_runtime_services() {
+  local env_name="$1"
+
+  if [[ "$env_name" == "prod" ]]; then
+    echo "Provider runtime restart is scaffold-only for prod right now."
+    return 1
+  fi
+
+  echo "Restarting backend, celery worker, and celery beat for $env_name..."
+  run_compose "$env_name" restart backend celery_worker celery_beat
+  PROVIDER_CONFIG_MUTATED=false
+}
+
+provider_prompt_restart_if_needed() {
+  local env_name="$1"
+  local restart_choice
+
+  if [[ "$PROVIDER_CONFIG_MUTATED" != true ]]; then
+    return 0
+  fi
+
+  if [[ ! -t 0 ]]; then
+    echo "Provider config changed in .env. Restart backend/celery services to apply the update."
+    return 0
+  fi
+
+  echo ""
+  read -rp "Restart backend + celery services now? [y/N]: " restart_choice
+  if [[ "${restart_choice,,}" == "y" || "${restart_choice,,}" == "yes" ]]; then
+    provider_restart_runtime_services "$env_name" || true
+  fi
+}
+
+provider_list_schedule_categories() {
+  local raw_json
+
+  provider_require_python3 || return 1
+  raw_json="$(get_env_value_or_default JOB_SYNC_CATEGORY_SCHEDULE_JSON "")"
+
+  if [[ -n "$raw_json" ]]; then
+    while IFS= read -r category_name; do
+      [[ -n "$category_name" ]] && echo "$category_name"
+    done < <(
+      PROVIDER_JSON_INPUT="$raw_json" python3 - <<'PY'
+import json
+import os
+
+raw = os.environ.get("PROVIDER_JSON_INPUT", "").strip()
+if not raw:
+    raise SystemExit(0)
+try:
+    parsed = json.loads(raw)
+except json.JSONDecodeError:
+    raise SystemExit(0)
+if not isinstance(parsed, dict):
+    raise SystemExit(0)
+for key in parsed.keys():
+    if isinstance(key, str) and key.strip():
+        print(key.strip())
+PY
+    )
+    return 0
+  fi
+
+  printf '%s\n' "${PROVIDER_DEFAULT_CATEGORIES[@]}"
+}
+
+provider_queue_sync_now() {
+  local env_name="$1"
+  local provider_name="$2"
+  local category_name="${3:-}"
+  local backend_container
+
+  provider_assert_known "$provider_name" || return 1
+  provider_refresh_status_cache "$env_name" "env" || true
+  if [[ "${PROVIDER_STATUS_INGEST[$provider_name]-false}" != "true" ]]; then
+    echo "Provider '$provider_name' is not ingest-enabled, so sync-now is blocked." >&2
+    return 1
+  fi
+  backend_container="$(startup_backend_container_name "$env_name")"
+
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker CLI is required to queue provider sync jobs." >&2
+    return 1
+  fi
+  if ! is_container_running "$backend_container"; then
+    echo "Backend container '$backend_container' is not running, so sync-now cannot dispatch." >&2
+    return 1
+  fi
+
+  docker exec -i \
+    -e UAH_PROVIDER_NAME="$provider_name" \
+    -e UAH_PROVIDER_CATEGORY="$category_name" \
+    "$backend_container" \
+    python3 - <<'PY'
+import os
+
+from app.providers.registry import get_provider_definition
+from app.tasks.job_sync import sweep_category, sweep_provider
+
+provider_name = os.environ.get("UAH_PROVIDER_NAME", "").strip().lower()
+category_name = os.environ.get("UAH_PROVIDER_CATEGORY", "").strip()
+definition = get_provider_definition(provider_name)
+
+if definition.sweep_mode == "category":
+    if not category_name:
+        raise SystemExit("Category providers require a category for sync-now.")
+    sweep_category.delay(provider=provider_name, category=category_name)
+    print(f"queued category sweep for {provider_name}:{category_name}")
+elif definition.sweep_mode in {"global", "matrix"}:
+    sweep_provider.delay(provider=provider_name)
+    print(f"queued provider sweep for {provider_name}")
+else:
+    raise SystemExit(f"Provider '{provider_name}' does not support sync-now.")
+PY
+}
+
+provider_print_details() {
+  local env_name="$1"
+  local provider_name="$2"
+  local field_name
+
+  provider_assert_known "$provider_name" || return 1
+  provider_refresh_status_cache "$env_name" "auto" || true
+
+  debug_header "$env_name" "Providers :: $(provider_label "$provider_name")"
+  debug_print_section "Provider details"
+  echo "  Label             : $(provider_label "$provider_name")"
+  echo "  Slug              : $provider_name"
+  echo "  Sweep mode        : $(provider_sweep_mode "$provider_name")"
+  echo "  Default state     : $(provider_default_state "$provider_name")"
+  echo "  Status source     : ${PROVIDER_STATUS_SOURCE[$provider_name]-env}"
+  echo "  Ingest enabled    : ${PROVIDER_STATUS_INGEST[$provider_name]-false}"
+  echo "  Display enabled   : ${PROVIDER_STATUS_DISPLAY[$provider_name]-false}"
+  echo "  Scheduled enabled : ${PROVIDER_STATUS_SCHEDULED[$provider_name]-false}"
+  echo "  Resolved status   : ${PROVIDER_STATUS_STATE[$provider_name]-dormant}"
+  echo "  Credentials       : $(provider_credentials_summary "$provider_name")"
+  echo "  Mutations allowed : ${PROVIDER_MUTATION_ALLOWED[$provider_name]-false}"
+  echo ""
+  debug_print_section "Editable config"
+  if [[ -z "${PROVIDER_EDITABLE_FIELDS[$provider_name]-}" ]]; then
+    echo "  (No editable fields in uah.sh.)"
+  else
+    for field_name in ${PROVIDER_EDITABLE_FIELDS[$provider_name]-}; do
+      echo "  $(provider_field_label "$field_name") [$field_name] :: $(provider_display_field_value "$provider_name" "$field_name")"
+    done
+  fi
+  echo ""
+  debug_print_section "Notes"
+  echo "  $(provider_note "$provider_name")"
+}
+
+provider_cli_list() {
+  local env_name="$1"
+  local mode="${2:-auto}"
+  local active
+  local partial
+  local dormant
+
+  provider_refresh_status_cache "$env_name" "$mode" || return 1
+  read -r active partial dormant < <(provider_status_counts)
+
+  echo "Provider status for $env_name"
+  echo ""
+  provider_print_status_table
+  echo ""
+  echo "Summary: $active active, $partial partial, $dormant dormant"
+}
+
+provider_cli_show() {
+  local env_name="$1"
+  local provider_name="$2"
+
+  provider_print_details "$env_name" "$provider_name"
+}
+
+provider_parse_toggle_flags() {
+  local apply_ingest=false
+  local apply_display=false
+  local apply_scheduled=false
+  local arg
+
+  for arg in "$@"; do
+    case "$arg" in
+      --all)
+        apply_ingest=true
+        apply_display=true
+        apply_scheduled=true
+        ;;
+      --ingest)
+        apply_ingest=true
+        ;;
+      --display)
+        apply_display=true
+        ;;
+      --scheduled)
+        apply_scheduled=true
+        ;;
+      *)
+        echo "Unknown toggle option '$arg'." >&2
+        return 1
+        ;;
+    esac
+  done
+
+  if [[ "$apply_ingest" == false && "$apply_display" == false && "$apply_scheduled" == false ]]; then
+    apply_ingest=true
+    apply_display=true
+    apply_scheduled=true
+  fi
+
+  echo "$apply_ingest $apply_display $apply_scheduled"
+}
+
+provider_cli_toggle() {
+  local env_name="$1"
+  local action="$2"
+  local provider_name="$3"
+  shift 3
+  local apply_ingest
+  local apply_display
+  local apply_scheduled
+
+  read -r apply_ingest apply_display apply_scheduled < <(provider_parse_toggle_flags "$@") || return 1
+
+  provider_update_control_state "$env_name" "$provider_name" "$action" "$apply_ingest" "$apply_display" "$apply_scheduled" || return 1
+  echo "Updated provider '$provider_name' via '$action'."
+  provider_cli_list "$env_name" "env"
+  provider_prompt_restart_if_needed "$env_name"
+}
+
+provider_cli_set() {
+  local env_name="$1"
+  local provider_name="$2"
+  local field_name="$3"
+  local value="$4"
+
+  provider_set_config_field "$provider_name" "$field_name" "$value" || return 1
+  echo "Updated $provider_name.$field_name."
+  provider_prompt_restart_if_needed "$env_name"
+}
+
+provider_cli_clear() {
+  local env_name="$1"
+  local provider_name="$2"
+  local field_name="$3"
+
+  provider_clear_config_field "$provider_name" "$field_name" || return 1
+  echo "Cleared secret field $provider_name.$field_name."
+  provider_prompt_restart_if_needed "$env_name"
+}
+
+provider_cli_sync_now() {
+  local env_name="$1"
+  local provider_name="$2"
+  shift 2
+  local category_name=""
+  local arg
+
+  while (($#)); do
+    arg="$1"
+    case "$arg" in
+      --category)
+        shift
+        if (($# == 0)); then
+          echo "--category requires a value." >&2
+          return 1
+        fi
+        category_name="$1"
+        ;;
+      *)
+        echo "Unknown sync-now option '$arg'." >&2
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  if [[ "$(provider_sweep_mode "$provider_name")" == "category" && -z "$category_name" ]]; then
+    echo "Provider '$provider_name' requires --category for sync-now." >&2
+    return 1
+  fi
+
+  provider_queue_sync_now "$env_name" "$provider_name" "$category_name"
+}
+
+print_provider_usage() {
+  cat <<'EOF'
+Provider subcommands:
+  bash scripts/uah.sh <env> providers
+  bash scripts/uah.sh <env> providers list [--live|--env]
+  bash scripts/uah.sh <env> providers show <provider>
+  bash scripts/uah.sh <env> providers enable <provider> [--ingest] [--display] [--scheduled] [--all]
+  bash scripts/uah.sh <env> providers disable <provider> [--ingest] [--display] [--scheduled] [--all]
+  bash scripts/uah.sh <env> providers set <provider> <field> <value>
+  bash scripts/uah.sh <env> providers clear <provider> <field>
+  bash scripts/uah.sh <env> providers sync-now <provider> [--category <name>]
+EOF
+}
+
+provider_select_interactive() {
+  local prompt_label="${1:-provider}"
+  local include_mutable_only="${2:-false}"
+  local choice
+  local provider_name
+  local index=1
+  local -a selectable=()
+
+  echo ""
+  echo "  Choose $prompt_label:"
+  for provider_name in "${PROVIDER_NAMES[@]}"; do
+    if [[ "$include_mutable_only" == "true" ]] && ! provider_mutation_allowed "$provider_name"; then
+      continue
+    fi
+    printf "    %2d) %-12s %s\n" "$index" "$provider_name" "$(provider_label "$provider_name")"
+    selectable+=("$provider_name")
+    index=$((index + 1))
+  done
+  echo "     0) back"
+  read -rp "  Choice [0-$((index - 1))]: " choice
+
+  if [[ "$choice" == "0" || -z "$choice" ]]; then
+    echo ""
+    return
+  fi
+  if ! [[ "$choice" =~ ^[0-9]+$ ]]; then
+    echo ""
+    return
+  fi
+  choice=$((choice - 1))
+  if (( choice < 0 || choice >= ${#selectable[@]} )); then
+    echo ""
+    return
+  fi
+
+  echo "${selectable[$choice]}"
+}
+
+provider_select_field_interactive() {
+  local provider_name="$1"
+  local only_secret="${2:-false}"
+  local choice
+  local field_name
+  local index=1
+  local -a selectable=()
+
+  echo ""
+  echo "  Choose field for $(provider_label "$provider_name"):"
+  for field_name in ${PROVIDER_EDITABLE_FIELDS[$provider_name]-}; do
+    if [[ "$only_secret" == "true" ]] && ! provider_field_is_secret "$provider_name" "$field_name"; then
+      continue
+    fi
+    printf "    %2d) %-20s current=%s\n" "$index" "$field_name" "$(clip_text "$(provider_display_field_value "$provider_name" "$field_name")" 28)"
+    selectable+=("$field_name")
+    index=$((index + 1))
+  done
+  echo "     0) back"
+  read -rp "  Choice [0-$((index - 1))]: " choice
+
+  if [[ "$choice" == "0" || -z "$choice" ]]; then
+    echo ""
+    return
+  fi
+  if ! [[ "$choice" =~ ^[0-9]+$ ]]; then
+    echo ""
+    return
+  fi
+  choice=$((choice - 1))
+  if (( choice < 0 || choice >= ${#selectable[@]} )); then
+    echo ""
+    return
+  fi
+
+  echo "${selectable[$choice]}"
+}
+
+provider_select_category_interactive() {
+  local choice
+  local index=1
+  local category_name
+  local -a categories=()
+
+  mapfile -t categories < <(provider_list_schedule_categories)
+
+  echo ""
+  echo "  Choose category:"
+  for category_name in "${categories[@]}"; do
+    printf "    %2d) %s\n" "$index" "$category_name"
+    index=$((index + 1))
+  done
+  echo "     0) back"
+  read -rp "  Choice [0-$((index - 1))]: " choice
+
+  if [[ "$choice" == "0" || -z "$choice" ]]; then
+    echo ""
+    return
+  fi
+  if ! [[ "$choice" =~ ^[0-9]+$ ]]; then
+    echo ""
+    return
+  fi
+  choice=$((choice - 1))
+  if (( choice < 0 || choice >= ${#categories[@]} )); then
+    echo ""
+    return
+  fi
+
+  echo "${categories[$choice]}"
+}
+
+provider_toggle_interactive() {
+  local env_name="$1"
+  local action="$2"
+  local provider_name
+  local choice
+  local apply_ingest=false
+  local apply_display=false
+  local apply_scheduled=false
+
+  provider_name="$(provider_select_interactive "provider to ${action}" "true")"
+  if [[ -z "$provider_name" ]]; then
+    return 1
+  fi
+
+  echo ""
+  echo "  Toggle target:"
+  echo "    1) all"
+  echo "    2) ingest"
+  echo "    3) display"
+  echo "    4) scheduled"
+  echo "    0) back"
+  read -rp "  Choice [1-4/0]: " choice
+
+  case "$choice" in
+    1)
+      apply_ingest=true
+      apply_display=true
+      apply_scheduled=true
+      ;;
+    2)
+      apply_ingest=true
+      ;;
+    3)
+      apply_display=true
+      ;;
+    4)
+      apply_scheduled=true
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  provider_update_control_state "$env_name" "$provider_name" "$action" "$apply_ingest" "$apply_display" "$apply_scheduled" || return 1
+  echo "Updated provider '$provider_name'."
+  provider_prompt_restart_if_needed "$env_name"
+  debug_press_enter
+}
+
+provider_edit_config_interactive() {
+  local env_name="$1"
+  local provider_name
+  local field_name
+  local new_value
+
+  provider_name="$(provider_select_interactive "provider to edit" "true")"
+  if [[ -z "$provider_name" ]]; then
+    return 1
+  fi
+  field_name="$(provider_select_field_interactive "$provider_name" "false")"
+  if [[ -z "$field_name" ]]; then
+    return 1
+  fi
+
+  read -rp "  New value for $provider_name.$field_name: " new_value
+  if [[ -z "$new_value" ]]; then
+    echo "No value entered."
+    debug_press_enter
+    return 1
+  fi
+
+  provider_set_config_field "$provider_name" "$field_name" "$new_value" || {
+    debug_press_enter
+    return 1
+  }
+  echo "Updated $provider_name.$field_name."
+  provider_prompt_restart_if_needed "$env_name"
+  debug_press_enter
+}
+
+provider_clear_secret_interactive() {
+  local env_name="$1"
+  local provider_name
+  local field_name
+  local choice
+
+  provider_name="$(provider_select_interactive "provider secret to clear" "true")"
+  if [[ -z "$provider_name" ]]; then
+    return 1
+  fi
+  field_name="$(provider_select_field_interactive "$provider_name" "true")"
+  if [[ -z "$field_name" ]]; then
+    return 1
+  fi
+
+  read -rp "  Clear secret $provider_name.$field_name? [y/N]: " choice
+  if [[ "${choice,,}" != "y" && "${choice,,}" != "yes" ]]; then
+    return 1
+  fi
+
+  provider_clear_config_field "$provider_name" "$field_name" || {
+    debug_press_enter
+    return 1
+  }
+  echo "Cleared $provider_name.$field_name."
+  provider_prompt_restart_if_needed "$env_name"
+  debug_press_enter
+}
+
+provider_sync_now_interactive() {
+  local env_name="$1"
+  local provider_name
+  local category_name=""
+
+  provider_name="$(provider_select_interactive "provider to sync now" "false")"
+  if [[ -z "$provider_name" ]]; then
+    return 1
+  fi
+
+  if [[ "$(provider_sweep_mode "$provider_name")" == "category" ]]; then
+    category_name="$(provider_select_category_interactive)"
+    if [[ -z "$category_name" ]]; then
+      return 1
+    fi
+  fi
+
+  if provider_queue_sync_now "$env_name" "$provider_name" "$category_name"; then
+    debug_press_enter
+    return 0
+  fi
+
+  debug_press_enter
+  return 1
+}
+
+provider_dashboard() {
+  local env_name="$1"
+  local choice
+  local provider_name
+
+  while true; do
+    provider_refresh_status_cache "$env_name" "auto" || true
+    debug_header "$env_name" "Providers"
+    debug_print_section "Provider dashboard"
+    provider_print_status_table
+    echo ""
+    echo "  Actions"
+    echo "    1) Inspect provider"
+    echo "    2) Enable provider/toggles"
+    echo "    3) Disable provider/toggles"
+    echo "    4) Edit/apply provider config"
+    echo "    5) Clear provider secret"
+    echo "    6) Sync provider now"
+    echo "    7) Restart backend + workers"
+    echo "    8) Refresh status"
+    echo "    0) Back"
+    read -rp "  Choice [1-8/0]: " choice
+
+    case "$choice" in
+      1)
+        provider_name="$(provider_select_interactive "provider to inspect" "false")"
+        if [[ -n "$provider_name" ]]; then
+          provider_print_details "$env_name" "$provider_name"
+          debug_press_enter
+        fi
+        ;;
+      2)
+        provider_toggle_interactive "$env_name" "enable" || true
+        ;;
+      3)
+        provider_toggle_interactive "$env_name" "disable" || true
+        ;;
+      4)
+        provider_edit_config_interactive "$env_name" || true
+        ;;
+      5)
+        provider_clear_secret_interactive "$env_name" || true
+        ;;
+      6)
+        provider_sync_now_interactive "$env_name" || true
+        ;;
+      7)
+        provider_restart_runtime_services "$env_name" || true
+        debug_press_enter
+        ;;
+      8)
+        ;;
+      0)
+        return 0
+        ;;
+      *)
+        debug_print_warn "Invalid selection."
+        debug_press_enter
+        ;;
+    esac
+  done
+}
+
+run_providers() {
+  local env_name="$1"
+  shift || true
+  local subcommand="${1:-}"
+  local mode="auto"
+
+  if [[ -z "$subcommand" ]]; then
+    if [[ -t 0 ]]; then
+      provider_dashboard "$env_name"
+      return
+    fi
+    print_provider_usage >&2
+    return 1
+  fi
+
+  shift || true
+  case "$subcommand" in
+    help|-h|--help)
+      print_provider_usage
+      ;;
+    list)
+      if [[ "${1:-}" == "--live" ]]; then
+        mode="live"
+      elif [[ "${1:-}" == "--env" ]]; then
+        mode="env"
+      elif [[ -n "${1:-}" ]]; then
+        echo "Unknown providers list option '$1'." >&2
+        return 1
+      fi
+      provider_cli_list "$env_name" "$mode"
+      ;;
+    show)
+      if [[ -z "${1:-}" ]]; then
+        echo "providers show requires a provider slug." >&2
+        return 1
+      fi
+      provider_cli_show "$env_name" "$1"
+      ;;
+    enable|disable)
+      if [[ -z "${1:-}" ]]; then
+        echo "providers $subcommand requires a provider slug." >&2
+        return 1
+      fi
+      provider_cli_toggle "$env_name" "$subcommand" "$@"
+      ;;
+    set)
+      if [[ $# -lt 3 ]]; then
+        echo "providers set requires <provider> <field> <value>." >&2
+        return 1
+      fi
+      provider_cli_set "$env_name" "$1" "$2" "$3"
+      ;;
+    clear)
+      if [[ $# -lt 2 ]]; then
+        echo "providers clear requires <provider> <field>." >&2
+        return 1
+      fi
+      provider_cli_clear "$env_name" "$1" "$2"
+      ;;
+    sync-now)
+      if [[ -z "${1:-}" ]]; then
+        echo "providers sync-now requires a provider slug." >&2
+        return 1
+      fi
+      provider_cli_sync_now "$env_name" "$@"
+      ;;
+    *)
+      echo "Unknown providers subcommand '$subcommand'." >&2
+      print_provider_usage >&2
+      return 1
+      ;;
+  esac
+}
+
 startup_backend_container_name() {
   case "$1" in
     dev)
@@ -2163,6 +3774,7 @@ startup_quick_hud() {
   local env_name="$1"
   local backend_container
   local network_name
+  local provider_summary
 
   backend_container="$(startup_backend_container_name "$env_name")"
   network_name="$(startup_network_name "$env_name")"
@@ -2201,6 +3813,11 @@ startup_quick_hud() {
     startup_status_chip "warn" "Env safety: ${ENV_POLICY_WARN_COUNT} warning(s)"
   else
     startup_status_chip "ok" "Env safety: clean"
+  fi
+
+  provider_summary="$(provider_summary_label "$env_name" "auto" 2>/dev/null || provider_summary_label "$env_name" "env" 2>/dev/null || true)"
+  if [[ -n "$provider_summary" ]]; then
+    startup_status_chip "ok" "$provider_summary"
   fi
 }
 
@@ -2241,7 +3858,7 @@ choose_action() {
   local selected_env
 
   if [[ ! -t 0 ]]; then
-    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync|audit" >&2
+    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync|audit|providers" >&2
     exit 1
   fi
 
@@ -2257,11 +3874,12 @@ choose_action() {
     echo "    5) sync"
     echo "    6) cert-sync"
     echo "    7) audit"
-    echo "    8) review env values"
-    echo "    9) switch environment"
-    echo "   10) rebuild options"
+    echo "    8) providers"
+    echo "    9) review env values"
+    echo "   10) switch environment"
+    echo "   11) rebuild options"
     echo "    0) exit"
-    read -rp "  Choice [1-10/0]: " choice
+    read -rp "  Choice [1-11/0]: " choice
 
     case "$choice" in
       1)
@@ -2313,13 +3931,19 @@ choose_action() {
         return
         ;;
       8)
-        ensure_env_confirmation "$active_env" "preflight review" "preview" || true
+        build_mode_reset_selection
+        ACTION="providers"
+        ENV_NAME="$active_env"
+        return
         ;;
       9)
+        ensure_env_confirmation "$active_env" "preflight review" "preview" || true
+        ;;
+      10)
         selected_env="$(choose_environment_interactive "$active_env")"
         active_env="$selected_env"
         ;;
-      10)
+      11)
         configure_rebuild_ui_for_action "$active_env" "menu" || true
         ;;
       0)
@@ -2354,7 +3978,7 @@ Environment selection:
   - If detection fails, pass environment explicitly.
 
 Actions:
-  start | stop | restart | debug | sync | cert-sync | audit
+  start | stop | restart | debug | sync | cert-sync | audit | providers
 
 Debug:
   bash scripts/uah.sh <env> debug
@@ -2390,6 +4014,15 @@ Audit options:
   --fail-on-warn
   --json [path]
 
+Provider options:
+  providers list [--live|--env]
+  providers show <provider>
+  providers enable <provider> [--ingest] [--display] [--scheduled] [--all]
+  providers disable <provider> [--ingest] [--display] [--scheduled] [--all]
+  providers set <provider> <field> <value>
+  providers clear <provider> <field>
+  providers sync-now <provider> [--category <name>]
+
 Safe sync behavior:
   Detects local blockers before pull (dirty files, local commits, diverged state).
   In interactive mode, you'll be prompted to abort or force hard sync.
@@ -2408,6 +4041,8 @@ Examples:
   bash scripts/uah.sh beta sync --build-frontend
   bash scripts/uah.sh dev debug status
   bash scripts/uah.sh beta debug users reset-password user@example.com NewPass123
+  bash scripts/uah.sh dev providers list --live
+  bash scripts/uah.sh dev providers enable jooble --display
 EOF
 }
 
@@ -2756,6 +4391,7 @@ sql_escape_literal() {
 debug_show_status() {
   local env_name="$1"
   local ollama_ok=0
+  local provider_summary
 
   debug_profile_init "$env_name"
   debug_header "$env_name" "Status"
@@ -2777,6 +4413,10 @@ debug_show_status() {
   run_compose "$env_name" ps
   echo ""
   debug_print_section "Summary"
+  provider_summary="$(provider_summary_label "$env_name" "auto" 2>/dev/null || provider_summary_label "$env_name" "env" 2>/dev/null || true)"
+  if [[ -n "$provider_summary" ]]; then
+    debug_print_section "$provider_summary"
+  fi
   if [[ "$ollama_ok" == "1" ]]; then
     debug_print_ok "Status: ONLINE"
   else
@@ -3325,7 +4965,7 @@ run_selected_action() {
 
   notify_discord "**uah.sh started** by \`$(whoami)\` on \`$(hostname)\` for action \`$action\` in \`$env_name\`" 16776960
 
-  if [[ "$env_name" == "prod" && "$action" != "audit" ]]; then
+  if [[ "$env_name" == "prod" && "$action" != "audit" && "$action" != "providers" ]]; then
     prod_scaffold "$action"
     return $?
   fi
@@ -3389,6 +5029,9 @@ run_selected_action() {
     audit)
       run_audit "$env_name" "${action_args[@]}"
       ;;
+    providers)
+      run_providers "$env_name" "${action_args[@]}"
+      ;;
     *)
       echo "Unknown action '$action'." >&2
       return 1
@@ -3406,7 +5049,7 @@ INTERACTIVE_CONTROL_CENTER=false
 while (($#)); do
   case "$1" in
     -h|--help)
-      if [[ "$ACTION" == "debug" || "$ACTION" == "audit" ]]; then
+      if [[ "$ACTION" == "debug" || "$ACTION" == "audit" || "$ACTION" == "providers" ]]; then
         EXTRA_ARGS+=("$1")
       else
         SHOW_HELP=true
@@ -3466,7 +5109,7 @@ while (($#)); do
         EXTRA_ARGS+=("$1")
       fi
       ;;
-    start|stop|restart|debug|sync|cert-sync|audit)
+    start|stop|restart|debug|sync|cert-sync|audit|providers)
       if [[ -z "$ACTION" ]]; then
         ACTION="$1"
       else
@@ -3474,7 +5117,7 @@ while (($#)); do
       fi
       ;;
     -*)
-      if [[ "$ACTION" == "debug" || "$ACTION" == "audit" ]]; then
+      if [[ "$ACTION" == "debug" || "$ACTION" == "audit" || "$ACTION" == "providers" ]]; then
         EXTRA_ARGS+=("$1")
       else
         echo "Unknown option '$1'. Use --help for usage." >&2
@@ -3511,7 +5154,7 @@ if [[ -z "$ACTION" ]]; then
   if [[ -t 0 ]]; then
     INTERACTIVE_CONTROL_CENTER=true
   else
-    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync|audit" >&2
+    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync|audit|providers" >&2
     exit 1
   fi
 fi
