@@ -2,18 +2,27 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import html
+from html.parser import HTMLParser
 import re
 from typing import Any
+from urllib.parse import urljoin
 
 from app.api.routes import _expand_category_for_muse
 from app.core.config import settings
 from app.providers.base import JobProvider
 from app.schemas.job import NormalizedJob
 from app.services.provider_requests import ProviderRequestFailed, tracked_request
+from app.services.job_link_health import classify_job_url_validation_verdict, extract_url_host
 
 MUSE_BASE_URL = "https://www.themuse.com/api/public/jobs"
 _TAG_RE = re.compile(r"<[^>]+>")
 _REMOTE_RE = re.compile(r"\b(remote|work from home|telecommute|distributed|anywhere)\b", re.IGNORECASE)
+_MUSE_JOB_NOT_FOUND_PATTERNS = [
+    re.compile(r"\bjob not found\b", re.IGNORECASE),
+    re.compile(r"\bthe job posting you'?re looking for could not be found\b", re.IGNORECASE),
+    re.compile(r"\bmay have been removed\b", re.IGNORECASE),
+]
+_APPLY_LINK_TEXT_RE = re.compile(r"\bapply on company site\b", re.IGNORECASE)
 
 _MUSE_LEVEL_MAP = {
     "internship": "internship",
@@ -81,6 +90,52 @@ def _dedupe(values: list[str]) -> list[str]:
         seen.add(key)
         result.append(normalized)
     return result
+
+
+class _MuseApplyLinkParser(HTMLParser):
+    """Capture the first anchor whose visible text looks like the apply CTA."""
+
+    def __init__(self):
+        super().__init__()
+        self._current_href: str | None = None
+        self._current_text_parts: list[str] = []
+        self.apply_href: str | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() != "a" or self.apply_href is not None:
+            return
+        attr_map = {key.lower(): value for key, value in attrs}
+        self._current_href = attr_map.get("href")
+        self._current_text_parts = []
+
+    def handle_data(self, data: str) -> None:
+        if self._current_href is None or self.apply_href is not None:
+            return
+        if data:
+            self._current_text_parts.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() != "a" or self._current_href is None or self.apply_href is not None:
+            self._current_href = None
+            self._current_text_parts = []
+            return
+
+        text = " ".join(part.strip() for part in self._current_text_parts if part.strip())
+        if _APPLY_LINK_TEXT_RE.search(text):
+            self.apply_href = self._current_href
+
+        self._current_href = None
+        self._current_text_parts = []
+
+
+def _extract_apply_on_company_site_url(body_text: str | None, base_url: str | None) -> str | None:
+    parser = _MuseApplyLinkParser()
+    parser.feed(body_text or "")
+    parser.close()
+    href = (parser.apply_href or "").strip()
+    if not href:
+        return None
+    return urljoin(base_url or "", href)
 
 
 class TheMuseJobProvider(JobProvider):
@@ -176,3 +231,26 @@ class TheMuseJobProvider(JobProvider):
             )
 
         return normalized
+
+    def classify_landing_page_verdict(self, *, url: str | None, status_code: int, body_text: str | None) -> str:
+        """Classify Muse landing pages, including their 200-status not-found template."""
+        return classify_job_url_validation_verdict(
+            status_code,
+            body_text,
+            extra_bad_patterns=_MUSE_JOB_NOT_FOUND_PATTERNS,
+        )
+
+    def resolve_apply_details(
+        self,
+        *,
+        landing_url: str | None,
+        final_url: str | None,
+        body_text: str | None,
+    ) -> dict[str, Any]:
+        """Extract the downstream application link from a Muse landing page when present."""
+        apply_url = _extract_apply_on_company_site_url(body_text, final_url or landing_url)
+        return {
+            "apply_url": apply_url,
+            "apply_host": extract_url_host(apply_url),
+            "apply_portal": self.classify_apply_portal(apply_url),
+        }

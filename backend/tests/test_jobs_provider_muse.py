@@ -72,6 +72,36 @@ class TheMuseProviderTests(unittest.TestCase):
         self.assertEqual(job.provider_url, "https://www.themuse.com/jobs/acme/software-engineer")
         self.assertEqual(job.published_at, datetime(2026, 4, 13, 12, 30, tzinfo=timezone.utc))
 
+    def test_muse_landing_page_not_found_detection(self):
+        provider = TheMuseJobProvider()
+        verdict = provider.classify_landing_page_verdict(
+            url="https://www.themuse.com/jobs/acme/missing-role",
+            status_code=200,
+            body_text="<h1>Job Not Found</h1><p>The job posting you're looking for could not be found.</p>",
+        )
+
+        self.assertEqual(verdict, "bad")
+
+    def test_resolve_apply_details_extracts_company_site_link(self):
+        provider = TheMuseJobProvider()
+        body = """
+        <html>
+          <body>
+            <a href="https://jobs.ashbyhq.com/acme/123">Apply on Company Site</a>
+          </body>
+        </html>
+        """
+
+        details = provider.resolve_apply_details(
+            landing_url="https://www.themuse.com/jobs/acme/software-engineer",
+            final_url="https://www.themuse.com/jobs/acme/software-engineer",
+            body_text=body,
+        )
+
+        self.assertEqual(details["apply_url"], "https://jobs.ashbyhq.com/acme/123")
+        self.assertEqual(details["apply_host"], "jobs.ashbyhq.com")
+        self.assertEqual(details["apply_portal"], "ashby")
+
 
 if __name__ == "__main__":
     unittest.main()
