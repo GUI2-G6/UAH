@@ -62,6 +62,7 @@ from app.db.session import get_db
 from app.google.service import GoogleAuthService
 from app.schemas.user import SaveJobRequest
 from app.core.security import create_access_token
+from app.core.auth_cookie import set_auth_cookie
 from typing import Optional, List, Any
 from app.services.geolocation import (
     geocode_query,
@@ -2707,6 +2708,12 @@ async def google_oauth_callback(
             return _oauth_settings_redirect("error", "missing_profile_fields")
         return _oauth_login_error("missing_profile_fields", intent=oauth_intent)
 
+    if not email_verified:
+        _clear_google_oauth_session(request)
+        if oauth_mode == "connect":
+            return _oauth_settings_redirect("error", "email_not_verified")
+        return _oauth_login_error("email_not_verified", intent=oauth_intent)
+
     if oauth_mode == "connect":
         if not oauth_user_id:
             _clear_google_oauth_session(request)
@@ -2740,14 +2747,18 @@ async def google_oauth_callback(
         _clear_google_oauth_session(request)
         return _oauth_settings_redirect("connected")
 
-    user = GoogleAuthService.get_or_create_user(
-        db=db,
-        google_id=google_id,
-        email=email,
-        full_name=name,
-        picture_url=picture,
-        email_verified=email_verified,
-    )
+    try:
+        user = GoogleAuthService.get_or_create_user(
+            db=db,
+            google_id=google_id,
+            email=email,
+            full_name=name,
+            picture_url=picture,
+            email_verified=email_verified,
+        )
+    except ValueError as exc:
+        _clear_google_oauth_session(request)
+        return _oauth_login_error(str(exc).strip() or "account_link_not_allowed", intent=oauth_intent)
 
     if not user.is_active:
         _clear_google_oauth_session(request)
@@ -2756,14 +2767,15 @@ async def google_oauth_callback(
     user_access_token = create_access_token(data={"sub": str(user.id)})
     redirect_url = _frontend_url(
         "/oauth-callback",
-        fragment={
-            "access_token": user_access_token,
+        query={
             "next": oauth_next,
             "provider": "google",
         },
     )
+    redirect_response = RedirectResponse(redirect_url, status_code=302)
+    set_auth_cookie(redirect_response, user_access_token)
     _clear_google_oauth_session(request)
-    return RedirectResponse(redirect_url)
+    return redirect_response
 
 
 @router.get(

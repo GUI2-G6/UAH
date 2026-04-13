@@ -1,29 +1,12 @@
-Trent notes
 
-add default job board stuff and make searching less restrictive
 
-add filtering checks for job board api results which check to make sure jobs returned from api calls are filtered more at our level and jobs that resolve to
-
-Job Not Found
-The job posting you're looking for could not be found. It may have been removed or the URL might be incorrect.
-
-Browse All JobsGo Home
-
-are flushed from valid results, seems like jobs that resolve to the invalid page always have 503 errors in the dev console. maybe useful?
-
-reimplement the status page stuff to not require auth as long as it doesnt introduce vaulnerability ++ diagnostics
-
-implement a proper admin account system and or pannel for beta perhaps
-
-experiment with combining the rules based and local ocr pass stuff to enhance catching things for resumes with large amounts of styling applied.
 
 make cannotical definitions for each page we currently have so we make sure our understandings are all aligned between devs and implementation.
 
-Move alerts/notifications page to below dash/home
+
 
 make sure all scripts are properly isolated and stuff to where they belong
 
-do a extensive sweep of site to apply proper form field attributes and fix any autofill problems.(done maybe, needs second pass)
 
 add nice regex for phone numbers and emails and stuff globally.
 
@@ -37,4 +20,5 @@ standardize connected accounts button/card sizes
 
 make sure resume page ui stuff is mobile friendly
 
-make sure the actual current password isnt showing via autofill upon entering settings or whatever/isnt autofillable
+
+NATURAL LANGUAGE MODEL FILTER APPLICATION?? yes this

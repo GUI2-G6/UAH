@@ -137,7 +137,7 @@
 <script>
 import Card from "../components/Card.vue";
 import ConfirmModal from "../components/ConfirmModal.vue";
-import { authedFetch, clearAuth, getCurrentUser, setCurrentUser } from "../lib/auth.js";
+import { authedFetch, clearAuth, getCurrentUser, setCurrentUser, syncCurrentUser } from "../lib/auth.js";
 
 export default {
   name: "ApplicantInformation",
@@ -232,17 +232,13 @@ export default {
                 this.lastName = this.currentUser.last_name || this.currentUser.lastName || ''
             }
 
-            const host = window.location.hostname
-            const isLocalDev = host === 'localhost' || host === '127.0.0.1' || host === '::1'
-            if (isLocalDev) return
-
-            // Refresh from backend if available.
             try {
-                const res = await authedFetch('/api/auth/me')
-                if (!res.ok) return
-                const user = await res.json()
+                const user = await syncCurrentUser({ force: true })
+                if (!user) {
+                    this.$router.push('/login')
+                    return
+                }
                 this.currentUser = user
-                setCurrentUser(user)
 
                 this.firstName = user.first_name || user.firstName || this.firstName
                 this.lastName = user.last_name || user.lastName || this.lastName

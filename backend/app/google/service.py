@@ -24,7 +24,10 @@ class GoogleAuthService:
 
         # Fall back to matching by email so existing local accounts can link.
         if not user:
-            user = db.query(User).filter(func.lower(User.email) == normalized_email).first()
+            email_owner = db.query(User).filter(func.lower(User.email) == normalized_email).first()
+            if email_owner and not email_verified:
+                raise ValueError("email_not_verified")
+            user = email_owner
 
         if user:
             user.email = normalized_email

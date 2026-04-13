@@ -278,7 +278,7 @@
 </template>
 
 <script>
-import { authedFetch, getAccessToken } from '../lib/auth.js'
+import { authedFetch, getCurrentUser, syncCurrentUser } from '../lib/auth.js'
 
 export default {
   name: 'Status',
@@ -324,8 +324,8 @@ export default {
         return
       }
 
-      const token = getAccessToken()
-      this.$router.push(token ? '/home' : '/login')
+      const user = getCurrentUser()
+      this.$router.push(user ? '/home' : '/login')
     },
     parseMethodLabel(key) {
       if (key === 'cloud') return 'Cloud'
@@ -347,7 +347,8 @@ export default {
       this.error = null
       this.accessState = 'ok'
       try {
-        if (!getAccessToken()) {
+        const user = await syncCurrentUser({ force: true })
+        if (!user) {
           this.diagnostics = null
           this.lastChecked = null
           this.accessState = 'signin-required'

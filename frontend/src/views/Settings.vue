@@ -231,7 +231,7 @@
 import Card from "../components/Card.vue";
 import ConfirmModal from "../components/ConfirmModal.vue";
 import SecretInput from "../components/SecretInput.vue";
-import { authedFetch, clearAuth, getAccessToken, getCurrentUser, setCurrentUser } from "../lib/auth.js";
+import { authedFetch, clearAuth, getCurrentUser, setCurrentUser, syncCurrentUser } from "../lib/auth.js";
 import { setDebugToolsPreference, subscribeDebugTools } from "../lib/debugTools.js";
 import { assertValidEmail } from "../lib/validation.js";
 import { showToast } from '@/services/toastService.js';
@@ -445,20 +445,18 @@ export default {
                 this.lastName = this.currentUser.last_name || this.currentUser.lastName || ''
             }
 
-            if (!getAccessToken()) return
-
-            // Refresh from backend if available.
             try {
-                const res = await authedFetch('/api/auth/me')
-                if (!res.ok) return
-                const user = await res.json()
+                const user = await syncCurrentUser({ force: true })
+                if (!user) {
+                    this.$router.push('/login')
+                    return
+                }
                 this.currentUser = user
-                setCurrentUser(user)
 
                 this.firstName = user.first_name || user.firstName || this.firstName
                 this.lastName = user.last_name || user.lastName || this.lastName
             } catch (e) {
-                if (e.message === 'Session expired' || e.message === 'Not authenticated') {
+                if (e.message === 'Session expired' || e.message === 'Not authenticated' || e.message === 'HTTP 401') {
                     this.$router.push('/login')
                 }
                 // otherwise ignore (backend may be down)

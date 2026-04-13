@@ -86,7 +86,7 @@
 
 <!--Exports the HBMenu so other files can see and use it-->
 <script>
-    import { clearAuth, getCurrentUser } from "../lib/auth.js";
+    import { getCurrentUser, logout as logoutUser } from "../lib/auth.js";
     import ConfirmModal from "./ConfirmModal.vue";
 
     export default{
@@ -134,8 +134,8 @@
             logout() {
                 this.confirmLogoutOpen = true
             },
-            confirmLogout() {
-                clearAuth();
+            async confirmLogout() {
+                await logoutUser();
                 this.active = false;
                 this.confirmLogoutOpen = false;
                 this.$router.push('/login');

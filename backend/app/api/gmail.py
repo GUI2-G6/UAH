@@ -1,5 +1,6 @@
 import secrets
 import base64
+import hashlib
 import httpx
 from cryptography.fernet import Fernet
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -25,8 +26,11 @@ SCAN_KEYWORDS = [
 
 
 def _get_fernet():
-    key = settings.SECRET_KEY[:32].ljust(32, "0")
-    return Fernet(base64.urlsafe_b64encode(key.encode()[:32]))
+    key_material = (settings.GMAIL_TOKEN_ENCRYPTION_KEY or settings.SESSION_SECRET or "").strip()
+    if not key_material:
+        raise RuntimeError("Gmail token encryption key is not configured")
+    derived_key = hashlib.sha256(key_material.encode("utf-8")).digest()
+    return Fernet(base64.urlsafe_b64encode(derived_key))
 
 
 def _encrypt_token(token: str) -> str:

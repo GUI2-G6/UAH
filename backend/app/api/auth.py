@@ -1,15 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 import os
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.user import UserRegister, UserLogin, UserResponse, TokenResponse
-from app.core.security import hash_password, verify_password, create_access_token, decode_access_token
+from app.schemas.user import UserRegister, UserLogin, UserResponse, TokenResponse, MessageResponse
+from app.core.security import hash_password, verify_password, create_access_token
+from app.core.auth_cookie import clear_auth_cookie, set_auth_cookie, set_no_store_headers
 from app.core.validation import normalize_email, require_valid_email
 from app.core.rate_limit import enforce_ip_rate_limit, enforce_subject_rate_limit
-from app.api.deps import oauth2_scheme
+from app.api.deps import get_current_user as get_authenticated_user
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -84,6 +85,7 @@ def _ensure_admin_user(db: Session) -> User:
 def register(
     payload: UserRegister,
     request: Request,
+    response: Response,
     db: Session = Depends(get_db),
 ):
     """
@@ -132,6 +134,7 @@ def register(
     db.refresh(user)
 
     token = create_access_token(data={"sub": str(user.id)})
+    set_auth_cookie(response, token)
     return TokenResponse(
         access_token=token,
         user=UserResponse.model_validate(user),
@@ -142,6 +145,7 @@ def register(
 def login(
     payload: UserLogin,
     request: Request,
+    response: Response,
     db: Session = Depends(get_db),
 ):
     """
@@ -186,6 +190,7 @@ def login(
         )
 
     token = create_access_token(data={"sub": str(user.id)})
+    set_auth_cookie(response, token)
     return TokenResponse(
         access_token=token,
         user=UserResponse.model_validate(user),
@@ -195,6 +200,7 @@ def login(
 @router.post("/token")
 def token_login(
     request: Request,
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
@@ -243,16 +249,23 @@ def token_login(
         )
 
     token = create_access_token(data={"sub": str(user.id)})
+    set_auth_cookie(response, token)
     return {
         "access_token": token,
         "token_type": "bearer",
     }
 
 
+@router.post("/logout", response_model=MessageResponse)
+def logout(response: Response):
+    clear_auth_cookie(response)
+    return MessageResponse(message="Logged out")
+
+
 @router.get("/me", response_model=UserResponse)
-def get_current_user(
-    db: Session = Depends(get_db),
-    token: str = Depends(oauth2_scheme),
+def read_current_user(
+    response: Response,
+    current_user: User = Depends(get_authenticated_user),
 ):
     """
     Retrieve the profile of the currently authenticated user.
@@ -265,17 +278,5 @@ def get_current_user(
     - 401: Token missing, invalid, or expired.
     - 404: Token subject is valid but user no longer exists.
     """
-    payload = decode_access_token(token)
-    if payload is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
-
-    user = db.query(User).filter(User.id == int(payload["sub"])).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-    return user
+    set_no_store_headers(response)
+    return current_user

@@ -346,15 +346,16 @@ async def lifespan(app: FastAPI):
         await stop_queue_worker()
         logger.info("Redis parse queue worker stopped")
 
-_is_production = os.getenv("ENVIRONMENT", "development").lower() == "production"
+_runtime_environment = (settings.ENVIRONMENT or os.getenv("ENVIRONMENT", "development")).strip().lower()
+_docs_enabled = _runtime_environment in {"development", "dev", "local"}
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description="Unified Application Hub — DEV API",
-    docs_url=None if _is_production else "/docs",
-    redoc_url=None if _is_production else "/redoc",
-    openapi_url=None if _is_production else "/openapi.json",
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
     lifespan=lifespan,
 )
 

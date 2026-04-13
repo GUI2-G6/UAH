@@ -43,15 +43,17 @@ class Settings:
     SECRET_KEY: str = os.getenv("SECRET_KEY", "")
     SESSION_SECRET: str = os.getenv("SESSION_SECRET", "")
     AUTH_NAMESPACE: str = _env_slug(os.getenv("AUTH_NAMESPACE", os.getenv("ENVIRONMENT", "development")))
+    AUTH_COOKIE_NAME: str = os.getenv("AUTH_COOKIE_NAME", f"uah_auth_{AUTH_NAMESPACE}")
     SESSION_COOKIE_NAME: str = os.getenv("SESSION_COOKIE_NAME", f"uah_session_{AUTH_NAMESPACE}")
     SESSION_COOKIE_SAMESITE: str = os.getenv("SESSION_COOKIE_SAMESITE", "lax").strip().lower()
     SESSION_COOKIE_PATH: str = os.getenv("SESSION_COOKIE_PATH", "/")
     SESSION_COOKIE_HTTPS_ONLY: bool = _env_bool(
       "SESSION_COOKIE_HTTPS_ONLY",
-      "true" if AUTH_NAMESPACE in {"prod", "production"} else "false",
+      "true" if AUTH_NAMESPACE in {"beta", "staging", "prod", "production"} else "false",
     )
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+    GMAIL_TOKEN_ENCRYPTION_KEY: str = os.getenv("GMAIL_TOKEN_ENCRYPTION_KEY", "")
 
     # Environment
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
@@ -160,6 +162,10 @@ class Settings:
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
 
+    @property
+    def ACCESS_TOKEN_EXPIRE_SECONDS(self) -> int:
+        return max(int(self.ACCESS_TOKEN_EXPIRE_MINUTES), 1) * 60
+
     def missing_resume_ocr_config(self) -> list[str]:
         missing = []
         if not self.ZAI_API_KEY or not self.ZAI_API_KEY.strip():
@@ -205,6 +211,12 @@ class Settings:
       if self.SESSION_COOKIE_NAME.strip().lower() == "session":
         raise RuntimeError("SESSION_COOKIE_NAME='session' is not allowed; use an environment-scoped cookie name.")
 
+      if not isinstance(self.AUTH_COOKIE_NAME, str) or not self.AUTH_COOKIE_NAME.strip():
+        raise RuntimeError("AUTH_COOKIE_NAME must be configured.")
+
+      if self.AUTH_COOKIE_NAME.strip().lower() in {"session", self.SESSION_COOKIE_NAME.strip().lower()}:
+        raise RuntimeError("AUTH_COOKIE_NAME must be distinct from SESSION_COOKIE_NAME and may not use reserved defaults.")
+
       allowed_samesite = {"lax", "strict", "none"}
       if self.SESSION_COOKIE_SAMESITE not in allowed_samesite:
         raise RuntimeError("SESSION_COOKIE_SAMESITE must be one of: lax, strict, none.")
@@ -216,11 +228,13 @@ class Settings:
         raise RuntimeError("AUTH_NAMESPACE must be configured.")
 
       env_slug = _env_slug(self.ENVIRONMENT)
-      if env_slug in {"beta", "prod", "production"}:
+      if env_slug in {"beta", "staging", "prod", "production"}:
         lower_secret = self.SECRET_KEY.lower()
         lower_session_secret = self.SESSION_SECRET.lower()
         if "placeholder" in lower_secret or "placeholder" in lower_session_secret:
           raise RuntimeError("Placeholder auth secrets are not allowed in beta/prod environments.")
+        if not self.SESSION_COOKIE_HTTPS_ONLY:
+          raise RuntimeError("SESSION_COOKIE_HTTPS_ONLY must be true in beta/staging/prod environments.")
 
       if self.DEV_AUTH_TEST_ACCOUNT_ENABLED and env_slug not in {"dev", "development", "local"}:
         raise RuntimeError("DEV_AUTH_TEST_ACCOUNT_ENABLED is only allowed in development/local environments.")

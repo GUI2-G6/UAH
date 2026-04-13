@@ -22,14 +22,37 @@ function inferDefaultNamespace() {
     return 'dev'
 }
 
+function resolveFrontendAuthMode() {
+    const explicit = String(import.meta?.env?.VITE_LOCAL_MODE || '')
+        .trim()
+        .toLowerCase()
+    if (explicit === 'backend' || explicit === 'mock') return explicit
+
+    const mode = String(import.meta?.env?.MODE || '')
+        .trim()
+        .toLowerCase()
+    if (mode === 'backend' || mode === 'mock') return mode
+
+    const host = String(window?.location?.hostname || '').trim().toLowerCase()
+    if (isLoopbackHost(host)) return 'mock'
+
+    return 'backend'
+}
+
 const DEFAULT_NAMESPACE = inferDefaultNamespace()
 const AUTH_NAMESPACE = normalizeNamespace(import.meta?.env?.VITE_AUTH_NAMESPACE) || DEFAULT_NAMESPACE
+const FRONTEND_AUTH_MODE = resolveFrontendAuthMode()
+const SHOULD_PERSIST_ACCESS_TOKEN = FRONTEND_AUTH_MODE === 'mock'
 
 const LEGACY_ACCESS_TOKEN_KEY = 'uah_access_token'
 const LEGACY_CURRENT_USER_KEY = 'uah_current_user'
 const ACCESS_TOKEN_KEY = `uah_access_token:${AUTH_NAMESPACE}`
 const CURRENT_USER_KEY = `uah_current_user:${AUTH_NAMESPACE}`
 const SHOULD_MIGRATE_LEGACY_KEYS = isLoopbackHost(window?.location?.hostname)
+const USER_SYNC_TTL_MS = 15_000
+
+let currentUserSyncPromise = null
+let lastCurrentUserSyncAt = 0
 
 function parseTokenPayload(token) {
     try {
@@ -45,6 +68,11 @@ export function isTokenExpired(token) {
 }
 
 export function getAccessToken() {
+    if (!SHOULD_PERSIST_ACCESS_TOKEN) {
+        localStorage.removeItem(ACCESS_TOKEN_KEY)
+        localStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY)
+        return null
+    }
     let token = localStorage.getItem(ACCESS_TOKEN_KEY)
     if (!token && SHOULD_MIGRATE_LEGACY_KEYS) {
         const legacy = localStorage.getItem(LEGACY_ACCESS_TOKEN_KEY)
@@ -66,6 +94,11 @@ export function getAuthNamespace() {
 }
 
 export function setAccessToken(token) {
+    if (!SHOULD_PERSIST_ACCESS_TOKEN) {
+        localStorage.removeItem(ACCESS_TOKEN_KEY)
+        localStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY)
+        return
+    }
     if (token) localStorage.setItem(ACCESS_TOKEN_KEY, token)
     else localStorage.removeItem(ACCESS_TOKEN_KEY)
 }
@@ -90,6 +123,7 @@ export function getCurrentUser() {
 export function setCurrentUser(user) {
     if (user) localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user))
     else localStorage.removeItem(CURRENT_USER_KEY)
+    lastCurrentUserSyncAt = user ? Date.now() : 0
 
     // Let mounted components update without a refresh.
     window.dispatchEvent(new Event('uah-user-updated'))
@@ -97,6 +131,7 @@ export function setCurrentUser(user) {
 
 export function setAuth({ access_token, user } = {}) {
     if (access_token) setAccessToken(access_token)
+    else if (!SHOULD_PERSIST_ACCESS_TOKEN) setAccessToken(null)
     if (user) setCurrentUser(user)
 }
 
@@ -105,7 +140,60 @@ export function clearAuth() {
     localStorage.removeItem(CURRENT_USER_KEY)
     localStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY)
     localStorage.removeItem(LEGACY_CURRENT_USER_KEY)
+    lastCurrentUserSyncAt = 0
     window.dispatchEvent(new Event('uah-user-updated'))
+}
+
+export async function syncCurrentUser({ force = false } = {}) {
+    const cachedUser = getCurrentUser()
+    if (!force && cachedUser && Date.now() - lastCurrentUserSyncAt < USER_SYNC_TTL_MS) {
+        return cachedUser
+    }
+    if (currentUserSyncPromise) {
+        return currentUserSyncPromise
+    }
+
+    const token = getAccessToken()
+    const headers = new Headers()
+    if (token) {
+        headers.set('Authorization', `Bearer ${token}`)
+    }
+
+    currentUserSyncPromise = (async () => {
+        try {
+            const res = await fetch('/api/auth/me', {
+                headers,
+                credentials: 'same-origin',
+            })
+            if (res.status === 401 || res.status === 404) {
+                clearAuth()
+                return null
+            }
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`)
+            }
+            const user = await res.json()
+            setCurrentUser(user)
+            return user
+        } finally {
+            currentUserSyncPromise = null
+        }
+    })()
+
+    return currentUserSyncPromise
+}
+
+export async function logout() {
+    try {
+        await fetch('/api/auth/logout', {
+            method: 'POST',
+            credentials: 'same-origin',
+        })
+    } catch {
+        // Local state should still clear even if backend logout cannot be reached.
+    } finally {
+        clearAuth()
+    }
 }
 
 /**
@@ -114,12 +202,10 @@ export function clearAuth() {
  */
 export async function authedFetch(url, options = {}) {
     const token = getAccessToken()
-    if (!token) {
-        throw new Error('Not authenticated')
-    }
-
     const headers = new Headers(options.headers || {})
-    headers.set('Authorization', `Bearer ${token}`)
+    if (token) {
+        headers.set('Authorization', `Bearer ${token}`)
+    }
 
     const timeoutMs = options.timeout ?? 300_000 // 5 minutes default
     let controller
@@ -134,6 +220,7 @@ export async function authedFetch(url, options = {}) {
         const res = await fetch(url, {
             ...options,
             headers,
+            credentials: options.credentials || 'same-origin',
             signal: options.signal || controller?.signal,
         })
 

@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.db.session import get_db
@@ -17,6 +17,7 @@ from app.core.security import (
     hash_password, verify_password,
     create_verification_token, decode_verification_token,
 )
+from app.core.auth_cookie import clear_auth_cookie
 from app.core.config import settings
 from app.core.rate_limit import enforce_ip_rate_limit, enforce_subject_rate_limit
 from app.core.validation import normalize_email, require_valid_email
@@ -515,6 +516,7 @@ def verify_email(
 
 @router.delete("/delete", response_model=MessageResponse)
 def delete_account(
+    response: Response,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -530,4 +532,5 @@ def delete_account(
     """
     db.delete(current_user)
     db.commit()
+    clear_auth_cookie(response)
     return MessageResponse(message="Account deleted successfully")

@@ -11,7 +11,7 @@
 </template>
 
 <script>
-import { clearAuth, setAccessToken, setCurrentUser } from '../lib/auth.js'
+import { clearAuth, setAuth, syncCurrentUser } from '../lib/auth.js'
 
 function parseOAuthParams(route) {
   const hash = String(window.location.hash || '').replace(/^#/, '')
@@ -53,24 +53,12 @@ export default {
         return
       }
 
-      if (!payload.accessToken) {
-        this.loading = false
-        this.error = 'Missing OAuth token. Please try signing in again.'
-        return
-      }
-
       try {
-        setAccessToken(payload.accessToken)
-        const res = await fetch('/api/auth/me', {
-          headers: {
-            Authorization: `Bearer ${payload.accessToken}`,
-          },
-        })
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`)
+        if (payload.accessToken) {
+          setAuth({ access_token: payload.accessToken })
         }
-        const user = await res.json()
-        setCurrentUser(user)
+        const user = await syncCurrentUser({ force: true })
+        if (!user) throw new Error('No authenticated session')
         this.$router.replace(sanitizeNextPath(payload.next))
       } catch (e) {
         clearAuth()

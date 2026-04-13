@@ -40,6 +40,16 @@ router = APIRouter(prefix="/api/resume", tags=["resume"])
 MAX_RESUMES_PER_USER = 10
 MAX_FILE_SIZE = 5 * 1024 * 1024
 UPLOAD_COOLDOWN_SECONDS = 30
+ALLOWED_PDF_CONTENT_TYPES = {
+    "application/pdf",
+    "application/x-pdf",
+    "application/acrobat",
+    "applications/vnd.pdf",
+    "text/pdf",
+    "text/x-pdf",
+    "application/octet-stream",
+    "binary/octet-stream",
+}
 
 
 def _is_development_env() -> bool:
@@ -50,6 +60,13 @@ def _is_development_env() -> bool:
 
 def _method_or_default(value: str | None) -> str:
     return normalize_parse_method(value) or "local"
+
+
+def _looks_like_pdf(pdf_bytes: bytes) -> bool:
+    if not pdf_bytes:
+        return False
+    trimmed = pdf_bytes.lstrip(b"\x00\x09\x0a\x0c\x0d\x20\xef\xbb\xbf")
+    return trimmed.startswith(b"%PDF-")
 
 
 def _parse_iso_datetime(value: str | None) -> datetime | None:
@@ -149,7 +166,9 @@ async def _build_queue_status_payload(
         latest_active_job_redis_status = await get_job_redis_status(latest_user_active_job.id)
 
     requested_scope = (scope or "user").strip().lower()
-    can_view_global = _is_development_env()
+    can_view_global = _is_development_env() and (
+        bool(getattr(current_user, "is_admin", False)) or bool(getattr(current_user, "is_developer", False))
+    )
     effective_scope = "global" if requested_scope == "global" and can_view_global else "user"
     environment_raw = (settings.ENVIRONMENT or "").strip().lower()
     if environment_raw in {"development", "dev", "local"}:
@@ -269,8 +288,13 @@ async def upload_resume(
     - 400: File type invalid or file exceeds max size.
     - 429: Upload rate or per-user resume limit exceeded.
     """
-    if not file.filename.lower().endswith(".pdf"):
+    file_name = os.path.basename((file.filename or "").strip())
+    if not file_name or not file_name.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+    content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
+    if content_type and content_type not in ALLOWED_PDF_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="Uploaded file must use a PDF content type")
 
     resume_count = db.query(func.count(Resume.id)).filter(Resume.user_id == current_user.id).scalar()
     if resume_count >= MAX_RESUMES_PER_USER:
@@ -290,10 +314,12 @@ async def upload_resume(
 
     if len(pdf_bytes) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File too large, max 5MB")
+    if not _looks_like_pdf(pdf_bytes):
+        raise HTTPException(status_code=400, detail="Uploaded file does not look like a valid PDF")
 
     resume = Resume(
         user_id=current_user.id,
-        file_name=file.filename,
+        file_name=file_name,
         pdf_data=pdf_bytes,
     )
     db.add(resume)

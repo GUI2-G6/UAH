@@ -1,11 +1,19 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { getAccessToken } from '@/lib/auth'
+import { getCurrentUser, syncCurrentUser } from '@/lib/auth'
 import { shouldShowDebugTools } from '@/lib/debugTools'
 
 const modules = import.meta.glob('../views/*.vue')
 
 function isAuthenticated() {
-  return Boolean(getAccessToken())
+  return Boolean(getCurrentUser())
+}
+
+async function resolveAuthenticatedUser(force = false) {
+  try {
+    return await syncCurrentUser({ force })
+  } catch {
+    return getCurrentUser()
+  }
 }
 
 /* This grabs everything from and generates routes for everything in the views folder */
@@ -47,18 +55,24 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const publicPaths = new Set(['/login', '/register', '/status', '/forgot-password', '/reset-password', '/oauth-callback'])
-  const authed = isAuthenticated()
+  const isOAuthCallback = to.path === '/oauth-callback'
+
+  if (isOAuthCallback) {
+    return true
+  }
 
   if (publicPaths.has(to.path)) {
-    if (authed && to.path === '/login') {
+    const authedUser = await resolveAuthenticatedUser(to.path === '/login' || to.path === '/register')
+    if (authedUser && (to.path === '/login' || to.path === '/register')) {
       return '/home'
     }
     return true
   }
 
-  if (!authed) {
+  const authedUser = await resolveAuthenticatedUser(true)
+  if (!authedUser) {
     return {
       path: '/login',
       query: to.fullPath && to.fullPath !== '/' ? { next: to.fullPath } : undefined,
