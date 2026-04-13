@@ -59,7 +59,12 @@ def _serialize_job(job: Job) -> dict:
         "provider": job.provider,
         "provider_job_id": raw_provider_job_id,
         "provider_url": job.provider_url,
+        "provider_url_status": job.provider_url_status,
         "job_url": job.provider_url,
+        "apply_url": job.apply_url,
+        "apply_url_status": job.apply_url_status,
+        "apply_portal": job.apply_portal,
+        "source_tags": list(job.source_tags or []),
         "title": job.title,
         "name": job.title,
         "short_name": job.title,
@@ -81,6 +86,8 @@ def _serialize_job(job: Job) -> dict:
         "has_hybrid": False,
         "quality_score": float(job.quality_score or 0.0),
         "display_tier": job.display_tier,
+        "staleness_status": job.staleness_status,
+        "staleness_flags": list(job.staleness_flags or []),
         "published_at": published_at_iso,
         "publication_date": published_at_iso,
         "is_featured": bool(job.is_featured),
@@ -106,7 +113,9 @@ def search_local_jobs(
     posted_after: str | None = None,
 ) -> dict:
     """Query locally cached jobs only and return compatibility pagination metadata."""
-    query = db.query(Job).filter(Job.is_active.is_(True))
+    query = db.query(Job).filter(Job.is_active.is_(True)).filter(
+        or_(Job.provider_url_status.is_(None), Job.provider_url_status != "bad")
+    )
 
     normalized_tier = (tier or "active").strip().lower()
     if normalized_tier == "active":
