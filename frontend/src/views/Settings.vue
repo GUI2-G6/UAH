@@ -139,11 +139,11 @@
             </Card>
             <Card class="settings-card settings-card--integrations">
                 <template #header>
-                    <h3>Connected Accounts</h3>
+                    <h3>Sign-in Methods</h3>
                 </template>
                 <div class="settings-group connected-accounts-group">
                     <p class="connected-accounts-intro">
-                        Manage linked sign-in providers. This section is built to support additional providers over time.
+                        Manage linked sign-in providers separately from optional platform services like Gmail updates.
                     </p>
                     <p v-if="connectedAccountsError" class="account-error">{{ connectedAccountsError }}</p>
                     <div class="connected-accounts-list">
@@ -189,7 +189,7 @@
                         </div>
                     </div>
                     <button type="button" @click="loadConnectedAccounts" :disabled="connectedAccountsLoading || !!connectedAccountsBusyProvider">
-                        {{ connectedAccountsLoading ? 'Refreshing…' : 'Refresh connected accounts' }}
+                        {{ connectedAccountsLoading ? 'Refreshing…' : 'Refresh sign-in methods' }}
                     </button>
                 </div>
                 <div v-if="canAccessDebugTools" class="settings-group developer-tools-group">
@@ -211,6 +211,67 @@
                     <p class="connected-account-detail">This toggle is local to this browser and can be turned off later without changing your account role.</p>
                 </div>
             </Card>
+
+            <Card class="settings-card settings-card--services">
+                <template #header>
+                    <h3>Service Connections</h3>
+                </template>
+                <div class="settings-group service-connections-group">
+                    <p class="service-connections-intro">
+                        Opt in to services that help UAH organize updates, reminders, and documents.
+                    </p>
+                    <p v-if="serviceConnectionsError" class="account-error">{{ serviceConnectionsError }}</p>
+                    <div class="service-connections-list">
+                        <div
+                            v-for="service in serviceConnections"
+                            :key="service.key"
+                            class="service-connection-row"
+                            :class="[
+                                `is-${serviceClassKey(service.key)}`,
+                                { 'is-highlighted': highlightedServiceKey === service.key },
+                            ]"
+                        >
+                            <div class="service-connection-leading">
+                                <div class="service-connection-chip" :class="`is-${serviceClassKey(service.key)}`">
+                                    {{ serviceMonogram(service.key) }}
+                                </div>
+                                <div class="service-connection-meta">
+                                    <p class="service-connection-title">
+                                        {{ service.label }}
+                                        <span class="connected-account-badge service-connection-badge" :class="serviceBadgeClass(service.status)">
+                                            {{ serviceStatusLabel(service.status) }}
+                                        </span>
+                                    </p>
+                                    <p class="service-connection-summary">{{ service.summary }}</p>
+                                    <p v-if="service.account_label" class="service-connection-detail">{{ service.account_label }}</p>
+                                </div>
+                            </div>
+                            <div class="service-connection-actions">
+                                <button
+                                    type="button"
+                                    class="service-action-button"
+                                    :class="`is-${service.primary_action?.style || 'secondary'}`"
+                                    :disabled="serviceActionBusyKey === serviceBusyKey(service.key, service.primary_action?.key) || !service.primary_action?.enabled"
+                                    @click="runServiceAction(service.primary_action, service.key)"
+                                >
+                                    {{ serviceActionLabel(service.primary_action, service.key) }}
+                                </button>
+                                <button
+                                    type="button"
+                                    class="service-action-button is-ghost"
+                                    :disabled="serviceDetailsLoading && activeServiceDetails?.key === service.key"
+                                    @click="openServiceDetails(service)"
+                                >
+                                    View Details
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" @click="loadServiceConnections" :disabled="serviceConnectionsLoading || !!serviceActionBusyKey">
+                        {{ serviceConnectionsLoading ? 'Refreshing…' : 'Refresh services' }}
+                    </button>
+                </div>
+            </Card>
         </div>
 
         <ConfirmModal
@@ -223,6 +284,16 @@
             @cancel="confirmDeleteOpen = false"
             @confirm="confirmDeleteAccount"
         />
+
+        <ServiceDetailsModal
+            v-if="serviceDetailsOpen"
+            :service="activeServiceDetails"
+            :loading="serviceDetailsLoading"
+            :error="serviceDetailsError"
+            :busyActionKey="serviceActionBusyKey"
+            @close="closeServiceDetails"
+            @action="runServiceAction($event, activeServiceDetails?.key)"
+        />
     </div>
 
 </template>
@@ -231,10 +302,24 @@
 import Card from "../components/Card.vue";
 import ConfirmModal from "../components/ConfirmModal.vue";
 import SecretInput from "../components/SecretInput.vue";
+import ServiceDetailsModal from "../components/ServiceDetailsModal.vue";
 import { authedFetch, clearAuth, getCurrentUser, setCurrentUser, syncCurrentUser } from "../lib/auth.js";
 import { setDebugToolsPreference, subscribeDebugTools } from "../lib/debugTools.js";
 import { assertValidEmail } from "../lib/validation.js";
 import { showToast } from '@/services/toastService.js';
+
+const SERVICE_STATUS_LABELS = {
+    connected: 'Connected',
+    available: 'Available',
+    coming_soon: 'Coming soon',
+    needs_attention: 'Needs attention',
+}
+
+const SERVICE_MONOGRAMS = {
+    gmail: 'GM',
+    calendar_sync: 'CS',
+    resume_imports: 'RI',
+}
 
 export default {
   name: "Settings",
@@ -242,6 +327,7 @@ export default {
         Card,
         ConfirmModal,
         SecretInput,
+        ServiceDetailsModal,
     },
     data() {
         return {
@@ -259,6 +345,7 @@ export default {
                 deleteAccount: { state: 'idle', message: '' },
             },
             _actionTimers: {},
+            _serviceHighlightTimer: null,
 
             changeEmailNew: '',
             changeEmailNewConfirm: '',
@@ -276,6 +363,16 @@ export default {
             connectedAccountsError: '',
             connectedAccountsBusyProvider: '',
 
+            serviceConnections: [],
+            serviceConnectionsLoading: false,
+            serviceConnectionsError: '',
+            serviceActionBusyKey: '',
+            serviceDetailsOpen: false,
+            serviceDetailsLoading: false,
+            serviceDetailsError: '',
+            activeServiceDetails: null,
+            highlightedServiceKey: '',
+
             emailNotifications: 'yes',
             reminderNotifications: 'yes',
             applicationStatusUpdates: 'yes',
@@ -287,11 +384,14 @@ export default {
             debugToolsUnsubscribe: null,
         }
     },
-    computed: {},
     async mounted() {
         await this.loadUser()
-        await this.loadConnectedAccounts()
+        await Promise.all([
+            this.loadConnectedAccounts(),
+            this.loadServiceConnections(),
+        ])
         this.handleConnectedAccountRedirectState()
+        this.handleServiceRedirectState()
         this.debugToolsUnsubscribe = subscribeDebugTools((state) => {
             this.canAccessDebugTools = state.canAccessDebugTools === true
             this.showDebugTools = state.showDebugTools === true
@@ -300,6 +400,13 @@ export default {
     beforeUnmount() {
         if (typeof this.debugToolsUnsubscribe === 'function') {
             this.debugToolsUnsubscribe()
+        }
+        Object.values(this._actionTimers).forEach((timer) => {
+            if (timer) clearTimeout(timer)
+        })
+        if (this._serviceHighlightTimer) {
+            clearTimeout(this._serviceHighlightTimer)
+            this._serviceHighlightTimer = null
         }
     },
     methods: {
@@ -357,6 +464,44 @@ export default {
                 this.$router.replace('/home')
             }
         },
+        serviceClassKey(key) {
+            return String(key || 'service').trim().toLowerCase().replaceAll('_', '-')
+        },
+        serviceMonogram(key) {
+            return SERVICE_MONOGRAMS[key] || 'SV'
+        },
+        serviceStatusLabel(status) {
+            return SERVICE_STATUS_LABELS[status] || 'Available'
+        },
+        serviceBadgeClass(status) {
+            if (status === 'connected') return 'is-connected'
+            if (status === 'coming_soon') return 'is-coming-soon'
+            if (status === 'needs_attention') return 'is-needs-attention'
+            return 'is-available'
+        },
+        serviceBusyKey(serviceKey, actionKey) {
+            return `${serviceKey || ''}:${actionKey || ''}`
+        },
+        serviceActionLabel(action, serviceKey) {
+            if (!action) return 'Unavailable'
+            const busyKey = this.serviceBusyKey(serviceKey, action.key)
+            if (this.serviceActionBusyKey !== busyKey) return action.label
+            if (action.key === 'connect') return 'Connecting…'
+            if (action.key === 'disconnect') return 'Disconnecting…'
+            return 'Working…'
+        },
+        setServiceHighlight(serviceKey) {
+            this.highlightedServiceKey = serviceKey || ''
+            if (this._serviceHighlightTimer) {
+                clearTimeout(this._serviceHighlightTimer)
+                this._serviceHighlightTimer = null
+            }
+            if (!serviceKey) return
+            this._serviceHighlightTimer = setTimeout(() => {
+                this.highlightedServiceKey = ''
+                this._serviceHighlightTimer = null
+            }, 4200)
+        },
         handleConnectedAccountRedirectState() {
             const accountsState = typeof this.$route?.query?.accounts === 'string' ? this.$route.query.accounts : ''
             const provider = typeof this.$route?.query?.provider === 'string' ? this.$route.query.provider : ''
@@ -377,6 +522,33 @@ export default {
             delete nextQuery.reason
             this.$router.replace({ path: this.$route.path, query: nextQuery })
         },
+        handleServiceRedirectState() {
+            const serviceKey = typeof this.$route?.query?.service === 'string' ? this.$route.query.service : ''
+            const serviceState = typeof this.$route?.query?.service_state === 'string' ? this.$route.query.service_state : ''
+            const reason = typeof this.$route?.query?.service_reason === 'string' ? this.$route.query.service_reason : ''
+
+            if (!serviceKey || !serviceState) return
+
+            const serviceSummary = this.serviceConnections.find((item) => item.key === serviceKey)
+            const serviceLabel = serviceSummary?.label || 'Service'
+
+            if (serviceState === 'connected') {
+                showToast(`${serviceLabel} connected`, 'success')
+            } else if (serviceState === 'disconnected') {
+                showToast(`${serviceLabel} disconnected`, 'success')
+            } else if (serviceState === 'error') {
+                const detail = reason ? ` (${reason.replaceAll('_', ' ')})` : ''
+                showToast(`Could not update ${serviceLabel}${detail}`, 'error')
+            }
+
+            this.setServiceHighlight(serviceKey)
+
+            const nextQuery = { ...this.$route.query }
+            delete nextQuery.service
+            delete nextQuery.service_state
+            delete nextQuery.service_reason
+            this.$router.replace({ path: this.$route.path, query: nextQuery })
+        },
         async loadConnectedAccounts() {
             this.connectedAccountsLoading = true
             this.connectedAccountsError = ''
@@ -393,6 +565,24 @@ export default {
                 this.connectedAccountsError = this.formatFailure('Load connected accounts', e)
             } finally {
                 this.connectedAccountsLoading = false
+            }
+        },
+        async loadServiceConnections() {
+            this.serviceConnectionsLoading = true
+            this.serviceConnectionsError = ''
+            try {
+                const res = await authedFetch('/api/integrations/services')
+                const data = await res.json().catch(() => null)
+                if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
+                this.serviceConnections = Array.isArray(data) ? data : []
+            } catch (e) {
+                if (e.message === 'Session expired' || e.message === 'Not authenticated') {
+                    this.$router.push('/login')
+                    return
+                }
+                this.serviceConnectionsError = this.formatFailure('Load services', e)
+            } finally {
+                this.serviceConnectionsLoading = false
             }
         },
         async connectProvider(provider) {
@@ -435,6 +625,108 @@ export default {
                 showToast(msg, 'error')
             } finally {
                 this.connectedAccountsBusyProvider = ''
+            }
+        },
+        primeServiceDetails(service) {
+            if (!service) {
+                this.activeServiceDetails = null
+                return
+            }
+            this.activeServiceDetails = {
+                key: service.key,
+                label: service.label,
+                status: service.status,
+                connected: service.connected,
+                account_label: service.account_label,
+                availability: service.availability,
+                description: service.summary,
+                capabilities: [],
+                permissions: [],
+                readiness: {
+                    title: 'Loading details…',
+                    description: 'Fetching service details for this connection.',
+                    tone: 'neutral',
+                },
+                planned_features: [],
+                actions: service.primary_action ? [service.primary_action] : [],
+            }
+        },
+        async openServiceDetails(service) {
+            this.serviceDetailsOpen = true
+            this.serviceDetailsError = ''
+            this.primeServiceDetails(service)
+            await this.loadServiceDetails(service?.key)
+        },
+        closeServiceDetails() {
+            this.serviceDetailsOpen = false
+            this.serviceDetailsLoading = false
+            this.serviceDetailsError = ''
+            this.activeServiceDetails = null
+        },
+        async loadServiceDetails(serviceKey) {
+            if (!serviceKey) return
+
+            this.serviceDetailsLoading = true
+            this.serviceDetailsError = ''
+            try {
+                const res = await authedFetch(`/api/integrations/services/${serviceKey}`)
+                const data = await res.json().catch(() => null)
+                if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
+                this.activeServiceDetails = data
+            } catch (e) {
+                if (e.message === 'Session expired' || e.message === 'Not authenticated') {
+                    this.$router.push('/login')
+                    return
+                }
+                this.serviceDetailsError = this.formatFailure('Load service details', e)
+            } finally {
+                this.serviceDetailsLoading = false
+            }
+        },
+        async runServiceAction(action, serviceKey) {
+            if (!action || !serviceKey || !action.enabled || !action.href) return
+
+            const busyKey = this.serviceBusyKey(serviceKey, action.key)
+            this.serviceActionBusyKey = busyKey
+            this.serviceConnectionsError = ''
+            if (this.activeServiceDetails?.key === serviceKey) {
+                this.serviceDetailsError = ''
+            }
+
+            try {
+                const res = await authedFetch(action.href, {
+                    method: action.method || 'POST',
+                })
+                const data = await res.json().catch(() => null)
+                if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
+
+                if (action.key === 'connect') {
+                    if (!data?.authorization_url) {
+                        throw new Error('Missing authorization URL')
+                    }
+                    window.location.assign(data.authorization_url)
+                    return
+                }
+
+                const label = this.activeServiceDetails?.label || this.serviceConnections.find((item) => item.key === serviceKey)?.label || 'Service'
+                showToast(data?.message || `${label} updated`, 'success')
+                await Promise.all([
+                    this.loadServiceConnections(),
+                    this.loadUser(),
+                ])
+                if (this.activeServiceDetails?.key === serviceKey) {
+                    await this.loadServiceDetails(serviceKey)
+                }
+                this.setServiceHighlight(serviceKey)
+            } catch (e) {
+                const msg = this.formatFailure(`${action.label} service`, e)
+                if (this.activeServiceDetails?.key === serviceKey) {
+                    this.serviceDetailsError = msg
+                }
+                this.serviceConnectionsError = msg
+                showToast(msg, 'error')
+            } finally {
+                this.serviceActionBusyKey = ''
             }
         },
         async loadUser() {

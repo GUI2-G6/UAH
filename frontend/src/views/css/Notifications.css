@@ -10,7 +10,7 @@
 }
 
 .dashboard {
-  background-color: rgba(248, 250, 252);
+  background: transparent;
   flex: 1;
   padding: 20px;
   display: grid;

@@ -7,9 +7,7 @@
 
 /* Facelift overrides */
 .page.resumes-page {
-  background:
-    radial-gradient(circle at top right, rgba(14, 165, 233, 0.08), transparent 28%),
-    linear-gradient(180deg, #f8fafc 0%, #eef4f8 100%);
+  background: var(--app-page-background);
 }
 
 .resumes-page .resume-hero {
@@ -484,7 +482,7 @@
 
 /* ── Dashboard grid ──────────────────────────────────────── */
 .dashboard {
-  background-color: rgba(248, 250, 252);
+  background: transparent;
   flex: 1;
   padding: 24px;
   display: flex;
@@ -2351,6 +2349,21 @@
   grid-area: library;
 }
 
+.resumes-page .library-preview-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+  padding-top: 4px;
+}
+
+.resumes-page .library-preview-note {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
 .resumes-page .dashboard--imported .resume-card--stats {
   grid-area: stats;
 }
@@ -2661,6 +2674,21 @@
   white-space: nowrap;
 }
 
+.resumes-page .library-modal-box {
+  max-width: min(980px, 94vw);
+}
+
+.resumes-page .library-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.resumes-page .resume-list--modal {
+  gap: 12px;
+}
+
 .resumes-page .pipeline-cards {
   grid-template-columns: 1fr;
 }
@@ -2685,6 +2713,10 @@
     min-width: 152px;
     padding-inline: 12px;
     font-size: 0.84rem;
+  }
+
+  .resumes-page .library-modal-header {
+    flex-direction: column;
   }
 
   .resumes-page .resume-list-item {
@@ -2790,6 +2822,11 @@
   .resumes-page .inline-actions button {
     width: 100%;
     justify-content: center;
+  }
+
+  .resumes-page .library-preview-footer {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .resumes-page .resume-card--queue .panel-header--stacked,
