@@ -28,6 +28,20 @@ def _env_slug(value: str) -> str:
   return cleaned or "dev"
 
 
+def _normalize_provider_control_value(value):
+  if isinstance(value, bool):
+    return value
+  if isinstance(value, (int, float)):
+    return bool(value)
+  if isinstance(value, str):
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+      return True
+    if normalized in {"0", "false", "no", "off"}:
+      return False
+  return value
+
+
 _DEFAULT_JOB_SYNC_CATEGORY_SCHEDULE = {
     "tech": {"interval_minutes": 30, "priority": 1},
     "product": {"interval_minutes": 60, "priority": 2},
@@ -171,6 +185,17 @@ class Settings:
     MUSE_LOCATION_INDEX_RETENTION_DAYS: int = int(os.getenv("MUSE_LOCATION_INDEX_RETENTION_DAYS", "45"))
     THE_MUSE_API_KEY: str = os.getenv("THE_MUSE_API_KEY", os.getenv("MUSE_API_KEY", ""))
     THE_MUSE_RATE_LIMIT_PER_HOUR: int = int(os.getenv("THE_MUSE_RATE_LIMIT_PER_HOUR", "1000"))
+    ARBEITNOW_INTER_REQUEST_DELAY: float = float(os.getenv("ARBEITNOW_INTER_REQUEST_DELAY", "3.0"))
+    FINDWORK_API_KEY: str = os.getenv("FINDWORK_API_KEY", "")
+    FINDWORK_INTER_REQUEST_DELAY: float = float(os.getenv("FINDWORK_INTER_REQUEST_DELAY", "6.0"))
+    ADZUNA_APP_ID: str = os.getenv("ADZUNA_APP_ID", "")
+    ADZUNA_APP_KEY: str = os.getenv("ADZUNA_APP_KEY", "")
+    ADZUNA_DAILY_REQUEST_BUDGET: int = int(os.getenv("ADZUNA_DAILY_REQUEST_BUDGET", "200"))
+    JOOBLE_API_KEY: str = os.getenv("JOOBLE_API_KEY", "")
+    JOOBLE_INTER_REQUEST_DELAY: float = float(os.getenv("JOOBLE_INTER_REQUEST_DELAY", "1.5"))
+    JOOBLE_PAGE_SIZE: int = int(os.getenv("JOOBLE_PAGE_SIZE", "50"))
+    JOB_DEDUP_ENABLED: bool = _env_bool("JOB_DEDUP_ENABLED", "true")
+    JOB_DEDUP_LOG_COLLISIONS: bool = _env_bool("JOB_DEDUP_LOG_COLLISIONS", "true")
 
     JOB_SYNC_STALE_THRESHOLD_HOURS: int = int(os.getenv("JOB_SYNC_STALE_THRESHOLD_HOURS", "6"))
     JOB_SYNC_SOFT_DELETE_MISSES: int = int(os.getenv("JOB_SYNC_SOFT_DELETE_MISSES", "3"))
@@ -182,6 +207,7 @@ class Settings:
     JOB_SYNC_CLEANUP_LOCK_TTL_SECONDS: int = int(os.getenv("JOB_SYNC_CLEANUP_LOCK_TTL_SECONDS", "1800"))
     JOB_SYNC_CATEGORY_SCHEDULE_JSON: str = os.getenv("JOB_SYNC_CATEGORY_SCHEDULE_JSON", "")
     JOB_SYNC_ENABLED_PROVIDERS_JSON: str = os.getenv("JOB_SYNC_ENABLED_PROVIDERS_JSON", "[\"the_muse\"]")
+    JOB_PROVIDER_CONTROLS_JSON: str = os.getenv("JOB_PROVIDER_CONTROLS_JSON", "")
 
     @property
     def DATABASE_URL(self) -> str:
@@ -264,6 +290,37 @@ class Settings:
         return ["the_muse"]
       providers = [str(value).strip() for value in parsed if str(value).strip()]
       return providers or ["the_muse"]
+
+    @property
+    def JOB_PROVIDER_CONTROLS(self) -> dict[str, dict[str, bool | str]]:
+      raw = (self.JOB_PROVIDER_CONTROLS_JSON or "").strip()
+      if not raw:
+        return {}
+      try:
+        parsed = json.loads(raw)
+      except json.JSONDecodeError:
+        return {}
+      if not isinstance(parsed, dict):
+        return {}
+
+      normalized: dict[str, dict[str, bool | str]] = {}
+      for key, value in parsed.items():
+        if not isinstance(key, str) or not isinstance(value, dict):
+          continue
+        provider_key = key.strip().lower()
+        if not provider_key:
+          continue
+        normalized_value: dict[str, bool | str] = {}
+        for field_name, field_value in value.items():
+          if not isinstance(field_name, str):
+            continue
+          normalized_field_name = field_name.strip().lower()
+          if not normalized_field_name:
+            continue
+          normalized_value[normalized_field_name] = _normalize_provider_control_value(field_value)
+        if normalized_value:
+          normalized[provider_key] = normalized_value
+      return normalized
 
     def require_secrets(self) -> None:
       missing: list[str] = []

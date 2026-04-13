@@ -7,6 +7,7 @@ from sqlalchemy import or_
 
 from app.api.routes import _build_jobs_filter_metadata_payload, _expand_category_for_muse, _parse_posted_after_input
 from app.models.job import Job
+from app.providers.registry import list_enabled_provider_names
 
 
 def _dedupe(values: list[str]) -> list[str]:
@@ -113,9 +114,14 @@ def search_local_jobs(
     posted_after: str | None = None,
 ) -> dict:
     """Query locally cached jobs only and return compatibility pagination metadata."""
+    display_enabled_providers = list_enabled_provider_names(control_name="display")
     query = db.query(Job).filter(Job.is_active.is_(True)).filter(
         or_(Job.provider_url_status.is_(None), Job.provider_url_status != "bad")
     )
+    if not display_enabled_providers:
+        query = query.filter(False)
+    else:
+        query = query.filter(Job.provider.in_(display_enabled_providers))
 
     normalized_tier = (tier or "active").strip().lower()
     if normalized_tier == "active":

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.providers.registry import list_provider_statuses
 from app.services.job_search import search_local_jobs
 
 router = APIRouter()
@@ -14,10 +15,10 @@ logger = logging.getLogger(__name__)
 
 
 def _enqueue_thin_results_sync(category: str) -> None:
-    """Queue a background sweep without importing worker dependencies at module import time."""
-    from app.tasks.job_sync import sweep_category
+    """Queue provider sweeps without importing worker dependencies at module import time."""
+    from app.tasks.job_sync import queue_thin_results_sync
 
-    sweep_category.delay(provider="the_muse", category=category)
+    queue_thin_results_sync(category)
 
 
 @router.get(
@@ -71,3 +72,13 @@ def search_jobs(
 
     payload["note"] = note
     return payload
+
+
+@router.get(
+    "/providers/attribution",
+    tags=["jobs"],
+    response_description="Provider attribution metadata and current provider controls.",
+)
+def list_job_provider_attribution():
+    """Return provider attribution details and resolved provider status flags."""
+    return {"providers": list_provider_statuses()}
