@@ -14,7 +14,7 @@ from app.api.routes import _expand_category_for_muse
 from app.core.config import settings
 from app.db.session import session_scope
 from app.models.job import Job
-from app.providers.registry import get_adapter
+from app.providers.registry import get_adapter, get_provider_controls
 from app.schemas.job import NormalizedJob
 from app.services.job_link_health import (
     build_source_tags,
@@ -26,6 +26,24 @@ from app.services.job_link_health import (
 logger = logging.getLogger(__name__)
 
 _SPAM_PUNCTUATION_RE = re.compile(r"[!$#?*]{3,}")
+_DEDUP_NOISE_WORDS = (
+    "senior",
+    "sr",
+    "jr",
+    "junior",
+    "lead",
+    "staff",
+    "principal",
+    "associate",
+    "remote",
+    "hybrid",
+    "inc",
+    "llc",
+    "ltd",
+    "corp",
+    "corporation",
+    "co",
+)
 
 
 def compute_display_tier(*, is_active: bool, last_seen_at: datetime | None, reference_time: datetime | None = None) -> str:
@@ -133,6 +151,27 @@ def compute_content_fingerprint(job: NormalizedJob) -> str:
         ]
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def compute_dedup_hash(title: str | None, company: str | None) -> str | None:
+    """Return a normalized cross-provider dedup hash from title and company."""
+    if not title or not company:
+        return None
+
+    def normalize(value: str) -> str:
+        cleaned = value.lower().strip()
+        cleaned = re.sub(r"[^\w\s]", "", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned)
+        for noise in _DEDUP_NOISE_WORDS:
+            cleaned = re.sub(rf"\b{noise}\b", "", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned)
+        return cleaned.strip()
+
+    normalized_title = normalize(title)
+    normalized_company = normalize(company)
+    if not normalized_title or not normalized_company:
+        return None
+    return hashlib.md5(f"{normalized_title}|{normalized_company}".encode("utf-8")).hexdigest()
 
 
 def _merge_unique_values(*collections: list[str]) -> list[str]:
@@ -381,12 +420,16 @@ def _build_job_payload(job: NormalizedJob, *, existing: Job | None, link_health:
             "staleness_flags": list(staleness["staleness_flags"] or []),
             "staleness_checked_at": staleness["staleness_checked_at"],
             "repost_count": staleness["repost_count"],
+            "dedup_hash": compute_dedup_hash(job.title, job.company),
         },
     }
 
 
 def upsert_job(job: NormalizedJob, db_session=None, provider_adapter=None) -> tuple[str, bool]:
     """Insert or update a normalized job and refresh its link-health and stale-listing metadata."""
+    controls = get_provider_controls(job.provider)
+    if not controls.ingest_enabled:
+        return "disabled", False
     adapter = provider_adapter or get_adapter(job.provider)
     reference_time = datetime.now(timezone.utc)
     manager = nullcontext(db_session) if db_session is not None else session_scope()
@@ -402,6 +445,56 @@ def upsert_job(job: NormalizedJob, db_session=None, provider_adapter=None) -> tu
             return "rejected", False
 
         payload = payload_result["payload"]
+        dedup_hash = payload.get("dedup_hash")
+        duplicate_owner = None
+        if settings.JOB_DEDUP_ENABLED and dedup_hash:
+            duplicate_query = (
+                db.query(Job)
+                .filter(
+                    Job.dedup_hash == dedup_hash,
+                    Job.is_active.is_(True),
+                    Job.provider != job.provider,
+                )
+                .order_by(Job.first_seen_at.asc(), Job.id.asc())
+            )
+            if existing is not None:
+                duplicate_query = duplicate_query.filter(Job.id != existing.id)
+            duplicate_owner = duplicate_query.first()
+
+        if duplicate_owner is not None:
+            duplicate_owner.last_seen_at = reference_time
+            duplicate_owner.consecutive_misses = 0
+            duplicate_owner.display_tier = compute_display_tier(
+                is_active=bool(duplicate_owner.is_active),
+                last_seen_at=reference_time,
+                reference_time=reference_time,
+            )
+            duplicate_owner.source_tags = _merge_unique_values(
+                list(duplicate_owner.source_tags or []),
+                [f"duplicate_provider:{job.provider}"],
+            )
+            if existing is not None and existing.id != duplicate_owner.id:
+                existing.is_active = False
+                existing.display_tier = compute_display_tier(
+                    is_active=False,
+                    last_seen_at=reference_time,
+                    reference_time=reference_time,
+                )
+                existing.last_seen_at = reference_time
+                existing.consecutive_misses = 0
+                existing.dedup_hash = None
+            db.commit()
+            if settings.JOB_DEDUP_LOG_COLLISIONS:
+                logger.info(
+                    "Cross-provider dedup matched %s/%s to %s/%s via %s",
+                    job.provider,
+                    job.provider_job_id,
+                    duplicate_owner.provider,
+                    duplicate_owner.provider_job_id,
+                    dedup_hash,
+                )
+            return "duplicate", False
+
         statement = insert(Job).values(**payload)
         statement = statement.on_conflict_do_update(
             index_elements=["provider", "provider_job_id"],
@@ -441,6 +534,7 @@ def upsert_job(job: NormalizedJob, db_session=None, provider_adapter=None) -> tu
                 "staleness_flags": payload["staleness_flags"],
                 "staleness_checked_at": payload["staleness_checked_at"],
                 "repost_count": payload["repost_count"],
+                "dedup_hash": payload["dedup_hash"],
             },
         )
         db.execute(statement)

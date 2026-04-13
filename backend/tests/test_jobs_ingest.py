@@ -9,6 +9,7 @@ from app.services.ingest import (
     _build_job_payload,
     _evaluate_staleness,
     build_short_description,
+    compute_dedup_hash,
     compute_content_fingerprint,
     compute_display_tier,
     compute_quality_score,
@@ -76,6 +77,13 @@ class IngestServiceTests(unittest.TestCase):
         self.assertGreaterEqual(score, 0.0)
         self.assertLess(score, 1.0)
         self.assertLessEqual(len(short), 40)
+
+    def test_compute_dedup_hash_normalizes_common_noise(self):
+        first = compute_dedup_hash("Senior Software Engineer - Remote", "Acme, Inc.")
+        second = compute_dedup_hash("Software Engineer", "Acme")
+
+        self.assertIsNotNone(first)
+        self.assertEqual(first, second)
 
     def test_display_tier_windows(self):
         now = datetime(2026, 4, 13, 12, 0, tzinfo=timezone.utc)
@@ -187,6 +195,10 @@ class IngestServiceTests(unittest.TestCase):
         self.assertTrue(stored["should_store"])
         self.assertEqual(stored["payload"]["apply_portal"], "ashby")
         self.assertIn("apply_portal:ashby", stored["payload"]["source_tags"])
+        self.assertEqual(
+            stored["payload"]["dedup_hash"],
+            compute_dedup_hash("Software Engineer", "Acme"),
+        )
 
     def test_backfill_and_stale_audit_guards(self):
         now = datetime(2026, 4, 13, 12, 0, tzinfo=timezone.utc)

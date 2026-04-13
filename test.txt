@@ -1,16 +1,5 @@
-
-
-add nice regex for phone numbers and emails and stuff globally.
-
-add cool area code flag render for phone numbers idk
-
-add phone number linking ability
-
-
 standardize connected accounts button/card sizes
-
-
-
+    
 NATURAL LANGUAGE MODEL FILTER APPLICATION?? yes this
 
 pin drop map featue for job search
@@ -32,4 +21,4 @@ just enough so she knows it wasnt stolen/ai
 
 fix dropdowns in resume profile stuff to make them usable
 
-one more pass on filters and stuff's function
+one more pass on filters and stuff's function once full job stuff is working

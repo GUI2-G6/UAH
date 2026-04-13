@@ -333,6 +333,7 @@
                 v-for="job in jobs"
                 :key="job.id"
                 :job="job"
+                :provider-attribution="providerAttributionByName[job.provider] || null"
                 :show-debug-meta="showDebugTools"
             />
         </div>
@@ -584,6 +585,7 @@ export default {
 
     return {
       jobs: [],
+      providerAttributionByName: {},
       loading: false,
       error: "",
       page: 1,
@@ -1202,6 +1204,22 @@ export default {
         this.applyFilterMetadata(payload)
       } catch (error) {
         console.error("Failed to load jobs filter metadata", error)
+      }
+    },
+    async fetchProviderAttribution() {
+      try {
+        const payload = await this.fetchJson("/api/providers/attribution")
+        const providers = Array.isArray(payload?.providers) ? payload.providers : []
+        const next = {}
+        for (const item of providers) {
+          const provider = (item?.provider || "").toString().trim()
+          if (!provider) continue
+          next[provider] = item.attribution || {}
+        }
+        this.providerAttributionByName = next
+      } catch (e) {
+        console.error("Failed to load provider attribution", e)
+        this.providerAttributionByName = {}
       }
     },
     async fetchCountryOptions() {
@@ -1842,6 +1860,7 @@ export default {
 
         const mappedJobs = (data.jobs || []).map(job => ({
           id: job.id,
+          provider: job.provider,
           title: job.name,
           short_name: job.short_name || "",
           company: job.company,
@@ -1860,6 +1879,7 @@ export default {
           local_compatibility_reason: job.local_compatibility_reason || "",
           location_constraints: job.location_constraints || {},
           publication_date: job.publication_date,
+          apply_link: job.apply_url || job.job_url,
           link: job.job_url,
           contents: job.contents || ""
         }))
@@ -1968,6 +1988,7 @@ export default {
       this.showDebugTools = state.showDebugTools === true
     })
     await this.fetchFilterMetadata()
+    await this.fetchProviderAttribution()
     await this.fetchCountryOptions()
 
     const cached = getCachedLocation()

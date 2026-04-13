@@ -55,3 +55,5 @@ endpoint_utilization_matrix_2026-04-11.tsv
 # Celery Beat runtime scheduler file
 celerybeat-schedule
 celerybeat.pid
+uah-test-extension/
+uah-apply-overlay-prototype/

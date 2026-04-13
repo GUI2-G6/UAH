@@ -24,6 +24,21 @@
 
             <p class="job-teaser">{{ teaserText }}</p>
 
+            <div v-if="attributionText" class="job-attribution">
+                <a
+                    v-if="attributionHref"
+                    :href="attributionHref"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    :class="{ required: attributionRequired }"
+                >
+                    {{ attributionText }}
+                </a>
+                <span v-else :class="{ required: attributionRequired }">
+                    {{ attributionText }}
+                </span>
+            </div>
+
             <div class="job-actions">
                 <button type="button" class="secondary" @click="openDetails">Details</button>
                 <button type="button" class="primary" @click="apply">Apply Now</button>
@@ -69,8 +84,8 @@
                 </div>
 
                 <div class="job-modal-actions">
-                    <a v-if="job.link" :href="job.link" target="_blank" rel="noopener noreferrer">
-                        <button type="button" class="primary">Apply on The Muse</button>
+                    <a v-if="applicationLink" :href="applicationLink" target="_blank" rel="noopener noreferrer">
+                        <button type="button" class="primary">Open Application</button>
                     </a>
                     <button type="button" class="secondary" @click="closeDetails">Close</button>
                 </div>
@@ -88,6 +103,10 @@ export default {
     },
     props: {
         job: Object,
+        providerAttribution: {
+            type: Object,
+            default: null,
+        },
         showDebugMeta: {
             type: Boolean,
             default: false,
@@ -160,6 +179,22 @@ export default {
             }
 
             return pills
+        },
+        applicationLink() {
+            return this.job?.apply_link || this.job?.link || ""
+        },
+        attributionText() {
+            const attribution = this.providerAttribution || {}
+            const label = (attribution.label || "").toString().trim()
+            if (label) return label
+            const provider = (this.job?.provider || "").toString().trim()
+            return provider ? `Source: ${provider}` : ""
+        },
+        attributionHref() {
+            return (this.providerAttribution?.url || "").toString().trim()
+        },
+        attributionRequired() {
+            return this.providerAttribution?.required === true
         }
     },
     methods: {
@@ -170,8 +205,8 @@ export default {
             this.detailsOpen = false
         },
         apply() {
-            if (this.job?.link) {
-                window.open(this.job.link, "_blank", "noopener")
+            if (this.applicationLink) {
+                window.open(this.applicationLink, "_blank", "noopener")
                 return
             }
             this.openDetails()
@@ -255,6 +290,22 @@ export default {
     color: #334155;
     line-height: 1.45;
     font-size: 0.93rem;
+}
+
+.job-attribution {
+    margin-top: 10px;
+    font-size: 0.82rem;
+}
+
+.job-attribution a,
+.job-attribution span {
+    color: #475569;
+    text-decoration: none;
+}
+
+.job-attribution .required {
+    color: #0f172a;
+    font-weight: 600;
 }
 
 .job-actions {

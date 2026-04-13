@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.sql import func
 
@@ -27,6 +27,12 @@ class Job(Base):
         Index("ix_jobs_provider_url_status", "provider_url_status"),
         Index("ix_jobs_staleness_status", "staleness_status"),
         Index("ix_jobs_first_published_at", "first_published_at"),
+        Index(
+            "idx_jobs_dedup_hash",
+            "dedup_hash",
+            unique=True,
+            postgresql_where=text("dedup_hash IS NOT NULL AND is_active = true"),
+        ),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -69,6 +75,7 @@ class Job(Base):
     staleness_flags = Column(ARRAY(Text), nullable=False, default=list)
     staleness_checked_at = Column(DateTime(timezone=True), nullable=True)
     repost_count = Column(Integer, nullable=False, default=0)
+    dedup_hash = Column(String(32), nullable=True)
 
 
 class ProviderSyncLog(Base):
@@ -85,6 +92,7 @@ class ProviderSyncLog(Base):
     jobs_found = Column(Integer, nullable=False, default=0)
     jobs_new = Column(Integer, nullable=False, default=0)
     jobs_updated = Column(Integer, nullable=False, default=0)
+    jobs_deduplicated = Column(Integer, nullable=False, default=0)
     requests_used = Column(Integer, nullable=False, default=0)
     stopped_reason = Column(String(50), nullable=True)
     error_message = Column(Text, nullable=True)
