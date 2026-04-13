@@ -19,3 +19,4 @@ from app.models.parse_job import ParseJob  # noqa: F401
 from app.models.applicant_profile import ApplicantProfile  # noqa: F401
 from app.models.muse_location import MuseSupportedLocation  # noqa: F401
 from app.models.apply_session import ApplySession, ApplySessionEvent  # noqa: F401
+from app.models.job import Job, ProviderSyncLog, QuotaUsage  # noqa: F401

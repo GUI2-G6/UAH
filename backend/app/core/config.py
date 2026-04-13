@@ -15,6 +15,7 @@ To add a new setting:
 """
 
 import os
+import json
 
 
 def _env_bool(name: str, default: str = "false") -> bool:
@@ -25,6 +26,17 @@ def _env_slug(value: str) -> str:
   cleaned = "".join(ch if ch.isalnum() else "_" for ch in (value or ""))
   cleaned = cleaned.strip("_").lower()
   return cleaned or "dev"
+
+
+_DEFAULT_JOB_SYNC_CATEGORY_SCHEDULE = {
+    "tech": {"interval_minutes": 30, "priority": 1},
+    "product": {"interval_minutes": 60, "priority": 2},
+    "finance": {"interval_minutes": 120, "priority": 3},
+    "business and operations": {"interval_minutes": 180, "priority": 4},
+    "sales and marketing": {"interval_minutes": 180, "priority": 5},
+    "people": {"interval_minutes": 240, "priority": 6},
+    "customer and support": {"interval_minutes": 240, "priority": 7},
+}
 
 
 class Settings:
@@ -149,6 +161,19 @@ class Settings:
     MUSE_LOCATION_INDEX_SCAN_MAX_PAGES: int = int(os.getenv("MUSE_LOCATION_INDEX_SCAN_MAX_PAGES", "25"))
     MUSE_LOCATION_INDEX_TIMEOUT_SECONDS: float = float(os.getenv("MUSE_LOCATION_INDEX_TIMEOUT_SECONDS", "10"))
     MUSE_LOCATION_INDEX_RETENTION_DAYS: int = int(os.getenv("MUSE_LOCATION_INDEX_RETENTION_DAYS", "45"))
+    THE_MUSE_API_KEY: str = os.getenv("THE_MUSE_API_KEY", os.getenv("MUSE_API_KEY", ""))
+    THE_MUSE_RATE_LIMIT_PER_HOUR: int = int(os.getenv("THE_MUSE_RATE_LIMIT_PER_HOUR", "1000"))
+
+    JOB_SYNC_STALE_THRESHOLD_HOURS: int = int(os.getenv("JOB_SYNC_STALE_THRESHOLD_HOURS", "6"))
+    JOB_SYNC_SOFT_DELETE_MISSES: int = int(os.getenv("JOB_SYNC_SOFT_DELETE_MISSES", "3"))
+    JOB_SYNC_HARD_PURGE_DAYS: int = int(os.getenv("JOB_SYNC_HARD_PURGE_DAYS", "180"))
+    JOB_SYNC_ENABLED: bool = _env_bool("JOB_SYNC_ENABLED", "true")
+    JOB_SYNC_DISPATCH_INTERVAL_SECONDS: int = int(os.getenv("JOB_SYNC_DISPATCH_INTERVAL_SECONDS", "300"))
+    JOB_SYNC_CLEANUP_INTERVAL_SECONDS: int = int(os.getenv("JOB_SYNC_CLEANUP_INTERVAL_SECONDS", "3600"))
+    JOB_SYNC_LOCK_TTL_SECONDS: int = int(os.getenv("JOB_SYNC_LOCK_TTL_SECONDS", "900"))
+    JOB_SYNC_CLEANUP_LOCK_TTL_SECONDS: int = int(os.getenv("JOB_SYNC_CLEANUP_LOCK_TTL_SECONDS", "1800"))
+    JOB_SYNC_CATEGORY_SCHEDULE_JSON: str = os.getenv("JOB_SYNC_CATEGORY_SCHEDULE_JSON", "")
+    JOB_SYNC_ENABLED_PROVIDERS_JSON: str = os.getenv("JOB_SYNC_ENABLED_PROVIDERS_JSON", "[\"the_muse\"]")
 
     @property
     def DATABASE_URL(self) -> str:
@@ -189,6 +214,48 @@ class Settings:
             "local": self.PARSE_QUEUE_NAME_LOCAL,
             "rules": self.PARSE_QUEUE_NAME_RULES,
         }
+
+    @property
+    def JOB_SYNC_CATEGORY_SCHEDULE(self) -> dict[str, dict[str, int]]:
+      raw = (self.JOB_SYNC_CATEGORY_SCHEDULE_JSON or "").strip()
+      if not raw:
+        return dict(_DEFAULT_JOB_SYNC_CATEGORY_SCHEDULE)
+      try:
+        parsed = json.loads(raw)
+      except json.JSONDecodeError:
+        return dict(_DEFAULT_JOB_SYNC_CATEGORY_SCHEDULE)
+      if not isinstance(parsed, dict):
+        return dict(_DEFAULT_JOB_SYNC_CATEGORY_SCHEDULE)
+      normalized: dict[str, dict[str, int]] = {}
+      for key, value in parsed.items():
+        if not isinstance(key, str):
+          continue
+        if isinstance(value, int):
+          normalized[key] = {"interval_minutes": max(value, 5), "priority": 100}
+          continue
+        if not isinstance(value, dict):
+          continue
+        interval = int(value.get("interval_minutes", 60))
+        priority = int(value.get("priority", 100))
+        normalized[key] = {
+          "interval_minutes": max(interval, 5),
+          "priority": max(priority, 1),
+        }
+      return normalized or dict(_DEFAULT_JOB_SYNC_CATEGORY_SCHEDULE)
+
+    @property
+    def JOB_SYNC_ENABLED_PROVIDERS(self) -> list[str]:
+      raw = (self.JOB_SYNC_ENABLED_PROVIDERS_JSON or "").strip()
+      if not raw:
+        return ["the_muse"]
+      try:
+        parsed = json.loads(raw)
+      except json.JSONDecodeError:
+        return ["the_muse"]
+      if not isinstance(parsed, list):
+        return ["the_muse"]
+      providers = [str(value).strip() for value in parsed if str(value).strip()]
+      return providers or ["the_muse"]
 
     def require_secrets(self) -> None:
       missing: list[str] = []

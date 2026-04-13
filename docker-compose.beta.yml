@@ -17,12 +17,40 @@ services:
       ENV: ${ENV:-beta}
       AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-uah_auth_beta}
       REDIS_URL: ${BETA_REDIS_URL:-redis://uah-beta-redis:6379/0}
+      THE_MUSE_API_KEY: ${THE_MUSE_API_KEY:-}
+      THE_MUSE_RATE_LIMIT_PER_HOUR: ${THE_MUSE_RATE_LIMIT_PER_HOUR:-1000}
+      JOB_SYNC_ENABLED: ${JOB_SYNC_ENABLED:-true}
+      JOB_SYNC_STALE_THRESHOLD_HOURS: ${JOB_SYNC_STALE_THRESHOLD_HOURS:-6}
+      JOB_SYNC_SOFT_DELETE_MISSES: ${JOB_SYNC_SOFT_DELETE_MISSES:-3}
+      JOB_SYNC_HARD_PURGE_DAYS: ${JOB_SYNC_HARD_PURGE_DAYS:-180}
+      JOB_SYNC_DISPATCH_INTERVAL_SECONDS: ${JOB_SYNC_DISPATCH_INTERVAL_SECONDS:-300}
+      JOB_SYNC_CLEANUP_INTERVAL_SECONDS: ${JOB_SYNC_CLEANUP_INTERVAL_SECONDS:-3600}
+      JOB_SYNC_LOCK_TTL_SECONDS: ${JOB_SYNC_LOCK_TTL_SECONDS:-900}
+      JOB_SYNC_CLEANUP_LOCK_TTL_SECONDS: ${JOB_SYNC_CLEANUP_LOCK_TTL_SECONDS:-1800}
+      JOB_SYNC_CATEGORY_SCHEDULE_JSON: ${JOB_SYNC_CATEGORY_SCHEDULE_JSON:-}
+      JOB_SYNC_ENABLED_PROVIDERS_JSON: '${JOB_SYNC_ENABLED_PROVIDERS_JSON:-["the_muse"]}'
       PARSE_QUEUE_NAME: ${BETA_PARSE_QUEUE_NAME:-uah:beta:parse_jobs}
       PARSE_QUEUE_NAME_CLOUD: ${BETA_PARSE_QUEUE_NAME_CLOUD:-uah:beta:parse_jobs:cloud}
       PARSE_QUEUE_NAME_LOCAL: ${BETA_PARSE_QUEUE_NAME_LOCAL:-uah:beta:parse_jobs:local}
       PARSE_QUEUE_NAME_RULES: ${BETA_PARSE_QUEUE_NAME_RULES:-uah:beta:parse_jobs:rules}
     volumes:
       - ./backend:/app
+    networks:
+      uah-beta-infra: {}
+      uah-infra: null
+
+  celery_worker:
+    container_name: uah-beta-celery-worker
+    environment:
+      REDIS_URL: ${BETA_REDIS_URL:-redis://uah-beta-redis:6379/0}
+    networks:
+      uah-beta-infra: {}
+      uah-infra: null
+
+  celery_beat:
+    container_name: uah-beta-celery-beat
+    environment:
+      REDIS_URL: ${BETA_REDIS_URL:-redis://uah-beta-redis:6379/0}
     networks:
       uah-beta-infra: {}
       uah-infra: null

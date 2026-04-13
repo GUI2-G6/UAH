@@ -1730,7 +1730,7 @@ async def jobs_filter_metadata():
     return _build_jobs_filter_metadata_payload()
 
 @router.get(
-    "/jobs/search",
+    "/jobs/search-live-source",
     tags=["jobs"],
     response_description="Filtered job results with diagnostics and pagination metadata.",
     responses={
