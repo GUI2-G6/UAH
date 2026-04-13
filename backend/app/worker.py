@@ -13,6 +13,14 @@ celery_app.conf.update(
             "task": "app.tasks.job_sync.dispatch_scheduled_sweeps",
             "schedule": max(int(settings.JOB_SYNC_DISPATCH_INTERVAL_SECONDS), 60),
         },
+        "backfill-job-link-health": {
+            "task": "app.tasks.job_sync.backfill_job_link_health",
+            "schedule": max(int(settings.JOB_LINK_BACKFILL_INTERVAL_SECONDS), 300),
+        },
+        "audit-stale-job-listings": {
+            "task": "app.tasks.job_sync.audit_stale_jobs",
+            "schedule": max(int(settings.JOB_STALE_AUDIT_INTERVAL_SECONDS), 900),
+        },
         "cleanup-stale-hidden-jobs": {
             "task": "app.tasks.job_sync.cleanup_cached_jobs",
             "schedule": max(int(settings.JOB_SYNC_CLEANUP_INTERVAL_SECONDS), 300),

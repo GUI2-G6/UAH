@@ -11,6 +11,10 @@ class NormalizedJob(BaseModel):
     provider: str = Field(..., min_length=1, max_length=50)
     provider_job_id: str = Field(..., min_length=1, max_length=255)
     provider_url: str | None = None
+    apply_url: str | None = None
+    apply_host: str | None = None
+    apply_portal: str | None = None
+    source_tags: list[str] = Field(default_factory=list)
     title: str
     company: str | None = None
     company_url: str | None = None

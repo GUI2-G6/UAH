@@ -11,7 +11,13 @@ from app.core.config import settings
 from app.db.session import session_scope
 from app.models.job import Job, ProviderSyncLog, QuotaUsage
 from app.providers.registry import get_adapter
-from app.services.ingest import mark_unseen_jobs, run_cleanup, upsert_job
+from app.services.ingest import (
+    audit_stale_jobs_batch,
+    backfill_job_health_batch,
+    mark_unseen_jobs,
+    run_cleanup,
+    upsert_job,
+)
 from app.services.provider_requests import ProviderQuotaExceeded
 from app.worker import celery_app
 
@@ -26,6 +32,14 @@ def _lock_key(provider: str, category: str) -> str:
 
 def _cleanup_lock_key() -> str:
     return "uah:job_sync:cleanup_lock"
+
+
+def _backfill_lock_key() -> str:
+    return "uah:job_sync:link_backfill_lock"
+
+
+def _stale_audit_lock_key() -> str:
+    return "uah:job_sync:stale_audit_lock"
 
 
 def _get_redis_client() -> redis.Redis | None:
@@ -291,5 +305,45 @@ def cleanup_cached_jobs(self):
     try:
         deleted = run_cleanup()
         return {"status": "completed", "deleted": deleted}
+    finally:
+        _release_lock(lock_key)
+
+
+@celery_app.task(
+    bind=True,
+    name="app.tasks.job_sync.backfill_job_link_health",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 3},
+)
+def backfill_job_link_health(self):
+    """Refresh link-health and provenance metadata for existing active rows."""
+    lock_key = _backfill_lock_key()
+    if not _acquire_lock(lock_key, int(settings.JOB_SYNC_LOCK_TTL_SECONDS)):
+        return {"status": "skipped_locked"}
+    try:
+        summary = backfill_job_health_batch()
+        return {"status": "completed", **summary}
+    finally:
+        _release_lock(lock_key)
+
+
+@celery_app.task(
+    bind=True,
+    name="app.tasks.job_sync.audit_stale_jobs",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 3},
+)
+def audit_stale_jobs(self):
+    """Audit older listings for reposting behavior and stale/dead link outcomes."""
+    lock_key = _stale_audit_lock_key()
+    if not _acquire_lock(lock_key, int(settings.JOB_SYNC_LOCK_TTL_SECONDS)):
+        return {"status": "skipped_locked"}
+    try:
+        summary = audit_stale_jobs_batch()
+        return {"status": "completed", **summary}
     finally:
         _release_lock(lock_key)

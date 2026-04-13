@@ -24,12 +24,25 @@ class Job(Base):
         Index("ix_jobs_last_seen_at", "last_seen_at"),
         Index("ix_jobs_provider_provider_job_id", "provider", "provider_job_id"),
         Index("ix_jobs_company", "company"),
+        Index("ix_jobs_provider_url_status", "provider_url_status"),
+        Index("ix_jobs_staleness_status", "staleness_status"),
+        Index("ix_jobs_first_published_at", "first_published_at"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     provider = Column(String(50), nullable=False)
     provider_job_id = Column(String(255), nullable=False)
     provider_url = Column(Text, nullable=True)
+    provider_url_status = Column(String(20), nullable=False, default="unknown")
+    provider_url_checked_at = Column(DateTime(timezone=True), nullable=True)
+    provider_url_error = Column(Text, nullable=True)
+    apply_url = Column(Text, nullable=True)
+    apply_host = Column(String(255), nullable=True)
+    apply_portal = Column(String(50), nullable=False, default="missing")
+    apply_url_status = Column(String(20), nullable=False, default="missing")
+    apply_url_checked_at = Column(DateTime(timezone=True), nullable=True)
+    apply_url_error = Column(Text, nullable=True)
+    source_tags = Column(ARRAY(Text), nullable=False, default=list)
     title = Column(String(255), nullable=False)
     company = Column(String(255), nullable=True)
     company_url = Column(Text, nullable=True)
@@ -46,9 +59,16 @@ class Job(Base):
     first_seen_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     last_seen_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     published_at = Column(DateTime(timezone=True), nullable=True)
+    first_published_at = Column(DateTime(timezone=True), nullable=True)
+    content_fingerprint = Column(String(64), nullable=True)
+    last_content_change_at = Column(DateTime(timezone=True), nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
     is_featured = Column(Boolean, nullable=False, default=False)
     display_tier = Column(String(20), nullable=False, default="active")
+    staleness_status = Column(String(30), nullable=False, default="fresh")
+    staleness_flags = Column(ARRAY(Text), nullable=False, default=list)
+    staleness_checked_at = Column(DateTime(timezone=True), nullable=True)
+    repost_count = Column(Integer, nullable=False, default=0)
 
 
 class ProviderSyncLog(Base):
