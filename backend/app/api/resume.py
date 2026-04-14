@@ -529,7 +529,8 @@ def update_review_draft(
     resume = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == current_user.id).first()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
-    if not isinstance(resume.structured_data, dict):
+    current_review_draft = _current_review_draft(resume)
+    if current_review_draft is None and not isinstance(resume.structured_data, dict):
         raise HTTPException(status_code=400, detail="Resume has not been parsed yet")
 
     _set_review_draft(resume, payload.review_draft, status="pending")

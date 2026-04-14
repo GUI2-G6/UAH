@@ -69,6 +69,12 @@ This repo also supports a fallback where the extension reuses `frontend/node_mod
 
 This is the supported local integration path for the extension.
 
+Quick helper:
+
+```powershell
+pwsh -File .\scripts\local\lifecycle\local-extension-test.ps1
+```
+
 1. Generate trusted localhost certs with `mkcert`:
 
 ```bash
@@ -109,6 +115,7 @@ npm run build
 11. Sign in with email/password using either your normal local account or the seeded test account.
 
 The local harness keeps the extension HTTPS-only and routes all app and API traffic through the same `https://localhost:5173` origin.
+The helper script validates the required local env files, starts backend-local, launches the HTTPS frontend in a new PowerShell window, builds the extension, and prints the manual smoke-test checklist.
 
 ## Load Unpacked In Chrome
 

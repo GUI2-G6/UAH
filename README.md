@@ -146,6 +146,12 @@ Notes:
 
 Use this path when you want to test the browser extension against a real local backend without relaxing the extension's HTTPS-only build rules.
 
+Quick helper:
+
+```powershell
+pwsh -File .\scripts\local\lifecycle\local-extension-test.ps1
+```
+
 1. Generate trusted localhost certs with `mkcert`:
 
 ```bash
@@ -186,6 +192,8 @@ Notes:
 - The Vite dev server remains the single browser-facing origin for both app pages and `/api` requests.
 - Google OAuth is intentionally out of scope for the localhost harness; use email/password for local extension testing.
 - Cert files under `volumes/certs/local/` stay ignored by git through the existing `volumes/` ignore rule.
+- The helper script expects repo-root `.env`, `frontend/.env.local`, and `uah-browser-extension/.env.local` to already exist.
+- The helper script starts backend-local, launches the HTTPS frontend in a new PowerShell window, builds the extension, and prints the manual Chrome smoke-test steps.
 
 ### Environment template
 

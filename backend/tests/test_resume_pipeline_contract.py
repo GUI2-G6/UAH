@@ -79,6 +79,32 @@ class _FakeQueueDb:
         return _FakeQueueQuery(self._rows)
 
 
+class _FakeResumeByIdQuery:
+    def __init__(self, resume):
+        self._resume = resume
+
+    def filter(self, *args, **kwargs):
+        return self
+
+    def first(self):
+        return self._resume
+
+
+class _FakeResumeByIdDb:
+    def __init__(self, resume):
+        self._resume = resume
+        self.commits = 0
+
+    def query(self, _model):
+        return _FakeResumeByIdQuery(self._resume)
+
+    def commit(self):
+        self.commits += 1
+
+    def refresh(self, _obj):
+        return None
+
+
 class ResumePipelineContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_upload_stores_pdf_without_running_ocr(self):
         fake_db = _FakeUploadDb()
@@ -210,6 +236,34 @@ class ResumePipelineContractTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(payload["pipeline_availability"]["cloud"]["available"], True)
         self.assertEqual(payload["pipeline_availability"]["rules"]["available"], True)
+
+    def test_update_review_draft_allows_persisted_review_draft_without_structured_data(self):
+        resume = SimpleNamespace(
+            id=101,
+            user_id=7,
+            file_name="resume.pdf",
+            structured_data=None,
+            review_draft={"personal_info": {"first_name": "Existing"}},
+            review_status="pending",
+            review_updated_at=None,
+            parse_method="local",
+        )
+        fake_db = _FakeResumeByIdDb(resume)
+        current_user = SimpleNamespace(id=7)
+        payload = resume_api.ResumeReviewDraftUpdate(
+            review_draft={"personal_info": {"first_name": "Updated"}}
+        )
+
+        response = resume_api.update_review_draft(
+            payload=payload,
+            resume_id=101,
+            db=fake_db,
+            current_user=current_user,
+        )
+
+        self.assertEqual(fake_db.commits, 1)
+        self.assertEqual(resume.review_draft["personal_info"]["first_name"], "Updated")
+        self.assertEqual(response.review_draft["personal_info"]["first_name"], "Updated")
 
 
 if __name__ == "__main__":
