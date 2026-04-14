@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { buildManifest, resolveExtensionBuildConfig } from './manifest.config.mjs'
@@ -21,11 +22,72 @@ function resolveToolModule(relativePath) {
 const { defineConfig, loadEnv } = await import(resolveToolModule('vite/dist/node/index.js').href)
 const { default: vue } = await import(resolveToolModule('@vitejs/plugin-vue/dist/index.mjs').href)
 
-export default defineConfig(({ mode }) => {
+function parseExplicitEnvFile(envFilePath) {
+  const parsed = {}
+  const lines = readFileSync(envFilePath, 'utf8').split(/\r?\n/)
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim()
+    if (!trimmed || trimmed.startsWith('#')) {
+      continue
+    }
+
+    const separatorIndex = trimmed.indexOf('=')
+    if (separatorIndex <= 0) {
+      continue
+    }
+
+    const key = trimmed.slice(0, separatorIndex).trim()
+    if (!key) {
+      continue
+    }
+
+    let value = trimmed.slice(separatorIndex + 1).trim()
+    if (
+      (value.startsWith('"') && value.endsWith('"'))
+      || (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1)
+    }
+
+    parsed[key] = value
+  }
+
+  return parsed
+}
+
+function loadExtensionEnv(mode) {
   const env = loadEnv(mode, process.cwd(), '')
+  const explicitEnvFile = String(process.env.UAH_EXTENSION_ENV_FILE || '').trim()
+  if (!explicitEnvFile) {
+    return env
+  }
+
+  const resolvedEnvFile = path.isAbsolute(explicitEnvFile)
+    ? explicitEnvFile
+    : path.resolve(process.cwd(), explicitEnvFile)
+
+  if (!existsSync(resolvedEnvFile)) {
+    throw new Error(`Configured UAH_EXTENSION_ENV_FILE was not found: ${resolvedEnvFile}`)
+  }
+
+  return {
+    ...env,
+    ...parseExplicitEnvFile(resolvedEnvFile),
+  }
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadExtensionEnv(mode)
   resolveExtensionBuildConfig(env)
 
   return {
+    define: {
+      'import.meta.env.VITE_EXTENSION_APP_ORIGIN': JSON.stringify(env.VITE_EXTENSION_APP_ORIGIN || ''),
+      'import.meta.env.VITE_EXTENSION_API_ORIGIN': JSON.stringify(env.VITE_EXTENSION_API_ORIGIN || ''),
+      'import.meta.env.VITE_EXTENSION_AUTH_NAMESPACE': JSON.stringify(env.VITE_EXTENSION_AUTH_NAMESPACE || ''),
+      'import.meta.env.VITE_EXTENSION_AUTH_COOKIE_NAME': JSON.stringify(env.VITE_EXTENSION_AUTH_COOKIE_NAME || ''),
+    },
     plugins: [
       vue(),
       {

@@ -152,6 +152,21 @@ Quick helper:
 pwsh -File .\scripts\local\lifecycle\local-extension-test.ps1
 ```
 
+Tiny wrappers:
+
+```powershell
+pwsh -File .\scripts\local\lifecycle\extension-local.ps1
+pwsh -File .\scripts\local\lifecycle\extension-beta.ps1
+```
+
+Use `extension-beta.ps1` when you want the unpacked extension built against beta with Google OAuth enabled.
+
+To build the unpacked extension for beta endpoint testing instead of localhost, run:
+
+```powershell
+pwsh -File .\scripts\local\lifecycle\local-extension-test.ps1 -ExtensionTarget beta
+```
+
 1. Generate trusted localhost certs with `mkcert`:
 
 ```bash
@@ -192,7 +207,8 @@ Notes:
 - The Vite dev server remains the single browser-facing origin for both app pages and `/api` requests.
 - Google OAuth is intentionally out of scope for the localhost harness; use email/password for local extension testing.
 - Cert files under `volumes/certs/local/` stay ignored by git through the existing `volumes/` ignore rule.
-- The helper script expects repo-root `.env`, `frontend/.env.local`, and `uah-browser-extension/.env.local` to already exist.
+- The helper script expects repo-root `.env`, `frontend/.env.local`, and `uah-browser-extension/.env.local` to already exist for the default `-ExtensionTarget local` flow.
+- Use `-ExtensionTarget beta` to build the extension from `uah-browser-extension/.env` and skip local backend/frontend startup.
 - The helper script starts backend-local, launches the HTTPS frontend in a new PowerShell window, builds the extension, and prints the manual Chrome smoke-test steps.
 
 ### Environment template

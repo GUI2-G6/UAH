@@ -75,6 +75,21 @@ Quick helper:
 pwsh -File .\scripts\local\lifecycle\local-extension-test.ps1
 ```
 
+Tiny wrappers:
+
+```powershell
+pwsh -File .\scripts\local\lifecycle\extension-local.ps1
+pwsh -File .\scripts\local\lifecycle\extension-beta.ps1
+```
+
+Use `extension-beta.ps1` when you want the unpacked extension built against beta with Google OAuth enabled.
+
+Build the unpacked extension for beta endpoints without starting the local harness:
+
+```powershell
+pwsh -File .\scripts\local\lifecycle\local-extension-test.ps1 -ExtensionTarget beta
+```
+
 1. Generate trusted localhost certs with `mkcert`:
 
 ```bash
@@ -116,6 +131,7 @@ npm run build
 
 The local harness keeps the extension HTTPS-only and routes all app and API traffic through the same `https://localhost:5173` origin.
 The helper script validates the required local env files, starts backend-local, launches the HTTPS frontend in a new PowerShell window, builds the extension, and prints the manual smoke-test checklist.
+Pass `-ExtensionTarget beta` to reuse the same helper for a beta-targeted extension build that reads `uah-browser-extension/.env` and skips local backend/frontend startup.
 
 ## Load Unpacked In Chrome
 

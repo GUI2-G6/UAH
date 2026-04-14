@@ -1,5 +1,8 @@
 [CmdletBinding()]
 param(
+    [ValidateSet('local', 'beta')]
+    [string]$ExtensionTarget = 'local',
+
     [switch]$SkipBuild,
     [switch]$SkipFrontend,
     [switch]$BackendOnly
@@ -127,6 +130,77 @@ function Get-DotEnvValue {
     }
 
     return ''
+}
+
+function Normalize-EnvNamespace {
+    param([string]$Value)
+
+    return [regex]::Replace(([string]$Value).Trim().ToLowerInvariant(), '[^a-z0-9_.-]', '_')
+}
+
+function Get-ExtensionAuthCookieName {
+    param([string]$EnvFilePath)
+
+    $explicitCookieName = Get-DotEnvValue -EnvFilePath $EnvFilePath -Key 'VITE_EXTENSION_AUTH_COOKIE_NAME'
+    if ($explicitCookieName) {
+        return $explicitCookieName
+    }
+
+    $namespace = Normalize-EnvNamespace (Get-DotEnvValue -EnvFilePath $EnvFilePath -Key 'VITE_EXTENSION_AUTH_NAMESPACE')
+    if ($namespace) {
+        return "uah_auth_$namespace"
+    }
+
+    return ''
+}
+
+function Test-LocalhostOrigin {
+    param([string]$Origin)
+
+    if (-not $Origin) {
+        return $false
+    }
+
+    try {
+        $uri = [System.Uri]$Origin
+        return $uri.Host.ToLowerInvariant() -eq 'localhost'
+    } catch {
+        return $false
+    }
+}
+
+function Assert-ExtensionTargetConfig {
+    param(
+        [string]$Target,
+        [string]$EnvFilePath
+    )
+
+    $appOrigin = Get-DotEnvValue -EnvFilePath $EnvFilePath -Key 'VITE_EXTENSION_APP_ORIGIN'
+    $apiOrigin = Get-DotEnvValue -EnvFilePath $EnvFilePath -Key 'VITE_EXTENSION_API_ORIGIN'
+    $authCookieName = Get-ExtensionAuthCookieName -EnvFilePath $EnvFilePath
+
+    if (-not $appOrigin) {
+        Fail "VITE_EXTENSION_APP_ORIGIN is missing from $EnvFilePath"
+    }
+    if (-not $apiOrigin) {
+        Fail "VITE_EXTENSION_API_ORIGIN is missing from $EnvFilePath"
+    }
+    if (-not $authCookieName) {
+        Fail "Set VITE_EXTENSION_AUTH_COOKIE_NAME or VITE_EXTENSION_AUTH_NAMESPACE in $EnvFilePath"
+    }
+
+    if ($Target -eq 'beta') {
+        if ((Test-LocalhostOrigin -Origin $appOrigin) -or (Test-LocalhostOrigin -Origin $apiOrigin)) {
+            Fail "Beta extension mode must not point at localhost. Update $EnvFilePath to beta HTTPS origins."
+        }
+    }
+
+    return @{
+        AppOrigin = $appOrigin
+        ApiOrigin = $apiOrigin
+        AuthCookieName = $authCookieName
+        GoogleOAuthEnabled = -not ((Test-LocalhostOrigin -Origin $appOrigin) -and (Test-LocalhostOrigin -Origin $apiOrigin))
+    }
 }
 
 function Wait-ForHttpOk {
@@ -274,6 +348,9 @@ function Start-FrontendWindow {
 }
 
 if ($BackendOnly) {
+    if ($ExtensionTarget -ne 'local') {
+        Fail "-BackendOnly is only supported when -ExtensionTarget local is selected."
+    }
     $SkipFrontend = $true
     $SkipBuild = $true
 }
@@ -286,6 +363,7 @@ $rootEnvPath = Join-Path $repoRoot '.env'
 $rootEnvExamplePath = Join-Path $repoRoot 'env-examples\local\.env.example'
 $frontendEnvLocalPath = Join-Path $frontendDir '.env.local'
 $frontendEnvLocalExamplePath = Join-Path $frontendDir '.env.local.example'
+$extensionEnvPath = Join-Path $extensionDir '.env'
 $extensionEnvLocalPath = Join-Path $extensionDir '.env.local'
 $extensionEnvLocalExamplePath = Join-Path $extensionDir '.env.local.example'
 $localCertDir = Join-Path $repoRoot 'volumes\certs\local'
@@ -293,68 +371,84 @@ $localCertPath = Join-Path $localCertDir 'tls.crt'
 $localKeyPath = Join-Path $localCertDir 'tls.key'
 $extensionDistPath = Join-Path $extensionDir 'dist'
 $npmExecutable = Get-NpmExecutable
+$selectedExtensionEnvPath = if ($ExtensionTarget -eq 'beta') { $extensionEnvPath } else { $extensionEnvLocalPath }
 
 Write-Step "Checking prerequisites"
-Assert-CommandExists -CommandName 'docker' -InstallHint (Get-InstallHint -ToolName 'docker')
 Assert-CommandExists -CommandName 'npm' -InstallHint (Get-InstallHint -ToolName 'npm')
-Assert-CommandExists -CommandName 'mkcert' -InstallHint (Get-InstallHint -ToolName 'mkcert')
 
-Assert-PathExists -Path $localComposePath -Hint 'The local compose file is required to start backend-local.'
-Ensure-FileFromExample -TargetPath $frontendEnvLocalPath -ExamplePath $frontendEnvLocalExamplePath -Label 'frontend/.env.local'
-Ensure-FileFromExample -TargetPath $extensionEnvLocalPath -ExamplePath $extensionEnvLocalExamplePath -Label 'uah-browser-extension/.env.local'
-Assert-PathExists -Path $rootEnvPath -Hint 'Create repo-root .env from env-examples/local/.env.example.'
-Assert-PathExists -Path $rootEnvExamplePath -Hint 'The local root env example is missing from env-examples/local/.env.example.'
-Assert-PathExists -Path $localCertPath -Hint 'Generate mkcert certs at volumes/certs/local/tls.crt and tls.key.'
-Assert-PathExists -Path $localKeyPath -Hint 'Generate mkcert certs at volumes/certs/local/tls.crt and tls.key.'
+if ($ExtensionTarget -eq 'local') {
+    Assert-CommandExists -CommandName 'docker' -InstallHint (Get-InstallHint -ToolName 'docker')
+    Assert-CommandExists -CommandName 'mkcert' -InstallHint (Get-InstallHint -ToolName 'mkcert')
+
+    Assert-PathExists -Path $localComposePath -Hint 'The local compose file is required to start backend-local.'
+    Ensure-FileFromExample -TargetPath $frontendEnvLocalPath -ExamplePath $frontendEnvLocalExamplePath -Label 'frontend/.env.local'
+    Ensure-FileFromExample -TargetPath $extensionEnvLocalPath -ExamplePath $extensionEnvLocalExamplePath -Label 'uah-browser-extension/.env.local'
+    Assert-PathExists -Path $rootEnvPath -Hint 'Create repo-root .env from env-examples/local/.env.example.'
+    Assert-PathExists -Path $rootEnvExamplePath -Hint 'The local root env example is missing from env-examples/local/.env.example.'
+    Assert-PathExists -Path $localCertPath -Hint 'Generate mkcert certs at volumes/certs/local/tls.crt and tls.key.'
+    Assert-PathExists -Path $localKeyPath -Hint 'Generate mkcert certs at volumes/certs/local/tls.crt and tls.key.'
+} else {
+    Assert-PathExists -Path $extensionEnvPath -Hint 'Create uah-browser-extension/.env with the beta HTTPS origins and auth namespace before building for beta.'
+}
+
+$selectedExtensionAppOrigin = Get-DotEnvValue -EnvFilePath $selectedExtensionEnvPath -Key 'VITE_EXTENSION_APP_ORIGIN'
+$extensionTargetConfig = Assert-ExtensionTargetConfig -Target $ExtensionTarget -EnvFilePath $selectedExtensionEnvPath
 
 Write-Step "Checking dependency directories"
-Test-FrontendDependencies -FrontendDir $frontendDir
+if ($ExtensionTarget -eq 'local') {
+    Test-FrontendDependencies -FrontendDir $frontendDir
+}
 if (-not $SkipBuild) {
     Test-ExtensionDependencies -ExtensionDir $extensionDir -FrontendDir $frontendDir
 }
 
-Write-Step "Starting local backend"
-Push-Location $repoRoot
-try {
-    Invoke-NativeCommand `
-        -FilePath 'docker' `
-        -Arguments @('compose', '-f', $localComposePath, '--profile', 'backend', 'up', '-d', 'db-local', 'backend-local') `
-        -FailureMessage 'Failed to start the local backend with docker compose.'
-} finally {
-    Pop-Location
-}
-
-Write-Host "Waiting for backend-local to answer on http://localhost:8000/openapi.json ..."
-Wait-ForHttpOk -Url 'http://localhost:8000/openapi.json' -Attempts 60 -DelaySeconds 2
-Write-Host "Backend is ready." -ForegroundColor Green
-
-if (-not $SkipFrontend) {
-    Write-Step "Starting HTTPS frontend"
-    $frontendAlreadyRunning = $false
+if ($ExtensionTarget -eq 'local') {
+    Write-Step "Starting local backend"
+    Push-Location $repoRoot
     try {
-        Wait-ForHttpOk -Url 'https://localhost:5173/' -Attempts 1 -DelaySeconds 1 -SslHelp ''
-        $frontendAlreadyRunning = $true
-    } catch {
+        Invoke-NativeCommand `
+            -FilePath 'docker' `
+            -Arguments @('compose', '-f', $localComposePath, '--profile', 'backend', 'up', '-d', 'db-local', 'backend-local') `
+            -FailureMessage 'Failed to start the local backend with docker compose.'
+    } finally {
+        Pop-Location
+    }
+
+    Write-Host "Waiting for backend-local to answer on http://localhost:8000/openapi.json ..."
+    Wait-ForHttpOk -Url 'http://localhost:8000/openapi.json' -Attempts 60 -DelaySeconds 2
+    Write-Host "Backend is ready." -ForegroundColor Green
+
+    if (-not $SkipFrontend) {
+        Write-Step "Starting HTTPS frontend"
         $frontendAlreadyRunning = $false
-    }
+        try {
+            Wait-ForHttpOk -Url 'https://localhost:5173/' -Attempts 1 -DelaySeconds 1 -SslHelp ''
+            $frontendAlreadyRunning = $true
+        } catch {
+            $frontendAlreadyRunning = $false
+        }
 
-    if ($frontendAlreadyRunning) {
-        Write-Host "Frontend already appears to be running on https://localhost:5173." -ForegroundColor Yellow
+        if ($frontendAlreadyRunning) {
+            Write-Host "Frontend already appears to be running on https://localhost:5173." -ForegroundColor Yellow
+        } else {
+            $powerShellExe = Get-ProcessExecutable
+            Start-FrontendWindow -FrontendDir $frontendDir -PowerShellExe $powerShellExe
+        }
+
+        Write-Host "Waiting for HTTPS frontend on https://localhost:5173 ..."
+        Wait-ForHttpOk `
+            -Url 'https://localhost:5173/' `
+            -Attempts 60 `
+            -DelaySeconds 2 `
+            -SslHelp 'The HTTPS frontend could not be reached because the localhost certificate is not trusted. Open https://localhost:5173 in Chrome, trust the mkcert certificate if prompted, then rerun this script.'
+
+        Write-Host "Frontend is ready." -ForegroundColor Green
     } else {
-        $powerShellExe = Get-ProcessExecutable
-        Start-FrontendWindow -FrontendDir $frontendDir -PowerShellExe $powerShellExe
+        Write-Step "Skipping frontend startup"
     }
-
-    Write-Host "Waiting for HTTPS frontend on https://localhost:5173 ..."
-    Wait-ForHttpOk `
-        -Url 'https://localhost:5173/' `
-        -Attempts 60 `
-        -DelaySeconds 2 `
-        -SslHelp 'The HTTPS frontend could not be reached because the localhost certificate is not trusted. Open https://localhost:5173 in Chrome, trust the mkcert certificate if prompted, then rerun this script.'
-
-    Write-Host "Frontend is ready." -ForegroundColor Green
 } else {
-    Write-Step "Skipping frontend startup"
+    Write-Step "Skipping local stack startup"
+    Write-Host "Extension target '$ExtensionTarget' uses $selectedExtensionEnvPath" -ForegroundColor Yellow
 }
 
 if (-not $SkipBuild) {
@@ -365,16 +459,32 @@ if (-not $SkipBuild) {
 
     Push-Location $extensionDir
     try {
+        $previousSelectedEnvFile = $env:UAH_EXTENSION_ENV_FILE
+        $env:UAH_EXTENSION_ENV_FILE = $selectedExtensionEnvPath
         Invoke-NativeCommand `
             -FilePath $npmExecutable `
             -Arguments @('run', 'build') `
             -FailureMessage 'Browser extension build failed.'
     } finally {
+        if ($null -eq $previousSelectedEnvFile) {
+            Remove-Item Env:UAH_EXTENSION_ENV_FILE -ErrorAction SilentlyContinue
+        } else {
+            $env:UAH_EXTENSION_ENV_FILE = $previousSelectedEnvFile
+        }
         Pop-Location
     }
 
     if (-not (Test-Path -LiteralPath $extensionDistPath)) {
         Fail "Extension build finished without producing $extensionDistPath"
+    }
+
+    $manifestPath = Join-Path $extensionDistPath 'manifest.json'
+    Assert-PathExists -Path $manifestPath -Hint 'Extension build did not emit dist/manifest.json.'
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $expectedHostPermission = "$($extensionTargetConfig.ApiOrigin)/*"
+    $actualHostPermissions = @($manifest.host_permissions)
+    if ($expectedHostPermission -notin $actualHostPermissions) {
+        Fail "Built extension manifest does not include expected host permission '$expectedHostPermission'."
     }
 
     Write-Host "Extension build is ready at $extensionDistPath" -ForegroundColor Green
@@ -394,24 +504,39 @@ Write-Host "4. Open the extension popup and sign in with email/password"
 Write-Host "5. Verify popup close/reopen keeps the session"
 Write-Host "6. Verify Profiles loads and detail copy buttons work"
 Write-Host "7. Verify Resumes loads and detail copy buttons work"
-Write-Host "8. Verify Open UAH opens https://localhost:5173"
+Write-Host "8. Verify Open UAH opens $selectedExtensionAppOrigin"
 Write-Host "9. Verify logout clears extension state"
 Write-Host ""
-Write-Host "Local harness note: Google OAuth is intentionally disabled on localhost." -ForegroundColor Yellow
-Write-Host "Seeded login env file: $rootEnvPath" -ForegroundColor Yellow
-Write-Host "Extension local config env file: $extensionEnvLocalPath" -ForegroundColor Yellow
+Write-Host "Extension target: $ExtensionTarget" -ForegroundColor Yellow
+Write-Host "Extension build env file: $selectedExtensionEnvPath" -ForegroundColor Yellow
+Write-Host "Extension app origin: $($extensionTargetConfig.AppOrigin)" -ForegroundColor Yellow
+Write-Host "Extension API origin: $($extensionTargetConfig.ApiOrigin)" -ForegroundColor Yellow
+Write-Host "Extension auth cookie: $($extensionTargetConfig.AuthCookieName)" -ForegroundColor Yellow
 
-$devAuthEnabled = (Get-DotEnvValue -EnvFilePath $rootEnvPath -Key 'DEV_AUTH_TEST_ACCOUNT_ENABLED').ToLowerInvariant()
-if ($devAuthEnabled -in @('true', '1', 'yes', 'on')) {
-    $devAuthEmail = Get-DotEnvValue -EnvFilePath $rootEnvPath -Key 'DEV_AUTH_TEST_EMAIL'
-    if (-not $devAuthEmail) {
-        $devAuthEmail = Get-DotEnvValue -EnvFilePath $rootEnvPath -Key 'DEV_AUTH_TEST_USERNAME'
+if ($ExtensionTarget -eq 'local') {
+    Write-Host "Local harness note: Google OAuth is intentionally disabled on localhost." -ForegroundColor Yellow
+    Write-Host "Seeded login env file: $rootEnvPath" -ForegroundColor Yellow
+    Write-Host "Extension local config env file: $extensionEnvLocalPath" -ForegroundColor Yellow
+
+    $devAuthEnabled = (Get-DotEnvValue -EnvFilePath $rootEnvPath -Key 'DEV_AUTH_TEST_ACCOUNT_ENABLED').ToLowerInvariant()
+    if ($devAuthEnabled -in @('true', '1', 'yes', 'on')) {
+        $devAuthEmail = Get-DotEnvValue -EnvFilePath $rootEnvPath -Key 'DEV_AUTH_TEST_EMAIL'
+        if (-not $devAuthEmail) {
+            $devAuthEmail = Get-DotEnvValue -EnvFilePath $rootEnvPath -Key 'DEV_AUTH_TEST_USERNAME'
+        }
+        $devAuthPassword = Get-DotEnvValue -EnvFilePath $rootEnvPath -Key 'DEV_AUTH_TEST_PASSWORD'
+
+        Write-Host "Seeded local login:" -ForegroundColor Yellow
+        Write-Host "  Email/username: $devAuthEmail" -ForegroundColor Yellow
+        Write-Host "  Password: $devAuthPassword" -ForegroundColor Yellow
+    } else {
+        Write-Host "If you enable DEV_AUTH_TEST_ACCOUNT_ENABLED in $rootEnvPath, the script will print that seeded account for login." -ForegroundColor Yellow
     }
-    $devAuthPassword = Get-DotEnvValue -EnvFilePath $rootEnvPath -Key 'DEV_AUTH_TEST_PASSWORD'
-
-    Write-Host "Seeded local login:" -ForegroundColor Yellow
-    Write-Host "  Email/username: $devAuthEmail" -ForegroundColor Yellow
-    Write-Host "  Password: $devAuthPassword" -ForegroundColor Yellow
 } else {
-    Write-Host "If you enable DEV_AUTH_TEST_ACCOUNT_ENABLED in $rootEnvPath, the script will print that seeded account for login." -ForegroundColor Yellow
+    Write-Host "Beta note: this script does not start local backend/frontend when -ExtensionTarget beta is selected." -ForegroundColor Yellow
+    if ($extensionTargetConfig.GoogleOAuthEnabled) {
+        Write-Host "Google OAuth is enabled for this build. The popup should show 'Continue with Google' and read the '$($extensionTargetConfig.AuthCookieName)' cookie from $($extensionTargetConfig.ApiOrigin)." -ForegroundColor Yellow
+    } else {
+        Write-Host "Google OAuth is disabled for this build because both configured origins resolve to localhost." -ForegroundColor Yellow
+    }
 }
