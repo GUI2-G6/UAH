@@ -183,6 +183,7 @@ mkcert -cert-file volumes/certs/local/tls.crt -key-file volumes/certs/local/tls.
      - `DEV_AUTH_TEST_PASSWORD=<your local password>`
 
 3. Create `frontend/.env.local` from `frontend/.env.local.example`.
+   `npm run dev` in `frontend/` still uses mock mode/email-only login, while `npm run dev:backend` is the real-backend path used by the localhost extension harness.
 
 4. Start the local backend:
 

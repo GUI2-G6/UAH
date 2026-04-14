@@ -16,11 +16,12 @@ function parseBoolean(value, fallback = false) {
 }
 
 function resolveLocalMode(mode, env) {
+  if (mode === 'backend') return 'backend'
+  if (mode === 'mock') return 'mock'
+
   const explicit = String(env.VITE_LOCAL_MODE || '').trim().toLowerCase()
   if (explicit === 'backend') return 'backend'
   if (explicit === 'mock') return 'mock'
-  if (mode === 'backend') return 'backend'
-  if (mode === 'mock') return 'mock'
   return 'backend'
 }
 

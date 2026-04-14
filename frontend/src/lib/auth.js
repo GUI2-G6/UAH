@@ -23,15 +23,15 @@ function inferDefaultNamespace() {
 }
 
 function resolveFrontendAuthMode() {
-    const explicit = String(import.meta?.env?.VITE_LOCAL_MODE || '')
-        .trim()
-        .toLowerCase()
-    if (explicit === 'backend' || explicit === 'mock') return explicit
-
     const mode = String(import.meta?.env?.MODE || '')
         .trim()
         .toLowerCase()
     if (mode === 'backend' || mode === 'mock') return mode
+
+    const explicit = String(import.meta?.env?.VITE_LOCAL_MODE || '')
+        .trim()
+        .toLowerCase()
+    if (explicit === 'backend' || explicit === 'mock') return explicit
 
     const host = String(window?.location?.hostname || '').trim().toLowerCase()
     if (isLoopbackHost(host)) return 'mock'

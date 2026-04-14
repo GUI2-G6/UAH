@@ -490,11 +490,11 @@ export function getFrontendLocalMode() {
   // intercepting API calls when VITE_LOCAL_MODE is misconfigured.
   if (!isLoopbackRuntime) return 'backend'
 
-  const explicit = import.meta.env.VITE_LOCAL_MODE
-  if (explicit) return normalizeMode(explicit)
-
   if (import.meta.env.MODE === 'backend') return 'backend'
   if (import.meta.env.MODE === 'mock') return 'mock'
+
+  const explicit = import.meta.env.VITE_LOCAL_MODE
+  if (explicit) return normalizeMode(explicit)
 
   // Safe default: only assume mock mode on loopback hosts.
   if (isLoopbackRuntime) return 'mock'
