@@ -44,6 +44,12 @@
             <Card class="home-card home-card--wide">
                 <template #header>
                     <h2 id="tracked-applications">Tracked Applications</h2>
+                    <p>Filter</p>
+                    <select id="app-filter">
+                        <option>Newest</option>
+                        <option>Oldest</option>
+                        <option>Accepted</option>
+                    </select>
                 </template>
                 <Card variant="minimal" class="home-application-card">
                     <Application :application="{
@@ -53,6 +59,17 @@
                     statusStep: 4,
                     maxStep: 4,
                     statusText: 'Accepted!',
+                    noResponse: false
+                    }" />
+                </Card>
+                <Card variant="minimal" class="home-application-card">
+                    <Application :application="{
+                    company: 'IBM',
+                    role: 'Data Analyst',
+                    dateSent: '4/11/2026',
+                    statusStep: 3,
+                    maxStep: 4,
+                    statusText: 'Offer',
                     noResponse: false
                     }" />
                 </Card>
