@@ -2,14 +2,16 @@
     <div id="burger" :class="{
         'active': active
     }">
-        <!--Logo-->
-        <img src="../images/logo.png" width="75px" height="75px" alt="logo" @click="goTo('/home')" title="Home">
-        <!--Burger-Button-->
-        <button type="button" class="burger-button " title="Menu" @click = "toggleActive">
-            <span class="burger-bar" id="b-bar1"></span>
-            <span class="burger-bar" id="b-bar2"></span>
-            <span class="burger-bar" id="b-bar3"></span>
-        </button>
+        <div class="mobile-row">
+            <!--Logo-->
+            <img src="../images/logo.png" width="75px" height="75px" alt="logo" @click="goTo('/home')" title="Home">
+            <!--Burger-Button-->
+            <button type="button" class="burger-button " title="Menu" @click = "toggleActive">
+                <span class="burger-bar" id="b-bar1"></span>
+                <span class="burger-bar" id="b-bar2"></span>
+                <span class="burger-bar" id="b-bar3"></span>
+            </button>
+        </div>
         <div class="menu">
             <!--Application-Button-->
             <button width="50px" height="50px" class="burger-item" @click="goTo('/application')" title="Applied">
