@@ -6,7 +6,6 @@
                 <p>Start broad, then narrow only when you need to.</p>
             </div>
             <div class="hero-copy">
-                <span class="hero-chip">Broad-first search</span>
                 <p>Default results search across {{ selectedCountryName }} with remote and hybrid roles included.</p>
             </div>
         </div>
@@ -43,6 +42,8 @@
                         <label for="job-date-preset">Posted</label>
                         <select id="job-date-preset" name="job_date_preset" autocomplete="off" v-model="draftFilters.datePreset">
                             <option value="any">Any time</option>
+                            <option value="today">Today</option>
+                            <option value="3">Past 3 days</option>
                             <option value="7">Last 7 days</option>
                             <option value="30">Last 30 days</option>
                             <option value="custom">After date</option>
@@ -101,13 +102,7 @@
                         </div>
 
                         <p class="hint-text" v-if="categoryInfo">{{ categoryInfo }}</p>
-                        <p class="hint-text">Pick a suggested group or type a custom Muse category and press Enter.</p>
-
-                        <div class="custom-input-row">
-                          <button type="button" class="secondary-action" @click="openCategoryMappingModal" :disabled="!draftFilters.categories.length">
-                            View group mapping
-                          </button>
-                        </div>
+                        <p class="hint-text">Search suggested categories or add an exact category value and press Enter.</p>
 
                         <div class="chip-list" v-if="draftFilters.categories.length">
                           <button
@@ -136,7 +131,7 @@
                             autocapitalize="none"
                             autocorrect="off"
                             spellcheck="false"
-                            placeholder="Search levels"
+                            placeholder="Search experience levels"
                             @focus="openLevelMenu"
                             @input="onLevelInput"
                             @blur="closeLevelMenuSoon"
@@ -154,13 +149,13 @@
                           >
                             <button
                               v-for="(option, index) in filteredLevelOptions"
-                              :key="option"
+                              :key="option.value"
                               type="button"
                               class="category-option"
                               :class="{ active: index === levelActiveIndex }"
-                              @mousedown.prevent="addLevel(option)"
+                              @mousedown.prevent="addLevel(option.value)"
                             >
-                              {{ option }}
+                              {{ option.label }}
                             </button>
                           </div>
 
@@ -173,9 +168,9 @@
                               v-for="level in draftFilters.levels"
                               :key="level"
                               @click="removeFilterValue('levels', level)"
-                              :title="`Remove ${level}`"
+                              :title="`Remove ${formatLevelLabel(level)}`"
                             >
-                              {{ level }} x
+                              {{ formatLevelLabel(level) }} x
                             </button>
                           </div>
                         </div>
@@ -187,10 +182,21 @@
                         <label for="job-country-code">Country</label>
                         <select id="job-country-code" name="job_country_code" autocomplete="off" v-model="draftFilters.countryCode">
                           <option v-for="country in countryOptions" :key="country.code" :value="country.code">
-                            {{ country.name }}{{ country.location_count ? ` (${country.location_count})` : '' }}
+                            {{ country.name }}{{ country.observed_count ? ` (${country.observed_count})` : '' }}
                           </option>
                         </select>
-                        <p class="hint-text">Country mode stays broad. Nearby and custom location use this as a boundary when available.</p>
+                        <p class="helper-text">Country mode stays broad. Nearby and custom location use this as a boundary when available.</p>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="job-provider-filter">Source</label>
+                        <select id="job-provider-filter" name="job_provider_filter" autocomplete="off" v-model="draftFilters.provider">
+                          <option value="">All providers</option>
+                          <option v-for="provider in providerOptions" :key="provider.value" :value="provider.value">
+                            {{ provider.label }}{{ provider.observedCount ? ` (${provider.observedCount})` : "" }}
+                          </option>
+                        </select>
+                        <p class="helper-text">Use one source when you want a tighter, provider-specific feed.</p>
                     </div>
 
                     <div class="filter-group" v-if="draftFilters.locationMode !== 'country'">
@@ -227,7 +233,7 @@
                     </div>
 
                     <div class="filter-group">
-                        <label>Area preview</label>
+                        <label>Matched places</label>
                         <button type="button" class="secondary-action" @click="previewLocationSelection" :disabled="locationBusy">
                           {{ locationBusy ? 'Resolving area…' : 'Preview matched places' }}
                         </button>
@@ -290,8 +296,11 @@
           :compatibility-notice="compatibilityNotice"
           :location-limit-notice="locationLimitNotice"
           :can-widen-search="canWidenSearch"
+          :sort-by="appliedFilters.sortBy"
+          :sort-options="sortOptions"
           @clear="clearFilters"
           @remove-chip="removeActiveFilterChip"
+          @sort-change="applySortChange"
           @widen="widenSearch"
         />
 
@@ -304,21 +313,20 @@
           :api-summary="lastApiSummary"
         />
 
-        <div class="pagination pagination-top" v-if="!loading && !error">
-          <button type="button" @click="goToPreviousPage" :disabled="page <= 1 || loading">Previous</button>
-          <button
-            type="button"
-            v-for="pageNumber in visiblePageButtons"
-            :key="`jobs-page-top-${pageNumber}`"
-            :class="{ active: pageNumber === page }"
-            @click="goToPage(pageNumber)"
-            :disabled="loading"
-          >
-            {{ pageNumber }}
-          </button>
-          <span>of {{ totalPages }}{{ totalsAreEstimated ? ' est.' : '' }}</span>
-          <button type="button" @click="goToNextPage" :disabled="!hasNextPage || loading">Next</button>
-        </div>
+        <JobBoardPagination
+          v-if="!loading && !error"
+          class="pagination pagination-top"
+          id-prefix="jobs-top"
+          :page="page"
+          :total-pages="totalPages"
+          :visible-pages="visiblePageButtons"
+          :loading="loading"
+          :has-next-page="hasNextPage"
+          :totals-are-estimated="totalsAreEstimated"
+          @previous="goToPreviousPage"
+          @next="goToNextPage"
+          @select-page="goToPage"
+        />
 
         <div class="dashboard">
             <div class="empty-state" v-if="!loading && !error && !jobs.length">
@@ -339,51 +347,20 @@
             />
         </div>
 
-        <div class="pagination pagination-bottom" v-if="!loading && !error">
-            <button type="button" @click="goToPreviousPage" :disabled="page <= 1 || loading">Previous</button>
-            <button
-              type="button"
-              v-for="pageNumber in visiblePageButtons"
-              :key="`jobs-page-${pageNumber}`"
-              :class="{ active: pageNumber === page }"
-              @click="goToPage(pageNumber)"
-              :disabled="loading"
-            >
-              {{ pageNumber }}
-            </button>
-            <span>of {{ totalPages }}{{ totalsAreEstimated ? ' est.' : '' }}</span>
-            <button type="button" @click="goToNextPage" :disabled="!hasNextPage || loading">Next</button>
-        </div>
-
-        <div
-          v-if="categoryMappingModalOpen"
-          class="city-modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Category mapping"
-          @click="closeCategoryMappingModal"
-        >
-          <div class="city-modal-dialog" v-draggable-modal="{ handle: '.city-modal-header' }" @click.stop>
-            <div class="city-modal-header drag-handle">
-              <h2>Category Group Mapping</h2>
-              <button type="button" class="city-modal-close" @click="closeCategoryMappingModal">Close</button>
-            </div>
-            <p class="city-modal-subtitle">Selected groups expand to these Muse categories during API search.</p>
-            <div class="city-modal-scroll">
-              <ul class="city-modal-list">
-                <li v-for="group in selectedCategoryGroups" :key="`cat-map-${group.name}`">
-                  <strong>{{ group.name }}</strong>: {{ group.muse_categories.join(', ') }}
-                </li>
-                <li v-for="custom in selectedCustomCategories" :key="`cat-custom-${custom}`">
-                  <strong>{{ custom }}</strong>: used as a direct Muse category query value.
-                </li>
-              </ul>
-            </div>
-            <div class="city-modal-actions">
-              <button type="button" @click="closeCategoryMappingModal">Close</button>
-            </div>
-          </div>
-        </div>
+        <JobBoardPagination
+          v-if="!loading && !error"
+          class="pagination pagination-bottom"
+          id-prefix="jobs-bottom"
+          :page="page"
+          :total-pages="totalPages"
+          :visible-pages="visiblePageButtons"
+          :loading="loading"
+          :has-next-page="hasNextPage"
+          :totals-are-estimated="totalsAreEstimated"
+          @previous="goToPreviousPage"
+          @next="goToNextPage"
+          @select-page="goToPage"
+        />
 
         <div
           v-if="cityPreviewModalOpen"
@@ -395,11 +372,11 @@
         >
           <div class="city-modal-dialog" v-draggable-modal="{ handle: '.city-modal-header' }" @click.stop>
             <div class="city-modal-header drag-handle">
-              <h2>Area Cities</h2>
+              <h2>Matched Places</h2>
               <button type="button" class="city-modal-close" @click="closeCityPreviewModal">Close</button>
             </div>
 
-            <p class="city-modal-subtitle">Showing all {{ locationPreviewNames.length }} matched cities.</p>
+            <p class="city-modal-subtitle">Showing all {{ locationPreviewNames.length }} matched places.</p>
 
             <div class="city-modal-scroll">
               <div class="city-sort-row">
@@ -451,6 +428,7 @@ import JobPosting from "../components/JobPosting.vue";
 import JobBoardPrimaryFilters from "../components/job-board/JobBoardPrimaryFilters.vue";
 import JobBoardResultsSummary from "../components/job-board/JobBoardResultsSummary.vue";
 import JobBoardDebugPanel from "../components/job-board/JobBoardDebugPanel.vue";
+import JobBoardPagination from "../components/job-board/JobBoardPagination.vue";
 import {
   getCachedLocation,
   requestBrowserLocation,
@@ -459,6 +437,79 @@ import {
 import { publishCurrentPageDiagnostics, clearCurrentPageDiagnostics } from "../lib/debugDiagnostics";
 import { subscribeDebugTools } from "../lib/debugTools";
 
+const DEFAULT_COUNTRY_CODE = "US"
+const DEFAULT_SORT_BY = "date_desc"
+const POSTED_DATE_PRESETS = new Set(["any", "today", "3", "7", "30", "custom"])
+const JOB_SORT_OPTIONS = [
+  { value: "date_desc", label: "Most Recent" },
+  { value: "quality_desc", label: "Best Match" },
+  { value: "date_asc", label: "Oldest First" },
+]
+const LEVEL_VALUE_ALIASES = {
+  internship: "internship",
+  entry: "entry",
+  "entry level": "entry",
+  mid: "mid",
+  "mid level": "mid",
+  senior: "senior",
+  "senior level": "senior",
+  manager: "manager",
+  management: "manager",
+  director: "director",
+  vp: "vp",
+}
+const LEVEL_LABELS = {
+  internship: "Internship",
+  entry: "Entry",
+  mid: "Mid",
+  senior: "Senior",
+  manager: "Manager",
+  director: "Director",
+  vp: "VP",
+}
+const DEFAULT_LEVEL_OPTIONS = Object.entries(LEVEL_LABELS).map(([value, label]) => ({
+  value,
+  label,
+  observedCount: 0,
+}))
+
+function normalizeRouteQueryScalar(value) {
+  if (Array.isArray(value)) {
+    return normalizeRouteQueryScalar(value[0])
+  }
+  return typeof value === "string" ? value.trim() : ""
+}
+
+function normalizeRouteQueryList(value) {
+  if (Array.isArray(value)) {
+    return value.map(item => normalizeRouteQueryScalar(item)).filter(Boolean)
+  }
+  const normalized = normalizeRouteQueryScalar(value)
+  return normalized ? [normalized] : []
+}
+
+function stringifyRouteQuery(query = {}) {
+  const params = new URLSearchParams()
+  for (const key of Object.keys(query || {}).sort()) {
+    const rawValue = query[key]
+    if (Array.isArray(rawValue)) {
+      for (const item of rawValue) {
+        const normalized = normalizeRouteQueryScalar(item)
+        if (normalized) {
+          params.append(key, normalized)
+        }
+      }
+      continue
+    }
+
+    const normalized = normalizeRouteQueryScalar(rawValue)
+    if (normalized) {
+      params.append(key, normalized)
+    }
+  }
+  return params.toString()
+}
+
 export default {
   name: "JobBoard",
   components: {
@@ -466,6 +517,7 @@ export default {
     JobBoardPrimaryFilters,
     JobBoardResultsSummary,
     JobBoardDebugPanel,
+    JobBoardPagination,
   },
   data() {
     const locationSourceMode = "muse"
@@ -521,7 +573,9 @@ export default {
       }
     ]
 
-    const categoryOptions = categoryGroups.map(group => group.name)
+    const categoryOptions = Array.from(new Set(
+      categoryGroups.flatMap(group => group.muse_categories || [])
+    ))
 
     const categoryAliases = {
       tech: "Tech",
@@ -543,21 +597,24 @@ export default {
     for (const value of categoryOptions) {
       categoryLookup[value.toLowerCase()] = value
     }
+    for (const group of categoryGroups) {
+      categoryLookup[group.name.toLowerCase()] = group.name
+    }
     for (const [alias, canonical] of Object.entries(categoryAliases)) {
       categoryLookup[alias] = canonical
     }
 
-    const levelOptions = [
-      "Internship",
-      "Entry Level",
-      "Mid Level",
-      "Senior Level",
-      "Management"
-    ]
+    const levelOptions = DEFAULT_LEVEL_OPTIONS.map(option => ({ ...option }))
 
     const levelLookup = {}
     for (const value of levelOptions) {
-      levelLookup[value.toLowerCase()] = value
+      levelLookup[value.value.toLowerCase()] = value.value
+      levelLookup[value.label.toLowerCase()] = value.value
+    }
+
+    const levelLabelLookup = {}
+    for (const option of levelOptions) {
+      levelLabelLookup[option.value] = option.label
     }
 
     const categoryMapLookup = {}
@@ -565,7 +622,8 @@ export default {
       categoryMapLookup[group.name] = group
     }
 
-    const countryOptions = [{ code: "US", name: "United States", location_count: 0 }]
+    const countryOptions = [{ code: DEFAULT_COUNTRY_CODE, name: "United States", observed_count: 0 }]
+    const providerOptions = []
 
     const defaultFilters = {
       categories: [],
@@ -579,7 +637,9 @@ export default {
       countryCode: "US",
       locationNames: [],
       companies: [],
+      provider: "",
       keyword: "",
+      sortBy: DEFAULT_SORT_BY,
       datePreset: "any",
       customAfterDate: ""
     }
@@ -609,12 +669,14 @@ export default {
       categoryLookup,
       levelOptions,
       levelLookup,
+      levelLabelLookup,
       countryOptions,
+      providerOptions,
+      sortOptions: JOB_SORT_OPTIONS.map(option => ({ ...option })),
       categoryInput: "",
       categoryInfo: "",
       categoryMenuOpen: false,
       categoryActiveIndex: 0,
-      categoryMappingModalOpen: false,
       advancedFiltersOpen: false,
       levelInput: "",
       levelInfo: "",
@@ -637,6 +699,7 @@ export default {
       resolvedLocation: null,
       showDebugTools: false,
       debugToolsUnsubscribe: null,
+      routeHydrationReady: false,
       draftFilters: JSON.parse(JSON.stringify(defaultFilters)),
       appliedFilters: JSON.parse(JSON.stringify(defaultFilters))
     };
@@ -673,9 +736,9 @@ export default {
       const query = (this.levelInput || "").trim().toLowerCase()
 
       const options = this.levelOptions.filter(option => {
-        if (selected.has(option.toLowerCase())) return false
+        if (selected.has(option.value.toLowerCase())) return false
         if (!query) return true
-        return option.toLowerCase().includes(query)
+        return option.label.toLowerCase().includes(query) || option.value.toLowerCase().includes(query)
       })
 
       return options.slice(0, 8)
@@ -692,7 +755,7 @@ export default {
     locationPreviewSummary() {
       if (!this.locationPreviewNames.length) return ""
       if (this.draftFilters.locationMode === "country") {
-        return `Previewing ${this.locationPreviewNames.length} supported locations in ${this.getCountryName(this.draftFilters.countryCode)}.`
+        return `Previewing ${this.locationPreviewNames.length} matched places in ${this.getCountryName(this.draftFilters.countryCode)}.`
       }
       const centerName = this.resolvedLocation?.city || this.draftFilters.manualLocationQuery || "your selected area"
       return `Previewing ${this.locationPreviewNames.length} matched places around ${centerName}.`
@@ -795,10 +858,18 @@ export default {
         chips.push({ key: `category-${category}`, type: "category", value: category, label: `Category: ${category}` })
       }
       for (const level of filters.levels || []) {
-        chips.push({ key: `level-${level}`, type: "level", value: level, label: `Level: ${level}` })
+        chips.push({ key: `level-${level}`, type: "level", value: level, label: `Level: ${this.formatLevelLabel(level)}` })
       }
       for (const company of filters.companies || []) {
         chips.push({ key: `company-${company}`, type: "company", value: company, label: `Company: ${company}` })
+      }
+      if (this.normalizeProviderValue(filters.provider)) {
+        chips.push({
+          key: "provider",
+          type: "provider",
+          value: this.normalizeProviderValue(filters.provider),
+          label: `Source: ${this.getProviderLabel(filters.provider)}`,
+        })
       }
 
       const keyword = String(filters.keyword || "").trim()
@@ -808,9 +879,7 @@ export default {
 
       const datePreset = String(filters.datePreset || "any").trim().toLowerCase()
       if (datePreset !== "any") {
-        const label = datePreset === "custom"
-          ? `After: ${filters.customAfterDate || "custom date"}`
-          : `Posted: last ${datePreset} days`
+        const label = this.buildPostedPresetChipLabel(filters)
         chips.push({ key: "date", type: "date", value: "", label })
       }
 
@@ -826,7 +895,20 @@ export default {
           key: "location-names",
           type: "location",
           value: "",
-          label: `Location set (${filters.locationNames.length})`,
+          label: this.buildLocationChipLabel(filters),
+        })
+      }
+
+      const normalizedCountryCode = (filters.countryCode || "").trim().toUpperCase()
+      const normalizedLocationMode = (filters.locationMode || "country").trim().toLowerCase()
+      if (normalizedCountryCode && (normalizedCountryCode !== DEFAULT_COUNTRY_CODE || normalizedLocationMode !== "country")) {
+        chips.push({
+          key: "country",
+          type: "country",
+          value: "",
+          label: normalizedLocationMode === "country"
+            ? `Country: ${this.getCountryName(filters.countryCode)}`
+            : `Country boundary: ${this.getCountryName(filters.countryCode)}`,
         })
       }
 
@@ -841,19 +923,31 @@ export default {
     searchScopeSummary() {
       const filters = this.appliedFilters || {}
       const workSetup = this.buildWorkSetupSummary(filters)
+      const providerSummary = this.normalizeProviderValue(filters.provider)
+        ? ` from ${this.getProviderLabel(filters.provider)}`
+        : ""
 
       if ((filters.locationMode || "").trim().toLowerCase() === "country") {
-        return `Searching across ${this.getCountryName(filters.countryCode)} with ${workSetup}.`
+        return `Searching across ${this.getCountryName(filters.countryCode)}${providerSummary} with ${workSetup}.`
       }
 
       const selectedCount = (filters.locationNames || []).length
       if (selectedCount > 0) {
         const centerName = this.resolvedLocation?.city || filters.manualLocationQuery || "your selected area"
-        return `Searching around ${centerName} across ${selectedCount} matched locations with ${workSetup}.`
+        return `Searching around ${centerName}${providerSummary} across ${selectedCount} matched locations with ${workSetup}.`
       }
 
-      return `Searching with ${workSetup}.`
+      return `Searching${providerSummary} with ${workSetup}.`
     }
+  },
+  watch: {
+    async "$route.query"(nextQuery) {
+      if (!this.routeHydrationReady) return
+      const routeSignature = stringifyRouteQuery(nextQuery || {})
+      const stateSignature = stringifyRouteQuery(this.buildRouteQueryObject())
+      if (routeSignature === stateSignature) return
+      await this.hydrateFromRouteQuery(nextQuery, "route-query")
+    },
   },
   methods: {
     createDefaultFilters() {
@@ -869,13 +963,310 @@ export default {
         countryCode: "US",
         locationNames: [],
         companies: [],
+        provider: "",
         keyword: "",
+        sortBy: DEFAULT_SORT_BY,
         datePreset: "any",
         customAfterDate: ""
       }
     },
     cloneFilters(filters) {
       return JSON.parse(JSON.stringify(filters))
+    },
+    normalizeSortBy(value) {
+      const normalized = String(value || "").trim().toLowerCase()
+      return this.sortOptions.some(option => option.value === normalized) ? normalized : DEFAULT_SORT_BY
+    },
+    normalizeProviderValue(value) {
+      const normalized = String(value || "").trim().toLowerCase()
+      if (!normalized || normalized === "all") return ""
+      return normalized
+    },
+    getProviderLabel(value) {
+      const normalized = this.normalizeProviderValue(value)
+      if (!normalized) return "All providers"
+      const optionMatch = (this.providerOptions || []).find(option => option.value === normalized)
+      if (optionMatch?.label) return optionMatch.label
+      const attributionLabel = (this.providerAttributionByName?.[normalized] || {}).label
+      return attributionLabel || normalized
+    },
+    formatLevelLabel(value) {
+      const clean = (value || "").trim()
+      if (!clean) return ""
+      return this.levelLabelLookup[clean] || this.levelLabelLookup[clean.toLowerCase()] || clean
+    },
+    buildPostedPresetChipLabel(filters = {}) {
+      const preset = String(filters.datePreset || "any").trim().toLowerCase()
+      if (preset === "custom") {
+        return `Posted after: ${filters.customAfterDate || "custom date"}`
+      }
+      if (preset === "today") return "Posted: today"
+      if (preset === "3") return "Posted: past 3 days"
+      if (preset === "7") return "Posted: past week"
+      if (preset === "30") return "Posted: past month"
+      return ""
+    },
+    buildLocationChipLabel(filters = {}) {
+      const locationMode = (filters.locationMode || "country").trim().toLowerCase()
+      const selectedCount = Array.isArray(filters.locationNames) ? filters.locationNames.length : 0
+      if (locationMode === "nearby") {
+        return selectedCount
+          ? `Nearby (${selectedCount} matched places)`
+          : "Nearby search"
+      }
+      if (locationMode === "manual") {
+        const query = (filters.manualLocationQuery || "").trim()
+        if (selectedCount && query) {
+          return `Custom area: ${query} (${selectedCount} matched places)`
+        }
+        return query ? `Custom area: ${query}` : "Custom area"
+      }
+      return selectedCount ? `Matched places (${selectedCount})` : "Location filter"
+    },
+    parseBooleanRouteValue(value, fallback = false) {
+      const normalized = normalizeRouteQueryScalar(value).toLowerCase()
+      if (!normalized) return fallback
+      if (["1", "true", "yes", "on"].includes(normalized)) return true
+      if (["0", "false", "no", "off"].includes(normalized)) return false
+      return fallback
+    },
+    parsePositiveInteger(value, fallback, minimum = 1, maximum = Number.MAX_SAFE_INTEGER) {
+      const numeric = Number.parseInt(normalizeRouteQueryScalar(value), 10)
+      if (!Number.isFinite(numeric)) return fallback
+      return Math.max(minimum, Math.min(maximum, numeric))
+    },
+    buildRouteQueryObject() {
+      const filters = this.appliedFilters || this.createDefaultFilters()
+      const query = {
+        country_code: (filters.countryCode || DEFAULT_COUNTRY_CODE).trim().toUpperCase(),
+        location_mode: (filters.locationMode || "country").trim().toLowerCase() || "country",
+        include_remote: filters.includeRemote === false ? "false" : "true",
+        include_hybrid: filters.includeHybrid === false ? "false" : "true",
+        sort_by: this.normalizeSortBy(filters.sortBy),
+      }
+
+      const keyword = (filters.keyword || "").trim()
+      if (keyword) {
+        query.q = keyword
+      }
+
+      const categories = this.normalizeUnique(filters.categories)
+      if (categories.length) {
+        query.category = categories
+      }
+
+      const levels = this.normalizeUnique(filters.levels)
+      if (levels.length) {
+        query.level = levels
+      }
+
+      const companies = this.normalizeUnique(filters.companies)
+      if (companies.length) {
+        query.company = companies
+      }
+
+      const provider = this.normalizeProviderValue(filters.provider)
+      if (provider) {
+        query.provider = provider
+      }
+
+      const postedPreset = String(filters.datePreset || "any").trim().toLowerCase()
+      if (postedPreset !== "any") {
+        query.posted = POSTED_DATE_PRESETS.has(postedPreset) ? postedPreset : "any"
+      }
+      if (postedPreset === "custom" && /^\d{4}-\d{2}-\d{2}$/.test((filters.customAfterDate || "").trim())) {
+        query.after = (filters.customAfterDate || "").trim()
+      }
+
+      if (query.location_mode !== "country") {
+        const locationQuery = (filters.manualLocationQuery || "").trim()
+        if (locationQuery) {
+          query.location_query = locationQuery
+        }
+        query.radius = String(Math.max(1, Math.round(Number(filters.locationRadius || 25))))
+        query.radius_unit = filters.radiusUnit === "km" ? "km" : "mi"
+
+        if (query.location_mode === "nearby") {
+          const center = this.getBestKnownCenter()
+          if (center && Number.isFinite(Number(center.latitude)) && Number.isFinite(Number(center.longitude))) {
+            query.center_lat = Number(center.latitude).toFixed(2)
+            query.center_lng = Number(center.longitude).toFixed(2)
+          }
+        }
+      }
+
+      if (this.page > 1) {
+        query.page = String(this.page)
+      }
+
+      return query
+    },
+    async syncRouteQuery() {
+      const nextQuery = this.buildRouteQueryObject()
+      const nextSignature = stringifyRouteQuery(nextQuery)
+      const currentSignature = stringifyRouteQuery(this.$route?.query || {})
+      if (nextSignature === currentSignature) return
+
+      this.routeHydrationReady = false
+      try {
+        await this.$router.replace({ path: this.$route.path, query: nextQuery })
+      } finally {
+        this.routeHydrationReady = true
+      }
+    },
+    parseRouteQueryFilters(query = {}) {
+      const filters = this.createDefaultFilters()
+      filters.keyword = normalizeRouteQueryScalar(query.q)
+      filters.categories = this.normalizeCategoryValues(normalizeRouteQueryList(query.category))
+      filters.levels = this.normalizeLevelValues(normalizeRouteQueryList(query.level))
+      filters.companies = this.normalizeUnique(normalizeRouteQueryList(query.company))
+      filters.provider = this.normalizeProviderValue(normalizeRouteQueryScalar(query.provider))
+      filters.sortBy = this.normalizeSortBy(normalizeRouteQueryScalar(query.sort_by))
+
+      const postedPreset = normalizeRouteQueryScalar(query.posted).toLowerCase()
+      const customAfterDate = normalizeRouteQueryScalar(query.after)
+      if (POSTED_DATE_PRESETS.has(postedPreset) && postedPreset !== "any") {
+        filters.datePreset = postedPreset
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(customAfterDate)) {
+        filters.datePreset = "custom"
+      }
+      filters.customAfterDate = /^\d{4}-\d{2}-\d{2}$/.test(customAfterDate) ? customAfterDate : ""
+      if (filters.datePreset === "custom" && !filters.customAfterDate) {
+        filters.datePreset = "any"
+      }
+
+      const countryCode = normalizeRouteQueryScalar(query.country_code).toUpperCase()
+      const availableCountryCodes = new Set((this.countryOptions || []).map(country => String(country?.code || "").trim().toUpperCase()).filter(Boolean))
+      filters.countryCode = availableCountryCodes.has(countryCode)
+        ? countryCode
+        : (this.countryOptions[0]?.code || DEFAULT_COUNTRY_CODE)
+
+      const locationMode = normalizeRouteQueryScalar(query.location_mode).toLowerCase()
+      filters.locationMode = ["country", "nearby", "manual"].includes(locationMode) ? locationMode : "country"
+      filters.manualLocationQuery = normalizeRouteQueryScalar(query.location_query)
+      filters.radiusUnit = normalizeRouteQueryScalar(query.radius_unit).toLowerCase() === "km" ? "km" : "mi"
+      filters.locationRadius = this.parsePositiveInteger(
+        query.radius,
+        filters.radiusUnit === "km" ? 40 : 25,
+        1,
+        filters.radiusUnit === "km" ? 161 : 100,
+      )
+      filters.includeRemote = this.parseBooleanRouteValue(query.include_remote, true)
+      filters.includeHybrid = this.parseBooleanRouteValue(query.include_hybrid, true)
+      filters.locationNames = []
+
+      if (
+        this.providerOptions.length
+        && this.normalizeProviderValue(filters.provider)
+        && !this.providerOptions.some(option => option.value === this.normalizeProviderValue(filters.provider))
+      ) {
+        filters.provider = ""
+      }
+
+      const page = this.parsePositiveInteger(query.page, 1, 1, Number.MAX_SAFE_INTEGER)
+      return { filters, page }
+    },
+    async restoreResolvedLocationFromRoute(filters, routeQuery = {}) {
+      this.resolvedLocation = null
+
+      const locationMode = (filters?.locationMode || "country").trim().toLowerCase()
+      if (locationMode === "country") return
+
+      const lat = Number(normalizeRouteQueryScalar(routeQuery.center_lat))
+      const lng = Number(normalizeRouteQueryScalar(routeQuery.center_lng))
+      if (locationMode === "nearby" && Number.isFinite(lat) && Number.isFinite(lng)) {
+        this.resolvedLocation = {
+          latitude: lat,
+          longitude: lng,
+          city: (filters?.manualLocationQuery || "").trim(),
+          display_name: (filters?.manualLocationQuery || "").trim(),
+          country_code: (filters?.countryCode || "").trim().toUpperCase(),
+          source: "route",
+        }
+        setCachedLocation(this.resolvedLocation)
+        return
+      }
+
+      const locationQuery = (filters?.manualLocationQuery || "").trim()
+      if (locationQuery) {
+        try {
+          const payload = await this.fetchJson(
+            `/api/geolocation/geocode?q=${encodeURIComponent(locationQuery)}&country_code=${encodeURIComponent(filters.countryCode || "")}`
+          )
+          this.resolvedLocation = payload
+          setCachedLocation(payload)
+          return
+        } catch (error) {
+          console.error("Route geocode failed", error)
+        }
+      }
+
+      const cached = getCachedLocation()
+      if (cached?.latitude && cached?.longitude) {
+        this.resolvedLocation = cached
+      }
+    },
+    async hydrateFromRouteQuery(query = {}, reason = "route-hydrated") {
+      this.routeHydrationReady = false
+      this.locationError = ""
+      this.locationWarning = ""
+      this.locationInfo = ""
+      this.locationLimitNotice = ""
+      this.pretrimLocationNotice = ""
+      this.categoryInput = ""
+      this.categoryInfo = ""
+      this.categoryActiveIndex = 0
+      this.categoryMenuOpen = false
+      this.levelInput = ""
+      this.levelInfo = ""
+      this.levelActiveIndex = 0
+      this.levelMenuOpen = false
+      this.companyInput = ""
+      this.cityPreviewModalOpen = false
+
+      try {
+        const { filters, page } = this.parseRouteQueryFilters(query)
+        this.draftFilters = this.cloneFilters(filters)
+        this.appliedFilters = this.cloneFilters(filters)
+        this.page = page
+        this.locationPreviewNames = []
+        this.locationPreviewCities = []
+        this.locationPreviewCandidates = []
+        this.locationPreviewCenter = null
+
+        await this.restoreResolvedLocationFromRoute(this.draftFilters, query)
+
+        const useResolvedLocationList = this.draftFilters.locationMode !== "country"
+        const locationNames = useResolvedLocationList ? await this.resolveLocationNamesFromDraft() : []
+        const preflightSelection = this.buildPreflightLocationSelection(locationNames, this.draftFilters.locationMode)
+        this.pretrimLocationNotice = preflightSelection.requestedCount
+          ? `Using ${preflightSelection.usedCount} of ${preflightSelection.requestedCount} resolved locations (${preflightSelection.strategy}).`
+          : ""
+
+        this.draftFilters.categories = this.normalizeCategoryValues(this.draftFilters.categories)
+        this.draftFilters.levels = this.normalizeLevelValues(this.draftFilters.levels)
+        this.draftFilters.companies = this.normalizeUnique(this.draftFilters.companies)
+        this.draftFilters.provider = this.normalizeProviderValue(this.draftFilters.provider)
+        this.draftFilters.sortBy = this.normalizeSortBy(this.draftFilters.sortBy)
+        this.draftFilters.locationNames = preflightSelection.selected
+        this.appliedFilters = this.cloneFilters(this.draftFilters)
+
+        await this.loadJobs()
+        this.publishDebugState(reason)
+      } finally {
+        this.routeHydrationReady = true
+      }
+    },
+    async applySortChange(nextSortBy) {
+      const normalizedSort = this.normalizeSortBy(nextSortBy)
+      if (normalizedSort === this.normalizeSortBy(this.appliedFilters.sortBy)) {
+        return
+      }
+      this.draftFilters.sortBy = normalizedSort
+      this.appliedFilters.sortBy = normalizedSort
+      this.page = 1
+      await this.loadJobs()
+      this.publishDebugState("sort-changed")
     },
     getCountryName(code) {
       const normalized = String(code || "").trim().toUpperCase()
@@ -905,6 +1296,9 @@ export default {
       } else if (chip.type === "company") {
         this.draftFilters.companies = removeValue(this.draftFilters.companies, chip.value)
         this.appliedFilters.companies = removeValue(this.appliedFilters.companies, chip.value)
+      } else if (chip.type === "provider") {
+        this.draftFilters.provider = ""
+        this.appliedFilters.provider = ""
       } else if (chip.type === "keyword") {
         this.draftFilters.keyword = ""
         this.appliedFilters.keyword = ""
@@ -921,6 +1315,16 @@ export default {
         this.appliedFilters.includeHybrid = true
       } else if (chip.type === "location") {
         await this.clearLocationAndSearch()
+        return
+      } else if (chip.type === "country") {
+        this.draftFilters.countryCode = DEFAULT_COUNTRY_CODE
+        this.appliedFilters.countryCode = DEFAULT_COUNTRY_CODE
+        this.page = 1
+        if ((this.appliedFilters.locationMode || "").trim().toLowerCase() === "country") {
+          await this.loadJobs()
+        } else {
+          await this.applyFilters()
+        }
         return
       }
 
@@ -1122,9 +1526,12 @@ export default {
       }
 
       let days = 0
+      if (preset === "today") days = 0
+      if (preset === "3") days = 3
       if (preset === "7") days = 7
       if (preset === "30") days = 30
-      if (!days) return ""
+      if (preset === "any") return ""
+      if (!POSTED_DATE_PRESETS.has(preset)) return ""
 
       const threshold = new Date()
       threshold.setHours(0, 0, 0, 0)
@@ -1156,8 +1563,20 @@ export default {
         for (const group of this.categoryGroups) {
           mapLookup[group.name] = group
         }
-        this.categoryMapLookup = mapLookup
-        this.categoryOptions = this.categoryGroups.map(group => group.name)
+          this.categoryMapLookup = mapLookup
+        }
+
+      const categoryValues = Array.isArray(payload.category_values)
+        ? payload.category_values
+          .map(item => String(item?.value || "").trim().replace(/\s+/g, " "))
+          .filter(Boolean)
+        : []
+      if (categoryValues.length) {
+        this.categoryOptions = this.normalizeUnique(categoryValues)
+      } else if (this.categoryGroups.length) {
+        this.categoryOptions = this.normalizeUnique(
+          this.categoryGroups.flatMap(group => Array.isArray(group.muse_categories) ? group.muse_categories : [])
+        )
       }
 
       const aliasMapRaw = payload.category_aliases && typeof payload.category_aliases === "object"
@@ -1172,6 +1591,12 @@ export default {
         lookup[canonical.toLowerCase()] = canonical
         canonicalByLower[canonical.toLowerCase()] = canonical
       }
+      for (const group of this.categoryGroups) {
+        const canonical = String(group.name || "").trim()
+        if (!canonical) continue
+        lookup[canonical.toLowerCase()] = canonical
+        canonicalByLower[canonical.toLowerCase()] = canonical
+      }
 
       for (const [alias, rawCanonical] of Object.entries(aliasMapRaw)) {
         const normalizedAlias = String(alias || "").trim().toLowerCase()
@@ -1182,19 +1607,84 @@ export default {
       }
       this.categoryLookup = lookup
 
-      const levels = Array.isArray(payload.levels) ? payload.levels.map(level => String(level || "").trim()).filter(Boolean) : []
-      if (levels.length) {
-        this.levelOptions = levels
+      const levelValues = Array.isArray(payload.level_values)
+        ? payload.level_values.map(item => ({
+          value: this.normalizeLevelForApi(item?.value || ""),
+          label: String(item?.label || "").trim().replace(/\s+/g, " "),
+          observedCount: Number(item?.observed_count || 0),
+        })).filter(item => item.value && item.label)
+        : []
+      const legacyLevels = levelValues.length
+        ? []
+        : (Array.isArray(payload.levels) ? payload.levels.map(value => ({
+          value: this.normalizeLevelForApi(value),
+          label: this.formatLevelLabel(this.normalizeLevelForApi(value)),
+          observedCount: 0,
+        })).filter(item => item.value && item.label) : [])
+      const nextLevelOptions = levelValues.length
+        ? this.normalizeUnique(levelValues.map(option => option.value)).map((value) => {
+          const match = levelValues.find(option => option.value === value)
+          return match || { value, label: this.formatLevelLabel(value), observedCount: 0 }
+        })
+        : (legacyLevels.length
+          ? this.normalizeUnique(legacyLevels.map(option => option.value)).map((value) => {
+            const match = legacyLevels.find(option => option.value === value)
+            return match || { value, label: this.formatLevelLabel(value), observedCount: 0 }
+          })
+          : DEFAULT_LEVEL_OPTIONS.map(option => ({ ...option })))
+      if (nextLevelOptions.length) {
+        this.levelOptions = nextLevelOptions
         const nextLevelLookup = {}
-        for (const level of levels) {
-          nextLevelLookup[level.toLowerCase()] = level
+        const nextLevelLabelLookup = {}
+        for (const option of nextLevelOptions) {
+          nextLevelLookup[option.value.toLowerCase()] = option.value
+          nextLevelLookup[option.label.toLowerCase()] = option.value
+          nextLevelLabelLookup[option.value] = option.label
+          nextLevelLabelLookup[option.value.toLowerCase()] = option.label
         }
         this.levelLookup = nextLevelLookup
+        this.levelLabelLookup = nextLevelLabelLookup
       }
 
       const capValue = Number(payload.location_param_cap || 0)
       if (Number.isFinite(capValue) && capValue > 0) {
         this.maxLocationParams = Math.max(1, Math.floor(capValue))
+      }
+
+      const countryValues = Array.isArray(payload.country_values)
+        ? payload.country_values
+          .map(item => ({
+            code: String(item?.code || "").trim().toUpperCase(),
+            name: String(item?.name || item?.code || "").trim(),
+            observed_count: Number(item?.observed_count || 0),
+          }))
+          .filter(item => item.code && item.name)
+        : []
+      this.countryOptions = countryValues.length
+        ? countryValues
+        : [{ code: DEFAULT_COUNTRY_CODE, name: "United States", observed_count: 0 }]
+      if (!this.countryOptions.some(country => country.code === this.draftFilters.countryCode)) {
+        const fallbackCountryCode = this.countryOptions[0]?.code || DEFAULT_COUNTRY_CODE
+        this.draftFilters.countryCode = fallbackCountryCode
+        this.appliedFilters.countryCode = fallbackCountryCode
+      }
+
+      const providerValues = Array.isArray(payload.provider_values)
+        ? payload.provider_values
+          .map(item => ({
+            value: this.normalizeProviderValue(item?.value || ""),
+            label: String(item?.label || item?.value || "").trim(),
+            observedCount: Number(item?.observed_count || 0),
+          }))
+          .filter(item => item.value && item.label)
+        : []
+      this.providerOptions = providerValues
+      if (
+        this.normalizeProviderValue(this.draftFilters.provider)
+        && !this.providerOptions.some(option => option.value === this.normalizeProviderValue(this.draftFilters.provider))
+      ) {
+        this.draftFilters.provider = ""
+        this.appliedFilters.provider = ""
       }
 
       this.filterMetadataVersion = payload.metadata_version || ""
@@ -1225,31 +1715,8 @@ export default {
       }
     },
     async fetchCountryOptions() {
-      try {
-        if (this.locationSourceMode !== "muse") {
-          return
-        }
-        const payload = await this.fetchJson("/api/geolocation/muse-supported-countries")
-        const countries = (payload.countries || [])
-          .filter(country => country?.code)
-          .map(country => ({
-            code: country.code,
-            name: country.name || country.code,
-            location_count: Number(country.location_count || 0)
-          }))
-
-        if (!countries.length) {
-          this.locationWarning = "Muse country coverage is still loading. Try again shortly."
-          return
-        }
-
-        this.countryOptions = countries
-        if (!countries.some(country => country.code === this.draftFilters.countryCode)) {
-          this.draftFilters.countryCode = countries[0].code
-        }
-      } catch (error) {
-        this.locationWarning = "Could not load Muse country coverage."
-        console.error("Failed to load Muse countries", error)
+      if (!Array.isArray(this.countryOptions) || !this.countryOptions.length) {
+        this.countryOptions = [{ code: DEFAULT_COUNTRY_CODE, name: "United States", observed_count: 0 }]
       }
     },
     normalizeLevelValues(values) {
@@ -1257,17 +1724,15 @@ export default {
       for (const value of values || []) {
         const clean = (value || "").trim()
         if (!clean) continue
-        const canonical = this.levelLookup[clean.toLowerCase()]
+        const canonical = this.levelLookup[clean.toLowerCase()] || LEVEL_VALUE_ALIASES[clean.toLowerCase()] || clean.toLowerCase()
         if (canonical) canonicalized.push(canonical)
       }
       return this.normalizeUnique(canonicalized)
     },
     normalizeLevelForApi(value) {
-      const canonical = this.levelLookup[(value || "").trim().toLowerCase()] || (value || "").trim()
-      if (canonical.toLowerCase() === "management") {
-        return "management"
-      }
-      return canonical
+      const clean = (value || "").trim()
+      if (!clean) return ""
+      return this.levelLookup[clean.toLowerCase()] || LEVEL_VALUE_ALIASES[clean.toLowerCase()] || clean.toLowerCase()
     },
     openCategoryMenu() {
       this.categoryMenuOpen = true
@@ -1311,7 +1776,7 @@ export default {
       this.categoryActiveIndex = 0
       this.categoryMenuOpen = true
       this.categoryInfo = canonical === clean && !this.categoryLookup[clean.toLowerCase()]
-        ? "Added custom category value."
+        ? "Added exact category value."
         : ""
     },
     chooseCategoryFromInput() {
@@ -1335,19 +1800,6 @@ export default {
         return
       }
       this.addCategory(input)
-    },
-    openCategoryMappingModal() {
-      if (!this.selectedCategoryGroups.length) return
-      this.categoryMappingModalOpen = true
-    },
-    closeCategoryMappingModal() {
-      this.categoryMappingModalOpen = false
-    },
-    openAdvancedLocationModal() {
-      this.advancedLocationModalOpen = true
-    },
-    closeAdvancedLocationModal() {
-      this.advancedLocationModalOpen = false
     },
     async activateNearbyMode() {
       this.setLocationMode("nearby")
@@ -1423,7 +1875,7 @@ export default {
       this.levelActiveIndex = next
     },
     addLevel(level) {
-      const canonical = this.levelLookup[(level || "").trim().toLowerCase()]
+      const canonical = this.normalizeLevelForApi(level)
       if (!canonical) return
 
       this.draftFilters.levels = this.normalizeUnique([
@@ -1447,17 +1899,17 @@ export default {
       }
 
       if (this.filteredLevelOptions.length === 1) {
-        this.addLevel(this.filteredLevelOptions[0])
+        this.addLevel(this.filteredLevelOptions[0].value)
         return
       }
 
       if (this.filteredLevelOptions.length > 1) {
         const highlighted = this.filteredLevelOptions[this.levelActiveIndex] || this.filteredLevelOptions[0]
-        this.addLevel(highlighted)
+        this.addLevel(highlighted.value)
         return
       }
 
-      this.levelInfo = "Choose a valid Muse level from suggestions."
+      this.levelInfo = "Choose a valid level from suggestions."
     },
     addCustomFilterValue(target) {
       const input = this.companyInput
@@ -1509,9 +1961,6 @@ export default {
       return null
     },
     handleGlobalKeydown(event) {
-      if (event.key === "Escape" && this.categoryMappingModalOpen) {
-        this.closeCategoryMappingModal()
-      }
       if (event.key === "Escape" && this.cityPreviewModalOpen) {
         this.closeCityPreviewModal()
       }
@@ -1686,11 +2135,7 @@ export default {
       const mode = this.draftFilters.locationMode
 
       if (mode === "country") {
-        const endpoint = this.locationSourceMode === "muse"
-          ? "/api/geolocation/muse-supported-locations"
-          : "/api/geolocation/country-cities"
-
-        const payload = await this.fetchJson(`${endpoint}?country_code=${encodeURIComponent(this.draftFilters.countryCode)}&limit=200`)
+        const payload = await this.fetchJson(`/api/geolocation/country-cities?country_code=${encodeURIComponent(this.draftFilters.countryCode)}&limit=200`)
         const previewCities = (payload.locations || payload.cities || []).filter(city => city?.name)
         const candidates = this.dedupeLocationCandidates(
           this.orderLocationCandidates(this.buildLocationCandidates(previewCities, "country"), "country")
@@ -1704,9 +2149,9 @@ export default {
           : null
         this.locationPreviewNames = names
         if (!names.length) {
-          this.locationWarning = "No Muse-supported locations found for that country right now."
+          this.locationWarning = "No supported locations found for that country right now."
         } else {
-          this.locationInfo = `Using ${names.length} Muse-supported locations in ${this.draftFilters.countryCode}.`
+          this.locationInfo = `Using ${names.length} supported locations in ${this.draftFilters.countryCode}.`
         }
         return names
       }
@@ -1773,7 +2218,7 @@ export default {
         this.closeCityPreviewModal()
         await this.resolveLocationNamesFromDraft()
       } catch (e) {
-        this.locationError = "Failed to preview area cities. Please try again."
+        this.locationError = "Failed to preview matched places. Please try again."
         console.error("Location preview failed", e)
       } finally {
         this.locationBusy = false
@@ -1784,6 +2229,7 @@ export default {
       params.set("page", String(page))
       params.set("page_size", String(this.pageSize))
       params.set("location_mode", this.appliedFilters.locationMode || "")
+      params.set("sort_by", this.normalizeSortBy(this.appliedFilters.sortBy))
 
       const locationCountryCode = (this.appliedFilters.countryCode || "").trim().toUpperCase()
       if (locationCountryCode) {
@@ -1802,6 +2248,10 @@ export default {
       }
       for (const value of this.normalizeUnique(this.appliedFilters.companies)) {
         params.append("company", value)
+      }
+      const provider = this.normalizeProviderValue(this.appliedFilters.provider)
+      if (provider) {
+        params.set("provider", provider)
       }
       const keyword = (this.appliedFilters.keyword || "").trim()
       if (keyword) {
@@ -1896,6 +2346,8 @@ export default {
           short_name: job.short_name || "",
           company: job.company,
           location: job.locations?.[0] || "Unknown",
+          location_country_code: job.location_country_code || "",
+          location_country_name: job.location_country_name || "",
           locations: job.locations || [],
           level: job.levels?.[0] || "",
           levels: job.levels || [],
@@ -1910,6 +2362,7 @@ export default {
           local_compatibility_reason: job.local_compatibility_reason || "",
           location_constraints: job.location_constraints || {},
           publication_date: job.publication_date,
+          short_description: job.short_description || "",
           apply_link: job.apply_url || job.job_url,
           link: job.job_url,
           contents: job.contents || ""
@@ -1930,6 +2383,11 @@ export default {
         debugReason = "jobs-load-error"
       } finally {
         this.loading = false
+        try {
+          await this.syncRouteQuery()
+        } catch (routeError) {
+          console.error("Failed to sync job board URL", routeError)
+        }
         this.publishDebugState(debugReason)
       }
     },
@@ -1947,6 +2405,7 @@ export default {
         this.appliedFilters.categories = this.normalizeCategoryValues(this.appliedFilters.categories)
         this.appliedFilters.levels = this.normalizeLevelValues(this.appliedFilters.levels)
         this.appliedFilters.companies = this.normalizeUnique(this.appliedFilters.companies)
+        this.appliedFilters.provider = this.normalizeProviderValue(this.appliedFilters.provider)
         this.appliedFilters.locationNames = preflightSelection.selected
 
         this.page = 1
@@ -1968,7 +2427,6 @@ export default {
       this.categoryInfo = ""
       this.categoryActiveIndex = 0
       this.categoryMenuOpen = false
-      this.categoryMappingModalOpen = false
       this.advancedFiltersOpen = false
       this.levelInput = ""
       this.levelInfo = ""
@@ -1985,6 +2443,7 @@ export default {
       this.locationPreviewCities = []
       this.locationPreviewCandidates = []
       this.locationPreviewCenter = null
+      this.resolvedLocation = null
       this.totalJobs = 0
       this.totalPages = 1
       this.totalsAreEstimated = false
@@ -2028,8 +2487,7 @@ export default {
       this.locationInfo = `Saved nearby location available near ${cached.city || "your area"} if you want to switch from country-wide search.`
     }
 
-    await this.loadJobs()
-    this.publishDebugState("mounted")
+    await this.hydrateFromRouteQuery(this.$route.query, "mounted")
   },
   beforeUnmount() {
     window.removeEventListener("keydown", this.handleGlobalKeydown)

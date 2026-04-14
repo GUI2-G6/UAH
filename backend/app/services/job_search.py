@@ -10,6 +10,17 @@ from app.models.job import Job
 from app.providers.registry import list_enabled_provider_names
 
 
+LEVEL_LABELS = {
+    "internship": "Internship",
+    "entry": "Entry",
+    "mid": "Mid",
+    "senior": "Senior",
+    "manager": "Manager",
+    "director": "Director",
+    "vp": "VP",
+}
+
+
 def _dedupe(values: list[str]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
@@ -41,10 +52,28 @@ def _normalize_level_values(values: list[str]) -> list[str]:
     }
     normalized: list[str] = []
     for value in values:
-        mapped = level_map.get(" ".join((value or "").strip().lower().split()))
-        if mapped:
-            normalized.append(mapped)
+        clean = " ".join((value or "").strip().split())
+        if not clean:
+            continue
+        mapped = level_map.get(clean.lower())
+        normalized.append(mapped or clean)
     return _dedupe(normalized)
+
+
+def _format_level_label(value: str | None) -> str:
+    normalized = " ".join((value or "").strip().lower().split())
+    if not normalized:
+        return ""
+    return LEVEL_LABELS.get(normalized, " ".join(part.capitalize() for part in normalized.split()))
+
+
+def _build_search_tags(job: Job) -> list[str]:
+    tags: list[str] = []
+    if job.experience_level:
+        tags.append(_format_level_label(job.experience_level))
+    if job.job_type:
+        tags.append(" ".join(str(job.job_type).replace("_", " ").split()).title())
+    return _dedupe(tags)
 
 
 def _serialize_job(job: Job) -> dict:
@@ -72,13 +101,15 @@ def _serialize_job(job: Job) -> dict:
         "company": job.company,
         "company_url": job.company_url,
         "location": job.location,
+        "location_country_code": job.location_country_code,
+        "location_country_name": job.location_country_name,
         "locations": locations,
         "job_type": job.job_type,
         "type": job.job_type,
         "experience_level": job.experience_level,
         "levels": levels,
         "categories": list(job.categories or []),
-        "tags": list(job.categories or []),
+        "tags": _build_search_tags(job),
         "short_description": job.short_description or "",
         "description": job.description or "",
         "contents": job.description or "",
@@ -106,6 +137,8 @@ def search_local_jobs(
     experience_levels: list[str] | None = None,
     job_type: str | None = None,
     companies: list[str] | None = None,
+    provider: str | None = None,
+    location_country_code: str | None = None,
     sort_by: str = "date_desc",
     tier: str = "active",
     page: int = 1,
@@ -122,6 +155,13 @@ def search_local_jobs(
         query = query.filter(False)
     else:
         query = query.filter(Job.provider.in_(display_enabled_providers))
+
+    normalized_provider = " ".join((provider or "").strip().lower().split())
+    if normalized_provider:
+        if normalized_provider not in display_enabled_providers:
+            query = query.filter(False)
+        else:
+            query = query.filter(Job.provider == normalized_provider)
 
     normalized_tier = (tier or "active").strip().lower()
     if normalized_tier == "active":
@@ -141,6 +181,10 @@ def search_local_jobs(
     normalized_locations = _dedupe(list(locations or []))
     if normalized_locations:
         query = query.filter(or_(*[Job.location.ilike(f"%{value}%") for value in normalized_locations]))
+
+    normalized_country_code = " ".join((location_country_code or "").strip().upper().split())
+    if normalized_country_code:
+        query = query.filter(Job.location_country_code == normalized_country_code)
 
     normalized_levels = _normalize_level_values(list(experience_levels or []))
     if normalized_levels:
@@ -190,7 +234,7 @@ def search_local_jobs(
     jobs = [_serialize_job(row) for row in rows]
     has_more = total > (page * page_size)
     total_pages = max(ceil(total / page_size), 1) if total else 1
-    filter_metadata = _build_jobs_filter_metadata_payload()
+    filter_metadata = _build_jobs_filter_metadata_payload(db)
 
     return {
         "jobs": jobs,
@@ -248,6 +292,8 @@ def search_local_jobs(
         "cache_hit": False,
         "keyword_query": normalized_query.strip("%"),
         "posted_after": posted_after_dt.isoformat() if posted_after_dt else "",
+        "provider": normalized_provider,
+        "location_country_code": normalized_country_code,
         "jobs_filter_metadata_version": filter_metadata.get("metadata_version"),
         "jobs_filter_metadata_hash": filter_metadata.get("metadata_hash"),
     }

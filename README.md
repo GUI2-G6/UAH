@@ -221,8 +221,9 @@ bash scripts/uah.sh beta sync hard --build-all
 1. Fetches latest refs from `origin`
 2. Checks out `dev` and syncs branch state
 3. Supports `safe` (`pull --ff-only`) and `hard` (`reset --hard origin/dev`) sync modes
-4. Optionally runs post-sync compose startup with rebuild flags when provided
-5. Runs environment feature validation after sync in warn-only mode so missing keys are surfaced early
+4. If the environment backend is already running, automatically runs `alembic upgrade head` in the backend container and refreshes `backend`, `celery_worker`, and `celery_beat`
+5. Optionally runs post-sync compose startup with rebuild flags when provided, then applies the same Alembic + runtime refresh flow
+6. Runs environment feature validation after sync in warn-only mode so missing keys are surfaced early
 
 If safe sync detects blockers (local file changes, local commits, or non-fast-forward state):
 
@@ -230,7 +231,7 @@ If safe sync detects blockers (local file changes, local commits, or non-fast-fo
 2. In interactive shells, it prompts to abort or force hard sync
 3. In non-interactive mode, safe sync exits with an error and does not modify the working tree
 
-> **Note:** Default sync behavior is git-only. Rebuilds only occur when a build flag is passed.
+> **Note:** Default sync behavior is still git-only for stopped stacks. If the backend container is already running, sync now also performs a live Alembic reconcile and refreshes the schema-sensitive runtime services.
 
 ---
 
@@ -347,6 +348,8 @@ On `start`, `restart`, and `sync` with rebuild flags, scripts validate:
 3. Required infrastructure container `uah-dev-vpn` is running
 4. Redis host ports are available before startup (`REDIS_HOST_PORT` for dev, `BETA_REDIS_HOST_PORT` for beta)
 5. Environment feature requirements in root `.env` via `scripts/lib/env-feature-check.sh`
+
+After containers are brought up for `dev` or `beta`, lifecycle scripts now automatically run `alembic upgrade head` inside the backend container and restart `backend`, `celery_worker`, and `celery_beat` so schema-dependent services stay aligned.
 
 ### Concurrent Dev + Beta OCR Routing
 

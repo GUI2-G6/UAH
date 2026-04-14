@@ -11,37 +11,52 @@
                 <p class="job-company">{{ job.company || "Unknown company" }}</p>
             </template>
 
-            <div class="job-meta-row">
-                <span
-                    v-for="pill in visibleMetaPills"
-                    :key="pill"
-                    class="meta-pill"
-                    :class="{ accent: pill === workSetupLabel, compatible: pill === 'Location overlap' }"
-                >
-                    {{ pill }}
-                </span>
-            </div>
+            <div class="job-card-body">
+                <div class="job-meta-row">
+                    <span
+                        v-for="pill in visibleMetaPills"
+                        :key="pill"
+                        class="meta-pill"
+                        :class="{ accent: pill === workSetupLabel, compatible: pill === 'Location overlap' }"
+                    >
+                        {{ pill }}
+                    </span>
+                </div>
 
-            <p class="job-teaser">{{ teaserText }}</p>
+                <div v-if="categoryPills.length" class="job-topic-row">
+                    <span
+                        v-for="pill in categoryPills"
+                        :key="`category-${pill}`"
+                        class="meta-pill subtle"
+                    >
+                        {{ pill }}
+                    </span>
+                </div>
 
-            <div v-if="attributionText" class="job-attribution">
-                <a
-                    v-if="attributionHref"
-                    :href="attributionHref"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    :class="{ required: attributionRequired }"
-                >
-                    {{ attributionText }}
-                </a>
-                <span v-else :class="{ required: attributionRequired }">
-                    {{ attributionText }}
-                </span>
-            </div>
+                <p class="job-teaser">{{ teaserText }}</p>
 
-            <div class="job-actions">
-                <button type="button" class="secondary" @click="openDetails">Details</button>
-                <button type="button" class="primary" @click="apply">Apply Now</button>
+                <div class="job-footer">
+                    <div v-if="attributionText" class="job-attribution">
+                        <a
+                            v-if="attributionHref"
+                            :href="attributionHref"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="source-badge"
+                            :class="{ required: attributionRequired }"
+                        >
+                            {{ attributionText }}
+                        </a>
+                        <span v-else class="source-badge" :class="{ required: attributionRequired }">
+                            {{ attributionText }}
+                        </span>
+                    </div>
+
+                    <div class="job-actions">
+                        <button type="button" class="secondary" @click="openDetails">Details</button>
+                        <button type="button" class="primary" @click="apply">Apply Now</button>
+                    </div>
+                </div>
             </div>
         </Card>
 
@@ -62,12 +77,7 @@
                 <p class="job-modal-company">{{ job.company || "Unknown company" }}</p>
 
                 <div class="job-modal-meta">
-                    <span>{{ job.location || "Unknown location" }}</span>
-                    <span v-if="job.type">Type: {{ job.type }}</span>
-                    <span v-if="job.levels && job.levels.length">Levels: {{ job.levels.join(", ") }}</span>
-                    <span v-if="job.categories && job.categories.length">Categories: {{ job.categories.join(", ") }}</span>
-                    <span v-if="job.tags && job.tags.length">Tags: {{ job.tags.join(", ") }}</span>
-                    <span v-if="job.publication_date">Posted: {{ formattedPublicationDate }}</span>
+                    <span v-for="item in detailMetaPills" :key="item">{{ item }}</span>
                     <span v-if="showDebugMeta && job.is_local_compatible_remote">Compatibility: {{ compatibilityLabel }}</span>
                     <span v-if="showDebugMeta && constraintExclusions.length">Exclusions: {{ constraintExclusions.join(", ") }}</span>
                     <span
@@ -80,7 +90,7 @@
                 </div>
 
                 <div class="job-modal-body">
-                    <p>{{ detailsText }}</p>
+                    <p v-for="(paragraph, index) in detailParagraphs" :key="`paragraph-${index}`">{{ paragraph }}</p>
                 </div>
 
                 <div class="job-modal-actions">
@@ -118,29 +128,42 @@ export default {
         }
     },
     computed: {
-        plainContents() {
+        normalizedDescriptionText() {
             const raw = (this.job?.contents || "").toString()
             if (!raw) return ""
-            return raw
-                .replace(/<style[\s\S]*?<\/style>/gi, " ")
-                .replace(/<script[\s\S]*?<\/script>/gi, " ")
-                .replace(/<[^>]+>/g, " ")
-                .replace(/&nbsp;/g, " ")
-                .replace(/&amp;/g, "&")
-                .replace(/&quot;/g, '"')
-                .replace(/&#39;/g, "'")
-                .replace(/\s+/g, " ")
-                .trim()
+            return this.formatDescriptionText(raw)
         },
         teaserText() {
-            if (this.plainContents) {
-                return `${this.plainContents.slice(0, 180)}${this.plainContents.length > 180 ? "..." : ""}`
+            const shortDescription = (this.job?.short_description || "").toString().trim()
+            if (shortDescription) {
+                return this.truncateText(shortDescription, 185)
+            }
+            if (this.normalizedDescriptionText) {
+                return this.truncateText(this.normalizedDescriptionText, 185)
             }
             return "Open details to review responsibilities, qualifications, and company context."
         },
-        detailsText() {
-            if (this.plainContents) return this.plainContents
-            return "This listing does not include a full description from the source. Use the apply link for complete role details."
+        detailParagraphs() {
+            if (!this.normalizedDescriptionText) {
+                return ["This listing does not include a full description from the source. Use the apply link for complete role details."]
+            }
+            return this.normalizedDescriptionText
+                .split(/\n{2,}/)
+                .map((item) => item.trim())
+                .filter(Boolean)
+        },
+        categoryPills() {
+            const values = []
+            const seen = new Set()
+            for (const category of this.job?.categories || []) {
+                const clean = (category || "").toString().trim()
+                const key = clean.toLowerCase()
+                if (!clean || seen.has(key)) continue
+                seen.add(key)
+                values.push(clean)
+                if (values.length >= 2) break
+            }
+            return values
         },
         formattedPublicationDate() {
             const raw = this.job?.publication_date
@@ -174,10 +197,34 @@ export default {
                 this.workSetupLabel,
             ]
 
+            const levelLabel = (this.job?.levels?.[0] || "").toString().trim()
+            if (levelLabel) {
+                pills.push(levelLabel)
+            }
+
             if (this.showDebugMeta && this.job?.is_local_compatible_remote) {
                 pills.push("Location overlap")
             }
 
+            return pills
+        },
+        detailMetaPills() {
+            const pills = [this.job?.location || "Unknown location"]
+            if (this.job?.type) {
+                pills.push(`Type: ${this.job.type}`)
+            }
+            if (this.job?.levels?.length) {
+                pills.push(`Level: ${this.job.levels.join(", ")}`)
+            }
+            if (this.job?.categories?.length) {
+                pills.push(`Categories: ${this.job.categories.join(", ")}`)
+            }
+            if (this.job?.publication_date && this.formattedPublicationDate) {
+                pills.push(`Posted: ${this.formattedPublicationDate}`)
+            }
+            if (this.attributionText) {
+                pills.push(`Source: ${this.attributionText}`)
+            }
             return pills
         },
         applicationLink() {
@@ -204,6 +251,33 @@ export default {
         closeDetails() {
             this.detailsOpen = false
         },
+        truncateText(value, maxLength = 180) {
+            const clean = (value || "").trim()
+            if (!clean) return ""
+            if (clean.length <= maxLength) return clean
+            return `${clean.slice(0, maxLength - 1).trimEnd()}…`
+        },
+        formatDescriptionText(value) {
+            const raw = (value || "").toString()
+            if (!raw) return ""
+            return raw
+                .replace(/<style[\s\S]*?<\/style>/gi, " ")
+                .replace(/<script[\s\S]*?<\/script>/gi, " ")
+                .replace(/<li[^>]*>/gi, "\n• ")
+                .replace(/<\/(li|ul|ol)>/gi, "\n")
+                .replace(/<(br|br\/)\s*>/gi, "\n")
+                .replace(/<\/(p|div|section|article|h[1-6])>/gi, "\n\n")
+                .replace(/<[^>]+>/g, " ")
+                .replace(/&nbsp;/g, " ")
+                .replace(/&amp;/g, "&")
+                .replace(/&quot;/g, '"')
+                .replace(/&#39;/g, "'")
+                .replace(/\r/g, "")
+                .replace(/[ \t]+\n/g, "\n")
+                .replace(/\n{3,}/g, "\n\n")
+                .replace(/[ \t]{2,}/g, " ")
+                .trim()
+        },
         apply() {
             if (this.applicationLink) {
                 window.open(this.applicationLink, "_blank", "noopener")
@@ -218,12 +292,29 @@ export default {
 <style scoped>
 .job-posting-card {
     width: 100%;
+    height: 100%;
+}
+
+:deep(.job-posting-card .ui-card__body) {
+    display: flex;
+    flex: 1;
+}
+
+.job-card-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
 }
 
 .job-title {
     margin: 0;
     color: #0f172a;
     font-size: 1.05rem;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 .job-header-row {
@@ -245,6 +336,13 @@ export default {
     margin: 10px 0 8px;
 }
 
+.job-topic-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 10px;
+}
+
 .meta-pill {
     border: 1px solid #d4d9e1;
     background: #f8fafc;
@@ -255,9 +353,9 @@ export default {
 }
 
 .meta-pill.accent {
-    border-color: #0f766e;
-    color: #0f766e;
-    background: rgba(15, 118, 110, 0.08);
+    border-color: var(--color-primary-600);
+    color: var(--color-primary-600);
+    background: color-mix(in srgb, var(--color-primary-600) 10%, white);
 }
 
 .meta-pill.posted {
@@ -273,16 +371,10 @@ export default {
     background: rgba(14, 116, 144, 0.12);
 }
 
-.meta-pill.info {
-    border-color: #4b5563;
-    color: #374151;
-    background: #f1f5f9;
-}
-
-.meta-pill.trust {
-    border-color: #334155;
-    color: #334155;
-    background: #f1f5f9;
+.meta-pill.subtle {
+    border-color: #d7e4df;
+    color: #35534a;
+    background: #f3fbf7;
 }
 
 .job-teaser {
@@ -290,28 +382,46 @@ export default {
     color: #334155;
     line-height: 1.45;
     font-size: 0.93rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.job-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: auto;
+    padding-top: 14px;
 }
 
 .job-attribution {
-    margin-top: 10px;
     font-size: 0.82rem;
 }
 
-.job-attribution a,
-.job-attribution span {
-    color: #475569;
+.source-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--color-primary-600) 24%, white);
+    background: color-mix(in srgb, var(--color-primary-600) 10%, white);
+    color: var(--color-primary-600);
+    padding: 6px 11px;
+    font-weight: 700;
     text-decoration: none;
 }
 
-.job-attribution .required {
-    color: #0f172a;
-    font-weight: 600;
+.source-badge.required {
+    background: rgba(13, 148, 136, 0.16);
+    border-color: rgba(13, 148, 136, 0.26);
+    color: #115e59;
 }
 
 .job-actions {
     display: flex;
     gap: 8px;
-    margin-top: 12px;
 }
 
 .job-actions button,
@@ -326,8 +436,8 @@ export default {
 
 .job-actions .primary,
 .job-modal-actions .primary {
-    background: #0f766e;
-    border-color: #0f766e;
+    background: var(--color-primary-600);
+    border-color: var(--color-primary-600);
     color: #ffffff;
 }
 
@@ -408,10 +518,14 @@ export default {
 }
 
 .job-modal-body p {
-    margin: 0;
+    margin: 0 0 12px;
     color: #1f2937;
     line-height: 1.5;
     white-space: pre-wrap;
+}
+
+.job-modal-body p:last-child {
+    margin-bottom: 0;
 }
 
 .job-modal-actions {
@@ -433,6 +547,10 @@ export default {
 
     .job-actions {
         flex-direction: column;
+    }
+
+    .job-footer {
+        gap: 10px;
     }
 
     .job-modal-dialog {

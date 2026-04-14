@@ -17,6 +17,7 @@ from app.db.session import session_scope
 from app.models.job import Job
 from app.providers.registry import get_adapter, get_provider_controls
 from app.schemas.job import NormalizedJob
+from app.services.job_location_normalization import normalize_job_location_country
 from app.services.job_link_health import (
     build_source_tags,
     extract_url_host,
@@ -126,6 +127,7 @@ def compute_quality_score(job: NormalizedJob, flags: list[str]) -> float:
         "suspect_reposted": 0.08,
         "suspect_stale": 0.18,
         "old_unchanged_listing": 0.12,
+        "year_old_unchanged_listing": 0.16,
         "reposted_without_content_change": 0.06,
     }
     for flag in flags:
@@ -310,6 +312,12 @@ def _evaluate_staleness(existing: Job | None, job: NormalizedJob, *, link_health
         if content_changed
         else (existing.last_content_change_at if existing is not None else None) or reference_time
     )
+    effective_last_updated_at = compute_effective_last_updated_at(
+        existing=existing,
+        job=job,
+        content_changed=content_changed,
+        reference_time=reference_time,
+    )
 
     repost_count = int(existing.repost_count or 0) if existing is not None else 0
     flags: list[str] = []
@@ -327,9 +335,18 @@ def _evaluate_staleness(existing: Job | None, job: NormalizedJob, *, link_health
     age_days = 0
     if age_anchor is not None:
         age_days = max((reference_time - age_anchor.astimezone(timezone.utc)).days, 0)
+    old_unchanged_cutoff = reference_time - timedelta(days=max(int(settings.JOB_STALE_MAX_UNCHANGED_DAYS), 1))
+    is_old_unchanged_listing = bool(
+        age_anchor is not None
+        and age_anchor.astimezone(timezone.utc) <= old_unchanged_cutoff
+        and (effective_last_updated_at is None or effective_last_updated_at <= old_unchanged_cutoff)
+    )
 
     staleness_status = "fresh"
-    if link_health["provider_url_status"] == "bad":
+    if is_old_unchanged_listing:
+        staleness_status = "trimmed_old_unchanged"
+        flags.append("year_old_unchanged_listing")
+    elif link_health["provider_url_status"] == "bad":
         staleness_status = "confirmed_stale"
         flags.append("provider_url_bad")
     elif age_days >= max(int(settings.JOB_STALE_AUDIT_AGE_DAYS), 1) and published_bumped and not content_changed:
@@ -352,11 +369,36 @@ def _evaluate_staleness(existing: Job | None, job: NormalizedJob, *, link_health
         "first_published_at": first_published_at,
         "content_fingerprint": fingerprint,
         "last_content_change_at": last_content_change_at,
+        "effective_last_updated_at": effective_last_updated_at,
         "staleness_status": staleness_status,
         "staleness_flags": flags,
         "staleness_checked_at": reference_time,
         "repost_count": repost_count,
     }
+
+
+def compute_effective_last_updated_at(
+    *,
+    existing: Job | None,
+    job: NormalizedJob,
+    content_changed: bool,
+    reference_time: datetime,
+) -> datetime | None:
+    """Return the best known substantive-update timestamp for stale trimming."""
+    if content_changed:
+        return reference_time
+
+    candidates = [
+        existing.last_content_change_at if existing is not None else None,
+        job.published_at,
+        existing.published_at if existing is not None else None,
+        existing.first_published_at if existing is not None else None,
+    ]
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        return candidate.astimezone(timezone.utc)
+    return None
 
 
 def _build_job_payload(job: NormalizedJob, *, existing: Job | None, link_health: dict, reference_time: datetime) -> dict:
@@ -370,13 +412,14 @@ def _build_job_payload(job: NormalizedJob, *, existing: Job | None, link_health:
 
     categories = list(dict.fromkeys([value for value in (job.categories or []) if value]))
     short_description = build_short_description(job.description)
+    location_country_code, location_country_name = normalize_job_location_country(job.location)
     combined_quality_flags = _merge_unique_values(
         quality_flags,
         list(link_health.get("flags") or []),
         list(staleness.get("staleness_flags") or []),
     )
 
-    is_active = staleness["staleness_status"] != "confirmed_stale"
+    is_active = staleness["staleness_status"] not in {"confirmed_stale", "trimmed_old_unchanged"}
     display_tier = compute_display_tier(is_active=is_active, last_seen_at=reference_time, reference_time=reference_time)
     quality_score = compute_quality_score(job, combined_quality_flags)
 
@@ -401,6 +444,8 @@ def _build_job_payload(job: NormalizedJob, *, existing: Job | None, link_health:
             "company": job.company,
             "company_url": job.company_url,
             "location": job.location,
+            "location_country_code": location_country_code,
+            "location_country_name": location_country_name,
             "is_remote": bool(job.is_remote),
             "job_type": job.job_type,
             "experience_level": job.experience_level,
@@ -497,6 +542,8 @@ def _job_upsert_values(payload: dict) -> dict:
         "company": payload["company"],
         "company_url": payload["company_url"],
         "location": payload["location"],
+        "location_country_code": payload["location_country_code"],
+        "location_country_name": payload["location_country_name"],
         "is_remote": payload["is_remote"],
         "job_type": payload["job_type"],
         "experience_level": payload["experience_level"],

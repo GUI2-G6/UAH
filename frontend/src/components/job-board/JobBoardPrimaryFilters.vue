@@ -252,8 +252,8 @@ export default {
 }
 
 .primary-action {
-  background: #0f766e;
-  border-color: #0f766e;
+  background: var(--color-primary-600);
+  border-color: var(--color-primary-600);
   color: #ffffff;
 }
 

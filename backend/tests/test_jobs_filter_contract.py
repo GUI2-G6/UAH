@@ -1,6 +1,7 @@
 import asyncio
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from app.api.routes import (
     _JOB_URL_VALIDATION_CACHE,
@@ -64,11 +65,96 @@ class JobsFilterContractTests(unittest.TestCase):
 
     def test_filter_metadata_has_version_hash_and_cap(self):
         payload = _build_jobs_filter_metadata_payload()
-        self.assertEqual(payload.get("metadata_version"), "jobs-filter-v1")
+        self.assertEqual(payload.get("metadata_version"), "jobs-filter-v2")
         self.assertTrue(payload.get("metadata_hash"))
         self.assertGreaterEqual(int(payload.get("location_param_cap") or 0), 1)
         self.assertTrue(payload.get("category_groups"))
         self.assertTrue(payload.get("levels"))
+        self.assertTrue(payload.get("category_values"))
+        self.assertTrue(payload.get("level_values"))
+        self.assertIn("country_values", payload)
+        self.assertIn("provider_values", payload)
+
+    @patch("app.api.routes._query_observed_category_counts")
+    @patch("app.api.routes._query_observed_country_counts")
+    @patch("app.api.routes._query_observed_level_counts")
+    @patch("app.api.routes._query_observed_provider_counts")
+    def test_filter_metadata_uses_sorted_observed_values(self, provider_mock, level_mock, country_mock, category_mock):
+        category_mock.return_value = [
+            ("Software Engineer", 4),
+            ("Design", 2),
+            ("Data Science", 4),
+        ]
+        level_mock.return_value = [
+            ("senior", 3),
+            ("entry", 5),
+            ("vp", 1),
+        ]
+        country_mock.return_value = [
+            ("US", "United States", 8),
+            ("DE", "Germany", 3),
+        ]
+        provider_mock.return_value = [
+            ("arbeitnow", 2),
+            ("the_muse", 6),
+        ]
+
+        payload = _build_jobs_filter_metadata_payload(db=object())
+
+        self.assertEqual(
+            payload.get("category_values"),
+            [
+                {"value": "Data Science", "observed_count": 4},
+                {"value": "Software Engineer", "observed_count": 4},
+                {"value": "Design", "observed_count": 2},
+            ],
+        )
+        self.assertEqual(
+            payload.get("level_values"),
+            [
+                {"value": "entry", "label": "Entry", "observed_count": 5},
+                {"value": "senior", "label": "Senior", "observed_count": 3},
+                {"value": "vp", "label": "VP", "observed_count": 1},
+            ],
+        )
+        self.assertEqual(payload.get("levels"), ["Entry", "Senior", "VP"])
+        self.assertEqual(
+            payload.get("country_values"),
+            [
+                {"code": "US", "name": "United States", "observed_count": 8},
+                {"code": "DE", "name": "Germany", "observed_count": 3},
+            ],
+        )
+        self.assertEqual(payload.get("provider_values")[0]["value"], "the_muse")
+        self.assertEqual(payload.get("provider_values")[0]["observed_count"], 6)
+
+    @patch("app.api.routes._query_observed_country_counts")
+    def test_country_metadata_prefers_real_name_over_code_placeholder(self, country_mock):
+        country_mock.return_value = [
+            ("US", "", 2),
+            ("US", "United States", 4),
+        ]
+
+        payload = _build_jobs_filter_metadata_payload(db=object())
+
+        self.assertEqual(
+            payload.get("country_values")[0],
+            {"code": "US", "name": "United States", "observed_count": 6},
+        )
+
+    @patch("app.api.routes._query_observed_level_counts", return_value=[])
+    @patch("app.api.routes._query_observed_category_counts", return_value=[])
+    def test_filter_metadata_falls_back_when_catalog_is_empty(self, _category_mock, _level_mock):
+        payload = _build_jobs_filter_metadata_payload(db=object())
+
+        self.assertTrue(payload.get("category_values"))
+        self.assertTrue(payload.get("level_values"))
+        self.assertTrue(all(int(item.get("observed_count") or 0) == 0 for item in payload["category_values"]))
+        self.assertTrue(all(int(item.get("observed_count") or 0) == 0 for item in payload["level_values"]))
+        self.assertTrue(any(item.get("value") == "Software Engineer" for item in payload["category_values"]))
+        self.assertTrue(any(item.get("value") == "entry" for item in payload["level_values"]))
+        self.assertIsInstance(payload.get("country_values"), list)
+        self.assertTrue(payload.get("provider_values"))
 
     def test_category_expansion_allows_group_and_passthrough(self):
         expanded_group = _expand_category_for_muse("tech")

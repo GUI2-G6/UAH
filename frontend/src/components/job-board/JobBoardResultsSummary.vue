@@ -10,6 +10,20 @@
       </div>
 
       <div class="summary-actions">
+        <label v-if="!error" class="sort-control">
+          <span>Sort</span>
+          <select
+            :value="sortBy"
+            name="job_sort"
+            autocomplete="off"
+            :disabled="loading"
+            @change="$emit('sort-change', $event.target.value)"
+          >
+            <option v-for="option in sortOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
+        </label>
         <button type="button" class="secondary-action" @click="$emit('clear')" :disabled="loading">
           Reset
         </button>
@@ -85,8 +99,16 @@ export default {
       type: Boolean,
       default: false,
     },
+    sortBy: {
+      type: String,
+      default: 'date_desc',
+    },
+    sortOptions: {
+      type: Array,
+      default: () => [],
+    },
   },
-  emits: ['clear', 'remove-chip', 'widen'],
+  emits: ['clear', 'remove-chip', 'sort-change', 'widen'],
   computed: {
     headline() {
       if (this.totalJobs > 0) {
@@ -155,6 +177,7 @@ h2 {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  align-items: center;
 }
 
 .secondary-action,
@@ -185,6 +208,23 @@ h2 {
   margin-top: 14px;
 }
 
+.sort-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.sort-control select {
+  min-height: 36px;
+  border: 1px solid rgba(203, 213, 225, 0.95);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 8px 10px;
+}
+
 @media (max-width: 700px) {
   .results-summary-card {
     margin: 14px 12px 0;
@@ -196,7 +236,9 @@ h2 {
   }
 
   .summary-actions,
-  .summary-actions button {
+  .summary-actions button,
+  .sort-control,
+  .sort-control select {
     width: 100%;
   }
 }

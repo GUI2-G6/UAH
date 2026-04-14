@@ -24,6 +24,8 @@ class Job(Base):
         Index("ix_jobs_last_seen_at", "last_seen_at"),
         Index("ix_jobs_provider_provider_job_id", "provider", "provider_job_id"),
         Index("ix_jobs_company", "company"),
+        Index("ix_jobs_location_country_code", "location_country_code"),
+        Index("ix_jobs_location_country_name", "location_country_name"),
         Index("ix_jobs_provider_url_status", "provider_url_status"),
         Index("ix_jobs_staleness_status", "staleness_status"),
         Index("ix_jobs_first_published_at", "first_published_at"),
@@ -53,6 +55,8 @@ class Job(Base):
     company = Column(String(255), nullable=True)
     company_url = Column(Text, nullable=True)
     location = Column(String(255), nullable=True)
+    location_country_code = Column(String(2), nullable=True)
+    location_country_name = Column(String(120), nullable=True)
     is_remote = Column(Boolean, nullable=False, default=False)
     job_type = Column(String(50), nullable=True)
     experience_level = Column(String(50), nullable=True)
