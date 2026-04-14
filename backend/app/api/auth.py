@@ -6,7 +6,12 @@ import os
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.user import UserRegister, UserLogin, UserResponse, TokenResponse, MessageResponse
-from app.core.security import hash_password, verify_password, create_access_token
+from app.core.security import hash_password, verify_password
+from app.core.auth_session import (
+    access_token_expire_seconds_for_client,
+    create_access_token_for_client,
+    resolve_auth_client,
+)
 from app.core.auth_cookie import clear_auth_cookie, set_auth_cookie, set_no_store_headers
 from app.core.validation import normalize_email, require_valid_email
 from app.core.rate_limit import enforce_ip_rate_limit, enforce_subject_rate_limit
@@ -133,8 +138,9 @@ def register(
     db.commit()
     db.refresh(user)
 
-    token = create_access_token(data={"sub": str(user.id)})
-    set_auth_cookie(response, token)
+    auth_client = resolve_auth_client(request)
+    token = create_access_token_for_client(data={"sub": str(user.id)}, client=auth_client)
+    set_auth_cookie(response, token, max_age=access_token_expire_seconds_for_client(auth_client))
     return TokenResponse(
         access_token=token,
         user=UserResponse.model_validate(user),
@@ -189,8 +195,9 @@ def login(
             detail="Account is deactivated",
         )
 
-    token = create_access_token(data={"sub": str(user.id)})
-    set_auth_cookie(response, token)
+    auth_client = resolve_auth_client(request)
+    token = create_access_token_for_client(data={"sub": str(user.id)}, client=auth_client)
+    set_auth_cookie(response, token, max_age=access_token_expire_seconds_for_client(auth_client))
     return TokenResponse(
         access_token=token,
         user=UserResponse.model_validate(user),
@@ -248,8 +255,9 @@ def token_login(
             detail="Account is deactivated",
         )
 
-    token = create_access_token(data={"sub": str(user.id)})
-    set_auth_cookie(response, token)
+    auth_client = resolve_auth_client(request)
+    token = create_access_token_for_client(data={"sub": str(user.id)}, client=auth_client)
+    set_auth_cookie(response, token, max_age=access_token_expire_seconds_for_client(auth_client))
     return {
         "access_token": token,
         "token_type": "bearer",

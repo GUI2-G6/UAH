@@ -1,0 +1,33 @@
+:root {
+  --bp-tablet: 768px;
+  --bp-phone: 600px;
+  --bp-small: 480px;
+  --space-1: 8px;
+  --space-2: 12px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 32px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 14px;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-success-600: #16a34a;
+  --color-danger-600: #dc2626;
+  --color-warning-600: #d97706;
+  --color-text-primary: #1a1a2e;
+  --color-text-secondary: #374151;
+  --color-text-muted: #8a94a6;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f8fafc;
+  --color-surface-hover: #f3f4f6;
+  --border-color: rgba(203, 213, 225, 0.9);
+  --border-color-light: #e5e7eb;
+  --shadow-soft: 0 2px 6px rgba(15, 23, 42, 0.08);
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --transition-fast: 0.15s ease;
+  --app-page-background:
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.08), transparent 28%),
+    linear-gradient(180deg, #f8fafc 0%, #eef4f8 100%);
+}

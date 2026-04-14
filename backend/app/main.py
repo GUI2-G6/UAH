@@ -133,7 +133,7 @@ def _ensure_users_table_columns(engine) -> None:
 
 
 def _ensure_resumes_table_columns(engine) -> None:
-    """Dev safety net: add pdf_data column to existing resumes table if missing."""
+    """Dev safety net: add newer resume columns to existing resumes table if missing."""
     try:
         from sqlalchemy import inspect, text
     except Exception:
@@ -145,12 +145,62 @@ def _ensure_resumes_table_columns(engine) -> None:
             return
 
         existing = {col["name"] for col in inspector.get_columns("resumes")}
-        if "pdf_data" not in existing:
+
+        ddl_statements: list[str] = []
+        required_columns: dict[str, str] = {
+            "pdf_data": "BYTEA",
+            "review_status": "VARCHAR(50)",
+            "review_draft": "JSONB",
+            "review_updated_at": "TIMESTAMPTZ",
+        }
+        for column_name, column_ddl in required_columns.items():
+            if column_name in existing:
+                continue
+            ddl_statements.append(
+                f"ALTER TABLE resumes ADD COLUMN IF NOT EXISTS {column_name} {column_ddl}"
+            )
+
+        if ddl_statements:
             with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE resumes ADD COLUMN IF NOT EXISTS pdf_data BYTEA"))
-            logger.warning("Added pdf_data column to resumes table")
+                for ddl in ddl_statements:
+                    conn.execute(text(ddl))
+            logger.warning("Applied dev schema fixups to resumes table")
     except Exception as exc:
         logger.exception("Resumes table schema fixup failed: %s", exc)
+
+
+def _ensure_applicant_profiles_table_columns(engine) -> None:
+    """Dev safety net: add newer applicant profile columns when DB schema lags."""
+    try:
+        from sqlalchemy import inspect, text
+    except Exception:
+        return
+
+    try:
+        inspector = inspect(engine)
+        if "applicant_profiles" not in inspector.get_table_names():
+            return
+
+        existing = {col["name"] for col in inspector.get_columns("applicant_profiles")}
+        ddl_statements: list[str] = []
+        required_columns: dict[str, str] = {
+            "canonical_data": "JSONB",
+            "token_map": "JSONB",
+        }
+        for column_name, column_ddl in required_columns.items():
+            if column_name in existing:
+                continue
+            ddl_statements.append(
+                f"ALTER TABLE applicant_profiles ADD COLUMN IF NOT EXISTS {column_name} {column_ddl}"
+            )
+
+        if ddl_statements:
+            with engine.begin() as conn:
+                for ddl in ddl_statements:
+                    conn.execute(text(ddl))
+            logger.warning("Applied dev schema fixups to applicant_profiles table")
+    except Exception as exc:
+        logger.exception("Applicant profiles table schema fixup failed: %s", exc)
 
 
 def _bootstrap_admin_user_if_enabled() -> None:
@@ -324,6 +374,7 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine, tables=LEGACY_STARTUP_TABLES)
     _ensure_users_table_columns(engine)
     _ensure_resumes_table_columns(engine)
+    _ensure_applicant_profiles_table_columns(engine)
     _enforce_email_first_identity_mirror()
     _bootstrap_admin_user_if_enabled()
     _ensure_dev_test_user_if_enabled()

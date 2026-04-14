@@ -1,0 +1,429 @@
+@import "../../../shared/theme/uah-theme.css";
+
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#app {
+  width: 380px;
+  min-width: 380px;
+  min-height: 560px;
+  margin: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--app-page-background);
+  color: var(--color-text-primary);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.popup-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 100%;
+  padding: 14px;
+}
+
+.hero-card,
+.auth-card,
+.panel-card,
+.account-strip,
+.state-card,
+.inline-banner {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(203, 213, 225, 0.8);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.hero-card,
+.auth-card,
+.panel-card,
+.state-card {
+  padding: 14px;
+}
+
+.hero-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.eyebrow,
+.panel-kicker {
+  margin: 0 0 4px;
+  color: var(--color-primary-700);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hero-card h1,
+.panel-card h2,
+.auth-card h2,
+.state-card h2 {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.hero-copy,
+.auth-copy,
+.selection-subtitle,
+.detail-value,
+.copy-card-body,
+.state-card p,
+.status-note,
+.account-email {
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: 1.45;
+}
+
+.hero-copy {
+  margin-top: 6px;
+  max-width: 250px;
+  font-size: 0.84rem;
+}
+
+.account-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.account-name {
+  margin: 0;
+  font-weight: 700;
+}
+
+.account-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.tab-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.tab-button {
+  padding: 10px 12px;
+  border: 1px solid var(--border-color-light);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--color-text-secondary);
+  font-weight: 600;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.tab-button.active {
+  border-color: color-mix(in srgb, var(--color-primary-600) 44%, white);
+  background: color-mix(in srgb, var(--color-primary-600) 12%, white);
+  color: var(--color-primary-700);
+}
+
+.panel-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.selection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.selection-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(203, 213, 225, 0.88);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  text-align: left;
+  transition: transform var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.selection-item:hover {
+  border-color: color-mix(in srgb, var(--color-primary-600) 36%, white);
+  transform: translateY(-1px);
+}
+
+.selection-item.active,
+.selection-item--static {
+  border-color: color-mix(in srgb, var(--color-primary-600) 44%, white);
+  background: color-mix(in srgb, var(--color-primary-600) 8%, white);
+}
+
+.selection-list--static .selection-item {
+  cursor: default;
+}
+
+.selection-title {
+  margin: 0 0 4px;
+  color: var(--color-text-primary);
+  font-weight: 700;
+}
+
+.detail-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detail-row,
+.copy-card {
+  border: 1px solid rgba(203, 213, 225, 0.86);
+  border-radius: var(--radius-sm);
+  background: rgba(248, 250, 252, 0.88);
+}
+
+.detail-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.detail-label {
+  margin: 0 0 4px;
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.copy-card {
+  padding: 10px 12px;
+}
+
+.copy-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.copy-card-body {
+  white-space: pre-wrap;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(14, 165, 233, 0.12);
+  color: var(--color-primary-700);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.status-pill--success {
+  background: rgba(22, 163, 74, 0.12);
+  color: var(--color-success-600);
+}
+
+.status-pill--warning {
+  background: rgba(217, 119, 6, 0.12);
+  color: var(--color-warning-600);
+}
+
+.copy-button,
+.text-link,
+.btn-primary,
+.btn-secondary {
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.btn-primary,
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  font-weight: 600;
+}
+
+.btn-primary {
+  background: var(--color-primary-600);
+  border-color: var(--color-primary-600);
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-primary-700);
+  border-color: var(--color-primary-700);
+}
+
+.btn-secondary {
+  background: var(--color-surface);
+  border-color: var(--border-color);
+  color: var(--color-text-secondary);
+}
+
+.btn-compact {
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+.copy-button,
+.text-link {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  background: white;
+  color: var(--color-primary-700);
+  font-weight: 600;
+}
+
+.copy-button:disabled,
+.btn-primary:disabled,
+.btn-secondary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.text-link--danger {
+  color: var(--color-danger-600);
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.field-group input {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.field-group input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--color-primary-600) 55%, white);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(203, 213, 225, 0.92);
+}
+
+.footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.state-card,
+.empty-card {
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(248, 250, 252, 0.88);
+  border: 1px dashed rgba(148, 163, 184, 0.7);
+}
+
+.state-card--nested {
+  padding: 12px;
+}
+
+.empty-card p {
+  margin: 0 0 8px;
+  color: var(--color-text-secondary);
+}
+
+.inline-banner {
+  padding: 10px 12px;
+  color: var(--color-text-secondary);
+}
+
+.inline-banner--error {
+  border-color: rgba(220, 38, 38, 0.2);
+  background: rgba(254, 242, 242, 0.95);
+  color: var(--color-danger-600);
+}
+
+.inline-banner--success {
+  border-color: rgba(22, 163, 74, 0.2);
+  background: rgba(240, 253, 244, 0.96);
+  color: var(--color-success-600);
+}

@@ -48,6 +48,21 @@ class ResumeResponse(BaseModel):
         description="Parser mode used most recently for this resume. Supported values: 'cloud', 'local', or 'rules'.",
         examples=["local"],
     )
+    review_status: str | None = Field(
+        default=None,
+        description="Review state for parsed resume data before it is merged into an applicant profile.",
+        examples=["pending"],
+    )
+    has_review_draft: bool = Field(
+        default=False,
+        description="True when this resume has a persisted review draft that can be resumed later.",
+        examples=[True],
+    )
+    review_updated_at: datetime | None = Field(
+        default=None,
+        description="UTC timestamp when the persisted review draft was last updated.",
+        examples=["2026-04-14T14:25:19.987654Z"],
+    )
     has_pdf: bool = Field(
         default=False,
         description="Indicates whether original binary PDF content is still available for download/preview.",
@@ -87,6 +102,16 @@ class ResumeListItem(BaseModel):
         default=None,
         description="Most recent parse engine used for this resume.",
         examples=["cloud"],
+    )
+    review_status: str | None = Field(
+        default=None,
+        description="Review state for the resume's persisted parse draft.",
+        examples=["pending"],
+    )
+    has_review_draft: bool = Field(
+        default=False,
+        description="Whether a persisted review draft is available for resume-review resumption.",
+        examples=[True],
     )
     has_pdf: bool = Field(
         default=False,
@@ -234,3 +259,47 @@ class ParseJobStartResponse(BaseModel):
         description="Initial parse job state, typically 'queued'.",
         examples=["queued"],
     )
+
+
+class ResumeReviewDraftUpdate(BaseModel):
+    review_draft: dict = Field(
+        ...,
+        description="Edited review draft based on parsed structured resume data.",
+        examples=[{"personal_info": {"first_name": "Jane"}}],
+    )
+
+
+class ResumeReviewDraftResponse(BaseModel):
+    resume_id: int = Field(..., description="Resume identifier whose review draft is being inspected.", examples=[101])
+    file_name: str = Field(..., description="Stored resume filename.", examples=["Jane_Doe_Resume.pdf"])
+    parse_method: str | None = Field(default=None, description="Parser method used to produce the draft.", examples=["local"])
+    review_status: str | None = Field(default=None, description="Current review lifecycle state for this draft.", examples=["pending"])
+    review_updated_at: datetime | None = Field(default=None, description="UTC timestamp of the latest persisted review draft update.", examples=["2026-04-14T14:25:19.987654Z"])
+    review_draft: dict = Field(..., description="Editable structured review draft returned to the frontend.", examples=[{"personal_info": {"first_name": "Jane"}}])
+
+
+class ResumeReviewConflictRequest(BaseModel):
+    profile_id: int = Field(..., description="Applicant profile identifier selected for merge preview.", examples=[15])
+    reviewed_data: dict | None = Field(default=None, description="Optional reviewed draft override from the UI before merge preview.", examples=[{"personal_info": {"first_name": "Jane"}}])
+
+
+class ResumeReviewConflictResponse(BaseModel):
+    profile_id: int = Field(..., description="Applicant profile identifier used for conflict evaluation.", examples=[15])
+    conflict_count: int = Field(..., description="Number of conflicting non-empty values between the selected profile and reviewed draft.", examples=[4])
+    conflicts: list[dict] = Field(default_factory=list, description="Conflict items keyed by canonical path for frontend review resolution.")
+
+
+class ResumeReviewApplyRequest(BaseModel):
+    mode: str = Field(..., description="Apply mode: 'existing' to merge into a profile or 'new' to create one.", examples=["existing"])
+    reviewed_data: dict = Field(..., description="Final reviewed structured data to commit into the applicant profile system.", examples=[{"personal_info": {"first_name": "Jane"}}])
+    profile_id: int | None = Field(default=None, description="Existing applicant profile identifier when mode='existing'.", examples=[15])
+    profile_name: str | None = Field(default=None, description="Name for the new applicant profile when mode='new'.", examples=["Spring 2026 Profile"])
+    conflict_resolutions: dict | None = Field(default=None, description="Per-path resolution map. Use 'incoming' to override an existing profile value.", examples=[{"personal_info.email": "incoming"}])
+
+
+class ResumeReviewApplyResponse(BaseModel):
+    resume_id: int = Field(..., description="Resume identifier whose review draft was applied.", examples=[101])
+    profile_id: int = Field(..., description="Applicant profile identifier that received the reviewed data.", examples=[15])
+    review_status: str = Field(..., description="Review status after apply completes.", examples=["applied"])
+    conflict_count: int = Field(..., description="Total number of conflicts that were evaluated during merge.", examples=[4])
+    profile: dict = Field(..., description="Updated applicant profile payload after the review draft was applied.")

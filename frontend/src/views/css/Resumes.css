@@ -682,6 +682,18 @@
   color: #1a1a2e;
 }
 
+.resume-actions button.review-btn {
+  border-color: rgba(37, 99, 235, 0.26);
+  color: #1d4ed8;
+  background: rgba(239, 246, 255, 0.92);
+}
+
+.resume-actions button.review-btn:hover {
+  background: rgba(219, 234, 254, 0.95);
+  border-color: rgba(37, 99, 235, 0.42);
+  color: #1d4ed8;
+}
+
 .resume-actions button.delete-btn:hover {
   background: rgba(239, 68, 68, 0.08);
   border-color: rgba(239, 68, 68, 0.4);
@@ -713,6 +725,12 @@
   background: rgba(34, 197, 94, 0.12);
   color: #15803d;
   border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.badge.review-pending {
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+  border: 1px solid rgba(37, 99, 235, 0.3);
 }
 
 .badge.needs-fields {

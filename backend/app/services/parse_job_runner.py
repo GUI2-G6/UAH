@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 
 from app.db.session import SessionLocal
 from app.models.parse_job import ParseJob
@@ -136,6 +137,9 @@ async def run_parse_job(job_id: int) -> bool:
         resume.structured_data = structured
         resume.parse_method = method
         resume.portal_ready = structured.get("_validation", {}).get("portal_ready", False)
+        resume.review_status = "pending"
+        resume.review_draft = structured
+        resume.review_updated_at = datetime.now(timezone.utc)
 
         validation = structured.get("_validation", {})
         job.status = "success"

@@ -8,7 +8,7 @@ def set_no_store_headers(response: Response) -> None:
     response.headers["Pragma"] = "no-cache"
 
 
-def set_auth_cookie(response: Response, token: str) -> None:
+def set_auth_cookie(response: Response, token: str, *, max_age: int | None = None) -> None:
     set_no_store_headers(response)
     response.set_cookie(
         key=settings.AUTH_COOKIE_NAME,
@@ -17,7 +17,7 @@ def set_auth_cookie(response: Response, token: str) -> None:
         secure=settings.SESSION_COOKIE_HTTPS_ONLY,
         samesite=settings.SESSION_COOKIE_SAMESITE,
         path=settings.SESSION_COOKIE_PATH,
-        max_age=settings.ACCESS_TOKEN_EXPIRE_SECONDS,
+        max_age=max_age if max_age is not None else settings.ACCESS_TOKEN_EXPIRE_SECONDS,
     )
 
 

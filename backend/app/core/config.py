@@ -79,6 +79,7 @@ class Settings:
     )
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+    EXTENSION_ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("EXTENSION_ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
     GMAIL_TOKEN_ENCRYPTION_KEY: str = os.getenv("GMAIL_TOKEN_ENCRYPTION_KEY", "")
 
     # Environment
