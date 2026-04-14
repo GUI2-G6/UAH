@@ -4,21 +4,12 @@ NATURAL LANGUAGE MODEL FILTER APPLICATION?? yes this
 
 pin drop map featue for job search
 
-
-add simple sorting on the resumes page 
-
-"
-we can add a credit to the site for those icons btw nick if youd like
-Nicholas Johnson — 1:21 PM
-sure, you can add that anywhere
-Trent B [WTCS],  — 1:22 PM
-kk ill note it in my personal notes
-any thing you want linked to it? just your full name? or an email, github, linkedin?
-Nicholas Johnson — 1:22 PM
-did you use a gradient on the back of the page? i may make the burger a gradient too just for conistency
-just enough so she knows it wasnt stolen/ai
-"
-
 fix dropdowns in resume profile stuff to make them usable
 
 one more pass on filters and stuff's function once full job stuff is working
+
+2. Reed.co.uk API
+
+4. USAJOBS API
+
+5. WhatJobs Publisher API
