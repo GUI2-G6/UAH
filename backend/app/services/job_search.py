@@ -41,9 +41,11 @@ def _normalize_level_values(values: list[str]) -> list[str]:
     }
     normalized: list[str] = []
     for value in values:
-        mapped = level_map.get(" ".join((value or "").strip().lower().split()))
-        if mapped:
-            normalized.append(mapped)
+        clean = " ".join((value or "").strip().split())
+        if not clean:
+            continue
+        mapped = level_map.get(clean.lower())
+        normalized.append(mapped or clean)
     return _dedupe(normalized)
 
 
@@ -190,7 +192,7 @@ def search_local_jobs(
     jobs = [_serialize_job(row) for row in rows]
     has_more = total > (page * page_size)
     total_pages = max(ceil(total / page_size), 1) if total else 1
-    filter_metadata = _build_jobs_filter_metadata_payload()
+    filter_metadata = _build_jobs_filter_metadata_payload(db)
 
     return {
         "jobs": jobs,

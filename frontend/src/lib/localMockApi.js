@@ -39,7 +39,28 @@ const CITY_FIXTURES = {
 }
 
 const MOCK_LOCATION_PARAM_CAP = 60
-const MUSE_LEVEL_OPTIONS = ['Internship', 'Entry Level', 'Mid Level', 'Senior Level', 'Management']
+const LEVEL_VALUE_ALIASES = {
+  internship: 'internship',
+  entry: 'entry',
+  'entry level': 'entry',
+  mid: 'mid',
+  'mid level': 'mid',
+  senior: 'senior',
+  'senior level': 'senior',
+  manager: 'manager',
+  management: 'manager',
+  director: 'director',
+  vp: 'vp',
+}
+const LEVEL_LABELS = {
+  internship: 'Internship',
+  entry: 'Entry',
+  mid: 'Mid',
+  senior: 'Senior',
+  manager: 'Manager',
+  director: 'Director',
+  vp: 'VP',
+}
 const CATEGORY_GROUPS = [
   {
     key: 'tech',
@@ -236,6 +257,7 @@ const JOB_FIXTURES = [
     is_local_compatible_remote: true,
     local_compatibility_reason: 'Remote-friendly in selected region',
     location_constraints: { countries: ['US'], states: ['AL', 'TX'] },
+    quality_score: 0.94,
     publication_date: '2026-04-05T09:00:00Z',
     provider_url: 'https://www.themuse.com/jobs/atlas-systems/frontend-engineer-vue',
     job_url: 'https://www.themuse.com/jobs/atlas-systems/frontend-engineer-vue',
@@ -263,6 +285,7 @@ const JOB_FIXTURES = [
     is_local_compatible_remote: false,
     local_compatibility_reason: '',
     location_constraints: { countries: ['US'], states: ['TX'] },
+    quality_score: 0.91,
     publication_date: '2026-04-02T11:30:00Z',
     provider_url: 'https://jobs.ashbyhq.com/data-forge/backend-python-1002',
     job_url: 'https://jobs.ashbyhq.com/data-forge/backend-python-1002',
@@ -290,6 +313,7 @@ const JOB_FIXTURES = [
     is_local_compatible_remote: true,
     local_compatibility_reason: 'No hard location lock',
     location_constraints: { countries: ['US', 'CA'] },
+    quality_score: 0.88,
     publication_date: '2026-04-06T13:45:00Z',
     provider_url: 'https://www.themuse.com/jobs/northwind-studio/product-designer',
     job_url: 'https://www.themuse.com/jobs/northwind-studio/product-designer',
@@ -317,6 +341,7 @@ const JOB_FIXTURES = [
     is_local_compatible_remote: true,
     local_compatibility_reason: 'Remote with occasional office visits',
     location_constraints: { countries: ['US'] },
+    quality_score: 0.75,
     publication_date: '2026-03-31T15:15:00Z',
     provider_url: 'https://jobs.lever.co/peak-metrics/1004',
     job_url: 'https://jobs.lever.co/peak-metrics/1004',
@@ -344,6 +369,7 @@ const JOB_FIXTURES = [
     is_local_compatible_remote: false,
     local_compatibility_reason: '',
     location_constraints: { countries: ['US'] },
+    quality_score: 0.83,
     publication_date: '2026-04-01T08:20:00Z',
     provider_url: 'https://www.themuse.com/jobs/shieldops/security-engineer',
     job_url: 'https://www.themuse.com/jobs/shieldops/security-engineer',
@@ -371,6 +397,7 @@ const JOB_FIXTURES = [
     is_local_compatible_remote: true,
     local_compatibility_reason: 'Remote-allowed in North America',
     location_constraints: { countries: ['CA', 'US'] },
+    quality_score: 0.97,
     publication_date: '2026-04-07T10:05:00Z',
     provider_url: 'https://jobs.workable.com/blue-pine-labs/1006',
     job_url: 'https://jobs.workable.com/blue-pine-labs/1006',
@@ -737,6 +764,10 @@ function normalizeTextLower(value) {
   return normalizeText(value).toLowerCase()
 }
 
+function normalizeWhitespace(value) {
+  return normalizeText(value).replace(/\s+/g, ' ')
+}
+
 function normalizeIsoDate(value) {
   const raw = normalizeText(value)
   if (!raw) return ''
@@ -754,7 +785,78 @@ function simpleHash(value) {
   return `mock-${Math.abs(hash)}`
 }
 
+function normalizeMockLevelValue(value) {
+  const normalized = normalizeTextLower(value)
+  if (!normalized) return ''
+  return LEVEL_VALUE_ALIASES[normalized] || normalized
+}
+
+function labelMockLevelValue(value) {
+  const normalized = normalizeMockLevelValue(value)
+  if (!normalized) return ''
+  return LEVEL_LABELS[normalized] || normalized.split(' ').map((part) => {
+    if (!part) return part
+    return part.charAt(0).toUpperCase() + part.slice(1)
+  }).join(' ')
+}
+
+function buildMockCategoryValues() {
+  const counts = new Map()
+
+  for (const group of CATEGORY_GROUPS) {
+    for (const rawValue of group.muse_categories || []) {
+      const value = normalizeWhitespace(rawValue)
+      if (!value) continue
+      if (!counts.has(value)) counts.set(value, 0)
+    }
+  }
+
+  for (const job of JOB_FIXTURES) {
+    for (const rawValue of job.categories || []) {
+      const value = normalizeWhitespace(rawValue)
+      if (!value) continue
+      counts.set(value, Number(counts.get(value) || 0) + 1)
+    }
+  }
+
+  return [...counts.entries()]
+    .sort((a, b) => {
+      if (a[1] !== b[1]) return b[1] - a[1]
+      return a[0].localeCompare(b[0])
+    })
+    .map(([value, observed_count]) => ({ value, observed_count }))
+}
+
+function buildMockLevelValues() {
+  const counts = new Map()
+
+  for (const value of Object.keys(LEVEL_LABELS)) {
+    counts.set(value, 0)
+  }
+
+  for (const job of JOB_FIXTURES) {
+    for (const rawValue of job.levels || []) {
+      const value = normalizeMockLevelValue(rawValue)
+      if (!value) continue
+      counts.set(value, Number(counts.get(value) || 0) + 1)
+    }
+  }
+
+  return [...counts.entries()]
+    .sort((a, b) => {
+      if (a[1] !== b[1]) return b[1] - a[1]
+      return labelMockLevelValue(a[0]).localeCompare(labelMockLevelValue(b[0]))
+    })
+    .map(([value, observed_count]) => ({
+      value,
+      label: labelMockLevelValue(value),
+      observed_count,
+    }))
+}
+
 function buildMockFilterMetadata() {
+  const categoryValues = buildMockCategoryValues()
+  const levelValues = buildMockLevelValues()
   const payload = {
     category_groups: CATEGORY_GROUPS.map((group) => ({
       key: group.key,
@@ -762,13 +864,15 @@ function buildMockFilterMetadata() {
       muse_categories: [...group.muse_categories],
     })),
     category_aliases: { ...CATEGORY_ALIAS },
-    levels: [...MUSE_LEVEL_OPTIONS],
+    category_values: categoryValues,
+    level_values: levelValues,
+    levels: levelValues.map((item) => item.label),
     location_param_cap: MOCK_LOCATION_PARAM_CAP,
   }
   const core = JSON.stringify(payload)
   return {
     ...payload,
-    metadata_version: 'jobs-filter-v1',
+    metadata_version: 'jobs-filter-v2',
     metadata_hash: simpleHash(core),
   }
 }
@@ -808,6 +912,36 @@ function matchesPostedAfter(job, postedAfter) {
   const publicationDate = new Date(job.publication_date || '')
   if (Number.isNaN(publicationDate.getTime())) return false
   return publicationDate >= postedAfter
+}
+
+function getPublicationTimestamp(job) {
+  const publicationDate = new Date(job?.publication_date || '')
+  return Number.isNaN(publicationDate.getTime()) ? 0 : publicationDate.getTime()
+}
+
+function sortMockJobs(jobs, sortBy) {
+  const normalizedSort = normalizeTextLower(sortBy) || 'date_desc'
+  const sorted = [...jobs]
+
+  sorted.sort((a, b) => {
+    if (normalizedSort === 'quality_desc') {
+      const qualityDelta = Number(b?.quality_score || 0) - Number(a?.quality_score || 0)
+      if (qualityDelta !== 0) return qualityDelta
+      return getPublicationTimestamp(b) - getPublicationTimestamp(a)
+    }
+
+    if (normalizedSort === 'date_asc') {
+      const publishedDelta = getPublicationTimestamp(a) - getPublicationTimestamp(b)
+      if (publishedDelta !== 0) return publishedDelta
+      return Number(b?.quality_score || 0) - Number(a?.quality_score || 0)
+    }
+
+    const publishedDelta = getPublicationTimestamp(b) - getPublicationTimestamp(a)
+    if (publishedDelta !== 0) return publishedDelta
+    return Number(b?.quality_score || 0) - Number(a?.quality_score || 0)
+  })
+
+  return sorted
 }
 
 function haversineMiles(lat1, lon1, lat2, lon2) {
@@ -1078,7 +1212,7 @@ function makeDiagnosticsPayload() {
           error_message: null,
         },
         endpoints: {
-          '/api/jobs/filter-metadata': { status: 'healthy', latency_ms: 1.2, metadata_version: 'jobs-filter-v1' },
+          '/api/jobs/filter-metadata': { status: 'healthy', latency_ms: 1.2, metadata_version: 'jobs-filter-v2' },
           '/api/providers/attribution': { status: 'healthy', latency_ms: 1.4, provider_count: Object.keys(PROVIDER_ATTRIBUTION_FIXTURES).length },
           '/api/jobs/search': { status: 'healthy', latency_ms: 2.1, sample_total_jobs: JOB_FIXTURES.length },
         },
@@ -1623,11 +1757,12 @@ function applyJobSearchFilters(baseJobs, params, selectedLocations) {
   let jobs = [...baseJobs]
 
   const categories = expandCategoriesForMock(queryValues(params, 'category')).map(normalizeTextLower)
-  const levels = queryValues(params, 'level').map(normalizeTextLower)
+  const levels = queryValues(params, 'level').map(normalizeMockLevelValue).filter(Boolean)
   const companies = queryValues(params, 'company').map(normalizeTextLower)
   const locations = (selectedLocations || []).map(normalizeTextLower)
   const keyword = normalizeTextLower(params.get('q'))
   const postedAfter = parsePostedAfter(params.get('posted_after'))
+  const sortBy = normalizeTextLower(params.get('sort_by')) || 'date_desc'
 
   const includeRemote = normalizeTextLower(params.get('include_remote')) === 'true'
   const includeHybrid = normalizeTextLower(params.get('include_hybrid')) !== 'false'
@@ -1637,11 +1772,14 @@ function applyJobSearchFilters(baseJobs, params, selectedLocations) {
   }
 
   if (levels.length) {
-    jobs = jobs.filter((job) => (job.levels || []).some((item) => levels.includes(normalizeTextLower(item))))
+    jobs = jobs.filter((job) => (job.levels || []).some((item) => levels.includes(normalizeMockLevelValue(item))))
   }
 
   if (companies.length) {
-    jobs = jobs.filter((job) => companies.includes(normalizeTextLower(job.company)))
+    jobs = jobs.filter((job) => {
+      const companyName = normalizeTextLower(job.company)
+      return companies.some((company) => companyName.includes(company))
+    })
   }
 
   if (keyword) {
@@ -1707,7 +1845,7 @@ function applyJobSearchFilters(baseJobs, params, selectedLocations) {
   }
 
   return {
-    jobs: allowedJobs,
+    jobs: sortMockJobs(allowedJobs, sortBy),
     diagnostics: {
       acceptedByConcreteLocation,
       acceptedByRemoteOverride,

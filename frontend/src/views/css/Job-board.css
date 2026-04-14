@@ -473,10 +473,12 @@
   padding: 0 16px 14px;
 }
 
-.hint-text {
+.hint-text,
+.helper-text {
   margin: 0;
-  color: var(--color-primary-700);
+  color: #556275;
   font-size: 0.9rem;
+  line-height: 1.45;
 }
 
 .warn-text {

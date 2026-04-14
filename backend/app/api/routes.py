@@ -54,7 +54,7 @@ import time
 from urllib.parse import urlencode, urlparse
 from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from fastapi.responses import RedirectResponse
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_admin_user
 from app.models.user import User, SavedJob
@@ -191,6 +191,30 @@ MUSE_LEVEL_OPTIONS = [
     "Management",
 ]
 
+LEVEL_VALUE_ALIASES = {
+    "internship": "internship",
+    "entry": "entry",
+    "entry level": "entry",
+    "mid": "mid",
+    "mid level": "mid",
+    "senior": "senior",
+    "senior level": "senior",
+    "manager": "manager",
+    "management": "manager",
+    "director": "director",
+    "vp": "vp",
+}
+
+LEVEL_VALUE_LABELS = {
+    "internship": "Internship",
+    "entry": "Entry",
+    "mid": "Mid",
+    "senior": "Senior",
+    "manager": "Manager",
+    "director": "Director",
+    "vp": "VP",
+}
+
 _JOBS_CACHE: dict[str, dict[str, Any]] = {}
 _JOB_URL_VALIDATION_CACHE: dict[str, dict[str, Any]] = {}
 
@@ -269,14 +293,165 @@ def _build_category_aliases_payload() -> dict[str, str]:
     return aliases
 
 
-def _build_jobs_filter_metadata_payload() -> dict[str, Any]:
+def _normalize_level_metadata_value(raw_value: Optional[str]) -> Optional[str]:
+    normalized = _normalize_text(raw_value)
+    if not normalized:
+        return None
+    return LEVEL_VALUE_ALIASES.get(normalized, normalized)
+
+
+def _label_level_metadata_value(value: str) -> str:
+    normalized = _normalize_text(value)
+    if normalized in LEVEL_VALUE_LABELS:
+        return LEVEL_VALUE_LABELS[normalized]
+    return " ".join(part.capitalize() for part in normalized.split())
+
+
+def _build_default_category_values_payload() -> List[dict[str, Any]]:
+    seen: set[str] = set()
+    values: List[str] = []
+    for categories in UNIFIED_CATEGORY_GROUPS.values():
+        for raw_value in categories:
+            value = " ".join(str(raw_value or "").split())
+            if not value:
+                continue
+            key = value.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            values.append(value)
+
+    return [
+        {"value": value, "observed_count": 0}
+        for value in sorted(values, key=lambda item: item.lower())
+    ]
+
+
+def _build_default_level_values_payload() -> List[dict[str, Any]]:
+    return [
+        {"value": value, "label": label, "observed_count": 0}
+        for value, label in LEVEL_VALUE_LABELS.items()
+    ]
+
+
+def _build_job_filter_metadata_query(db: Session):
+    from app.models.job import Job
+    from app.providers.registry import list_enabled_provider_names
+
+    display_enabled_providers = list_enabled_provider_names(control_name="display")
+    query = db.query(Job).filter(Job.is_active.is_(True)).filter(
+        or_(Job.provider_url_status.is_(None), Job.provider_url_status != "bad")
+    ).filter(Job.display_tier == "active")
+
+    if not display_enabled_providers:
+        return query.filter(False)
+    return query.filter(Job.provider.in_(display_enabled_providers))
+
+
+def _query_observed_category_counts(db: Session) -> List[tuple[str, int]]:
+    from app.models.job import Job
+
+    base_query = _build_job_filter_metadata_query(db)
+    category_rows = base_query.with_entities(func.unnest(Job.categories).label("value")).subquery()
+    rows = (
+        db.query(
+            func.btrim(category_rows.c.value).label("value"),
+            func.count().label("observed_count"),
+        )
+        .filter(category_rows.c.value.is_not(None))
+        .filter(func.length(func.btrim(category_rows.c.value)) > 0)
+        .group_by(func.btrim(category_rows.c.value))
+        .all()
+    )
+    return [
+        (" ".join(str(row.value or "").split()), int(row.observed_count or 0))
+        for row in rows
+        if " ".join(str(row.value or "").split())
+    ]
+
+
+def _query_observed_level_counts(db: Session) -> List[tuple[str, int]]:
+    from app.models.job import Job
+
+    rows = (
+        _build_job_filter_metadata_query(db)
+        .with_entities(
+            Job.experience_level.label("value"),
+            func.count(Job.id).label("observed_count"),
+        )
+        .filter(Job.experience_level.is_not(None))
+        .group_by(Job.experience_level)
+        .all()
+    )
+    return [
+        (" ".join(str(row.value or "").split()), int(row.observed_count or 0))
+        for row in rows
+        if " ".join(str(row.value or "").split())
+    ]
+
+
+def _build_observed_category_values_payload(db: Optional[Session] = None) -> List[dict[str, Any]]:
+    counts: dict[str, int] = {}
+
+    if db is not None:
+        try:
+            for value, observed_count in _query_observed_category_counts(db):
+                counts[value] = counts.get(value, 0) + max(int(observed_count or 0), 0)
+        except Exception:
+            counts = {}
+
+    if not counts:
+        return _build_default_category_values_payload()
+
+    ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0].lower(), item[0]))
+    return [
+        {"value": value, "observed_count": observed_count}
+        for value, observed_count in ordered
+    ]
+
+
+def _build_observed_level_values_payload(db: Optional[Session] = None) -> List[dict[str, Any]]:
+    counts: dict[str, int] = {}
+
+    if db is not None:
+        try:
+            for raw_value, observed_count in _query_observed_level_counts(db):
+                canonical_value = _normalize_level_metadata_value(raw_value)
+                if not canonical_value:
+                    continue
+                counts[canonical_value] = counts.get(canonical_value, 0) + max(int(observed_count or 0), 0)
+        except Exception:
+            counts = {}
+
+    if not counts:
+        return _build_default_level_values_payload()
+
+    ordered = sorted(
+        counts.items(),
+        key=lambda item: (-item[1], _label_level_metadata_value(item[0]).lower(), item[0]),
+    )
+    return [
+        {
+            "value": value,
+            "label": _label_level_metadata_value(value),
+            "observed_count": observed_count,
+        }
+        for value, observed_count in ordered
+    ]
+
+
+def _build_jobs_filter_metadata_payload(db: Optional[Session] = None) -> dict[str, Any]:
     category_groups = _build_category_groups_payload()
     category_aliases = _build_category_aliases_payload()
-    levels = list(MUSE_LEVEL_OPTIONS)
+    category_values = _build_observed_category_values_payload(db)
+    level_values = _build_observed_level_values_payload(db)
+    levels = [item["label"] for item in level_values]
 
     core_payload = {
         "category_groups": category_groups,
         "category_aliases": category_aliases,
+        "category_values": category_values,
+        "level_values": level_values,
         "levels": levels,
         "location_param_cap": max(1, settings.MUSE_LOCATION_PARAM_CAP),
     }
@@ -285,7 +460,7 @@ def _build_jobs_filter_metadata_payload() -> dict[str, Any]:
 
     return {
         **core_payload,
-        "metadata_version": "jobs-filter-v1",
+        "metadata_version": "jobs-filter-v2",
         "metadata_hash": metadata_hash,
     }
 
@@ -1720,14 +1895,14 @@ async def refresh_muse_supported_locations(
     tags=["jobs"],
     response_description="Canonical category/level metadata and search guardrail limits for the Job Board.",
 )
-async def jobs_filter_metadata():
+async def jobs_filter_metadata(db: Session = Depends(get_db)):
     """
     Return shared filter metadata consumed by the Job Board UI.
 
     Keeps category/level taxonomy and location parameter guardrail values in one
     backend-owned contract so frontend and backend behavior stay aligned.
     """
-    return _build_jobs_filter_metadata_payload()
+    return _build_jobs_filter_metadata_payload(db)
 
 @router.get(
     "/jobs/search-live-source",
@@ -2235,7 +2410,7 @@ async def search_jobs(
     else:
         filtered_total_pages = page + 1
 
-    filter_metadata = _build_jobs_filter_metadata_payload()
+    filter_metadata = _build_jobs_filter_metadata_payload(db)
     response_payload = {
         "page": first_payload.get("page"),
         "total_pages": filtered_total_pages,
@@ -2988,7 +3163,7 @@ async def diagnostics(
         from app.services.job_search import search_local_jobs
 
         filter_started = time.monotonic()
-        filter_metadata = _build_jobs_filter_metadata_payload()
+        filter_metadata = _build_jobs_filter_metadata_payload(db)
         filter_latency_ms = round((time.monotonic() - filter_started) * 1000, 2)
 
         providers_started = time.monotonic()
