@@ -359,6 +359,20 @@ class IngestServiceTests(unittest.TestCase):
         self.assertTrue(needs_link_health_backfill(row, reference_time=now))
         self.assertTrue(needs_stale_audit(row, reference_time=now))
 
+    def test_missing_country_metadata_alone_does_not_trigger_link_backfill(self):
+        now = datetime(2026, 4, 13, 12, 0, tzinfo=timezone.utc)
+        row = SimpleNamespace(
+            provider_url_checked_at=now,
+            source_tags=["provider:the_muse"],
+            apply_url="https://example.com/apply",
+            apply_url_checked_at=now,
+            apply_portal="company_site",
+            location_country_code="",
+            location_country_name="",
+        )
+
+        self.assertFalse(needs_link_health_backfill(row, reference_time=now))
+
     @patch.object(ingest_module, "insert", side_effect=_fake_insert)
     @patch.object(ingest_module, "_build_job_payload")
     @patch.object(ingest_module, "_evaluate_job_link_health", return_value={"provider_url_status": "good"})

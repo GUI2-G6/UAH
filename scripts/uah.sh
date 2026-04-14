@@ -905,11 +905,124 @@ run_compose_up_with_build_mode() {
   esac
 }
 
-run_sync_rebuild_if_requested() {
+backend_container_name_for_env() {
   local env_name="$1"
 
+  case "$env_name" in
+    dev)
+      echo "uah-dev-backend"
+      ;;
+    beta)
+      echo "uah-beta-backend"
+      ;;
+    *)
+      echo "Unsupported environment '$env_name' for backend container lookup." >&2
+      return 1
+      ;;
+  esac
+}
+
+wait_for_backend_exec_ready() {
+  local env_name="$1"
+  local backend_container="${2:-}"
+  local max_attempts="${3:-10}"
+  local attempt=1
+  local delay=2
+
+  if [[ -z "$backend_container" ]]; then
+    backend_container="$(backend_container_name_for_env "$env_name")" || return 1
+  fi
+
+  while ((attempt <= max_attempts)); do
+    if is_container_running "$backend_container" && docker exec "$backend_container" sh -lc 'cd /app && pwd >/dev/null' >/dev/null 2>&1; then
+      return 0
+    fi
+
+    if ((attempt < max_attempts)); then
+      echo "  Backend container '$backend_container' not ready for docker exec yet. Retrying in ${delay}s..."
+      sleep "$delay"
+    fi
+
+    attempt=$((attempt + 1))
+  done
+
+  echo "Backend container '$backend_container' was not ready for docker exec after $max_attempts attempts." >&2
+  return 1
+}
+
+run_alembic_upgrade_for_env() {
+  local env_name="$1"
+  local backend_container="${2:-}"
+
+  if [[ -z "$backend_container" ]]; then
+    backend_container="$(backend_container_name_for_env "$env_name")" || return 1
+  fi
+
+  echo "Running Alembic migrations in $backend_container..."
+  docker exec "$backend_container" sh -lc 'cd /app && alembic upgrade head'
+}
+
+refresh_job_runtime_services() {
+  local env_name="$1"
+  local backend_container
+
+  backend_container="$(backend_container_name_for_env "$env_name")" || return 1
+
+  echo "Refreshing backend, celery worker, and celery beat for $env_name..."
+  run_compose "$env_name" restart backend celery_worker celery_beat
+
+  wait_for_backend_exec_ready "$env_name" "$backend_container" 10
+}
+
+run_live_schema_reconcile() {
+  local env_name="$1"
+  local require_running="${2:-true}"
+  local backend_container
+
+  backend_container="$(backend_container_name_for_env "$env_name")" || return 1
+
+  if ! is_container_running "$backend_container"; then
+    if [[ "$require_running" == "true" ]]; then
+      echo "Backend container '$backend_container' is not running; cannot apply Alembic migrations." >&2
+      return 1
+    fi
+
+    echo "Backend container '$backend_container' is not running. Skipping post-sync Alembic reconcile."
+    return 0
+  fi
+
+  if ! wait_for_backend_exec_ready "$env_name" "$backend_container" 10; then
+    return 1
+  fi
+
+  if ! run_alembic_upgrade_for_env "$env_name" "$backend_container"; then
+    echo "Alembic upgrade failed for $env_name." >&2
+    return 1
+  fi
+
+  if ! refresh_job_runtime_services "$env_name"; then
+    echo "Runtime service refresh failed for $env_name after Alembic upgrade." >&2
+    return 1
+  fi
+
+  echo "Schema reconcile completed for $env_name."
+}
+
+run_sync_rebuild_if_requested() {
+  local env_name="$1"
+  local backend_container
+
+  backend_container="$(backend_container_name_for_env "$env_name")" || return 1
+
   if [[ "$BUILD_MODE" == "none" ]]; then
+    if is_container_running "$backend_container"; then
+      echo "Backend container '$backend_container' is running. Applying live schema reconcile after sync..."
+      run_live_schema_reconcile "$env_name" true
+      return $?
+    fi
+
     echo "No rebuild requested after sync."
+    echo "Backend container '$backend_container' is not running. Skipping post-sync Alembic reconcile."
     return
   fi
 
@@ -921,6 +1034,7 @@ run_sync_rebuild_if_requested() {
   echo "Running post-sync compose update ($(build_mode_label))..."
   preflight_startup "$env_name"
   run_compose_up_with_build_mode "$env_name"
+  run_live_schema_reconcile "$env_name" true
 }
 
 prepare_sync_branch() {
@@ -3032,8 +3146,10 @@ provider_restart_runtime_services() {
     return 1
   fi
 
-  echo "Restarting backend, celery worker, and celery beat for $env_name..."
-  run_compose "$env_name" restart backend celery_worker celery_beat
+  if ! refresh_job_runtime_services "$env_name"; then
+    return 1
+  fi
+
   PROVIDER_CONFIG_MUTATED=false
 }
 
@@ -4127,20 +4243,27 @@ wait_for_dev_backend_ready() {
 dev_start() {
   echo "=== UAH Dev Start ==="
 
-  echo "[1/6] Running preflight checks..."
+  echo "[1/7] Running preflight checks..."
   preflight_startup dev
 
-  echo "[2/6] Applying WireGuard host route..."
+  echo "[2/7] Starting containers ($(build_mode_label))..."
+  run_compose_up_with_build_mode dev
+
+  echo "[3/7] Applying Alembic migrations and refreshing runtime services..."
+  if ! run_live_schema_reconcile dev true; then
+    echo "Dev start failed during Alembic upgrade or runtime refresh." >&2
+    run_compose dev ps || true
+    return 1
+  fi
+
+  echo "[4/7] Applying WireGuard host route..."
   VPN_CONTAINER=uah-dev-vpn \
   BACKEND_CONTAINER=uah-dev-backend \
   NETWORK_NAME=uah-infra \
   ROUTE_OWNER=dev \
   bash "$ROOT_DIR/scripts/dev/network/apply_desktop_ollama_temp_route.sh"
 
-  echo "[3/6] Starting containers ($(build_mode_label))..."
-  run_compose_up_with_build_mode dev
-
-  echo "[4/6] Waiting for backend to be ready..."
+  echo "[5/7] Waiting for backend to be ready..."
   if ! wait_for_dev_backend_ready; then
     echo "Backend readiness check failed after retries." >&2
     echo "Run: bash scripts/uah.sh dev debug logs backend --tail 120 --errors" >&2
@@ -4149,13 +4272,13 @@ dev_start() {
     return 1
   fi
 
-  echo "[5/6] Syncing cert to frontend..."
+  echo "[6/7] Syncing cert to frontend..."
   if ! sync_dev_cert optional; then
     echo "Cert sync warning: unable to sync certs now."
     echo "You can retry later with: bash scripts/uah.sh dev cert-sync"
   fi
 
-  echo "[6/6] Connectivity check..."
+  echo "[7/7] Connectivity check..."
   if ! dev_backend_connectivity_check_once; then
     echo "Backend failed final connectivity check." >&2
     echo "Run: bash scripts/uah.sh dev debug status" >&2
@@ -4213,6 +4336,10 @@ beta_start() {
   local beta_backend_running="false"
   local beta_backend_port_ok="false"
   local beta_ollama_ok="false"
+  local beta_bridge
+  local infra_bridge
+  local beta_br
+  local infra_br
 
   if [[ ! -f "$ROOT_DIR/docker-compose.yml" || ! -f "$ROOT_DIR/docker-compose.beta.yml" ]]; then
     echo "Missing required compose files at repo root." >&2
@@ -4221,16 +4348,20 @@ beta_start() {
 
   echo "=== UAH Beta Start ==="
 
-  echo "[1/6] Running preflight checks..."
+  echo "[1/7] Running preflight checks..."
   preflight_startup beta
 
-  echo "[2/6] Starting containers ($(build_mode_label))..."
+  echo "[2/7] Starting containers ($(build_mode_label))..."
   run_compose_up_with_build_mode beta
 
-  echo "[3/6] Waiting for backend to be ready..."
-  sleep 12
+  echo "[3/7] Applying Alembic migrations and refreshing runtime services..."
+  if ! run_live_schema_reconcile beta true; then
+    notify_discord "**Beta start FAILED** during Alembic upgrade or runtime refresh" 15158332
+    run_compose beta ps || true
+    return 1
+  fi
 
-  echo "[4/6] Applying WireGuard host route..."
+  echo "[4/7] Applying WireGuard host route..."
   VPN_CONTAINER=uah-dev-vpn \
   BACKEND_CONTAINER=uah-beta-backend \
   NETWORK_NAME=uah-infra \
@@ -4238,12 +4369,7 @@ beta_start() {
   ROUTE_OWNER=beta \
   bash "$ROOT_DIR/scripts/beta/network/apply_desktop_ollama_temp_route.sh"
 
-  echo "[5/6] Allowing cross-bridge Docker traffic..."
-  local beta_bridge
-  local infra_bridge
-  local beta_br
-  local infra_br
-
+  echo "[5/7] Allowing cross-bridge Docker traffic..."
   beta_bridge=$(docker network inspect uah-beta-infra --format '{{.Id}}' | cut -c1-12)
   infra_bridge=$(docker network inspect uah-infra --format '{{.Id}}' | cut -c1-12)
   beta_br="br-${beta_bridge}"
@@ -4255,7 +4381,10 @@ beta_start() {
   sudo iptables -C DOCKER-USER -i "$infra_br" -o "$beta_br" -j ACCEPT 2>/dev/null || \
     sudo iptables -I DOCKER-USER -i "$infra_br" -o "$beta_br" -j ACCEPT
 
-  echo "[6/6] Connectivity check..."
+  echo "[6/7] Waiting for backend to settle..."
+  sleep 12
+
+  echo "[7/7] Connectivity check..."
   if docker exec uah-beta-backend python3 -c "
 import httpx
 import sys
@@ -4357,7 +4486,6 @@ beta_restart() {
 
 beta_sync() {
   local mode="${1:-safe}"
-  local commit_sha
 
   case "$mode" in
     safe|ff|fast-forward)
@@ -4377,9 +4505,6 @@ beta_sync() {
       exit 1
       ;;
   esac
-
-  commit_sha="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-  notify_discord "**Beta synced** to commit \`$commit_sha\` (mode: $mode)" 3066993
 }
 
 sql_escape_literal() {
@@ -5016,8 +5141,19 @@ run_selected_action() {
       ;;
     sync)
       if [[ "$env_name" == "beta" ]]; then
-        beta_sync "${action_args[0]:-safe}"
-        run_sync_rebuild_if_requested beta
+        local beta_sync_mode="${action_args[0]:-safe}"
+        local commit_sha
+
+        if ! beta_sync "$beta_sync_mode"; then
+          return 1
+        fi
+        if ! run_sync_rebuild_if_requested beta; then
+          notify_discord "**Beta sync FAILED** during post-sync Alembic reconcile" 15158332
+          return 1
+        fi
+
+        commit_sha="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+        notify_discord "**Beta synced** to commit \`$commit_sha\` (mode: $beta_sync_mode)" 3066993
       elif [[ "$env_name" == "dev" ]]; then
         dev_sync "${action_args[0]:-safe}"
         run_sync_rebuild_if_requested dev

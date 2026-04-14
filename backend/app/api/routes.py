@@ -504,7 +504,7 @@ def _build_observed_country_values_payload(db: Optional[Session] = None) -> List
                 },
             )
             current["observed_count"] = int(current["observed_count"]) + max(int(observed_count or 0), 0)
-            if name and not current["name"]:
+            if name and (not current["name"] or current["name"] == current["code"]):
                 current["name"] = name
     except Exception:
         return []

@@ -689,10 +689,6 @@ def refresh_existing_job_health(job_row: Job, *, db_session=None, provider_adapt
 def needs_link_health_backfill(job_row: Job, *, reference_time: datetime | None = None) -> bool:
     """Return True when an existing row is missing or due for link-health refresh."""
     now = reference_time or datetime.now(timezone.utc)
-    if not (getattr(job_row, "location_country_code", "") or "").strip() or not (
-        getattr(job_row, "location_country_name", "") or ""
-    ).strip():
-        return True
     if job_link_needs_recheck(job_row.provider_url_checked_at, now=now):
         return True
     if not list(job_row.source_tags or []):

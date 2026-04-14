@@ -128,6 +128,20 @@ class JobsFilterContractTests(unittest.TestCase):
         self.assertEqual(payload.get("provider_values")[0]["value"], "the_muse")
         self.assertEqual(payload.get("provider_values")[0]["observed_count"], 6)
 
+    @patch("app.api.routes._query_observed_country_counts")
+    def test_country_metadata_prefers_real_name_over_code_placeholder(self, country_mock):
+        country_mock.return_value = [
+            ("US", "", 2),
+            ("US", "United States", 4),
+        ]
+
+        payload = _build_jobs_filter_metadata_payload(db=object())
+
+        self.assertEqual(
+            payload.get("country_values")[0],
+            {"code": "US", "name": "United States", "observed_count": 6},
+        )
+
     @patch("app.api.routes._query_observed_level_counts", return_value=[])
     @patch("app.api.routes._query_observed_category_counts", return_value=[])
     def test_filter_metadata_falls_back_when_catalog_is_empty(self, _category_mock, _level_mock):

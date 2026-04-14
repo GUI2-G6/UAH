@@ -353,9 +353,9 @@ export default {
 }
 
 .meta-pill.accent {
-    border-color: #0f766e;
-    color: #0f766e;
-    background: rgba(15, 118, 110, 0.08);
+    border-color: var(--color-primary-600);
+    color: var(--color-primary-600);
+    background: color-mix(in srgb, var(--color-primary-600) 10%, white);
 }
 
 .meta-pill.posted {
@@ -405,9 +405,9 @@ export default {
     align-items: center;
     gap: 6px;
     border-radius: 999px;
-    border: 1px solid rgba(15, 118, 110, 0.24);
-    background: rgba(15, 118, 110, 0.12);
-    color: #0f766e;
+    border: 1px solid color-mix(in srgb, var(--color-primary-600) 24%, white);
+    background: color-mix(in srgb, var(--color-primary-600) 10%, white);
+    color: var(--color-primary-600);
     padding: 6px 11px;
     font-weight: 700;
     text-decoration: none;
@@ -436,8 +436,8 @@ export default {
 
 .job-actions .primary,
 .job-modal-actions .primary {
-    background: #0f766e;
-    border-color: #0f766e;
+    background: var(--color-primary-600);
+    border-color: var(--color-primary-600);
     color: #ffffff;
 }
 

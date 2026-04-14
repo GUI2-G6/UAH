@@ -43,8 +43,8 @@
   width: fit-content;
   border-radius: 999px;
   padding: 6px 12px;
-  background: rgba(15, 118, 110, 0.12);
-  color: #0f766e;
+  background: color-mix(in srgb, var(--color-primary-600) 12%, white);
+  color: var(--color-primary-600);
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -111,8 +111,8 @@
 }
 
 .active-filters-actions .primary {
-  background: #0f766e;
-  border-color: #0f766e;
+  background: var(--color-primary-600);
+  border-color: var(--color-primary-600);
   color: #fff;
 }
 
@@ -245,8 +245,8 @@
 }
 
 .mode-button.active {
-  background: #0f766e;
-  border-color: #0f766e;
+  background: var(--color-primary-600);
+  border-color: var(--color-primary-600);
   color: #fff;
 }
 
@@ -445,8 +445,8 @@
 }
 
 .city-sort-btn.active {
-  background: #0f766e;
-  border-color: #0f766e;
+  background: var(--color-primary-600);
+  border-color: var(--color-primary-600);
   color: #ffffff;
 }
 
@@ -501,9 +501,9 @@
 }
 
 .filter-actions .primary {
-  background: #0f766e;
+  background: var(--color-primary-600);
   color: #fff;
-  border-color: #0f766e;
+  border-color: var(--color-primary-600);
 }
 
 .filter-actions .secondary {
@@ -539,8 +539,8 @@
 }
 
 .results-state-item.is-highlight {
-  border-color: #0f766e;
-  background: rgba(15, 118, 110, 0.08);
+  border-color: var(--color-primary-600);
+  background: color-mix(in srgb, var(--color-primary-600) 8%, white);
 }
 
 .results-state-label {
