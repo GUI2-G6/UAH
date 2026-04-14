@@ -2839,7 +2839,10 @@ async def api_status():
         },
     },
 )
-async def diagnostics(current_user: User = Depends(require_admin_user)):
+async def diagnostics(
+    current_user: User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+):
     """
     Comprehensive diagnostics endpoint for operational visibility.
 
@@ -2977,6 +2980,51 @@ async def diagnostics(current_user: User = Depends(require_admin_user)):
         "status": "healthy" if all(status == "healthy" for status in parse_method_statuses) else "degraded",
         "methods": parse_method_entries,
     }
+
+    # --- Job board diagnostics (compact) ---
+    try:
+        from app.api import jobs as jobs_api
+        from app.services.job_board_debug import build_compact_job_board_service_status
+        from app.services.job_search import search_local_jobs
+
+        filter_started = time.monotonic()
+        filter_metadata = _build_jobs_filter_metadata_payload()
+        filter_latency_ms = round((time.monotonic() - filter_started) * 1000, 2)
+
+        providers_started = time.monotonic()
+        provider_payload = jobs_api.list_job_provider_attribution()
+        providers_latency_ms = round((time.monotonic() - providers_started) * 1000, 2)
+
+        local_search_started = time.monotonic()
+        local_search_payload = search_local_jobs(db=db, page=1, page_size=1)
+        local_search_latency_ms = round((time.monotonic() - local_search_started) * 1000, 2)
+
+        compact_status = build_compact_job_board_service_status(db)
+        result["services"]["job_board"] = {
+            **compact_status,
+            "endpoints": {
+                "/api/jobs/filter-metadata": {
+                    "status": "healthy",
+                    "latency_ms": filter_latency_ms,
+                    "metadata_version": filter_metadata.get("metadata_version"),
+                },
+                "/api/providers/attribution": {
+                    "status": "healthy",
+                    "latency_ms": providers_latency_ms,
+                    "provider_count": len(provider_payload.get("providers") or []),
+                },
+                "/api/jobs/search": {
+                    "status": "healthy",
+                    "latency_ms": local_search_latency_ms,
+                    "sample_total_jobs": int(local_search_payload.get("total_jobs") or 0),
+                },
+            },
+        }
+    except Exception as e:
+        result["services"]["job_board"] = {
+            "status": "unhealthy",
+            "error": str(e),
+        }
 
     # --- Overall status ---
     statuses = [s.get("status") for s in result["services"].values()]

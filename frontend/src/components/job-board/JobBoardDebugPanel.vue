@@ -5,7 +5,12 @@
         <p class="debug-eyebrow">Dev only</p>
         <h3>Search diagnostics</h3>
       </div>
-      <span class="debug-badge">Internal</span>
+      <div class="debug-panel-actions">
+        <span class="debug-badge">Internal</span>
+        <button type="button" class="debug-link" @click="openDiagnostics">
+          Open full diagnostics
+        </button>
+      </div>
     </div>
 
     <div class="debug-grid">
@@ -24,6 +29,25 @@
       <div class="debug-item">
         <span class="debug-label">Location fallback</span>
         <strong>{{ diagnostics.locationRelaxedFallback === true ? 'Used' : 'No' }}</strong>
+      </div>
+    </div>
+
+    <div v-if="apiSummary.endpoint" class="debug-api-summary">
+      <div class="debug-item">
+        <span class="debug-label">Last API</span>
+        <strong>{{ apiSummary.endpoint }}</strong>
+      </div>
+      <div class="debug-item">
+        <span class="debug-label">Status</span>
+        <strong>{{ apiSummary.status || 'n/a' }}</strong>
+      </div>
+      <div class="debug-item">
+        <span class="debug-label">Latency</span>
+        <strong>{{ formattedLatency }}</strong>
+      </div>
+      <div class="debug-item">
+        <span class="debug-label">Payload hash</span>
+        <strong>{{ apiSummary.payloadHash || 'n/a' }}</strong>
       </div>
     </div>
 
@@ -54,6 +78,21 @@ export default {
       type: String,
       default: '',
     },
+    apiSummary: {
+      type: Object,
+      default: () => ({}),
+    },
+  },
+  computed: {
+    formattedLatency() {
+      const latency = Number(this.apiSummary?.latencyMs)
+      return Number.isFinite(latency) && latency >= 0 ? `${latency} ms` : 'n/a'
+    },
+  },
+  methods: {
+    openDiagnostics() {
+      this.$router.push('/dev')
+    },
   },
 }
 </script>
@@ -72,6 +111,14 @@ export default {
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+}
+
+.debug-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .debug-eyebrow {
@@ -97,11 +144,29 @@ h3 {
   border: 1px solid rgba(15, 118, 110, 0.35);
 }
 
+.debug-link {
+  border: 1px solid rgba(15, 118, 110, 0.28);
+  background: #ffffff;
+  color: #0f766e;
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .debug-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
   margin-top: 14px;
+}
+
+.debug-api-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .debug-item {

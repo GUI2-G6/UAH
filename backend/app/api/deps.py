@@ -33,3 +33,9 @@ def require_admin_user(current_user: User = Depends(get_current_user)) -> User:
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Admin privileges required")
     return current_user
+
+
+def require_admin_or_developer(current_user: User = Depends(get_current_user)) -> User:
+    if not current_user.is_admin and not current_user.is_developer:
+        raise HTTPException(status_code=403, detail="Admin or developer privileges required")
+    return current_user

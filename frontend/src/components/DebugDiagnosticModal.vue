@@ -25,6 +25,7 @@
 
       <div class="debug-actions">
         <button type="button" @click="copySnapshot">Copy Snapshot</button>
+        <button type="button" @click="openDiagnosticsConsole">Open Job Board Console</button>
         <button type="button" class="debug-close" @click="close">Close</button>
       </div>
     </div>
@@ -75,6 +76,10 @@ export default {
       } catch {
         // Clipboard support is optional.
       }
+    },
+    openDiagnosticsConsole() {
+      this.$router.push('/dev')
+      this.close()
     },
   },
 }
