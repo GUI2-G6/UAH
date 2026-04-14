@@ -13,6 +13,7 @@ from app.services.ingest import (
     _build_job_payload,
     _evaluate_staleness,
     build_short_description,
+    compute_effective_last_updated_at,
     compute_dedup_hash,
     compute_content_fingerprint,
     compute_display_tier,
@@ -78,6 +79,8 @@ def _payload(
         "company": job.company,
         "company_url": job.company_url,
         "location": job.location,
+        "location_country_code": "US",
+        "location_country_name": "United States",
         "is_remote": bool(job.is_remote),
         "job_type": job.job_type,
         "experience_level": job.experience_level,
@@ -256,6 +259,42 @@ class IngestServiceTests(unittest.TestCase):
         self.assertEqual(result["staleness_status"], "fresh")
         self.assertEqual(result["last_content_change_at"], datetime(2026, 4, 13, 12, 0, tzinfo=timezone.utc))
 
+    def test_effective_last_updated_prefers_last_content_change(self):
+        existing = SimpleNamespace(
+            last_content_change_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            published_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            first_published_at=datetime(2025, 12, 1, tzinfo=timezone.utc),
+        )
+
+        effective = compute_effective_last_updated_at(
+            existing=existing,
+            job=_job(published_at=datetime(2026, 2, 1, tzinfo=timezone.utc)),
+            content_changed=False,
+            reference_time=datetime(2026, 4, 13, 12, 0, tzinfo=timezone.utc),
+        )
+
+        self.assertEqual(effective, datetime(2026, 4, 10, tzinfo=timezone.utc))
+
+    def test_staleness_trims_year_old_unchanged_listing(self):
+        existing = SimpleNamespace(
+            first_published_at=datetime(2024, 2, 1, tzinfo=timezone.utc),
+            published_at=datetime(2024, 2, 1, tzinfo=timezone.utc),
+            content_fingerprint=compute_content_fingerprint(_job(published_at=datetime(2024, 2, 1, tzinfo=timezone.utc))),
+            last_content_change_at=datetime(2024, 2, 1, tzinfo=timezone.utc),
+            repost_count=0,
+        )
+        incoming = _job(published_at=datetime(2024, 2, 1, tzinfo=timezone.utc))
+
+        result = _evaluate_staleness(
+            existing,
+            incoming,
+            link_health={"provider_url_status": "good", "apply_url_status": "good"},
+            reference_time=datetime(2026, 4, 13, 12, 0, tzinfo=timezone.utc),
+        )
+
+        self.assertEqual(result["staleness_status"], "trimmed_old_unchanged")
+        self.assertIn("year_old_unchanged_listing", result["staleness_flags"])
+
     def test_build_job_payload_rejects_bad_provider_url_and_keeps_apply_metadata(self):
         rejected = _build_job_payload(
             _job(),
@@ -298,6 +337,7 @@ class IngestServiceTests(unittest.TestCase):
         self.assertTrue(stored["should_store"])
         self.assertEqual(stored["payload"]["apply_portal"], "ashby")
         self.assertIn("apply_portal:ashby", stored["payload"]["source_tags"])
+        self.assertEqual(stored["payload"]["location_country_code"], "US")
         self.assertEqual(
             stored["payload"]["dedup_hash"],
             compute_dedup_hash("Software Engineer", "Acme"),

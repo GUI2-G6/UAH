@@ -244,8 +244,11 @@ const JOB_FIXTURES = [
     provider_job_id: '7619281',
     name: 'Frontend Engineer (Vue)',
     short_name: 'Frontend Engineer',
+    short_description: 'Build polished Vue features, tighten shared UI patterns, and ship product improvements with a hybrid team.',
     company: 'Atlas Systems',
     locations: ['Huntsville, AL'],
+    location_country_code: 'US',
+    location_country_name: 'United States',
     levels: ['Mid Level'],
     categories: ['Software Engineer'],
     tags: ['Vue', 'TypeScript', 'UI'],
@@ -272,8 +275,11 @@ const JOB_FIXTURES = [
     provider_job_id: 'backend-python-engineer',
     name: 'Backend Python Engineer',
     short_name: 'Backend Engineer',
+    short_description: 'Own API performance, queue reliability, and backend foundations for a fast-moving data platform.',
     company: 'Data Forge',
     locations: ['Austin, TX'],
+    location_country_code: 'US',
+    location_country_name: 'United States',
     levels: ['Senior Level'],
     categories: ['Software Engineer'],
     tags: ['Python', 'FastAPI', 'Postgres'],
@@ -300,8 +306,11 @@ const JOB_FIXTURES = [
     provider_job_id: '7619282',
     name: 'Product Designer',
     short_name: 'Product Designer',
+    short_description: 'Shape UX flows, prototypes, and research-backed design decisions for recruiting products.',
     company: 'Northwind Studio',
     locations: ['Boston, MA'],
+    location_country_code: 'US',
+    location_country_name: 'United States',
     levels: ['Entry Level'],
     categories: ['Design'],
     tags: ['Figma', 'UX', 'Research'],
@@ -328,8 +337,11 @@ const JOB_FIXTURES = [
     provider_job_id: 'data-analyst',
     name: 'Data Analyst',
     short_name: 'Data Analyst',
+    short_description: 'Create hiring funnel analytics, reporting, and planning insights with a hybrid analytics team.',
     company: 'Peak Metrics',
     locations: ['Seattle, WA'],
+    location_country_code: 'US',
+    location_country_name: 'United States',
     levels: ['Mid Level'],
     categories: ['Data Science'],
     tags: ['SQL', 'Tableau', 'Analytics'],
@@ -356,8 +368,11 @@ const JOB_FIXTURES = [
     provider_job_id: '7619283',
     name: 'Security Engineer',
     short_name: 'Security Engineer',
+    short_description: 'Develop secure defaults, incident tooling, and practical detection workflows for core systems.',
     company: 'ShieldOps',
     locations: ['Chicago, IL'],
+    location_country_code: 'US',
+    location_country_name: 'United States',
     levels: ['Senior Level'],
     categories: ['IT'],
     tags: ['Security', 'Threat Modeling', 'SIEM'],
@@ -384,8 +399,11 @@ const JOB_FIXTURES = [
     provider_job_id: 'qa-automation-engineer',
     name: 'QA Automation Engineer',
     short_name: 'QA Automation',
+    short_description: 'Automate regression coverage and stabilize release quality across a distributed QA organization.',
     company: 'Blue Pine Labs',
     locations: ['Toronto, ON'],
+    location_country_code: 'CA',
+    location_country_name: 'Canada',
     levels: ['Mid Level'],
     categories: ['Software Engineer'],
     tags: ['Playwright', 'CI', 'Testing'],
@@ -800,6 +818,52 @@ function labelMockLevelValue(value) {
   }).join(' ')
 }
 
+function getMockDisplayEnabledProviders() {
+  return Object.values(PROVIDER_ATTRIBUTION_FIXTURES)
+    .filter((provider) => provider?.display_enabled === true)
+    .map((provider) => normalizeTextLower(provider.provider))
+    .filter(Boolean)
+}
+
+function getMockSearchableJobs() {
+  const enabledProviders = new Set(getMockDisplayEnabledProviders())
+  return JOB_FIXTURES.filter((job) => enabledProviders.has(normalizeTextLower(job.provider)))
+}
+
+function getMockCountryName(countryCode) {
+  const normalized = normalizeTextUpper(countryCode)
+  if (!normalized) return ''
+
+  const fixtureMatch = COUNTRY_FIXTURES.find((country) => normalizeTextUpper(country.code) === normalized)
+  if (fixtureMatch?.name) return fixtureMatch.name
+
+  const cityMatch = allCities().find((city) => normalizeTextUpper(city.country_code) === normalized)
+  if (cityMatch?.country) return cityMatch.country
+
+  return normalized
+}
+
+function getMockJobCountryCode(job) {
+  const normalized = normalizeTextUpper(job?.location_country_code)
+  if (normalized) return normalized
+
+  const constrained = normalizeTextUpper(job?.location_constraints?.countries?.[0])
+  if (constrained) return constrained
+
+  const location = normalizeTextLower(job?.locations?.[0])
+  const cityMatch = allCities().find((city) => {
+    const cityName = normalizeTextLower(cityToMuseLocationName(city))
+    return cityName && location && (location.includes(cityName) || cityName.includes(location))
+  })
+  return normalizeTextUpper(cityMatch?.country_code)
+}
+
+function getMockJobCountryName(job) {
+  const normalized = normalizeWhitespace(job?.location_country_name)
+  if (normalized) return normalized
+  return getMockCountryName(getMockJobCountryCode(job))
+}
+
 function buildMockCategoryValues() {
   const counts = new Map()
 
@@ -811,7 +875,7 @@ function buildMockCategoryValues() {
     }
   }
 
-  for (const job of JOB_FIXTURES) {
+  for (const job of getMockSearchableJobs()) {
     for (const rawValue of job.categories || []) {
       const value = normalizeWhitespace(rawValue)
       if (!value) continue
@@ -834,7 +898,7 @@ function buildMockLevelValues() {
     counts.set(value, 0)
   }
 
-  for (const job of JOB_FIXTURES) {
+  for (const job of getMockSearchableJobs()) {
     for (const rawValue of job.levels || []) {
       const value = normalizeMockLevelValue(rawValue)
       if (!value) continue
@@ -854,9 +918,55 @@ function buildMockLevelValues() {
     }))
 }
 
+function buildMockCountryValues() {
+  const counts = new Map()
+
+  for (const job of getMockSearchableJobs()) {
+    const code = getMockJobCountryCode(job)
+    if (!code) continue
+    const name = getMockJobCountryName(job) || code
+    const current = counts.get(code) || { code, name, observed_count: 0 }
+    current.observed_count += 1
+    if (!current.name && name) current.name = name
+    counts.set(code, current)
+  }
+
+  return [...counts.values()].sort((a, b) => {
+    if (a.observed_count !== b.observed_count) return b.observed_count - a.observed_count
+    return a.name.localeCompare(b.name)
+  })
+}
+
+function buildMockProviderValues() {
+  const observedCounts = new Map()
+  for (const job of getMockSearchableJobs()) {
+    const provider = normalizeTextLower(job.provider)
+    if (!provider) continue
+    observedCounts.set(provider, Number(observedCounts.get(provider) || 0) + 1)
+  }
+
+  return getMockDisplayEnabledProviders()
+    .map((provider) => {
+      const detail = PROVIDER_ATTRIBUTION_FIXTURES[provider] || {}
+      const label = normalizeWhitespace(detail?.attribution?.label || provider)
+      return {
+        value: provider,
+        label,
+        observed_count: Number(observedCounts.get(provider) || 0),
+        display_enabled: true,
+      }
+    })
+    .sort((a, b) => {
+      if (a.observed_count !== b.observed_count) return b.observed_count - a.observed_count
+      return a.label.localeCompare(b.label)
+    })
+}
+
 function buildMockFilterMetadata() {
   const categoryValues = buildMockCategoryValues()
   const levelValues = buildMockLevelValues()
+  const countryValues = buildMockCountryValues()
+  const providerValues = buildMockProviderValues()
   const payload = {
     category_groups: CATEGORY_GROUPS.map((group) => ({
       key: group.key,
@@ -866,6 +976,8 @@ function buildMockFilterMetadata() {
     category_aliases: { ...CATEGORY_ALIAS },
     category_values: categoryValues,
     level_values: levelValues,
+    country_values: countryValues,
+    provider_values: providerValues,
     levels: levelValues.map((item) => item.label),
     location_param_cap: MOCK_LOCATION_PARAM_CAP,
   }
@@ -1244,8 +1356,9 @@ function buildMockJobsSearchPayload(searchParams) {
   const selectedLocations = locationSelection.selectedLocations
   const droppedLocations = locationSelection.droppedLocations
   const locationParamsTruncated = locationSelection.locationParamsTruncated
+  const searchableJobs = getMockSearchableJobs()
 
-  const filteredResult = applyJobSearchFilters(JOB_FIXTURES, searchParams, selectedLocations)
+  const filteredResult = applyJobSearchFilters(searchableJobs, searchParams, selectedLocations)
   const filtered = filteredResult.jobs
   const diagnostics = filteredResult.diagnostics || {}
   const totalJobs = filtered.length
@@ -1759,13 +1872,23 @@ function applyJobSearchFilters(baseJobs, params, selectedLocations) {
   const categories = expandCategoriesForMock(queryValues(params, 'category')).map(normalizeTextLower)
   const levels = queryValues(params, 'level').map(normalizeMockLevelValue).filter(Boolean)
   const companies = queryValues(params, 'company').map(normalizeTextLower)
+  const provider = normalizeTextLower(params.get('provider'))
+  const countryCode = normalizeTextUpper(params.get('location_country_code'))
   const locations = (selectedLocations || []).map(normalizeTextLower)
   const keyword = normalizeTextLower(params.get('q'))
   const postedAfter = parsePostedAfter(params.get('posted_after'))
   const sortBy = normalizeTextLower(params.get('sort_by')) || 'date_desc'
 
-  const includeRemote = normalizeTextLower(params.get('include_remote')) === 'true'
+  const includeRemote = normalizeTextLower(params.get('include_remote')) !== 'false'
   const includeHybrid = normalizeTextLower(params.get('include_hybrid')) !== 'false'
+
+  if (provider) {
+    jobs = jobs.filter((job) => normalizeTextLower(job.provider) === provider)
+  }
+
+  if (countryCode) {
+    jobs = jobs.filter((job) => getMockJobCountryCode(job) === countryCode)
+  }
 
   if (categories.length) {
     jobs = jobs.filter((job) => (job.categories || []).some((item) => categories.includes(normalizeTextLower(item))))

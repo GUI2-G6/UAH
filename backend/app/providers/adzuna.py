@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from app.core.config import settings
@@ -13,7 +14,14 @@ from app.providers.common import (
     parse_iso_datetime,
 )
 from app.schemas.job import NormalizedJob
+from app.services.job_link_health import classify_job_url_validation_verdict
 from app.services.provider_requests import ProviderQuotaExceeded, ProviderRequestFailed, confirm_request_budget, tracked_request
+
+_ADZUNA_JOB_NOT_FOUND_PATTERNS = [
+    re.compile(r"this job has expired", re.IGNORECASE),
+    re.compile(r"this job is no longer available", re.IGNORECASE),
+    re.compile(r"sorry,\s*this job is no longer available", re.IGNORECASE),
+]
 
 PROVIDER_NOTES = """
 Adzuna API
@@ -54,6 +62,14 @@ class AdzunaJobProvider(JobProvider):
         if location:
             params["where"] = location
         return params
+
+    def classify_landing_page_verdict(self, *, url: str | None, status_code: int, body_text: str | None) -> str:
+        del url
+        return classify_job_url_validation_verdict(
+            status_code,
+            body_text,
+            extra_bad_patterns=_ADZUNA_JOB_NOT_FOUND_PATTERNS,
+        )
 
     def fetch(self, params: dict) -> list[NormalizedJob]:
         """Fetch one Adzuna result page and normalize the payload."""

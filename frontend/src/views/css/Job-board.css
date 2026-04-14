@@ -111,8 +111,8 @@
 }
 
 .active-filters-actions .primary {
-  background: var(--color-primary-600);
-  border-color: var(--color-primary-600);
+  background: #0f766e;
+  border-color: #0f766e;
   color: #fff;
 }
 
@@ -122,19 +122,19 @@
 
 .filter-grid {
   display: grid;
-  gap: 14px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  margin-bottom: 14px;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  margin-bottom: 12px;
 }
 
 .filter-group {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 16px;
+  padding: 14px;
   border-radius: 16px;
   border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.92);
+  background: #ffffff;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
 }
 
@@ -218,10 +218,10 @@
 .secondary-action,
 .chip {
   border: 1px solid #c9cfda;
-  background: #ffffff;
+  background: #f8fafc;
   color: #1f2937;
-  border-radius: 8px;
-  padding: 7px 12px;
+  border-radius: 999px;
+  padding: 8px 14px;
   cursor: pointer;
 }
 
@@ -245,14 +245,14 @@
 }
 
 .mode-button.active {
-  background: var(--color-primary-600);
-  border-color: var(--color-primary-600);
+  background: #0f766e;
+  border-color: #0f766e;
   color: #fff;
 }
 
 .advanced-filters-panel {
   margin-top: 16px;
-  padding: 16px;
+  padding: 18px;
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.74);
   border: 1px solid rgba(15, 23, 42, 0.08);
@@ -445,8 +445,8 @@
 }
 
 .city-sort-btn.active {
-  background: var(--color-primary-600);
-  border-color: var(--color-primary-600);
+  background: #0f766e;
+  border-color: #0f766e;
   color: #ffffff;
 }
 
@@ -501,9 +501,9 @@
 }
 
 .filter-actions .primary {
-  background: var(--color-primary-600);
+  background: #0f766e;
   color: #fff;
-  border-color: var(--color-primary-600);
+  border-color: #0f766e;
 }
 
 .filter-actions .secondary {
@@ -556,7 +556,8 @@
   background: transparent;
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-items: stretch;
   gap: 16px;
   padding: 16px;
 }
@@ -588,31 +589,7 @@
 }
 
 .pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
   padding: 6px 16px 16px;
-}
-
-.pagination button {
-  border: 1px solid #c9cfda;
-  background: #f7f8fb;
-  color: #1f2937;
-  border-radius: 8px;
-  padding: 6px 12px;
-  cursor: pointer;
-}
-
-.pagination button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.pagination button.active {
-  background: var(--color-primary-600);
-  border-color: var(--color-primary-600);
-  color: #ffffff;
 }
 
 @media (max-width: 900px) {

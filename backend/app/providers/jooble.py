@@ -10,6 +10,7 @@ from app.providers.common import (
     normalize_experience_level,
     normalize_job_type,
     normalize_provider_categories,
+    parse_iso_datetime_with_trimmed_fraction,
 )
 from app.schemas.job import NormalizedJob
 from app.services.provider_requests import ProviderRequestFailed, tracked_request
@@ -18,7 +19,7 @@ PROVIDER_NOTES = """
 Jooble API
 - Auth uses the API key in the request path and requires POST + JSON body.
 - Job ids can be large negative integers, so UAH stores them as strings.
-- `updated` is a crawl timestamp, not a trustworthy original publish date, so UAH does not map it to `published_at`.
+- `updated` is the only stable freshness timestamp returned by Jooble, so UAH uses it as the normalized posting date.
 - `link` is usually a Jooble redirect wrapper, not the downstream employer apply URL.
 - Jooble heavily re-aggregates third-party boards, so cross-provider deduplication is especially important.
 """
@@ -111,7 +112,7 @@ class JoobleJobProvider(JobProvider):
                     experience_level=normalize_experience_level(title=title),
                     categories=normalize_provider_categories(values=[type_value or "", source], title=title, description=description),
                     description=description,
-                    published_at=None,
+                    published_at=parse_iso_datetime_with_trimmed_fraction(item.get("updated")),
                     source_tags=source_tags,
                 )
             )
