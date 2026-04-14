@@ -19,6 +19,7 @@ from app.providers.registry import (
 )
 from app.services.ingest import (
     audit_stale_jobs_batch,
+    backfill_job_dedup_hash_batch,
     backfill_job_country_normalization_batch,
     backfill_job_health_batch,
     mark_unseen_jobs,
@@ -61,6 +62,10 @@ def _cleanup_lock_key() -> str:
 
 def _backfill_lock_key() -> str:
     return "uah:job_sync:link_backfill_lock"
+
+
+def _dedup_backfill_lock_key() -> str:
+    return "uah:job_sync:dedup_backfill_lock"
 
 
 def _country_backfill_lock_key() -> str:
@@ -535,15 +540,35 @@ def backfill_job_link_health(self):
 
 @celery_app.task(
     bind=True,
+    name="app.tasks.job_sync.backfill_job_dedup_hashes",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 3},
+)
+def backfill_job_dedup_hashes(self):
+    """Assign missing dedup hashes and deactivate active duplicates in maintenance batches."""
+    lock_key = _dedup_backfill_lock_key()
+    if not _acquire_lock(lock_key, int(settings.JOB_SYNC_LOCK_TTL_SECONDS)):
+        return {"status": "skipped_locked"}
+    try:
+        summary = backfill_job_dedup_hash_batch()
+        return {"status": "completed", **summary}
+    finally:
+        _release_lock(lock_key)
+
+
+@celery_app.task(
+    bind=True,
     name="app.tasks.job_sync.backfill_job_country_normalization",
     autoretry_for=(Exception,),
     retry_backoff=True,
     retry_jitter=True,
     retry_kwargs={"max_retries": 3},
 )
-def backfill_job_country_normalization(self, scope: str = "missing"):
+def backfill_job_country_normalization(self, scope: str = "all"):
     """Backfill normalized job country metadata for existing active rows."""
-    normalized_scope = (scope or "missing").strip().lower()
+    normalized_scope = (scope or "all").strip().lower()
     lock_key = _country_backfill_lock_key()
     if not _acquire_lock(lock_key, int(settings.JOB_SYNC_LOCK_TTL_SECONDS)):
         return {"status": "skipped_locked", "scope": normalized_scope}

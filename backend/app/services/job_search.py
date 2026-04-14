@@ -183,7 +183,7 @@ def search_local_jobs(
         query = query.filter(or_(*[Job.location.ilike(f"%{value}%") for value in normalized_locations]))
 
     normalized_country_code = " ".join((location_country_code or "").strip().upper().split())
-    if normalized_country_code:
+    if normalized_country_code and normalized_country_code != "ALL":
         query = query.filter(Job.location_country_code == normalized_country_code)
 
     normalized_levels = _normalize_level_values(list(experience_levels or []))

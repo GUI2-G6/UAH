@@ -13,68 +13,12 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.muse_location import MuseSupportedLocation
+from app.services.location_country_reference import COUNTRY_CODE_TO_NAME, COUNTRY_NAME_TO_CODE, US_STATE_CODES
 
 MUSE_API_KEY = os.getenv("MUSE_API_KEY")
 MUSE_JOBS_URL = "https://www.themuse.com/api/public/jobs"
 
 REMOTE_LIKE_PATTERN = re.compile(r"\b(remote|hybrid|work\s*from\s*home|anywhere|flexible)\b", re.IGNORECASE)
-US_STATE_CODES = {
-    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "IA", "ID", "IL", "IN", "KS", "KY",
-    "LA", "MA", "MD", "ME", "MI", "MN", "MO", "MS", "MT", "NC", "ND", "NE", "NH", "NJ", "NM", "NV", "NY",
-    "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VA", "VT", "WA", "WI", "WV", "WY", "DC",
-}
-COUNTRY_NAME_TO_CODE = {
-    "united states": "US",
-    "usa": "US",
-    "us": "US",
-    "canada": "CA",
-    "united kingdom": "GB",
-    "uk": "GB",
-    "great britain": "GB",
-    "germany": "DE",
-    "france": "FR",
-    "ireland": "IE",
-    "australia": "AU",
-    "new zealand": "NZ",
-    "india": "IN",
-    "singapore": "SG",
-    "netherlands": "NL",
-    "poland": "PL",
-    "spain": "ES",
-    "italy": "IT",
-    "sweden": "SE",
-    "norway": "NO",
-    "denmark": "DK",
-    "finland": "FI",
-    "switzerland": "CH",
-    "mexico": "MX",
-    "brazil": "BR",
-    "japan": "JP",
-}
-COUNTRY_CODE_TO_NAME = {
-    "US": "United States",
-    "CA": "Canada",
-    "GB": "United Kingdom",
-    "DE": "Germany",
-    "FR": "France",
-    "IE": "Ireland",
-    "AU": "Australia",
-    "NZ": "New Zealand",
-    "IN": "India",
-    "SG": "Singapore",
-    "NL": "Netherlands",
-    "PL": "Poland",
-    "ES": "Spain",
-    "IT": "Italy",
-    "SE": "Sweden",
-    "NO": "Norway",
-    "DK": "Denmark",
-    "FI": "Finland",
-    "CH": "Switzerland",
-    "MX": "Mexico",
-    "BR": "Brazil",
-    "JP": "Japan",
-}
 
 
 def _normalize_location_name(name: str) -> str:

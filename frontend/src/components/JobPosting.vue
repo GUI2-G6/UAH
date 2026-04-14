@@ -15,11 +15,12 @@
                 <div class="job-meta-row">
                     <span
                         v-for="pill in visibleMetaPills"
-                        :key="pill"
+                        :key="pill.key"
                         class="meta-pill"
-                        :class="{ accent: pill === workSetupLabel, compatible: pill === 'Location overlap' }"
+                        :class="pill.classes"
+                        :title="pill.title || null"
                     >
-                        {{ pill }}
+                        {{ pill.label }}
                     </span>
                 </div>
 
@@ -77,7 +78,14 @@
                 <p class="job-modal-company">{{ job.company || "Unknown company" }}</p>
 
                 <div class="job-modal-meta">
-                    <span v-for="item in detailMetaPills" :key="item">{{ item }}</span>
+                    <span
+                        v-for="item in detailMetaPills"
+                        :key="item.key"
+                        :class="item.classes"
+                        :title="item.title || null"
+                    >
+                        {{ item.label }}
+                    </span>
                     <span v-if="showDebugMeta && job.is_local_compatible_remote">Compatibility: {{ compatibilityLabel }}</span>
                     <span v-if="showDebugMeta && constraintExclusions.length">Exclusions: {{ constraintExclusions.join(", ") }}</span>
                     <span
@@ -106,6 +114,7 @@
 
 <script>
 import Card from "./Card.vue";
+import { formatJobLocationDisplay } from "../lib/jobLocationDisplay";
 export default {
     name: "JobPosting",
     components: {
@@ -191,39 +200,51 @@ export default {
             if (this.job?.has_remote) return "Remote"
             return "On-site"
         },
+        locationMetaPill() {
+            const locationDisplay = formatJobLocationDisplay(this.job)
+            return this.buildMetaPill("location", locationDisplay.label, {
+                classes: ["location"],
+                title: locationDisplay.title,
+            })
+        },
         visibleMetaPills() {
             const pills = [
-                this.job?.location || "Unknown location",
-                this.workSetupLabel,
+                this.locationMetaPill,
+                this.buildMetaPill("work-setup", this.workSetupLabel, { classes: ["accent"] }),
             ]
 
             const levelLabel = (this.job?.levels?.[0] || "").toString().trim()
             if (levelLabel) {
-                pills.push(levelLabel)
+                pills.push(this.buildMetaPill("level", levelLabel))
             }
 
             if (this.showDebugMeta && this.job?.is_local_compatible_remote) {
-                pills.push("Location overlap")
+                pills.push(this.buildMetaPill("location-overlap", "Location overlap", { classes: ["compatible"] }))
             }
 
             return pills
         },
         detailMetaPills() {
-            const pills = [this.job?.location || "Unknown location"]
+            const pills = [
+                this.buildMetaPill("detail-location", this.locationMetaPill.label, {
+                    classes: ["location"],
+                    title: this.locationMetaPill.title,
+                })
+            ]
             if (this.job?.type) {
-                pills.push(`Type: ${this.job.type}`)
+                pills.push(this.buildMetaPill("detail-type", `Type: ${this.job.type}`))
             }
             if (this.job?.levels?.length) {
-                pills.push(`Level: ${this.job.levels.join(", ")}`)
+                pills.push(this.buildMetaPill("detail-levels", `Level: ${this.job.levels.join(", ")}`))
             }
             if (this.job?.categories?.length) {
-                pills.push(`Categories: ${this.job.categories.join(", ")}`)
+                pills.push(this.buildMetaPill("detail-categories", `Categories: ${this.job.categories.join(", ")}`))
             }
             if (this.job?.publication_date && this.formattedPublicationDate) {
-                pills.push(`Posted: ${this.formattedPublicationDate}`)
+                pills.push(this.buildMetaPill("detail-posted", `Posted: ${this.formattedPublicationDate}`))
             }
             if (this.attributionText) {
-                pills.push(`Source: ${this.attributionText}`)
+                pills.push(this.buildMetaPill("detail-source", `Source: ${this.attributionText}`))
             }
             return pills
         },
@@ -250,6 +271,14 @@ export default {
         },
         closeDetails() {
             this.detailsOpen = false
+        },
+        buildMetaPill(key, label, options = {}) {
+            return {
+                key,
+                label,
+                title: options.title || "",
+                classes: Array.isArray(options.classes) ? options.classes : [],
+            }
         },
         truncateText(value, maxLength = 180) {
             const clean = (value || "").trim()
@@ -350,9 +379,14 @@ export default {
     border-radius: 999px;
     padding: 4px 10px;
     font-size: 0.82rem;
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    min-width: 0;
 }
 
-.meta-pill.accent {
+.meta-pill.accent,
+.job-modal-meta span.accent {
     border-color: var(--color-primary-600);
     color: var(--color-primary-600);
     background: color-mix(in srgb, var(--color-primary-600) 10%, white);
@@ -365,7 +399,8 @@ export default {
     white-space: nowrap;
 }
 
-.meta-pill.compatible {
+.meta-pill.compatible,
+.job-modal-meta span.compatible {
     border-color: #0c4a6e;
     color: #0c4a6e;
     background: rgba(14, 116, 144, 0.12);
@@ -375,6 +410,13 @@ export default {
     border-color: #d7e4df;
     color: #35534a;
     background: #f3fbf7;
+}
+
+.meta-pill.location {
+    max-width: min(100%, 25rem);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .job-teaser {
@@ -505,6 +547,17 @@ export default {
     font-size: 0.82rem;
     color: #334155;
     background: #f8fafc;
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.job-modal-meta span.location {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .job-modal-body {

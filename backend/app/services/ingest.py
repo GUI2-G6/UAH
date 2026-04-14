@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 _SPAM_PUNCTUATION_RE = re.compile(r"[!$#?*]{3,}")
 _COUNTRY_REPAIR_CITY_ONLY_LOCATIONS = {"berlin", "hamburg", "paris", "warsaw"}
-_COUNTRY_REPAIR_AMBIGUOUS_CODES = {"CA", "DE", "GA", "IN", "ME", "OR", "XX"}
+_COUNTRY_REPAIR_AMBIGUOUS_CODES = {"CA", "DE", "GA", "IN", "ME", "OR", "XX", "XU"}
 _DEDUP_NOISE_WORDS = (
     "senior",
     "sr",
@@ -414,7 +414,7 @@ def _build_job_payload(job: NormalizedJob, *, existing: Job | None, link_health:
 
     categories = list(dict.fromkeys([value for value in (job.categories or []) if value]))
     short_description = build_short_description(job.description)
-    location_country_code, location_country_name = normalize_job_location_country(job.location)
+    location_country_code, location_country_name = normalize_job_location_country(job.location, provider=job.provider)
     combined_quality_flags = _merge_unique_values(
         quality_flags,
         list(link_health.get("flags") or []),
@@ -490,6 +490,38 @@ def _resolve_active_dedup_owner(*, db, dedup_hash: str, existing: Job | None) ->
     return query.first()
 
 
+def _apply_job_payload_to_row(row: Job, payload: dict) -> None:
+    for key, value in payload.items():
+        setattr(row, key, value)
+
+
+def _refresh_duplicate_owner(*, duplicate_owner: Job, reference_time: datetime) -> None:
+    duplicate_owner.last_seen_at = reference_time
+    duplicate_owner.consecutive_misses = 0
+    duplicate_owner.display_tier = compute_display_tier(
+        is_active=bool(duplicate_owner.is_active),
+        last_seen_at=reference_time,
+        reference_time=reference_time,
+    )
+
+
+def _deactivate_duplicate_row(
+    row: Job,
+    *,
+    reference_time: datetime,
+    clear_dedup_hash: bool = True,
+) -> None:
+    row.is_active = False
+    row.consecutive_misses = 0
+    if clear_dedup_hash:
+        row.dedup_hash = None
+    row.display_tier = compute_display_tier(
+        is_active=False,
+        last_seen_at=row.last_seen_at,
+        reference_time=reference_time,
+    )
+
+
 def _should_increment_same_provider_repost_count(*, existing: Job | None) -> bool:
     """Only bump the canonical row when a row first becomes a same-provider duplicate."""
     if existing is None:
@@ -504,27 +536,26 @@ def _refresh_cross_provider_duplicate(
     job: NormalizedJob,
     reference_time: datetime,
 ) -> None:
-    duplicate_owner.last_seen_at = reference_time
-    duplicate_owner.consecutive_misses = 0
-    duplicate_owner.display_tier = compute_display_tier(
-        is_active=bool(duplicate_owner.is_active),
-        last_seen_at=reference_time,
-        reference_time=reference_time,
-    )
+    _refresh_duplicate_owner(duplicate_owner=duplicate_owner, reference_time=reference_time)
     duplicate_owner.source_tags = _merge_unique_values(
         list(duplicate_owner.source_tags or []),
         [f"duplicate_provider:{job.provider}"],
     )
     if existing is not None and existing.id != duplicate_owner.id:
-        existing.is_active = False
-        existing.display_tier = compute_display_tier(
-            is_active=False,
-            last_seen_at=reference_time,
-            reference_time=reference_time,
-        )
         existing.last_seen_at = reference_time
-        existing.consecutive_misses = 0
-        existing.dedup_hash = None
+        _deactivate_duplicate_row(existing, reference_time=reference_time)
+
+
+def _refresh_same_provider_duplicate(
+    *,
+    duplicate_owner: Job,
+    existing: Job | None,
+    reference_time: datetime,
+) -> None:
+    _refresh_duplicate_owner(duplicate_owner=duplicate_owner, reference_time=reference_time)
+    if existing is not None and existing.id != duplicate_owner.id:
+        existing.last_seen_at = reference_time
+        _deactivate_duplicate_row(existing, reference_time=reference_time)
 
 
 def _job_upsert_values(payload: dict) -> dict:
@@ -632,10 +663,24 @@ def upsert_job(job: NormalizedJob, db_session=None, provider_adapter=None) -> tu
                     )
                 return "duplicate", False
 
-            if existing is None or existing.id != duplicate_owner.id:
-                if _should_increment_same_provider_repost_count(existing=existing):
-                    duplicate_owner.repost_count = int(duplicate_owner.repost_count or 0) + 1
-                payload["dedup_hash"] = None
+            if _should_increment_same_provider_repost_count(existing=existing):
+                duplicate_owner.repost_count = int(duplicate_owner.repost_count or 0) + 1
+            _refresh_same_provider_duplicate(
+                duplicate_owner=duplicate_owner,
+                existing=existing,
+                reference_time=reference_time,
+            )
+            db.commit()
+            if settings.JOB_DEDUP_LOG_COLLISIONS:
+                logger.info(
+                    "Same-provider dedup matched %s/%s to %s/%s via %s",
+                    job.provider,
+                    job.provider_job_id,
+                    duplicate_owner.provider,
+                    duplicate_owner.provider_job_id,
+                    dedup_hash,
+                )
+            return "duplicate", False
 
         statement = _build_job_upsert_statement(payload)
         try:
@@ -644,9 +689,37 @@ def upsert_job(job: NormalizedJob, db_session=None, provider_adapter=None) -> tu
             db.rollback()
             if not _is_dedup_hash_integrity_error(exc):
                 raise
-            payload["dedup_hash"] = None
-            statement = _build_job_upsert_statement(payload)
-            db.execute(statement)
+            if not dedup_hash:
+                raise
+            duplicate_owner = _resolve_active_dedup_owner(db=db, dedup_hash=dedup_hash, existing=existing)
+            if duplicate_owner is None:
+                raise
+            if duplicate_owner.provider != job.provider:
+                _refresh_cross_provider_duplicate(
+                    duplicate_owner=duplicate_owner,
+                    existing=existing,
+                    job=job,
+                    reference_time=reference_time,
+                )
+            else:
+                if _should_increment_same_provider_repost_count(existing=existing):
+                    duplicate_owner.repost_count = int(duplicate_owner.repost_count or 0) + 1
+                _refresh_same_provider_duplicate(
+                    duplicate_owner=duplicate_owner,
+                    existing=existing,
+                    reference_time=reference_time,
+                )
+            db.commit()
+            if settings.JOB_DEDUP_LOG_COLLISIONS:
+                logger.info(
+                    "Resolved dedup race for %s/%s against %s/%s via %s",
+                    job.provider,
+                    job.provider_job_id,
+                    duplicate_owner.provider,
+                    duplicate_owner.provider_job_id,
+                    dedup_hash,
+                )
+            return "duplicate", False
         db.commit()
         return ("updated", False) if existing is not None else ("inserted", True)
 
@@ -682,9 +755,50 @@ def refresh_existing_job_health(job_row: Job, *, db_session=None, provider_adapt
             return "skipped"
 
         payload = payload_result["payload"]
-        for key, value in payload.items():
-            setattr(row, key, value)
-        db.commit()
+        dedup_hash = payload.get("dedup_hash")
+        if settings.JOB_DEDUP_ENABLED and payload.get("is_active") and dedup_hash:
+            duplicate_owner = _resolve_active_dedup_owner(db=db, dedup_hash=dedup_hash, existing=row)
+            if duplicate_owner is not None:
+                _apply_job_payload_to_row(row, payload)
+                _deactivate_duplicate_row(row, reference_time=now)
+                db.commit()
+                if settings.JOB_DEDUP_LOG_COLLISIONS:
+                    logger.info(
+                        "Refresh dedup deactivated %s/%s in favor of %s/%s via %s",
+                        row.provider,
+                        row.provider_job_id,
+                        duplicate_owner.provider,
+                        duplicate_owner.provider_job_id,
+                        dedup_hash,
+                    )
+                return "deactivated"
+
+        _apply_job_payload_to_row(row, payload)
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            if not _is_dedup_hash_integrity_error(exc) or not dedup_hash:
+                raise
+            row = db.query(Job).filter(Job.id == job_row.id).first()
+            if row is None:
+                return "missing"
+            duplicate_owner = _resolve_active_dedup_owner(db=db, dedup_hash=dedup_hash, existing=row)
+            if duplicate_owner is None:
+                raise
+            _apply_job_payload_to_row(row, payload)
+            _deactivate_duplicate_row(row, reference_time=now)
+            db.commit()
+            if settings.JOB_DEDUP_LOG_COLLISIONS:
+                logger.info(
+                    "Refresh dedup race deactivated %s/%s in favor of %s/%s via %s",
+                    row.provider,
+                    row.provider_job_id,
+                    duplicate_owner.provider,
+                    duplicate_owner.provider_job_id,
+                    dedup_hash,
+                )
+            return "deactivated"
         return "deactivated" if not row.is_active else "updated"
 
 
@@ -731,7 +845,11 @@ def _repair_risk_location(location: str | None) -> bool:
         return True
     if lowered.startswith("washington dc") or "washington, dc" in lowered or "district of columbia" in lowered:
         return True
-    if any(lowered.endswith(f", {code.lower()}") or f", {code.lower()}," in lowered for code in _COUNTRY_REPAIR_AMBIGUOUS_CODES if code != "XX"):
+    if any(
+        lowered.endswith(f", {code.lower()}") or f", {code.lower()}," in lowered
+        for code in _COUNTRY_REPAIR_AMBIGUOUS_CODES
+        if code not in {"XX", "XU"}
+    ):
         return True
     if len(pieces) == 2 and ("county" in lowered or normalize_job_location_country(normalized)[0] == "US"):
         return True
@@ -742,18 +860,20 @@ def _country_backfill_row_key(job_row: Job) -> object:
     return getattr(job_row, "id", None) or ("memory", id(job_row))
 
 
-def needs_country_normalization_backfill(job_row: Job, *, scope: str = "missing") -> bool:
+def needs_country_normalization_backfill(job_row: Job, *, scope: str = "all") -> bool:
     """Return True when a stored row should be included in a country-normalization backfill batch."""
-    normalized_scope = (scope or "missing").strip().lower()
-    if normalized_scope not in {"missing", "repair"}:
+    normalized_scope = (scope or "all").strip().lower()
+    if normalized_scope not in {"all", "missing", "repair"}:
         raise ValueError(f"Unsupported country backfill scope: {scope}")
     if not bool(getattr(job_row, "is_active", True)):
         return False
+    if normalized_scope == "all":
+        return True
 
     stored_code = _normalized_optional_code(getattr(job_row, "location_country_code", None))
     stored_name = _normalized_optional_text(getattr(job_row, "location_country_name", None))
     is_missing = not stored_code
-    is_xx = stored_code == "XX"
+    is_xx = stored_code in {"XX", "XU"}
     if normalized_scope == "missing":
         return is_missing
 
@@ -763,17 +883,19 @@ def needs_country_normalization_backfill(job_row: Job, *, scope: str = "missing"
     if not _repair_risk_location(location):
         return False
 
-    normalized_code, normalized_name = normalize_job_location_country(location)
+    normalized_code, normalized_name = normalize_job_location_country(location, provider=getattr(job_row, "provider", None))
     return stored_code != _normalized_optional_code(normalized_code) or stored_name != _normalized_optional_text(normalized_name)
 
 
 def _country_backfill_query(db, *, scope: str):
-    normalized_scope = (scope or "missing").strip().lower()
+    normalized_scope = (scope or "all").strip().lower()
     normalized_code = func.upper(func.btrim(func.coalesce(Job.location_country_code, "")))
     normalized_location = func.lower(func.btrim(func.coalesce(Job.location, "")))
     is_blank_code = func.length(func.btrim(func.coalesce(Job.location_country_code, ""))) == 0
 
     query = db.query(Job).filter(Job.is_active.is_(True))
+    if normalized_scope == "all":
+        return query.order_by(Job.last_seen_at.desc(), Job.id.asc())
     if normalized_scope == "missing":
         return query.filter(is_blank_code).order_by(Job.last_seen_at.desc(), Job.id.asc())
     if normalized_scope != "repair":
@@ -792,8 +914,8 @@ def _country_backfill_query(db, *, scope: str):
         query.filter(
             or_(
                 is_blank_code,
-                normalized_code == "XX",
-                and_(or_(*ambiguous_code_filters), normalized_code.in_(tuple(sorted(_COUNTRY_REPAIR_AMBIGUOUS_CODES - {"XX"})))),
+                normalized_code.in_(("XX", "XU")),
+                and_(or_(*ambiguous_code_filters), normalized_code.in_(tuple(sorted(_COUNTRY_REPAIR_AMBIGUOUS_CODES - {"XX", "XU"})))),
                 and_(
                     or_(
                         normalized_location.like("washington dc%"),
@@ -803,17 +925,79 @@ def _country_backfill_query(db, *, scope: str):
                     normalized_code != "US",
                 ),
                 and_(normalized_location.like("%county%"), normalized_code != "US"),
-                and_(normalized_location.in_(tuple(sorted(_COUNTRY_REPAIR_CITY_ONLY_LOCATIONS))), normalized_code.in_(("", "XX"))),
+                and_(normalized_location.in_(tuple(sorted(_COUNTRY_REPAIR_CITY_ONLY_LOCATIONS))), normalized_code.in_(("", "XX", "XU"))),
             )
         )
         .order_by(normalized_code.asc(), Job.last_seen_at.desc(), Job.id.asc())
     )
 
 
-def backfill_job_country_normalization_batch(*, scope: str = "missing", batch_size: int | None = None, db_session=None) -> dict[str, int]:
+def _log_country_backfill_verification(db) -> None:
+    if not hasattr(db, "query"):
+        return
+
+    try:
+        distribution_rows = (
+            db.query(
+                Job.location_country_code.label("code"),
+                Job.location_country_name.label("name"),
+                func.count(Job.id).label("observed_count"),
+            )
+            .filter(Job.is_active.is_(True))
+            .group_by(Job.location_country_code, Job.location_country_name)
+            .order_by(func.count(Job.id).desc(), Job.location_country_code.asc())
+            .limit(20)
+            .all()
+        )
+        xx_rows = (
+            db.query(Job.location, func.count(Job.id).label("observed_count"))
+            .filter(Job.is_active.is_(True), Job.location_country_code == "XX")
+            .group_by(Job.location)
+            .order_by(func.count(Job.id).desc(), Job.location.asc())
+            .limit(20)
+            .all()
+        )
+        xu_rows = (
+            db.query(Job.location, func.count(Job.id).label("observed_count"))
+            .filter(Job.is_active.is_(True), Job.location_country_code == "XU")
+            .group_by(Job.location)
+            .order_by(func.count(Job.id).desc(), Job.location.asc())
+            .limit(20)
+            .all()
+        )
+        logger.info(
+            "Country normalization verification distribution=%s xx_locations=%s xu_locations=%s",
+            [
+                {
+                    "code": _normalized_optional_code(getattr(row, "code", None)) or "",
+                    "name": _normalized_optional_text(getattr(row, "name", None)),
+                    "observed_count": int(getattr(row, "observed_count", 0) or 0),
+                }
+                for row in distribution_rows
+            ],
+            [
+                {
+                    "location": _normalized_optional_text(getattr(row, "location", None)),
+                    "observed_count": int(getattr(row, "observed_count", 0) or 0),
+                }
+                for row in xx_rows
+            ],
+            [
+                {
+                    "location": _normalized_optional_text(getattr(row, "location", None)),
+                    "observed_count": int(getattr(row, "observed_count", 0) or 0),
+                }
+                for row in xu_rows
+            ],
+        )
+    except Exception as exc:
+        logger.warning("Country normalization verification logging failed: %s", exc)
+
+
+def backfill_job_country_normalization_batch(*, scope: str = "all", batch_size: int | None = None, db_session=None) -> dict[str, int]:
     """Backfill normalized country metadata for active jobs in small maintenance batches."""
-    normalized_scope = (scope or "missing").strip().lower()
-    if normalized_scope not in {"missing", "repair"}:
+    normalized_scope = (scope or "all").strip().lower()
+    if normalized_scope not in {"all", "missing", "repair"}:
         raise ValueError(f"Unsupported country backfill scope: {scope}")
 
     manager = nullcontext(db_session) if db_session is not None else session_scope()
@@ -823,8 +1007,11 @@ def backfill_job_country_normalization_batch(*, scope: str = "missing", batch_si
         summary = {
             "scanned": 0,
             "updated": 0,
+            "changed_country_code": 0,
+            "changed_country_name_only": 0,
             "unchanged": 0,
-            "unresolved": 0,
+            "xx_remaining": 0,
+            "xu_remaining": 0,
             "batches_committed": 0,
         }
 
@@ -838,24 +1025,33 @@ def backfill_job_country_normalization_batch(*, scope: str = "missing", batch_si
             ][:limit]
             if not candidates:
                 logger.info("Country normalization backfill scope=%s completed with summary=%s", normalized_scope, summary)
+                _log_country_backfill_verification(db)
                 return summary
 
             batch_summary = {
                 "scanned": 0,
                 "updated": 0,
+                "changed_country_code": 0,
+                "changed_country_name_only": 0,
                 "unchanged": 0,
-                "unresolved": 0,
+                "xx_remaining": 0,
+                "xu_remaining": 0,
             }
             for row in candidates:
                 batch_summary["scanned"] += 1
-                location_country_code, location_country_name = normalize_job_location_country(row.location)
+                location_country_code, location_country_name = normalize_job_location_country(
+                    row.location,
+                    provider=getattr(row, "provider", None),
+                )
                 next_code = _normalized_optional_code(location_country_code) or None
                 next_name = _normalized_optional_text(location_country_name) or None
                 current_code = _normalized_optional_code(row.location_country_code) or None
                 current_name = _normalized_optional_text(row.location_country_name) or None
 
-                if next_code is None:
-                    batch_summary["unresolved"] += 1
+                if next_code == "XX":
+                    batch_summary["xx_remaining"] += 1
+                elif next_code == "XU":
+                    batch_summary["xu_remaining"] += 1
 
                 if current_code == next_code and current_name == next_name:
                     batch_summary["unchanged"] += 1
@@ -864,21 +1060,31 @@ def backfill_job_country_normalization_batch(*, scope: str = "missing", batch_si
                 row.location_country_code = next_code
                 row.location_country_name = next_name
                 batch_summary["updated"] += 1
+                if current_code != next_code:
+                    batch_summary["changed_country_code"] += 1
+                else:
+                    batch_summary["changed_country_name_only"] += 1
 
             db.commit()
             processed_row_ids.update(_country_backfill_row_key(row) for row in candidates)
             summary["scanned"] += batch_summary["scanned"]
             summary["updated"] += batch_summary["updated"]
+            summary["changed_country_code"] += batch_summary["changed_country_code"]
+            summary["changed_country_name_only"] += batch_summary["changed_country_name_only"]
             summary["unchanged"] += batch_summary["unchanged"]
-            summary["unresolved"] += batch_summary["unresolved"]
+            summary["xx_remaining"] += batch_summary["xx_remaining"]
+            summary["xu_remaining"] += batch_summary["xu_remaining"]
             summary["batches_committed"] += 1
             logger.info(
-                "Country normalization backfill batch scope=%s scanned=%s updated=%s unchanged=%s unresolved=%s",
+                "Country normalization backfill batch scope=%s scanned=%s updated=%s changed_country_code=%s changed_country_name_only=%s unchanged=%s xx_remaining=%s xu_remaining=%s",
                 normalized_scope,
                 batch_summary["scanned"],
                 batch_summary["updated"],
+                batch_summary["changed_country_code"],
+                batch_summary["changed_country_name_only"],
                 batch_summary["unchanged"],
-                batch_summary["unresolved"],
+                batch_summary["xx_remaining"],
+                batch_summary["xu_remaining"],
             )
 
 
@@ -909,6 +1115,72 @@ def backfill_job_health_batch(*, batch_size: int | None = None, db_session=None)
             "updated": updated,
             "deactivated": deactivated,
         }
+
+
+def backfill_job_dedup_hash_batch(*, batch_size: int | None = None, db_session=None) -> dict[str, int]:
+    """Assign dedup hashes to active rows missing them and deactivate discovered duplicates."""
+    manager = nullcontext(db_session) if db_session is not None else session_scope()
+    with manager as db:
+        now = datetime.now(timezone.utc)
+        limit = max(int(batch_size or settings.JOB_DEDUP_BACKFILL_BATCH_SIZE), 1)
+        rows = (
+            db.query(Job)
+            .filter(Job.is_active.is_(True), Job.dedup_hash.is_(None))
+            .order_by(Job.first_seen_at.asc().nullsfirst(), Job.id.asc())
+            .limit(limit * 4)
+            .all()
+        )
+        candidates: list[tuple[Job, str]] = []
+        summary = {
+            "scanned": 0,
+            "hashed": 0,
+            "deactivated": 0,
+            "skipped": 0,
+        }
+        for candidate in rows:
+            summary["scanned"] += 1
+            dedup_hash = compute_dedup_hash(candidate.title, candidate.company)
+            if not dedup_hash:
+                summary["skipped"] += 1
+                continue
+            candidates.append((candidate, dedup_hash))
+            if len(candidates) >= limit:
+                break
+
+        for candidate, dedup_hash in candidates:
+            duplicate_owner = _resolve_active_dedup_owner(db=db, dedup_hash=dedup_hash, existing=candidate)
+            if duplicate_owner is not None:
+                _deactivate_duplicate_row(candidate, reference_time=now)
+                try:
+                    db.commit()
+                except IntegrityError as exc:
+                    db.rollback()
+                    if not _is_dedup_hash_integrity_error(exc):
+                        raise
+                    candidate = db.query(Job).filter(Job.id == candidate.id).first()
+                    if candidate is None:
+                        continue
+                    _deactivate_duplicate_row(candidate, reference_time=now)
+                    db.commit()
+                summary["deactivated"] += 1
+                continue
+
+            candidate.dedup_hash = dedup_hash
+            try:
+                db.commit()
+            except IntegrityError as exc:
+                db.rollback()
+                if not _is_dedup_hash_integrity_error(exc):
+                    raise
+                candidate = db.query(Job).filter(Job.id == candidate.id).first()
+                if candidate is None:
+                    continue
+                _deactivate_duplicate_row(candidate, reference_time=now)
+                db.commit()
+                summary["deactivated"] += 1
+                continue
+            summary["hashed"] += 1
+        return summary
 
 
 def audit_stale_jobs_batch(*, batch_size: int | None = None, db_session=None) -> dict[str, int]:

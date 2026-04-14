@@ -6,7 +6,7 @@
                 <p>Start broad, then narrow only when you need to.</p>
             </div>
             <div class="hero-copy">
-                <p>Default results search across {{ selectedCountryName }} with remote and hybrid roles included.</p>
+                <p>{{ heroSearchCopy }}</p>
             </div>
         </div>
 
@@ -437,7 +437,12 @@ import {
 import { publishCurrentPageDiagnostics, clearCurrentPageDiagnostics } from "../lib/debugDiagnostics";
 import { subscribeDebugTools } from "../lib/debugTools";
 
-const DEFAULT_COUNTRY_CODE = "US"
+const ALL_COUNTRIES_CODE = "ALL"
+const DEFAULT_COUNTRY_OPTION = Object.freeze({
+  code: ALL_COUNTRIES_CODE,
+  name: "All Countries",
+  observed_count: 0,
+})
 const DEFAULT_SORT_BY = "date_desc"
 const POSTED_DATE_PRESETS = new Set(["any", "today", "3", "7", "30", "custom"])
 const JOB_SORT_OPTIONS = [
@@ -508,6 +513,33 @@ function stringifyRouteQuery(query = {}) {
     }
   }
   return params.toString()
+}
+
+function normalizeCountryCode(value) {
+  return String(value || "").trim().toUpperCase()
+}
+
+function isAllCountriesCode(value) {
+  return normalizeCountryCode(value) === ALL_COUNTRIES_CODE
+}
+
+function buildCountryOptions(values = []) {
+  const options = []
+  const seen = new Set([ALL_COUNTRIES_CODE])
+
+  for (const rawCountry of values || []) {
+    const code = normalizeCountryCode(rawCountry?.code)
+    const name = String(rawCountry?.name || rawCountry?.code || "").trim()
+    if (!code || !name || seen.has(code)) continue
+    seen.add(code)
+    options.push({
+      code,
+      name,
+      observed_count: Number(rawCountry?.observed_count || 0),
+    })
+  }
+
+  return [DEFAULT_COUNTRY_OPTION, ...options]
 }
 
 export default {
@@ -622,7 +654,7 @@ export default {
       categoryMapLookup[group.name] = group
     }
 
-    const countryOptions = [{ code: DEFAULT_COUNTRY_CODE, name: "United States", observed_count: 0 }]
+    const countryOptions = buildCountryOptions()
     const providerOptions = []
 
     const defaultFilters = {
@@ -634,7 +666,7 @@ export default {
       locationRadius: 25,
       radiusUnit: "mi",
       manualLocationQuery: "",
-      countryCode: "US",
+      countryCode: ALL_COUNTRIES_CODE,
       locationNames: [],
       companies: [],
       provider: "",
@@ -752,7 +784,16 @@ export default {
     selectedCountryName() {
       return this.getCountryName(this.draftFilters.countryCode)
     },
+    heroSearchCopy() {
+      if (this.isAllCountriesCode(this.draftFilters.countryCode)) {
+        return "Default results search across all countries with remote and hybrid roles included."
+      }
+      return `Default results search across ${this.selectedCountryName} with remote and hybrid roles included.`
+    },
     locationPreviewSummary() {
+      if (this.draftFilters.locationMode === "country" && this.isAllCountriesCode(this.draftFilters.countryCode)) {
+        return "All Countries stays broad, so matched-place previews are disabled for this mode."
+      }
       if (!this.locationPreviewNames.length) return ""
       if (this.draftFilters.locationMode === "country") {
         return `Previewing ${this.locationPreviewNames.length} matched places in ${this.getCountryName(this.draftFilters.countryCode)}.`
@@ -901,7 +942,7 @@ export default {
 
       const normalizedCountryCode = (filters.countryCode || "").trim().toUpperCase()
       const normalizedLocationMode = (filters.locationMode || "country").trim().toLowerCase()
-      if (normalizedCountryCode && (normalizedCountryCode !== DEFAULT_COUNTRY_CODE || normalizedLocationMode !== "country")) {
+      if (normalizedCountryCode && !this.isAllCountriesCode(normalizedCountryCode)) {
         chips.push({
           key: "country",
           type: "country",
@@ -918,7 +959,8 @@ export default {
       const filters = this.appliedFilters || {}
       const hasCountryMode = (filters.locationMode || "").trim().toLowerCase() === "country"
       const hasBroadWorkSetup = filters.includeRemote === true && filters.includeHybrid === true
-      return !(hasCountryMode && hasBroadWorkSetup)
+      const hasAllCountriesScope = this.isAllCountriesCode(filters.countryCode)
+      return !(hasCountryMode && hasBroadWorkSetup && hasAllCountriesScope)
     },
     searchScopeSummary() {
       const filters = this.appliedFilters || {}
@@ -928,6 +970,9 @@ export default {
         : ""
 
       if ((filters.locationMode || "").trim().toLowerCase() === "country") {
+        if (this.isAllCountriesCode(filters.countryCode)) {
+          return `Searching across all countries${providerSummary} with ${workSetup}.`
+        }
         return `Searching across ${this.getCountryName(filters.countryCode)}${providerSummary} with ${workSetup}.`
       }
 
@@ -960,7 +1005,7 @@ export default {
         locationRadius: 25,
         radiusUnit: "mi",
         manualLocationQuery: "",
-        countryCode: "US",
+        countryCode: ALL_COUNTRIES_CODE,
         locationNames: [],
         companies: [],
         provider: "",
@@ -972,6 +1017,34 @@ export default {
     },
     cloneFilters(filters) {
       return JSON.parse(JSON.stringify(filters))
+    },
+    normalizeCountryCode(value) {
+      return normalizeCountryCode(value)
+    },
+    isAllCountriesCode(value) {
+      return isAllCountriesCode(value)
+    },
+    countryCodeForRoute(value) {
+      return this.normalizeCountryCode(value) || ALL_COUNTRIES_CODE
+    },
+    countryCodeForApi(value) {
+      const normalized = this.normalizeCountryCode(value)
+      return this.isAllCountriesCode(normalized) ? "" : normalized
+    },
+    withOptionalCountryCode(path, countryCode, extraParams = {}) {
+      const params = new URLSearchParams()
+      for (const [key, rawValue] of Object.entries(extraParams || {})) {
+        if (rawValue === undefined || rawValue === null) continue
+        params.set(key, String(rawValue))
+      }
+
+      const apiCountryCode = this.countryCodeForApi(countryCode)
+      if (apiCountryCode) {
+        params.set("country_code", apiCountryCode)
+      }
+
+      const query = params.toString()
+      return query ? `${path}?${query}` : path
     },
     normalizeSortBy(value) {
       const normalized = String(value || "").trim().toLowerCase()
@@ -1038,7 +1111,7 @@ export default {
     buildRouteQueryObject() {
       const filters = this.appliedFilters || this.createDefaultFilters()
       const query = {
-        country_code: (filters.countryCode || DEFAULT_COUNTRY_CODE).trim().toUpperCase(),
+        country_code: this.countryCodeForRoute(filters.countryCode),
         location_mode: (filters.locationMode || "country").trim().toLowerCase() || "country",
         include_remote: filters.includeRemote === false ? "false" : "true",
         include_hybrid: filters.includeHybrid === false ? "false" : "true",
@@ -1139,7 +1212,7 @@ export default {
       const availableCountryCodes = new Set((this.countryOptions || []).map(country => String(country?.code || "").trim().toUpperCase()).filter(Boolean))
       filters.countryCode = availableCountryCodes.has(countryCode)
         ? countryCode
-        : (this.countryOptions[0]?.code || DEFAULT_COUNTRY_CODE)
+        : (this.countryOptions[0]?.code || ALL_COUNTRIES_CODE)
 
       const locationMode = normalizeRouteQueryScalar(query.location_mode).toLowerCase()
       filters.locationMode = ["country", "nearby", "manual"].includes(locationMode) ? locationMode : "country"
@@ -1180,7 +1253,7 @@ export default {
           longitude: lng,
           city: (filters?.manualLocationQuery || "").trim(),
           display_name: (filters?.manualLocationQuery || "").trim(),
-          country_code: (filters?.countryCode || "").trim().toUpperCase(),
+          country_code: this.countryCodeForApi(filters?.countryCode),
           source: "route",
         }
         setCachedLocation(this.resolvedLocation)
@@ -1190,9 +1263,9 @@ export default {
       const locationQuery = (filters?.manualLocationQuery || "").trim()
       if (locationQuery) {
         try {
-          const payload = await this.fetchJson(
-            `/api/geolocation/geocode?q=${encodeURIComponent(locationQuery)}&country_code=${encodeURIComponent(filters.countryCode || "")}`
-          )
+          const payload = await this.fetchJson(this.withOptionalCountryCode("/api/geolocation/geocode", filters?.countryCode, {
+            q: locationQuery,
+          }))
           this.resolvedLocation = payload
           setCachedLocation(payload)
           return
@@ -1269,9 +1342,9 @@ export default {
       this.publishDebugState("sort-changed")
     },
     getCountryName(code) {
-      const normalized = String(code || "").trim().toUpperCase()
+      const normalized = this.normalizeCountryCode(code)
       const match = (this.countryOptions || []).find(country => country.code === normalized)
-      return match?.name || normalized || "your country"
+      return match?.name || (this.isAllCountriesCode(normalized) ? DEFAULT_COUNTRY_OPTION.name : normalized) || DEFAULT_COUNTRY_OPTION.name
     },
     buildWorkSetupSummary(filters = {}) {
       const includeRemote = filters.includeRemote !== false
@@ -1317,8 +1390,8 @@ export default {
         await this.clearLocationAndSearch()
         return
       } else if (chip.type === "country") {
-        this.draftFilters.countryCode = DEFAULT_COUNTRY_CODE
-        this.appliedFilters.countryCode = DEFAULT_COUNTRY_CODE
+        this.draftFilters.countryCode = ALL_COUNTRIES_CODE
+        this.appliedFilters.countryCode = ALL_COUNTRIES_CODE
         this.page = 1
         if ((this.appliedFilters.locationMode || "").trim().toLowerCase() === "country") {
           await this.loadJobs()
@@ -1339,6 +1412,8 @@ export default {
       this.appliedFilters.includeHybrid = true
       this.draftFilters.locationMode = "country"
       this.appliedFilters.locationMode = "country"
+      this.draftFilters.countryCode = ALL_COUNTRIES_CODE
+      this.appliedFilters.countryCode = ALL_COUNTRIES_CODE
       this.draftFilters.locationNames = []
       this.appliedFilters.locationNames = []
       this.locationPreviewNames = []
@@ -1660,11 +1735,9 @@ export default {
           }))
           .filter(item => item.code && item.name)
         : []
-      this.countryOptions = countryValues.length
-        ? countryValues
-        : [{ code: DEFAULT_COUNTRY_CODE, name: "United States", observed_count: 0 }]
+      this.countryOptions = buildCountryOptions(countryValues)
       if (!this.countryOptions.some(country => country.code === this.draftFilters.countryCode)) {
-        const fallbackCountryCode = this.countryOptions[0]?.code || DEFAULT_COUNTRY_CODE
+        const fallbackCountryCode = this.countryOptions[0]?.code || ALL_COUNTRIES_CODE
         this.draftFilters.countryCode = fallbackCountryCode
         this.appliedFilters.countryCode = fallbackCountryCode
       }
@@ -1715,9 +1788,7 @@ export default {
       }
     },
     async fetchCountryOptions() {
-      if (!Array.isArray(this.countryOptions) || !this.countryOptions.length) {
-        this.countryOptions = [{ code: DEFAULT_COUNTRY_CODE, name: "United States", observed_count: 0 }]
-      }
+      this.countryOptions = buildCountryOptions(this.countryOptions)
     },
     normalizeLevelValues(values) {
       const canonicalized = []
@@ -2084,7 +2155,9 @@ export default {
       this.locationWarning = ""
       this.locationBusy = true
       try {
-        const payload = await this.fetchJson(`/api/geolocation/geocode?q=${encodeURIComponent(text)}&country_code=${encodeURIComponent(this.draftFilters.countryCode || "")}`)
+        const payload = await this.fetchJson(this.withOptionalCountryCode("/api/geolocation/geocode", this.draftFilters.countryCode, {
+          q: text,
+        }))
         this.resolvedLocation = payload
         setCachedLocation(payload)
         this.draftFilters.manualLocationQuery = payload.display_name || text
@@ -2103,7 +2176,9 @@ export default {
         return null
       }
 
-      const payload = await this.fetchJson(`/api/geolocation/geocode?q=${encodeURIComponent(query)}&country_code=${encodeURIComponent(this.draftFilters.countryCode || "")}`)
+      const payload = await this.fetchJson(this.withOptionalCountryCode("/api/geolocation/geocode", this.draftFilters.countryCode, {
+        q: query,
+      }))
       this.resolvedLocation = payload
       setCachedLocation(payload)
       return payload
@@ -2135,7 +2210,18 @@ export default {
       const mode = this.draftFilters.locationMode
 
       if (mode === "country") {
-        const payload = await this.fetchJson(`/api/geolocation/country-cities?country_code=${encodeURIComponent(this.draftFilters.countryCode)}&limit=200`)
+        if (this.isAllCountriesCode(this.draftFilters.countryCode)) {
+          this.locationPreviewNames = []
+          this.locationPreviewCities = []
+          this.locationPreviewCandidates = []
+          this.locationPreviewCenter = null
+          this.locationInfo = "All Countries keeps the search broad, so there is no matched-place preview to load."
+          return []
+        }
+
+        const payload = await this.fetchJson(this.withOptionalCountryCode("/api/geolocation/country-cities", this.draftFilters.countryCode, {
+          limit: 200,
+        }))
         const previewCities = (payload.locations || payload.cities || []).filter(city => city?.name)
         const candidates = this.dedupeLocationCandidates(
           this.orderLocationCandidates(this.buildLocationCandidates(previewCities, "country"), "country")
@@ -2151,7 +2237,7 @@ export default {
         if (!names.length) {
           this.locationWarning = "No supported locations found for that country right now."
         } else {
-          this.locationInfo = `Using ${names.length} supported locations in ${this.draftFilters.countryCode}.`
+          this.locationInfo = `Using ${names.length} supported locations in ${this.getCountryName(this.draftFilters.countryCode)}.`
         }
         return names
       }
@@ -2173,9 +2259,13 @@ export default {
       const radius = Math.max(1, Math.min(this.maxRadiusForUnit, radiusValue || 25))
       this.draftFilters.locationRadius = radius
 
-      const payload = await this.fetchJson(
-        `/api/geolocation/cities-in-radius?latitude=${encodeURIComponent(center.latitude)}&longitude=${encodeURIComponent(center.longitude)}&radius=${encodeURIComponent(radius)}&unit=${encodeURIComponent(this.draftFilters.radiusUnit)}&country_code=${encodeURIComponent(this.draftFilters.countryCode || "")}&limit=240`
-      )
+      const payload = await this.fetchJson(this.withOptionalCountryCode("/api/geolocation/cities-in-radius", this.draftFilters.countryCode, {
+        latitude: center.latitude,
+        longitude: center.longitude,
+        radius,
+        unit: this.draftFilters.radiusUnit,
+        limit: 240,
+      }))
 
       const previewCities = (payload.cities || []).filter(city => city?.name)
       const candidates = this.dedupeLocationCandidates(
@@ -2231,7 +2321,7 @@ export default {
       params.set("location_mode", this.appliedFilters.locationMode || "")
       params.set("sort_by", this.normalizeSortBy(this.appliedFilters.sortBy))
 
-      const locationCountryCode = (this.appliedFilters.countryCode || "").trim().toUpperCase()
+      const locationCountryCode = this.countryCodeForApi(this.appliedFilters.countryCode)
       if (locationCountryCode) {
         params.set("location_country_code", locationCountryCode)
       }

@@ -11,6 +11,8 @@ const COUNTRY_FIXTURES = [
   { code: 'GB', name: 'United Kingdom', location_count: 540 },
   { code: 'DE', name: 'Germany', location_count: 470 },
 ]
+const ALL_COUNTRIES_CODE = 'ALL'
+const NON_SELECTABLE_COUNTRY_CODES = new Set(['XX', 'XU'])
 
 const CITY_FIXTURES = {
   US: [
@@ -1174,6 +1176,11 @@ function getMockJobCountryName(job) {
   return getMockCountryName(getMockJobCountryCode(job))
 }
 
+function normalizeCountryFilterParam(value) {
+  const normalized = normalizeTextUpper(value)
+  return normalized === ALL_COUNTRIES_CODE ? '' : normalized
+}
+
 function buildMockCategoryValues() {
   const counts = new Map()
 
@@ -1233,7 +1240,7 @@ function buildMockCountryValues() {
 
   for (const job of getMockSearchableJobs()) {
     const code = getMockJobCountryCode(job)
-    if (!code) continue
+    if (!code || NON_SELECTABLE_COUNTRY_CODES.has(code)) continue
     const name = getMockJobCountryName(job) || code
     const current = counts.get(code) || { code, name, observed_count: 0 }
     current.observed_count += 1
@@ -2107,7 +2114,7 @@ function buildObservedRankLookup(countryCode) {
 
 function buildMockLocationSelection(params) {
   const mode = normalizeTextLower(params.get('location_mode'))
-  const countryCode = normalizeTextUpper(params.get('location_country_code'))
+  const countryCode = normalizeCountryFilterParam(params.get('location_country_code'))
   const rawLocationSelections = queryValues(params, 'location')
   const uniqueLocationSelections = []
   const seenLocations = new Set()
@@ -2187,7 +2194,7 @@ function applyJobSearchFilters(baseJobs, params, selectedLocations) {
   const levels = queryValues(params, 'level').map(normalizeMockLevelValue).filter(Boolean)
   const companies = queryValues(params, 'company').map(normalizeTextLower)
   const provider = normalizeTextLower(params.get('provider'))
-  const countryCode = normalizeTextUpper(params.get('location_country_code'))
+  const countryCode = normalizeCountryFilterParam(params.get('location_country_code'))
   const locations = (selectedLocations || []).map(normalizeTextLower)
   const keyword = normalizeTextLower(params.get('q'))
   const postedAfter = parsePostedAfter(params.get('posted_after'))
@@ -3141,7 +3148,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
 
   if (pathname === '/api/geolocation/geocode' && method === 'GET') {
     const query = normalizeTextLower(requestUrl.searchParams.get('q'))
-    const countryCode = normalizeTextUpper(requestUrl.searchParams.get('country_code'))
+    const countryCode = normalizeCountryFilterParam(requestUrl.searchParams.get('country_code'))
 
     const candidates = allCities().filter((city) => {
       if (countryCode && city.country_code !== countryCode) return false
@@ -3164,9 +3171,10 @@ async function handleMockApiRequest(request, requestUrl, state) {
   }
 
   if (pathname === '/api/geolocation/muse-supported-locations' && method === 'GET') {
-    const countryCode = normalizeTextUpper(requestUrl.searchParams.get('country_code')) || 'US'
+    const countryCode = normalizeCountryFilterParam(requestUrl.searchParams.get('country_code'))
     const limit = Math.max(1, Math.min(500, parseInteger(requestUrl.searchParams.get('limit'), 200)))
-    const locations = ensureArray(CITY_FIXTURES[countryCode], [])
+    const supportedCities = countryCode ? ensureArray(CITY_FIXTURES[countryCode], []) : allCities()
+    const locations = supportedCities
       .map((city, index) => ({
         name: cityToMuseLocationName(city),
         admin1: city.admin1,
@@ -3178,12 +3186,13 @@ async function handleMockApiRequest(request, requestUrl, state) {
       }))
       .sort((a, b) => Number(b.observed_count || 0) - Number(a.observed_count || 0))
       .slice(0, limit)
-    return toJsonResponse({ locations, total_count: locations.length, country_code: countryCode })
+    return toJsonResponse({ locations, total_count: locations.length, country_code: countryCode || null })
   }
 
   if (pathname === '/api/geolocation/country-cities' && method === 'GET') {
-    const countryCode = normalizeTextUpper(requestUrl.searchParams.get('country_code')) || 'US'
-    const cities = ensureArray(CITY_FIXTURES[countryCode], []).map((city) => ({ ...city }))
+    const countryCode = normalizeCountryFilterParam(requestUrl.searchParams.get('country_code'))
+    const baseCities = countryCode ? ensureArray(CITY_FIXTURES[countryCode], []) : allCities()
+    const cities = baseCities.map((city) => ({ ...city }))
     return toJsonResponse({ cities })
   }
 
@@ -3192,7 +3201,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
     const longitude = Number(requestUrl.searchParams.get('longitude') || '0')
     const radius = Number(requestUrl.searchParams.get('radius') || '25')
     const unit = normalizeTextLower(requestUrl.searchParams.get('unit')) || 'mi'
-    const countryCode = normalizeTextUpper(requestUrl.searchParams.get('country_code'))
+    const countryCode = normalizeCountryFilterParam(requestUrl.searchParams.get('country_code'))
 
     const radiusMiles = unit === 'km' ? radius * 0.621371 : radius
     const cities = allCities().filter((city) => {

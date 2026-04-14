@@ -17,6 +17,10 @@ celery_app.conf.update(
             "task": "app.tasks.job_sync.backfill_job_link_health",
             "schedule": max(int(settings.JOB_LINK_BACKFILL_INTERVAL_SECONDS), 300),
         },
+        "backfill-job-dedup-hashes": {
+            "task": "app.tasks.job_sync.backfill_job_dedup_hashes",
+            "schedule": max(int(settings.JOB_DEDUP_BACKFILL_INTERVAL_SECONDS), 300),
+        },
         "backfill-job-country-normalization": {
             "task": "app.tasks.job_sync.backfill_job_country_normalization",
             "schedule": max(int(settings.JOB_COUNTRY_BACKFILL_INTERVAL_SECONDS), 3600),

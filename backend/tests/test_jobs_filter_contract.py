@@ -142,6 +142,25 @@ class JobsFilterContractTests(unittest.TestCase):
             {"code": "US", "name": "United States", "observed_count": 6},
         )
 
+    @patch("app.api.routes._query_observed_country_counts")
+    def test_country_metadata_excludes_non_selectable_sentinel_codes(self, country_mock):
+        country_mock.return_value = [
+            ("US", "United States", 6),
+            ("XX", "Remote / Global", 4),
+            ("XU", "Uncertain", 3),
+            ("DE", "Germany", 2),
+        ]
+
+        payload = _build_jobs_filter_metadata_payload(db=object())
+
+        self.assertEqual(
+            payload.get("country_values"),
+            [
+                {"code": "US", "name": "United States", "observed_count": 6},
+                {"code": "DE", "name": "Germany", "observed_count": 2},
+            ],
+        )
+
     @patch("app.api.routes._query_observed_level_counts", return_value=[])
     @patch("app.api.routes._query_observed_category_counts", return_value=[])
     def test_filter_metadata_falls_back_when_catalog_is_empty(self, _category_mock, _level_mock):

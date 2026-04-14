@@ -77,6 +77,7 @@ from app.services.geolocation import (
     resolve_ip_location,
     reverse_geocode,
 )
+from app.services.location_country_reference import REAL_COUNTRY_CODES, country_name_from_code
 from app.services.muse_location_index import (
     ensure_muse_location_index,
     list_supported_countries,
@@ -499,11 +500,13 @@ def _build_observed_country_values_payload(db: Optional[Session] = None) -> List
         for code, name, observed_count in _query_observed_country_counts(db):
             if not code:
                 continue
+            if code not in REAL_COUNTRY_CODES:
+                continue
             current = counts.setdefault(
                 code,
                 {
                     "code": code,
-                    "name": name or code,
+                    "name": name or country_name_from_code(code) or code,
                     "observed_count": 0,
                 },
             )
