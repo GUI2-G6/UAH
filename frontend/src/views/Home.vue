@@ -73,6 +73,39 @@
                     noResponse: false
                     }" />
                 </Card>
+                <Card variant="minimal" class="home-application-card">
+                    <Application :application="{
+                    company: 'Apple',
+                    role: 'Server Manager',
+                    dateSent: '4/14/2026',
+                    statusStep: 2,
+                    maxStep: 4,
+                    statusText: 'Interview',
+                    noResponse: false
+                    }" />
+                </Card>
+                <Card variant="minimal" class="home-application-card">
+                    <Application :application="{
+                    company: 'Microsoft',
+                    role: 'Quality Assurance',
+                    dateSent: '4/15/2026',
+                    statusStep: 1,
+                    maxStep: 4,
+                    statusText: 'Applied',
+                    noResponse: false
+                    }" />
+                </Card>
+                <Card variant="minimal" class="home-application-card">
+                    <Application :application="{
+                    company: 'Nvidia',
+                    role: 'CEO',
+                    dateSent: '4/1/2026',
+                    statusStep: 1,
+                    maxStep: 4,
+                    statusText: 'Applied',
+                    noResponse: true
+                    }" />
+                </Card>
             </Card>
         </div>
     </div>
@@ -115,43 +148,3 @@
 </script>
 
 <style scoped src="./css/Home.css"></style>
-
-<!--
-<template>
-    <Card>
-        <template #header>
-            <h3>{{ job.title }}</h3>
-        </template>
-        <p>{{ job.company }}</p>
-        <p>{{ job.location }}</p>
-        <button @click="apply">Apply</button>  
-    </Card>
-</template>
-
-<script>
-import Card from "./Card.vue";
-export default {
-    name: "JobPosting",
-    components: {
-        Card
-    },
-    props: {
-        job: Object
-    },
-    methods: {
-        apply() {
-            console.log("Applying to", this.job.title);
-        }
-    }
-}
-</script>
-
-<style scoped>
-.job-card {
-    background: #f5f5f5;
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-}
-</style>
--->

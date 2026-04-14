@@ -72,14 +72,9 @@
   padding-right:30px;
 }
 
-#applied {
+#applied, #interviews {
   color:rgba(63, 98, 236);
   background-color:rgb(231, 235, 255);
-}
-
-#interviews {
-  color:rgb(255, 227, 72);
-  background-color:rgb(255, 249, 217);
 }
 
 #offers {
