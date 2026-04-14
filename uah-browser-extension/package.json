@@ -1,0 +1,21 @@
+{
+  "name": "uah-browser-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node ./scripts/run-vite.mjs",
+    "build": "node ./scripts/run-vite.mjs build",
+    "preview": "node ./scripts/run-vite.mjs preview"
+  },
+  "dependencies": {
+    "vue": "^3.5.28"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.4",
+    "vite": "^7.3.2"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}

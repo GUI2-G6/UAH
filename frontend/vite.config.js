@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 
 import { defineConfig, loadEnv } from 'vite'
@@ -49,12 +50,38 @@ function buildApiProxy(target) {
   }
 }
 
+function resolveHttpsConfig(env) {
+  const httpsEnabled = parseBoolean(env.VITE_DEV_HTTPS, false)
+  if (!httpsEnabled) return false
+
+  const certFile = String(env.VITE_DEV_HTTPS_CERT_FILE || '').trim()
+  const keyFile = String(env.VITE_DEV_HTTPS_KEY_FILE || '').trim()
+
+  if (!certFile || !keyFile) {
+    throw new Error(
+      '[local-https] Set both VITE_DEV_HTTPS_CERT_FILE and VITE_DEV_HTTPS_KEY_FILE when VITE_DEV_HTTPS=true.'
+    )
+  }
+  if (!existsSync(certFile)) {
+    throw new Error(`[local-https] HTTPS cert file was not found: ${certFile}`)
+  }
+  if (!existsSync(keyFile)) {
+    throw new Error(`[local-https] HTTPS key file was not found: ${keyFile}`)
+  }
+
+  return {
+    cert: readFileSync(certFile),
+    key: readFileSync(keyFile),
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const localMode = resolveLocalMode(mode, env)
   const backendOrigin = String(env.VITE_LOCAL_BACKEND_ORIGIN || 'http://localhost:8000').trim()
   const allowRemoteApi = parseBoolean(env.VITE_ALLOW_REMOTE_API, false)
+  const https = resolveHttpsConfig(env)
 
   if (localMode === 'backend' && !allowRemoteApi && !isLoopbackOrigin(backendOrigin)) {
     throw new Error(
@@ -73,9 +100,10 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      host: env.VITE_DEV_HOST || '127.0.0.1',
+      host: env.VITE_DEV_HOST || 'localhost',
       port: Number(env.VITE_DEV_PORT || 5173),
       strictPort: false,
+      https,
       proxy: localMode === 'backend' ? buildApiProxy(backendOrigin) : undefined,
     },
   }

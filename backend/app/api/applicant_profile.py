@@ -8,10 +8,41 @@ from app.api.deps import get_current_user
 from app.schemas.applicant_profile import (
     ProfileCreate, ProfileUpdate, ProfileResponse, ProfileListItem,
 )
+from app.services.applicant_profile_canonical import sync_profile_storage, apply_profile_updates_to_canonical
 
 router = APIRouter(prefix="/api/applicant-profile", tags=["applicant-profile"])
 
 MAX_PROFILES_PER_USER = 10
+
+
+def _sync_profiles_if_needed(db: Session, profiles: list[ApplicantProfile]) -> None:
+    dirty = False
+    for profile in profiles:
+        before_canonical = profile.canonical_data
+        before_token_map = profile.token_map
+        before_summary = (
+            profile.first_name,
+            profile.last_name,
+            profile.job_title,
+            profile.city,
+            profile.state,
+            profile.updated_at,
+        )
+        sync_profile_storage(profile)
+        after_summary = (
+            profile.first_name,
+            profile.last_name,
+            profile.job_title,
+            profile.city,
+            profile.state,
+            profile.updated_at,
+        )
+        if before_canonical != profile.canonical_data or before_token_map != profile.token_map or before_summary != after_summary:
+            dirty = True
+    if dirty:
+        db.commit()
+        for profile in profiles:
+            db.refresh(profile)
 
 
 @router.get("/", response_model=list[ProfileListItem])
@@ -29,12 +60,15 @@ def list_profiles(
     Response codes:
     - 200: Profiles returned successfully (possibly empty list).
     """
-    return (
+    profiles = (
         db.query(ApplicantProfile)
         .filter(ApplicantProfile.user_id == current_user.id)
         .order_by(ApplicantProfile.is_active.desc(), ApplicantProfile.updated_at.desc())
         .all()
     )
+    if profiles:
+        _sync_profiles_if_needed(db, profiles)
+    return profiles
 
 
 @router.get("/active", response_model=ProfileResponse)
@@ -58,6 +92,7 @@ def get_active_profile(
     )
     if not profile:
         raise HTTPException(status_code=404, detail="No active profile found")
+    _sync_profiles_if_needed(db, [profile])
     return profile
 
 
@@ -93,6 +128,7 @@ def create_profile(
         **payload.model_dump(),
     )
     db.add(profile)
+    sync_profile_storage(profile)
     db.commit()
     db.refresh(profile)
     return profile
@@ -118,6 +154,7 @@ def get_profile(
     ).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
+    _sync_profiles_if_needed(db, [profile])
     return profile
 
 
@@ -144,9 +181,13 @@ def update_profile(
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
 
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    for key, value in updates.items():
         setattr(profile, key, value)
 
+    if "canonical_data" not in updates:
+        profile.canonical_data = apply_profile_updates_to_canonical(profile.canonical_data or {}, updates)
+    sync_profile_storage(profile)
     db.commit()
     db.refresh(profile)
     return profile
@@ -181,6 +222,7 @@ def activate_profile(
     ).update({"is_active": False})
 
     profile.is_active = True
+    sync_profile_storage(profile)
     db.commit()
     db.refresh(profile)
     return profile

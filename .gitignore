@@ -6,6 +6,8 @@
 .env
 .env.*
 !env-examples/**/.env.example
+!frontend/.env.local.example
+!uah-browser-extension/.env.local.example
 
 # ----- Docker volumes (database data, etc.) -----
 volumes/

@@ -61,7 +61,11 @@ from app.models.user import User, SavedJob
 from app.db.session import get_db
 from app.google.service import GoogleAuthService
 from app.schemas.user import SaveJobRequest
-from app.core.security import create_access_token
+from app.core.auth_session import (
+    access_token_expire_seconds_for_client,
+    create_access_token_for_client,
+    resolve_auth_client,
+)
 from app.core.auth_cookie import set_auth_cookie
 from typing import Optional, List, Any
 from app.services.geolocation import (
@@ -2764,6 +2768,7 @@ def _clear_google_oauth_session(request: Request) -> None:
     request.session.pop("oauth_user_id", None)
     request.session.pop("oauth_next", None)
     request.session.pop("oauth_intent", None)
+    request.session.pop("oauth_client", None)
 
 
 def _oauth_login_error(reason: str, intent: str = "login") -> RedirectResponse:
@@ -2797,6 +2802,7 @@ async def google_oauth(
     request: Request,
     intent: str = Query("login", description="Optional UI intent for telemetry. Supported: login, register."),
     next: str | None = Query(None, description="Optional post-login app path, e.g. /home or /job-board."),
+    client: str | None = Query(None, description="Optional client hint. Use `extension` for browser-extension sign-in."),
 ):
     """
     Start Google OAuth flow for unauthenticated sign-in/up.
@@ -2814,6 +2820,7 @@ async def google_oauth(
     request.session["oauth_mode"] = "login"
     request.session["oauth_intent"] = normalized_intent
     request.session["oauth_next"] = _sanitize_next_path(next)
+    request.session["oauth_client"] = resolve_auth_client(request, query_client=client)
 
     return RedirectResponse(_build_google_authorization_url(state, redirect_uri, client_id))
 
@@ -2837,6 +2844,7 @@ async def start_google_connect(
     request.session["oauth_mode"] = "connect"
     request.session["oauth_user_id"] = int(current_user.id)
     request.session["oauth_next"] = "/settings"
+    request.session["oauth_client"] = resolve_auth_client(request)
 
     return {"authorization_url": _build_google_authorization_url(state, redirect_uri, client_id)}
 
@@ -2943,6 +2951,7 @@ async def google_oauth_callback(
     oauth_mode = (request.session.get("oauth_mode") or "login").strip().lower()
     oauth_user_id = request.session.get("oauth_user_id")
     oauth_next = _sanitize_next_path(request.session.get("oauth_next"))
+    oauth_client = resolve_auth_client(query_client=request.session.get("oauth_client"))
 
     if not expected_state or state != expected_state:
         _clear_google_oauth_session(request)
@@ -3049,7 +3058,7 @@ async def google_oauth_callback(
         _clear_google_oauth_session(request)
         return _oauth_login_error("account_inactive", intent=oauth_intent)
 
-    user_access_token = create_access_token(data={"sub": str(user.id)})
+    user_access_token = create_access_token_for_client(data={"sub": str(user.id)}, client=oauth_client)
     redirect_url = _frontend_url(
         "/oauth-callback",
         query={
@@ -3058,7 +3067,11 @@ async def google_oauth_callback(
         },
     )
     redirect_response = RedirectResponse(redirect_url, status_code=302)
-    set_auth_cookie(redirect_response, user_access_token)
+    set_auth_cookie(
+        redirect_response,
+        user_access_token,
+        max_age=access_token_expire_seconds_for_client(oauth_client),
+    )
     _clear_google_oauth_session(request)
     return redirect_response
 

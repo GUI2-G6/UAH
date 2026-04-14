@@ -598,26 +598,31 @@ function createResumeStructuredData(user) {
 
 function createResume(id, user, overrides = {}) {
   const createdAt = nowIso()
-  return {
+  return syncMockResumeRecord({
     id,
     file_name: `Resume_${id}.pdf`,
     created_at: createdAt,
+    updated_at: createdAt,
     parse_method: 'local',
     portal_ready: true,
     has_pdf: true,
     structured_data: createResumeStructuredData(user),
+    review_status: '',
+    review_draft: null,
+    review_updated_at: null,
     ...overrides,
-  }
+  })
 }
 
 function createProfile(user, id = 1, overrides = {}) {
   const createdAt = nowIso()
-  return {
+  return syncMockProfileStorage({
     id,
     name: 'Default',
     is_active: true,
     is_default: true,
     created_at: createdAt,
+    updated_at: createdAt,
     first_name: user.first_name || '',
     last_name: user.last_name || '',
     email: user.email || '',
@@ -649,7 +654,312 @@ function createProfile(user, id = 1, overrides = {}) {
     disability_status: '',
     california_resident: '',
     ...overrides,
+  })
+}
+
+function cleanProfileString(value) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function cleanProfileList(value) {
+  return Array.isArray(value)
+    ? value.map((item) => cleanProfileString(item)).filter(Boolean)
+    : []
+}
+
+function splitProfileList(value) {
+  return String(value || '')
+    .split(/[\n,;]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function splitProfileLines(value) {
+  return String(value || '')
+    .split(/\r?\n+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function normalizeCanonicalData(value = {}) {
+  const draft = value && typeof value === 'object' ? value : {}
+  const personal = draft.personal_info && typeof draft.personal_info === 'object' ? draft.personal_info : {}
+  const skills = draft.skills && typeof draft.skills === 'object' ? draft.skills : {}
+  const normalizeEntryList = (entries, mapper) => Array.isArray(entries) ? entries.map((entry) => mapper(entry)).filter((entry) => Object.values(entry).some((item) => Array.isArray(item) ? item.length : Boolean(cleanProfileString(item)))) : []
+
+  return {
+    personal_info: {
+      first_name: cleanProfileString(personal.first_name),
+      last_name: cleanProfileString(personal.last_name),
+      email: cleanProfileString(personal.email),
+      phone: cleanProfileString(personal.phone),
+      address: cleanProfileString(personal.address),
+      city: cleanProfileString(personal.city),
+      state: cleanProfileString(personal.state),
+      zip: cleanProfileString(personal.zip),
+      linkedin: cleanProfileString(personal.linkedin),
+      website: cleanProfileString(personal.website),
+    },
+    summary: cleanProfileString(draft.summary),
+    skills: {
+      technical: cleanProfileList(skills.technical),
+      languages: cleanProfileList(skills.languages),
+      tools: cleanProfileList(skills.tools),
+      soft_skills: cleanProfileList(skills.soft_skills),
+    },
+    education: normalizeEntryList(draft.education, (entry = {}) => ({
+      institution: cleanProfileString(entry.institution),
+      degree: cleanProfileString(entry.degree),
+      field_of_study: cleanProfileString(entry.field_of_study),
+      gpa: cleanProfileString(entry.gpa),
+      start_date: cleanProfileString(entry.start_date),
+      end_date: cleanProfileString(entry.end_date),
+      honors: cleanProfileList(entry.honors),
+      relevant_coursework: cleanProfileList(entry.relevant_coursework),
+    })),
+    work_experience: normalizeEntryList(draft.work_experience, (entry = {}) => ({
+      company: cleanProfileString(entry.company),
+      title: cleanProfileString(entry.title),
+      location: cleanProfileString(entry.location),
+      start_date: cleanProfileString(entry.start_date),
+      end_date: cleanProfileString(entry.end_date),
+      is_current: Boolean(entry.is_current || String(entry.end_date || '').toLowerCase() === 'present'),
+      bullets: cleanProfileList(entry.bullets),
+    })),
+    projects: normalizeEntryList(draft.projects, (entry = {}) => ({
+      name: cleanProfileString(entry.name),
+      description: cleanProfileString(entry.description),
+      date: cleanProfileString(entry.date),
+      technologies: cleanProfileList(entry.technologies),
+    })),
+    certifications: normalizeEntryList(draft.certifications, (entry = {}) => ({
+      name: cleanProfileString(typeof entry === 'string' ? entry : entry.name),
+      issuer: cleanProfileString(entry?.issuer),
+      date: cleanProfileString(entry?.date),
+    })),
+    awards: cleanProfileList(draft.awards),
+    activities: cleanProfileList(draft.activities),
+    volunteer: cleanProfileList(draft.volunteer),
   }
+}
+
+function deriveCanonicalFromProfile(profile = {}) {
+  const education = []
+  if (cleanProfileString(profile.university) || cleanProfileString(profile.degree) || cleanProfileString(profile.major)) {
+    education.push({
+      institution: cleanProfileString(profile.university),
+      degree: cleanProfileString(profile.degree),
+      field_of_study: cleanProfileString(profile.major),
+      gpa: cleanProfileString(profile.gpa),
+      end_date: cleanProfileString(profile.grad_year),
+    })
+  }
+  splitProfileLines(profile.education_history_text).forEach((line) => {
+    const parts = line.split('|').map((item) => item.trim())
+    education.push({
+      institution: cleanProfileString(parts[0]),
+      degree: cleanProfileString(parts[1]),
+      field_of_study: cleanProfileString(parts[2]),
+      start_date: cleanProfileString(parts[3]),
+      end_date: cleanProfileString(parts[4]),
+      gpa: cleanProfileString(parts[5]),
+    })
+  })
+
+  const workExperience = []
+  if (cleanProfileString(profile.job_title)) {
+    workExperience.push({ title: cleanProfileString(profile.job_title) })
+  }
+  splitProfileLines(profile.employment_history_text).forEach((line) => {
+    const parts = line.split('|').map((item) => item.trim())
+    workExperience.push({
+      company: cleanProfileString(parts[0]),
+      title: cleanProfileString(parts[1]),
+      location: cleanProfileString(parts[2]),
+      start_date: cleanProfileString(parts[3]),
+      end_date: cleanProfileString(parts[4]),
+      is_current: String(parts[4] || '').toLowerCase() === 'present',
+    })
+  })
+
+  return normalizeCanonicalData({
+    personal_info: {
+      first_name: profile.first_name,
+      last_name: profile.last_name,
+      email: profile.email,
+      phone: profile.phone,
+      address: profile.street_address,
+      city: profile.city,
+      state: profile.state,
+      zip: profile.zip,
+      linkedin: profile.linkedin,
+      website: profile.portfolio,
+    },
+    summary: profile.summary,
+    skills: { technical: splitProfileList(profile.skills_text) },
+    education,
+    work_experience: workExperience,
+    certifications: splitProfileLines(profile.certifications_text).map((name) => ({ name })),
+    awards: [],
+    activities: [],
+    volunteer: [],
+  })
+}
+
+function flattenCanonicalData(canonical) {
+  const normalized = normalizeCanonicalData(canonical)
+  const tokens = {}
+  Object.entries(normalized.personal_info || {}).forEach(([key, value]) => {
+    if (cleanProfileString(value)) tokens[`personal_info.${key}`] = value
+  })
+  if (cleanProfileString(normalized.summary)) tokens.summary = normalized.summary
+  ;['education', 'work_experience', 'projects', 'certifications'].forEach((sectionKey) => {
+    ;(normalized[sectionKey] || []).forEach((entry, index) => {
+      Object.entries(entry || {}).forEach(([key, value]) => {
+        if (Array.isArray(value) && value.length) {
+          tokens[`${sectionKey}[${index}].${key}`] = value.join(key === 'bullets' ? '\n' : ', ')
+        } else if (!Array.isArray(value) && cleanProfileString(String(value || ''))) {
+          tokens[`${sectionKey}[${index}].${key}`] = value
+        }
+      })
+    })
+  })
+  Object.entries(normalized.skills || {}).forEach(([key, value]) => {
+    if (Array.isArray(value) && value.length) tokens[`skills.${key}`] = value.join(', ')
+  })
+  ;['awards', 'activities', 'volunteer'].forEach((key) => {
+    if (normalized[key]?.length) tokens[key] = normalized[key].join('\n')
+  })
+  return tokens
+}
+
+function deriveProfileFieldsFromCanonical(canonical, existing = {}) {
+  const normalized = normalizeCanonicalData(canonical)
+  const primaryEducation = normalized.education[0] || {}
+  const extraEducation = normalized.education.slice(1)
+  const primaryWork = normalized.work_experience[0] || {}
+  const extraWork = normalized.work_experience.slice(primaryWork.title ? 1 : 0)
+  const allSkills = [
+    ...(normalized.skills.technical || []),
+    ...(normalized.skills.languages || []),
+    ...(normalized.skills.tools || []),
+    ...(normalized.skills.soft_skills || []),
+  ].filter(Boolean)
+
+  return {
+    first_name: cleanProfileString(normalized.personal_info.first_name),
+    last_name: cleanProfileString(normalized.personal_info.last_name),
+    email: cleanProfileString(normalized.personal_info.email),
+    phone: cleanProfileString(normalized.personal_info.phone),
+    linkedin: cleanProfileString(normalized.personal_info.linkedin),
+    portfolio: cleanProfileString(normalized.personal_info.website),
+    street_address: cleanProfileString(normalized.personal_info.address),
+    city: cleanProfileString(normalized.personal_info.city),
+    state: cleanProfileString(normalized.personal_info.state),
+    zip: cleanProfileString(normalized.personal_info.zip),
+    summary: cleanProfileString(normalized.summary),
+    degree: cleanProfileString(primaryEducation.degree),
+    major: cleanProfileString(primaryEducation.field_of_study),
+    university: cleanProfileString(primaryEducation.institution),
+    grad_year: cleanProfileString(primaryEducation.end_date),
+    gpa: cleanProfileString(primaryEducation.gpa),
+    job_title: cleanProfileString(primaryWork.title) || cleanProfileString(existing.job_title),
+    years_experience: cleanProfileString(existing.years_experience),
+    skills_text: allSkills.join(', '),
+    certifications_text: normalized.certifications.map((item) => cleanProfileString(item.name)).filter(Boolean).join('\n'),
+    professional_links_text: cleanProfileString(existing.professional_links_text),
+    education_history_text: extraEducation.map((item) => [item.institution, item.degree, item.field_of_study, item.start_date, item.end_date, item.gpa].map((part) => cleanProfileString(part)).join(' | ')).filter(Boolean).join('\n'),
+    employment_history_text: extraWork.map((item) => [item.company, item.title, item.location, item.start_date, item.end_date || (item.is_current ? 'Present' : '')].map((part) => cleanProfileString(part)).join(' | ')).filter(Boolean).join('\n'),
+  }
+}
+
+function syncMockProfileStorage(profile = {}) {
+  const canonical = profile.canonical_data ? normalizeCanonicalData(profile.canonical_data) : deriveCanonicalFromProfile(profile)
+  return {
+    ...profile,
+    ...deriveProfileFieldsFromCanonical(canonical, profile),
+    canonical_data: canonical,
+    token_map: flattenCanonicalData(canonical),
+    updated_at: profile.updated_at || profile.created_at || nowIso(),
+  }
+}
+
+function syncMockResumeRecord(resume = {}) {
+  return {
+    ...resume,
+    review_status: cleanProfileString(resume.review_status) || '',
+    review_draft: resume.review_draft && typeof resume.review_draft === 'object' ? resume.review_draft : null,
+    review_updated_at: resume.review_updated_at || null,
+    has_review_draft: Boolean(resume.review_draft && typeof resume.review_draft === 'object'),
+  }
+}
+
+function generateMockReviewConflicts(existingCanonical, incomingCanonical) {
+  const existingTokens = flattenCanonicalData(existingCanonical)
+  const incomingTokens = flattenCanonicalData(incomingCanonical)
+  return Object.entries(incomingTokens).reduce((accumulator, [path, incomingValue]) => {
+    const existingValue = existingTokens[path]
+    if (!existingValue || !incomingValue || existingValue === incomingValue) return accumulator
+    accumulator.push({
+      id: path,
+      path,
+      label: path.replace(/^personal_info\./, '').replace(/_/g, ' ').replace(/\[(\d+)\]/g, (_, number) => ` #${Number(number) + 1}`).replace(/\./g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
+      existing_value: existingValue,
+      incoming_value: incomingValue,
+      resolution: 'existing',
+    })
+    return accumulator
+  }, []).sort((left, right) => left.label.localeCompare(right.label))
+}
+
+function mergeMockReviewIntoProfile(existingCanonical, incomingCanonical, conflictResolutions = {}) {
+  const existing = normalizeCanonicalData(existingCanonical)
+  const incoming = normalizeCanonicalData(incomingCanonical)
+  const existingTokens = flattenCanonicalData(existing)
+  const incomingTokens = flattenCanonicalData(incoming)
+  const conflicts = generateMockReviewConflicts(existing, incoming)
+  const conflictPaths = new Set(conflicts.map((item) => item.path))
+  const mergedTokens = { ...existingTokens }
+
+  Object.entries(incomingTokens).forEach(([path, value]) => {
+    if (!mergedTokens[path]) {
+      mergedTokens[path] = value
+      return
+    }
+    if (conflictPaths.has(path) && conflictResolutions[path] !== 'incoming') return
+    mergedTokens[path] = value
+  })
+
+  const merged = normalizeCanonicalData({
+    personal_info: {
+      first_name: mergedTokens['personal_info.first_name'],
+      last_name: mergedTokens['personal_info.last_name'],
+      email: mergedTokens['personal_info.email'],
+      phone: mergedTokens['personal_info.phone'],
+      address: mergedTokens['personal_info.address'],
+      city: mergedTokens['personal_info.city'],
+      state: mergedTokens['personal_info.state'],
+      zip: mergedTokens['personal_info.zip'],
+      linkedin: mergedTokens['personal_info.linkedin'],
+      website: mergedTokens['personal_info.website'],
+    },
+    summary: mergedTokens.summary,
+    skills: {
+      technical: [...(existing.skills.technical || []), ...(incoming.skills.technical || [])],
+      languages: [...(existing.skills.languages || []), ...(incoming.skills.languages || [])],
+      tools: [...(existing.skills.tools || []), ...(incoming.skills.tools || [])],
+      soft_skills: [...(existing.skills.soft_skills || []), ...(incoming.skills.soft_skills || [])],
+    },
+    education: [...existing.education, ...incoming.education],
+    work_experience: [...existing.work_experience, ...incoming.work_experience],
+    projects: [...existing.projects, ...incoming.projects],
+    certifications: [...existing.certifications, ...incoming.certifications],
+    awards: [...existing.awards, ...incoming.awards],
+    activities: [...existing.activities, ...incoming.activities],
+    volunteer: [...existing.volunteer, ...incoming.volunteer],
+  })
+
+  return { merged, conflicts }
 }
 
 function createDefaultState() {
@@ -688,8 +998,8 @@ function ensureArray(value, fallback = []) {
 function ensureStateShape(state) {
   const safe = state && typeof state === 'object' ? state : createDefaultState()
   safe.user = safe.user && typeof safe.user === 'object' ? { ...createDefaultUser(), ...safe.user } : createDefaultUser()
-  safe.resumes = ensureArray(safe.resumes, [])
-  safe.profiles = ensureArray(safe.profiles, [])
+  safe.resumes = ensureArray(safe.resumes, []).map((resume) => syncMockResumeRecord(resume))
+  safe.profiles = ensureArray(safe.profiles, []).map((profile) => syncMockProfileStorage(profile))
   safe.parseJobs = safe.parseJobs && typeof safe.parseJobs === 'object' ? safe.parseJobs : {}
   safe.nextIds = safe.nextIds && typeof safe.nextIds === 'object' ? safe.nextIds : { resume: 1, profile: 1, parseJob: 1 }
   safe.nextIds.resume = Number(safe.nextIds.resume || safe.resumes.length + 1)
@@ -1208,7 +1518,11 @@ function finalizeResumeParse(state, job) {
     _validation: validation,
   }
 
-  state.resumes[resumeIndex] = updated
+  updated.review_status = 'pending'
+  updated.review_draft = updated.structured_data
+  updated.review_updated_at = nowIso()
+  updated.updated_at = nowIso()
+  state.resumes[resumeIndex] = syncMockResumeRecord(updated)
 }
 
 function advanceParseJobState(state, job) {
@@ -2357,6 +2671,8 @@ async function handleMockApiRequest(request, requestUrl, state) {
   }
 
   if ((pathname === '/api/resume/' || pathname === '/api/resume') && method === 'GET') {
+    state.resumes = state.resumes.map((resume) => syncMockResumeRecord(resume))
+    saveState(state)
     return toJsonResponse(asJson(state.resumes))
   }
 
@@ -2379,12 +2695,16 @@ async function handleMockApiRequest(request, requestUrl, state) {
       file_name: fileName,
       parse_method: null,
       portal_ready: false,
+      structured_data: null,
+      review_status: '',
+      review_draft: null,
+      review_updated_at: null,
     })
 
     state.resumes.unshift(uploaded)
     saveState(state)
 
-    return toJsonResponse(uploaded, 201)
+    return toJsonResponse(asJson(uploaded), 201)
   }
 
   const resumeParseMatch = pathname.match(/^\/api\/resume\/(\d+)\/parse-async$/)
@@ -2437,6 +2757,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
 
     const payload = {
       job_id: job.job_id,
+      resume_id: job.resume_id,
       status: job.status,
       progress_stage: job.progress_stage,
       attempt: job.attempt,
@@ -2498,7 +2819,138 @@ async function handleMockApiRequest(request, requestUrl, state) {
       return toJsonResponse({ detail: 'Resume not found' }, 404)
     }
 
-    return toJsonResponse(asJson(resume))
+    return toJsonResponse(asJson(syncMockResumeRecord(resume)))
+  }
+
+  const reviewDraftMatch = pathname.match(/^\/api\/resume\/(\d+)\/review-draft$/)
+  if (reviewDraftMatch && method === 'GET') {
+    const resumeId = Number(reviewDraftMatch[1])
+    const resume = state.resumes.find((item) => Number(item.id) === resumeId)
+    if (!resume) {
+      return toJsonResponse({ detail: 'Resume not found' }, 404)
+    }
+    const reviewDraft = resume.review_draft || resume.structured_data
+    if (!reviewDraft) {
+      return toJsonResponse({ detail: 'Resume has not been parsed yet' }, 400)
+    }
+    return toJsonResponse({
+      resume_id: resume.id,
+      file_name: resume.file_name,
+      parse_method: resume.parse_method,
+      review_status: resume.review_status || 'pending',
+      review_updated_at: resume.review_updated_at,
+      review_draft: reviewDraft,
+    })
+  }
+
+  if (reviewDraftMatch && method === 'PUT') {
+    const resumeId = Number(reviewDraftMatch[1])
+    const resumeIndex = state.resumes.findIndex((item) => Number(item.id) === resumeId)
+    if (resumeIndex < 0) {
+      return toJsonResponse({ detail: 'Resume not found' }, 404)
+    }
+    const body = await parseJsonBody(request)
+    state.resumes[resumeIndex] = syncMockResumeRecord({
+      ...state.resumes[resumeIndex],
+      review_status: 'pending',
+      review_draft: body.review_draft || state.resumes[resumeIndex].review_draft || state.resumes[resumeIndex].structured_data,
+      review_updated_at: nowIso(),
+    })
+    saveState(state)
+    return toJsonResponse({
+      resume_id: state.resumes[resumeIndex].id,
+      file_name: state.resumes[resumeIndex].file_name,
+      parse_method: state.resumes[resumeIndex].parse_method,
+      review_status: state.resumes[resumeIndex].review_status,
+      review_updated_at: state.resumes[resumeIndex].review_updated_at,
+      review_draft: state.resumes[resumeIndex].review_draft,
+    })
+  }
+
+  const reviewConflictsMatch = pathname.match(/^\/api\/resume\/(\d+)\/review-conflicts$/)
+  if (reviewConflictsMatch && method === 'POST') {
+    const resumeId = Number(reviewConflictsMatch[1])
+    const resume = state.resumes.find((item) => Number(item.id) === resumeId)
+    if (!resume) {
+      return toJsonResponse({ detail: 'Resume not found' }, 404)
+    }
+    const body = await parseJsonBody(request)
+    const profile = state.profiles.find((item) => Number(item.id) === Number(body.profile_id))
+    if (!profile) {
+      return toJsonResponse({ detail: 'Profile not found' }, 404)
+    }
+    const incoming = normalizeCanonicalData(body.reviewed_data || resume.review_draft || resume.structured_data)
+    const existing = normalizeCanonicalData(profile.canonical_data || {})
+    const conflicts = generateMockReviewConflicts(existing, incoming)
+    return toJsonResponse({ profile_id: profile.id, conflict_count: conflicts.length, conflicts })
+  }
+
+  const applyReviewMatch = pathname.match(/^\/api\/resume\/(\d+)\/apply-review$/)
+  if (applyReviewMatch && method === 'POST') {
+    const resumeId = Number(applyReviewMatch[1])
+    const resumeIndex = state.resumes.findIndex((item) => Number(item.id) === resumeId)
+    if (resumeIndex < 0) {
+      return toJsonResponse({ detail: 'Resume not found' }, 404)
+    }
+    const body = await parseJsonBody(request)
+    const incoming = normalizeCanonicalData(body.reviewed_data)
+    let profile = null
+    let conflicts = []
+
+    if (body.mode === 'existing') {
+      const profileIndex = state.profiles.findIndex((item) => Number(item.id) === Number(body.profile_id))
+      if (profileIndex < 0) {
+        return toJsonResponse({ detail: 'Profile not found' }, 404)
+      }
+      const merge = mergeMockReviewIntoProfile(state.profiles[profileIndex].canonical_data || {}, incoming, body.conflict_resolutions || {})
+      conflicts = merge.conflicts
+      profile = syncMockProfileStorage({
+        ...state.profiles[profileIndex],
+        canonical_data: merge.merged,
+        is_active: true,
+        updated_at: nowIso(),
+      })
+      state.profiles = state.profiles.map((item, index) => index === profileIndex ? profile : { ...item, is_active: false })
+    } else if (body.mode === 'new') {
+      const id = state.nextIds.profile
+      state.nextIds.profile += 1
+      state.profiles = state.profiles.map((item) => ({ ...item, is_active: false }))
+      profile = syncMockProfileStorage(createProfile(state.user, id, {
+        name: cleanProfileString(body.profile_name) || cleanProfileString(incoming.personal_info.first_name) || `Profile ${id}`,
+        is_default: false,
+        is_active: true,
+        canonical_data: incoming,
+        updated_at: nowIso(),
+      }))
+      state.profiles.push(profile)
+    } else {
+      return toJsonResponse({ detail: "Mode must be 'existing' or 'new'" }, 400)
+    }
+
+    if (profile?.is_active) {
+      state.user = {
+        ...state.user,
+        first_name: profile.first_name || state.user.first_name,
+        last_name: profile.last_name || state.user.last_name,
+        email: profile.email || state.user.email,
+      }
+    }
+
+    state.resumes[resumeIndex] = syncMockResumeRecord({
+      ...state.resumes[resumeIndex],
+      review_status: 'applied',
+      review_draft: body.reviewed_data,
+      review_updated_at: nowIso(),
+      updated_at: nowIso(),
+    })
+    saveState(state)
+    return toJsonResponse({
+      resume_id: state.resumes[resumeIndex].id,
+      profile_id: profile.id,
+      review_status: state.resumes[resumeIndex].review_status,
+      conflict_count: conflicts.length,
+      profile: asJson(profile),
+    })
   }
 
   if (resumeByIdMatch && method === 'DELETE') {
@@ -2509,6 +2961,8 @@ async function handleMockApiRequest(request, requestUrl, state) {
   }
 
   if ((pathname === '/api/applicant-profile/' || pathname === '/api/applicant-profile') && method === 'GET') {
+    state.profiles = state.profiles.map((profile) => syncMockProfileStorage(profile))
+    saveState(state)
     return toJsonResponse(asJson(state.profiles))
   }
 
@@ -2534,9 +2988,9 @@ async function handleMockApiRequest(request, requestUrl, state) {
       state.profiles = state.profiles.map((profile) => ({ ...profile, is_active: false }))
     }
 
-    state.profiles.push(created)
+    state.profiles.push(syncMockProfileStorage(created))
     saveState(state)
-    return toJsonResponse(created, 201)
+    return toJsonResponse(asJson(state.profiles[state.profiles.length - 1]), 201)
   }
 
   const profileByIdMatch = pathname.match(/^\/api\/applicant-profile\/(\d+)$/)
@@ -2548,7 +3002,10 @@ async function handleMockApiRequest(request, requestUrl, state) {
       return toJsonResponse({ detail: 'Profile not found' }, 404)
     }
 
-    return toJsonResponse(asJson(profile))
+    const synced = syncMockProfileStorage(profile)
+    state.profiles = state.profiles.map((item) => Number(item.id) === profileId ? synced : item)
+    saveState(state)
+    return toJsonResponse(asJson(synced))
   }
 
   if (profileByIdMatch && method === 'PUT') {
@@ -2565,11 +3022,12 @@ async function handleMockApiRequest(request, requestUrl, state) {
     } catch (error) {
       return toJsonResponse({ detail: error?.message || 'Please enter valid contact details' }, 400)
     }
-    state.profiles[profileIndex] = {
+    state.profiles[profileIndex] = syncMockProfileStorage({
       ...state.profiles[profileIndex],
       ...body,
       id: profileId,
-    }
+      updated_at: nowIso(),
+    })
 
     if (state.profiles[profileIndex].is_active) {
       state.user = {
@@ -2629,6 +3087,8 @@ async function handleMockApiRequest(request, requestUrl, state) {
       email: activeProfile.email || state.user.email,
     }
 
+    activeProfile = syncMockProfileStorage(activeProfile)
+    state.profiles = state.profiles.map((profile) => Number(profile.id) === profileId ? activeProfile : profile)
     saveState(state)
     return toJsonResponse(asJson(activeProfile))
   }

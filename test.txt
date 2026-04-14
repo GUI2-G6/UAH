@@ -29,3 +29,19 @@ Dedup hash collisions are back — but this time they're on UPDATE statements, n
 Unexpected EOF on client connection with an open transaction at 12:44:05 — a backend worker dropped its connection mid-transaction. Postgres cleaned it up fine but it's a sign of instability somewhere, possibly a Celery worker getting killed or timing out during a long operation.
 Checkpoints are taking a long time — the one at 12:16 took 269 seconds to write 48% of shared buffers. That's a lot of write pressure, likely from the sync churning through 27k jobs. Should settle down once the initial backfill activity calms.
 Nothing is on fire, but flag the dedup UPDATE collision to the agent — it's the same root bug in a different code path.
+
+
+
+still need to fix country display. why dont we also just check to see if the city refered to exists in that country or something idk, context clues in listings could also be utilized perhaps
+
+allow multi select of countrys for filters
+
+reporting jobs that are potentially stale (community notes kinda)
+
+nother pass on validating job listings are still active on the secondary links on sites.
+
+nother pass on making sure we simply expunge returned job listings that dont fit our max age of job and or link valididity params
+
+on review readyness make sure csv typing works, make the form values more clear
+
+improve the resume profile parsing options and stuff to fit better. 

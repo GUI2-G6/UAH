@@ -14,9 +14,16 @@ class Resume(Base):
     structured_data = Column(JSON, nullable=True)
     portal_ready = Column(Boolean, default=False)
     parse_method = Column(String(50), nullable=True)
+    review_status = Column(String(50), nullable=True)
+    review_draft = Column(JSON, nullable=True)
+    review_updated_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     @property
     def has_pdf(self):
         return self.pdf_data is not None
+
+    @property
+    def has_review_draft(self):
+        return self.review_draft is not None

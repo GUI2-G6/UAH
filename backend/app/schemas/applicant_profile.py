@@ -35,6 +35,8 @@ class ProfileBase(BaseModel):
     professional_links_text: str | None = Field(default=None, max_length=6000, description="Additional professional links not captured in dedicated URL fields.", examples=["GitHub: https://github.com/janedoe; Medium: https://medium.com/@janedoe"])
     education_history_text: str | None = Field(default=None, max_length=12000, description="Detailed education history block used for longer application forms.", examples=["B.S. Computer Science, UAH, 2022-2026, GPA 3.84"])
     employment_history_text: str | None = Field(default=None, max_length=20000, description="Detailed employment history used for autofill and resume generation.", examples=["Software Engineer Intern, Acme Corp (Summer 2025): built API endpoints and dashboards."])
+    canonical_data: dict | None = Field(default=None, description="Canonical structured applicant data aligned to the resume parser schema for downstream autofill.", examples=[{"personal_info": {"first_name": "Jane"}, "education": [], "work_experience": []}])
+    token_map: dict | None = Field(default=None, description="Flattened token map derived from canonical_data and prepared for extension autofill consumers.", examples=[{"personal_info.first_name": "Jane"}])
     demographic_gender: str | None = Field(default=None, max_length=80, description="Optional self-identified gender for EEO forms.", examples=["Prefer not to say"])
     demographic_ethnicity: str | None = Field(default=None, max_length=120, description="Optional self-identified ethnicity for EEO forms.", examples=["Prefer not to say"])
     veteran_status: str | None = Field(default=None, max_length=120, description="Optional veteran status answer used in compliance forms.", examples=["Not a protected veteran"])
@@ -84,7 +86,11 @@ class ProfileListItem(BaseModel):
     is_active: bool = Field(..., description="Whether this profile is currently active for autofill operations.", examples=[False])
     first_name: str | None = Field(default=None, description="Applicant first name snapshot for quick list display.", examples=["Jane"])
     last_name: str | None = Field(default=None, description="Applicant last name snapshot for quick list display.", examples=["Doe"])
+    city: str | None = Field(default=None, description="City snapshot used to distinguish applicant profiles quickly.", examples=["Huntsville"])
+    state: str | None = Field(default=None, description="State snapshot used to distinguish applicant profiles quickly.", examples=["AL"])
+    job_title: str | None = Field(default=None, description="Current or target role snapshot used in the profile picker.", examples=["Software Engineer"])
     created_at: datetime = Field(..., description="UTC timestamp when this profile was first created.", examples=["2026-03-31T13:45:01.120000Z"])
+    updated_at: datetime = Field(..., description="UTC timestamp when this profile was last updated.", examples=["2026-03-31T14:10:40.550000Z"])
 
     class Config:
         from_attributes = True

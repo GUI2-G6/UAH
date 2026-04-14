@@ -211,6 +211,7 @@
                             <span v-if="r.parse_method" :class="['badge', 'parse-method-badge', parseMethodToneClass(r.parse_method)]">{{ parseMethodTagLabel(r.parse_method) }}</span>
                         </div>
                         <div class="resume-actions">
+                            <button v-if="canReviewResume(r)" title="Review parsed data before profile fill" class="review-btn" @click="openReviewModal(r)">Review</button>
                             <button title="View parsed data" @click="viewResume(r.id)">View</button>
                             <button
                                 title="Delete resume"
@@ -1000,6 +1001,16 @@
             </div>
         </div>
 
+        <ResumeReviewModal
+            v-if="showReviewModal && reviewResumeId"
+            :resume-id="reviewResumeId"
+            :resume-name="reviewResumeName"
+            :profiles="profiles"
+            :active-profile-id="activeProfileId"
+            @close="closeReviewModal"
+            @applied="handleReviewApplied"
+        />
+
         <ConfirmModal
             v-if="jobInfoConfirmVisible"
             title="Leave Mandatory Disclosures?"
@@ -1049,6 +1060,7 @@
                             <span v-if="r.parse_method" :class="['badge', 'parse-method-badge', parseMethodToneClass(r.parse_method)]">{{ parseMethodTagLabel(r.parse_method) }}</span>
                         </div>
                         <div class="resume-actions">
+                            <button v-if="canReviewResume(r)" title="Review parsed data before profile fill" class="review-btn" @click="openReviewModal(r)">Review</button>
                             <button title="View parsed data" @click="viewResume(r.id)">View</button>
                             <button
                                 title="Delete resume"
@@ -1075,6 +1087,7 @@
 <script>
 import Card from '../components/Card.vue'
 import ConfirmModal from '../components/ConfirmModal.vue'
+import ResumeReviewModal from '../components/ResumeReviewModal.vue'
 import { authedFetch, getCurrentUser, setCurrentUser } from '../lib/auth.js'
 import { publishCurrentPageDiagnostics, clearCurrentPageDiagnostics } from '../lib/debugDiagnostics'
 import { assertValidEmail, buildMailtoHref, buildPhoneHref, inferPhoneCountry, normalizePhone } from '../lib/validation.js'
@@ -1087,6 +1100,7 @@ export default {
     components: {
         Card,
         ConfirmModal,
+        ResumeReviewModal,
     },
 
     data() {
@@ -1121,6 +1135,7 @@ export default {
             parseQueuePosition: null,
             parseQueueTotal: null,
             parseErrorCode: null,
+            parseResumeId: null,
 
             // Queue panel
             queueScope: 'user',
@@ -1139,6 +1154,9 @@ export default {
             pdfObjectUrl: '',
             pdfLoading: false,
             pdfLoadError: null,
+            showReviewModal: false,
+            reviewResumeId: null,
+            reviewResumeName: '',
 
             // Parse details popup
             showPipelineDetails: false,
@@ -1721,8 +1739,10 @@ export default {
                 uploading: this.uploading,
                 uploadError: this.uploadError,
                 showViewModal: this.showViewModal,
+                showReviewModal: this.showReviewModal,
                 viewLoading: this.viewLoading,
                 viewingResumeId: this.viewingResume?.id || null,
+                reviewResumeId: this.reviewResumeId || null,
                 saveStatus: this.saveStatus,
                 jobInfoError: this.jobInfoError,
                 jobInfoSuccess: this.jobInfoSuccess,
@@ -1751,14 +1771,47 @@ export default {
         },
 
         badgeClass(r) {
+            if (r?.review_status === 'pending' || (r?.has_review_draft && !r?.review_status)) return 'review-pending'
             if (r.portal_ready) return 'portal-ready'
             if (r.parse_method) return 'needs-fields'
             return 'not-parsed'
         },
         badgeText(r) {
+            if (r?.review_status === 'pending' || (r?.has_review_draft && !r?.review_status)) return 'Review Pending'
             if (r.portal_ready) return 'Portal Ready'
             if (r.parse_method) return 'Needs Fields'
             return 'Not Parsed'
+        },
+        canReviewResume(r) {
+            return Boolean(r?.review_status === 'pending' || (r?.has_review_draft && !r?.review_status))
+        },
+
+        openReviewModal(resume) {
+            const resumeId = typeof resume === 'object' ? resume?.id : resume
+            if (!resumeId) return
+            const resumeName = typeof resume === 'object' ? resume?.file_name || '' : ''
+            this.showLibraryModal = false
+            this.closeViewModal()
+            this.reviewResumeId = Number(resumeId)
+            this.reviewResumeName = resumeName
+            this.showReviewModal = true
+            this.publishDebugState('review-open')
+        },
+        closeReviewModal() {
+            this.showReviewModal = false
+            this.reviewResumeId = null
+            this.reviewResumeName = ''
+            this.publishDebugState('review-close')
+        },
+        async handleReviewApplied(result) {
+            const profileId = Number(result?.profile_id || 0) || null
+            await this.loadResumes()
+            await this.refreshProfileList()
+            if (profileId) {
+                await this.loadProfileData(profileId)
+            }
+            this.closeReviewModal()
+            this.publishDebugState('review-applied')
         },
 
         handleDelete(id) {
@@ -1883,6 +1936,7 @@ export default {
             this.parseQueuePosition = null
             this.parseQueueTotal = null
             this.parseErrorCode = null
+            this.parseResumeId = null
             if (this._pollTimer) clearTimeout(this._pollTimer)
         },
         triggerFileInput() {
@@ -1953,6 +2007,7 @@ export default {
 
                 // 3. Switch to parsing progress stage
                 this.parseJobId = parseData.job_id
+                this.parseResumeId = resumeId
                 this.parseStatus = 'queued'
                 this.parseStageLabel = 'Queued…'
                 this.parseError = null
@@ -1990,12 +2045,15 @@ export default {
                 this.parseErrorCode = job.error_code || null
 
                 if (job.status === 'success') {
-                    const summary = job.result_summary || {}
-                    const readiness = summary.portal_ready ? 'Portal-ready' : 'Needs additional fields'
-                    showToast(`Parse complete. ${readiness}.`, 'success')
+                    const completedResumeId = this.parseResumeId
+                    showToast('Parse complete. Review the extracted data before filling a profile.', 'success')
                     this.resetUploadFlow()
                     await this.loadResumes()
                     await this.loadQueueStatus()
+                    if (completedResumeId) {
+                        const completedResume = this.resumes.find((resume) => Number(resume.id) === Number(completedResumeId))
+                        this.openReviewModal(completedResume || completedResumeId)
+                    }
                     this.publishDebugState('parse-success')
                     return
                 }
@@ -2006,6 +2064,7 @@ export default {
                     this.uploadStep = 'confirm'
                     this.parseJobId = null
                     this.parseJobMethod = null
+                    this.parseResumeId = null
                     this.publishDebugState('parse-failed')
                     return
                 }
@@ -2014,6 +2073,7 @@ export default {
                     this.uploadStep = 'confirm'
                     this.parseJobId = null
                     this.parseJobMethod = null
+                    this.parseResumeId = null
                     this.publishDebugState('parse-cancelled')
                     return
                 }
@@ -2038,6 +2098,7 @@ export default {
             this.uploadStep = 'confirm'
             this.parseJobId = null
             this.parseJobMethod = null
+            this.parseResumeId = null
             showToast('Parse cancelled.', 'success')
             this.publishDebugState('parse-cancelled-by-user')
         },

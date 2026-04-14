@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from app.services import parse_job_runner, parse_queue
 
@@ -80,6 +80,62 @@ class ParseQueueIsolationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(job.status, "failed")
         self.assertEqual(job.error_code, "RESUME_OWNERSHIP_MISMATCH")
         self.assertGreaterEqual(fake_db.commits, 1)
+
+    async def test_run_parse_job_sets_pending_review_draft_on_success(self):
+        structured = {
+            "personal_info": {"first_name": "Local", "last_name": "Developer", "email": "local@example.com"},
+            "skills": {"technical": ["Vue"]},
+            "_validation": {
+                "portal_ready": True,
+                "has_name": True,
+                "has_email": True,
+                "education_count": 1,
+                "experience_count": 1,
+                "skills_count": 1,
+                "missing_required": [],
+            },
+        }
+        job = SimpleNamespace(
+            id=2,
+            status="queued",
+            resume_id=12,
+            user_id=200,
+            method="local",
+            error_code=None,
+            error_message=None,
+            progress_stage=None,
+            result_summary=None,
+        )
+        resume = SimpleNamespace(
+            id=12,
+            user_id=200,
+            pdf_data=b"pdf",
+            raw_markdown=None,
+            structured_data=None,
+            parse_method=None,
+            portal_ready=False,
+            review_status=None,
+            review_draft=None,
+            review_updated_at=None,
+        )
+        fake_db = _FakeSession(job=job, resume=resume)
+
+        with patch.object(parse_job_runner, "SessionLocal", return_value=fake_db), \
+             patch.object(parse_job_runner, "get_parse_input_text", AsyncMock(return_value={"ok": True, "text": "resume markdown"})), \
+             patch.object(parse_job_runner, "parse_markdown_by_method", AsyncMock(return_value={"parsed": "ignored"})), \
+             patch.object(parse_job_runner, "validate_and_fix", return_value=structured):
+            ok = await parse_job_runner.run_parse_job(2)
+
+        self.assertTrue(ok)
+        self.assertEqual(job.status, "success")
+        self.assertEqual(resume.parse_method, "local")
+        self.assertEqual(resume.raw_markdown, "resume markdown")
+        self.assertTrue(resume.portal_ready)
+        self.assertEqual(resume.review_status, "pending")
+        self.assertEqual(resume.review_draft, structured)
+        self.assertIsNotNone(resume.review_updated_at)
+        self.assertEqual(job.result_summary["portal_ready"], True)
+        self.assertEqual(job.result_summary["skills_count"], 1)
 
 
 if __name__ == "__main__":

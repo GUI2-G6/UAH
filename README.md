@@ -117,7 +117,7 @@ npm install
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`.
+Open `http://localhost:5173`.
 
 - `npm run dev` defaults to mock mode.
 - API calls are handled by an in-browser mock API layer.
@@ -142,9 +142,55 @@ Notes:
 - Backend mode refuses non-local API targets by default.
 - To intentionally target a non-local API in backend mode, set `VITE_ALLOW_REMOTE_API=true`.
 
+### Local HTTPS harness for the browser extension
+
+Use this path when you want to test the browser extension against a real local backend without relaxing the extension's HTTPS-only build rules.
+
+1. Generate trusted localhost certs with `mkcert`:
+
+```bash
+mkdir -p volumes/certs/local
+mkcert -install
+mkcert -cert-file volumes/certs/local/tls.crt -key-file volumes/certs/local/tls.key localhost 127.0.0.1 ::1
+```
+
+2. Create the root local env file from `env-examples/local/.env.example` and set at least:
+   - `SESSION_COOKIE_HTTPS_ONLY=true`
+   - `PUBLIC_APP_URL=https://localhost:5173`
+   - optional seeded login:
+     - `DEV_AUTH_TEST_ACCOUNT_ENABLED=true`
+     - `DEV_AUTH_TEST_PASSWORD=<your local password>`
+
+3. Create `frontend/.env.local` from `frontend/.env.local.example`.
+
+4. Start the local backend:
+
+```bash
+docker compose -f docker-compose.local.yml --profile backend up -d db-local backend-local
+```
+
+5. Start the frontend over HTTPS:
+
+```bash
+cd frontend
+npm install
+npm run dev:backend
+```
+
+6. Open `https://localhost:5173` and confirm the browser trusts the cert before loading the extension.
+
+7. Create `uah-browser-extension/.env.local` from `uah-browser-extension/.env.local.example`, then build and load the extension unpacked.
+
+Notes:
+
+- The Vite dev server remains the single browser-facing origin for both app pages and `/api` requests.
+- Google OAuth is intentionally out of scope for the localhost harness; use email/password for local extension testing.
+- Cert files under `volumes/certs/local/` stay ignored by git through the existing `volumes/` ignore rule.
+
 ### Environment template
 
 - Use `env-examples/local/.env.example` as the starting point for local root `.env` values.
+- Use `frontend/.env.local.example` as the starting point for frontend HTTPS backend-mode values.
 
 For host-run backend workflows (`uvicorn` outside Docker), continue using the **[Backend Local Development Guide](./docs/backend/README.md)**.
 

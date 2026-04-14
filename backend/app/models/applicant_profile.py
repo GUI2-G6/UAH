@@ -47,6 +47,8 @@ class ApplicantProfile(Base):
     professional_links_text = Column(Text, nullable=True)
     education_history_text = Column(Text, nullable=True)
     employment_history_text = Column(Text, nullable=True)
+    canonical_data = Column(JSON, nullable=True)
+    token_map = Column(JSON, nullable=True)
 
     # Demographics
     demographic_gender = Column(String(50), nullable=True)

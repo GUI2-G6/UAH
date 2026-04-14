@@ -1,8 +1,9 @@
 import asyncio
 import logging
 import os
+import copy
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, Path, Query, Body
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -10,13 +11,18 @@ from app.db.session import get_db
 from app.models.user import User
 from app.models.resume import Resume
 from app.models.parse_job import ParseJob
+from app.models.applicant_profile import ApplicantProfile
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.schemas.resume import (
     ResumeUploadResponse, ResumeResponse, ResumeListItem,
     PortalCheckResponse, ParseRequest,
     ParseJobResponse, ParseJobStartResponse,
+    ResumeReviewDraftUpdate, ResumeReviewDraftResponse,
+    ResumeReviewConflictRequest, ResumeReviewConflictResponse,
+    ResumeReviewApplyRequest, ResumeReviewApplyResponse,
 )
+from app.schemas.applicant_profile import ProfileResponse
 from app.services.parse_job_runner import run_parse_job
 from app.services.parse_queue import (
     enqueue_parse_job,
@@ -32,12 +38,20 @@ from app.services.resume_parser import (
     get_parse_input_text,
     check_portal_required,
 )
+from app.services.applicant_profile_canonical import (
+    normalize_canonical_data,
+    sync_profile_storage,
+    merge_review_into_profile,
+    generate_review_conflicts,
+    build_profile_from_review,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/resume", tags=["resume"])
 
 MAX_RESUMES_PER_USER = 10
+MAX_PROFILES_PER_USER = 10
 MAX_FILE_SIZE = 5 * 1024 * 1024
 UPLOAD_COOLDOWN_SECONDS = 30
 ALLOWED_PDF_CONTENT_TYPES = {
@@ -106,6 +120,25 @@ def _refresh_resume_validation_if_needed(resume: Resume) -> bool:
         resume.structured_data = validated
         resume.portal_ready = recalculated_ready
     return changed
+
+
+def _current_review_draft(resume: Resume) -> dict | None:
+    draft = resume.review_draft if isinstance(resume.review_draft, dict) else None
+    if draft:
+        return copy.deepcopy(draft)
+    if isinstance(resume.structured_data, dict):
+        return copy.deepcopy(resume.structured_data)
+    return None
+
+
+def _set_review_draft(
+    resume: Resume,
+    review_draft: dict,
+    status: str = "pending",
+) -> None:
+    resume.review_draft = validate_and_fix(copy.deepcopy(review_draft or {}))
+    resume.review_status = status
+    resume.review_updated_at = datetime.now(timezone.utc)
 
 
 async def _build_queue_status_payload(
@@ -407,6 +440,7 @@ async def parse_resume(
     resume.structured_data = structured
     resume.parse_method = method
     resume.portal_ready = structured.get("_validation", {}).get("portal_ready", False)
+    _set_review_draft(resume, structured, status="pending")
     db.commit()
     db.refresh(resume)
 
@@ -459,6 +493,175 @@ def get_resume(
         db.commit()
         db.refresh(resume)
     return resume
+
+
+@router.get("/{resume_id}/review-draft", response_model=ResumeReviewDraftResponse)
+def get_review_draft(
+    resume_id: int = Path(..., ge=1, description="Resume ID whose persisted review draft should be returned."),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    resume = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == current_user.id).first()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    review_draft = _current_review_draft(resume)
+    if not review_draft:
+        raise HTTPException(status_code=400, detail="Resume has not been parsed yet")
+
+    return ResumeReviewDraftResponse(
+        resume_id=resume.id,
+        file_name=resume.file_name,
+        parse_method=resume.parse_method,
+        review_status=resume.review_status,
+        review_updated_at=resume.review_updated_at,
+        review_draft=review_draft,
+    )
+
+
+@router.put("/{resume_id}/review-draft", response_model=ResumeReviewDraftResponse)
+def update_review_draft(
+    payload: ResumeReviewDraftUpdate,
+    resume_id: int = Path(..., ge=1, description="Resume ID whose review draft should be updated."),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    resume = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == current_user.id).first()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    if not isinstance(resume.structured_data, dict):
+        raise HTTPException(status_code=400, detail="Resume has not been parsed yet")
+
+    _set_review_draft(resume, payload.review_draft, status="pending")
+    db.commit()
+    db.refresh(resume)
+
+    return ResumeReviewDraftResponse(
+        resume_id=resume.id,
+        file_name=resume.file_name,
+        parse_method=resume.parse_method,
+        review_status=resume.review_status,
+        review_updated_at=resume.review_updated_at,
+        review_draft=_current_review_draft(resume) or {},
+    )
+
+
+@router.post("/{resume_id}/review-conflicts", response_model=ResumeReviewConflictResponse)
+def review_conflicts(
+    payload: ResumeReviewConflictRequest,
+    resume_id: int = Path(..., ge=1, description="Resume ID whose reviewed data should be compared against a target applicant profile."),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    resume = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == current_user.id).first()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    profile = db.query(ApplicantProfile).filter(
+        ApplicantProfile.id == payload.profile_id,
+        ApplicantProfile.user_id == current_user.id,
+    ).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    sync_profile_storage(profile)
+    reviewed_data = payload.reviewed_data or _current_review_draft(resume)
+    if not isinstance(reviewed_data, dict):
+        raise HTTPException(status_code=400, detail="Resume has no review draft")
+
+    incoming_canonical = normalize_canonical_data(reviewed_data)
+    existing_canonical = normalize_canonical_data(profile.canonical_data or {})
+    conflicts = generate_review_conflicts(existing_canonical, incoming_canonical)
+
+    return ResumeReviewConflictResponse(
+        profile_id=profile.id,
+        conflict_count=len(conflicts),
+        conflicts=conflicts,
+    )
+
+
+@router.post("/{resume_id}/apply-review", response_model=ResumeReviewApplyResponse)
+def apply_review(
+    payload: ResumeReviewApplyRequest,
+    resume_id: int = Path(..., ge=1, description="Resume ID whose reviewed draft should be applied to the applicant profile system."),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    resume = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == current_user.id).first()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    incoming_canonical = normalize_canonical_data(payload.reviewed_data)
+    if payload.mode not in {"existing", "new"}:
+        raise HTTPException(status_code=400, detail="Mode must be 'existing' or 'new'")
+
+    profile: ApplicantProfile | None = None
+    conflicts: list[dict] = []
+
+    if payload.mode == "existing":
+        if payload.profile_id is None:
+            raise HTTPException(status_code=400, detail="profile_id is required when mode='existing'")
+        profile = db.query(ApplicantProfile).filter(
+            ApplicantProfile.id == payload.profile_id,
+            ApplicantProfile.user_id == current_user.id,
+        ).first()
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found")
+
+        sync_profile_storage(profile)
+        merged_canonical, conflicts = merge_review_into_profile(
+            normalize_canonical_data(profile.canonical_data or {}),
+            incoming_canonical,
+            payload.conflict_resolutions or {},
+        )
+        profile.canonical_data = merged_canonical
+        sync_profile_storage(profile)
+    else:
+        count = db.query(func.count(ApplicantProfile.id)).filter(
+            ApplicantProfile.user_id == current_user.id
+        ).scalar()
+        if count >= MAX_PROFILES_PER_USER:
+            raise HTTPException(status_code=429, detail=f"Max {MAX_PROFILES_PER_USER} applicant profiles allowed")
+
+        suggested_name = (
+            (payload.profile_name or "").strip()
+            or " ".join(
+                part for part in [
+                    incoming_canonical.get("personal_info", {}).get("first_name"),
+                    incoming_canonical.get("personal_info", {}).get("last_name"),
+                ]
+                if part
+            )
+            or os.path.splitext(resume.file_name)[0]
+            or "Imported Profile"
+        )
+        profile = ApplicantProfile(
+            user_id=current_user.id,
+            name=suggested_name[:100],
+            is_active=True,
+        )
+        db.add(profile)
+        db.flush()
+        build_profile_from_review(profile, incoming_canonical)
+
+    db.query(ApplicantProfile).filter(
+        ApplicantProfile.user_id == current_user.id,
+        ApplicantProfile.id != profile.id,
+    ).update({"is_active": False})
+    profile.is_active = True
+
+    _set_review_draft(resume, payload.reviewed_data, status="applied")
+    db.commit()
+    db.refresh(profile)
+    db.refresh(resume)
+
+    return ResumeReviewApplyResponse(
+        resume_id=resume.id,
+        profile_id=profile.id,
+        review_status=resume.review_status or "applied",
+        conflict_count=len(conflicts),
+        profile=ProfileResponse.model_validate(profile).model_dump(),
+    )
 
 
 @router.get("/{resume_id}/pdf")
