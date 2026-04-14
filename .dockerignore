@@ -1,0 +1,14 @@
+.git
+.github
+.vscode
+**/node_modules
+**/dist
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.DS_Store
+volumes
+docs
+promptsforlater.txt
+test.txt

@@ -9,14 +9,15 @@
 # --- Stage 1: Build ---
 FROM node:20-alpine AS build
 
-WORKDIR /app
+WORKDIR /app/frontend
 
 # Install dependencies (layer caching)
-COPY package.json package-lock.json* ./
+COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci
 
-# Copy source and build
-COPY . .
+# Copy the frontend app and the shared theme assets it imports.
+COPY frontend/ ./
+COPY shared/ ../shared/
 ARG VITE_AUTH_NAMESPACE
 ARG VITE_LOCAL_MODE=backend
 ENV VITE_AUTH_NAMESPACE=${VITE_AUTH_NAMESPACE}
@@ -30,13 +31,13 @@ FROM nginx:alpine
 RUN rm /etc/nginx/conf.d/default.conf
 
 # Copy nginx templates and startup selector script
-COPY nginx.http.conf /etc/nginx/templates/nginx.http.conf
-COPY nginx.https.conf /etc/nginx/templates/nginx.https.conf
-COPY docker-entrypoint.d/10-select-nginx-config.sh /docker-entrypoint.d/10-select-nginx-config.sh
+COPY frontend/nginx.http.conf /etc/nginx/templates/nginx.http.conf
+COPY frontend/nginx.https.conf /etc/nginx/templates/nginx.https.conf
+COPY frontend/docker-entrypoint.d/10-select-nginx-config.sh /docker-entrypoint.d/10-select-nginx-config.sh
 RUN chmod +x /docker-entrypoint.d/10-select-nginx-config.sh
 
 # Copy built assets from stage 1
-COPY --from=build /app/dist /usr/share/nginx/html
+COPY --from=build /app/frontend/dist /usr/share/nginx/html
 
 EXPOSE 80 443
 

@@ -76,14 +76,15 @@ function resolveHttpsConfig(env) {
 }
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  const isServe = command === 'serve'
   const localMode = resolveLocalMode(mode, env)
   const backendOrigin = String(env.VITE_LOCAL_BACKEND_ORIGIN || 'http://localhost:8000').trim()
   const allowRemoteApi = parseBoolean(env.VITE_ALLOW_REMOTE_API, false)
-  const https = resolveHttpsConfig(env)
+  const https = isServe ? resolveHttpsConfig(env) : false
 
-  if (localMode === 'backend' && !allowRemoteApi && !isLoopbackOrigin(backendOrigin)) {
+  if (isServe && localMode === 'backend' && !allowRemoteApi && !isLoopbackOrigin(backendOrigin)) {
     throw new Error(
       `[local-mode] Refusing backend proxy target '${backendOrigin}'. Use localhost/127.0.0.1/::1 or set VITE_ALLOW_REMOTE_API=true.`
     )

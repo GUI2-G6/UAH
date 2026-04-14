@@ -346,8 +346,8 @@ services:
   # ----------------------------------------------------------
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         VITE_AUTH_NAMESPACE: ${VITE_AUTH_NAMESPACE:-dev}
         VITE_LOCAL_MODE: ${VITE_LOCAL_MODE:-backend}
