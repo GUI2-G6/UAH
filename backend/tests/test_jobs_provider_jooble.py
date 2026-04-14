@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 from app.providers.jooble import JoobleJobProvider
@@ -38,7 +39,7 @@ class JoobleProviderTests(unittest.TestCase):
         self.assertEqual(payload["salary"], 120000)
         self.assertEqual(payload["companysearch"], "true")
 
-    def test_fetch_keeps_negative_ids_as_strings_and_omits_published_at(self):
+    def test_fetch_keeps_negative_ids_as_strings_and_uses_updated_as_published_at(self):
         provider = JoobleJobProvider()
         payload = {
             "jobs": [
@@ -65,7 +66,7 @@ class JoobleProviderTests(unittest.TestCase):
         self.assertEqual(len(jobs), 1)
         job = jobs[0]
         self.assertEqual(job.provider_job_id, "-2572280757938267395")
-        self.assertIsNone(job.published_at)
+        self.assertEqual(job.published_at, datetime(2026, 4, 13, 0, 0, tzinfo=timezone.utc))
         self.assertTrue(job.is_remote)
         self.assertEqual(job.provider_url, "https://jooble.org/away/job/123")
 

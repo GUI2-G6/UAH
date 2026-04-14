@@ -23,6 +23,8 @@ class JobSearchServiceTests(unittest.TestCase):
             company="Acme",
             company_url=None,
             location="Remote",
+            location_country_code="US",
+            location_country_name="United States",
             job_type="external",
             experience_level="mid",
             categories=["Software Engineering"],
@@ -46,6 +48,8 @@ class JobSearchServiceTests(unittest.TestCase):
         self.assertEqual(payload["provider_url_status"], "good")
         self.assertEqual(payload["staleness_status"], "fresh")
         self.assertEqual(payload["source_tags"], ["provider:the_muse", "apply_portal:ashby"])
+        self.assertEqual(payload["location_country_code"], "US")
+        self.assertEqual(payload["location_country_name"], "United States")
 
 
 if __name__ == "__main__":

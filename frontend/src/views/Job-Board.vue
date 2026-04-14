@@ -182,10 +182,21 @@
                         <label for="job-country-code">Country</label>
                         <select id="job-country-code" name="job_country_code" autocomplete="off" v-model="draftFilters.countryCode">
                           <option v-for="country in countryOptions" :key="country.code" :value="country.code">
-                            {{ country.name }}{{ country.location_count ? ` (${country.location_count})` : '' }}
+                            {{ country.name }}{{ country.observed_count ? ` (${country.observed_count})` : '' }}
                           </option>
                         </select>
                         <p class="helper-text">Country mode stays broad. Nearby and custom location use this as a boundary when available.</p>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="job-provider-filter">Source</label>
+                        <select id="job-provider-filter" name="job_provider_filter" autocomplete="off" v-model="draftFilters.provider">
+                          <option value="">All providers</option>
+                          <option v-for="provider in providerOptions" :key="provider.value" :value="provider.value">
+                            {{ provider.label }}{{ provider.observedCount ? ` (${provider.observedCount})` : "" }}
+                          </option>
+                        </select>
+                        <p class="helper-text">Use one source when you want a tighter, provider-specific feed.</p>
                     </div>
 
                     <div class="filter-group" v-if="draftFilters.locationMode !== 'country'">
@@ -302,21 +313,20 @@
           :api-summary="lastApiSummary"
         />
 
-        <div class="pagination pagination-top" v-if="!loading && !error">
-          <button type="button" @click="goToPreviousPage" :disabled="page <= 1 || loading">Previous</button>
-          <button
-            type="button"
-            v-for="pageNumber in visiblePageButtons"
-            :key="`jobs-page-top-${pageNumber}`"
-            :class="{ active: pageNumber === page }"
-            @click="goToPage(pageNumber)"
-            :disabled="loading"
-          >
-            {{ pageNumber }}
-          </button>
-          <span>of {{ totalPages }}{{ totalsAreEstimated ? ' est.' : '' }}</span>
-          <button type="button" @click="goToNextPage" :disabled="!hasNextPage || loading">Next</button>
-        </div>
+        <JobBoardPagination
+          v-if="!loading && !error"
+          class="pagination pagination-top"
+          id-prefix="jobs-top"
+          :page="page"
+          :total-pages="totalPages"
+          :visible-pages="visiblePageButtons"
+          :loading="loading"
+          :has-next-page="hasNextPage"
+          :totals-are-estimated="totalsAreEstimated"
+          @previous="goToPreviousPage"
+          @next="goToNextPage"
+          @select-page="goToPage"
+        />
 
         <div class="dashboard">
             <div class="empty-state" v-if="!loading && !error && !jobs.length">
@@ -337,21 +347,20 @@
             />
         </div>
 
-        <div class="pagination pagination-bottom" v-if="!loading && !error">
-            <button type="button" @click="goToPreviousPage" :disabled="page <= 1 || loading">Previous</button>
-            <button
-              type="button"
-              v-for="pageNumber in visiblePageButtons"
-              :key="`jobs-page-${pageNumber}`"
-              :class="{ active: pageNumber === page }"
-              @click="goToPage(pageNumber)"
-              :disabled="loading"
-            >
-              {{ pageNumber }}
-            </button>
-            <span>of {{ totalPages }}{{ totalsAreEstimated ? ' est.' : '' }}</span>
-            <button type="button" @click="goToNextPage" :disabled="!hasNextPage || loading">Next</button>
-        </div>
+        <JobBoardPagination
+          v-if="!loading && !error"
+          class="pagination pagination-bottom"
+          id-prefix="jobs-bottom"
+          :page="page"
+          :total-pages="totalPages"
+          :visible-pages="visiblePageButtons"
+          :loading="loading"
+          :has-next-page="hasNextPage"
+          :totals-are-estimated="totalsAreEstimated"
+          @previous="goToPreviousPage"
+          @next="goToNextPage"
+          @select-page="goToPage"
+        />
 
         <div
           v-if="cityPreviewModalOpen"
@@ -419,6 +428,7 @@ import JobPosting from "../components/JobPosting.vue";
 import JobBoardPrimaryFilters from "../components/job-board/JobBoardPrimaryFilters.vue";
 import JobBoardResultsSummary from "../components/job-board/JobBoardResultsSummary.vue";
 import JobBoardDebugPanel from "../components/job-board/JobBoardDebugPanel.vue";
+import JobBoardPagination from "../components/job-board/JobBoardPagination.vue";
 import {
   getCachedLocation,
   requestBrowserLocation,
@@ -507,6 +517,7 @@ export default {
     JobBoardPrimaryFilters,
     JobBoardResultsSummary,
     JobBoardDebugPanel,
+    JobBoardPagination,
   },
   data() {
     const locationSourceMode = "muse"
@@ -611,7 +622,8 @@ export default {
       categoryMapLookup[group.name] = group
     }
 
-    const countryOptions = [{ code: DEFAULT_COUNTRY_CODE, name: "United States", location_count: 0 }]
+    const countryOptions = [{ code: DEFAULT_COUNTRY_CODE, name: "United States", observed_count: 0 }]
+    const providerOptions = []
 
     const defaultFilters = {
       categories: [],
@@ -625,6 +637,7 @@ export default {
       countryCode: "US",
       locationNames: [],
       companies: [],
+      provider: "",
       keyword: "",
       sortBy: DEFAULT_SORT_BY,
       datePreset: "any",
@@ -658,6 +671,7 @@ export default {
       levelLookup,
       levelLabelLookup,
       countryOptions,
+      providerOptions,
       sortOptions: JOB_SORT_OPTIONS.map(option => ({ ...option })),
       categoryInput: "",
       categoryInfo: "",
@@ -849,6 +863,14 @@ export default {
       for (const company of filters.companies || []) {
         chips.push({ key: `company-${company}`, type: "company", value: company, label: `Company: ${company}` })
       }
+      if (this.normalizeProviderValue(filters.provider)) {
+        chips.push({
+          key: "provider",
+          type: "provider",
+          value: this.normalizeProviderValue(filters.provider),
+          label: `Source: ${this.getProviderLabel(filters.provider)}`,
+        })
+      }
 
       const keyword = String(filters.keyword || "").trim()
       if (keyword) {
@@ -877,12 +899,16 @@ export default {
         })
       }
 
-      if ((filters.countryCode || "").trim().toUpperCase() !== DEFAULT_COUNTRY_CODE) {
+      const normalizedCountryCode = (filters.countryCode || "").trim().toUpperCase()
+      const normalizedLocationMode = (filters.locationMode || "country").trim().toLowerCase()
+      if (normalizedCountryCode && (normalizedCountryCode !== DEFAULT_COUNTRY_CODE || normalizedLocationMode !== "country")) {
         chips.push({
           key: "country",
           type: "country",
           value: "",
-          label: `Country: ${this.getCountryName(filters.countryCode)}`,
+          label: normalizedLocationMode === "country"
+            ? `Country: ${this.getCountryName(filters.countryCode)}`
+            : `Country boundary: ${this.getCountryName(filters.countryCode)}`,
         })
       }
 
@@ -897,18 +923,21 @@ export default {
     searchScopeSummary() {
       const filters = this.appliedFilters || {}
       const workSetup = this.buildWorkSetupSummary(filters)
+      const providerSummary = this.normalizeProviderValue(filters.provider)
+        ? ` from ${this.getProviderLabel(filters.provider)}`
+        : ""
 
       if ((filters.locationMode || "").trim().toLowerCase() === "country") {
-        return `Searching across ${this.getCountryName(filters.countryCode)} with ${workSetup}.`
+        return `Searching across ${this.getCountryName(filters.countryCode)}${providerSummary} with ${workSetup}.`
       }
 
       const selectedCount = (filters.locationNames || []).length
       if (selectedCount > 0) {
         const centerName = this.resolvedLocation?.city || filters.manualLocationQuery || "your selected area"
-        return `Searching around ${centerName} across ${selectedCount} matched locations with ${workSetup}.`
+        return `Searching around ${centerName}${providerSummary} across ${selectedCount} matched locations with ${workSetup}.`
       }
 
-      return `Searching with ${workSetup}.`
+      return `Searching${providerSummary} with ${workSetup}.`
     }
   },
   watch: {
@@ -934,6 +963,7 @@ export default {
         countryCode: "US",
         locationNames: [],
         companies: [],
+        provider: "",
         keyword: "",
         sortBy: DEFAULT_SORT_BY,
         datePreset: "any",
@@ -946,6 +976,19 @@ export default {
     normalizeSortBy(value) {
       const normalized = String(value || "").trim().toLowerCase()
       return this.sortOptions.some(option => option.value === normalized) ? normalized : DEFAULT_SORT_BY
+    },
+    normalizeProviderValue(value) {
+      const normalized = String(value || "").trim().toLowerCase()
+      if (!normalized || normalized === "all") return ""
+      return normalized
+    },
+    getProviderLabel(value) {
+      const normalized = this.normalizeProviderValue(value)
+      if (!normalized) return "All providers"
+      const optionMatch = (this.providerOptions || []).find(option => option.value === normalized)
+      if (optionMatch?.label) return optionMatch.label
+      const attributionLabel = (this.providerAttributionByName?.[normalized] || {}).label
+      return attributionLabel || normalized
     },
     formatLevelLabel(value) {
       const clean = (value || "").trim()
@@ -1022,6 +1065,11 @@ export default {
         query.company = companies
       }
 
+      const provider = this.normalizeProviderValue(filters.provider)
+      if (provider) {
+        query.provider = provider
+      }
+
       const postedPreset = String(filters.datePreset || "any").trim().toLowerCase()
       if (postedPreset !== "any") {
         query.posted = POSTED_DATE_PRESETS.has(postedPreset) ? postedPreset : "any"
@@ -1072,6 +1120,7 @@ export default {
       filters.categories = this.normalizeCategoryValues(normalizeRouteQueryList(query.category))
       filters.levels = this.normalizeLevelValues(normalizeRouteQueryList(query.level))
       filters.companies = this.normalizeUnique(normalizeRouteQueryList(query.company))
+      filters.provider = this.normalizeProviderValue(normalizeRouteQueryScalar(query.provider))
       filters.sortBy = this.normalizeSortBy(normalizeRouteQueryScalar(query.sort_by))
 
       const postedPreset = normalizeRouteQueryScalar(query.posted).toLowerCase()
@@ -1087,7 +1136,10 @@ export default {
       }
 
       const countryCode = normalizeRouteQueryScalar(query.country_code).toUpperCase()
-      filters.countryCode = countryCode || DEFAULT_COUNTRY_CODE
+      const availableCountryCodes = new Set((this.countryOptions || []).map(country => String(country?.code || "").trim().toUpperCase()).filter(Boolean))
+      filters.countryCode = availableCountryCodes.has(countryCode)
+        ? countryCode
+        : (this.countryOptions[0]?.code || DEFAULT_COUNTRY_CODE)
 
       const locationMode = normalizeRouteQueryScalar(query.location_mode).toLowerCase()
       filters.locationMode = ["country", "nearby", "manual"].includes(locationMode) ? locationMode : "country"
@@ -1102,6 +1154,14 @@ export default {
       filters.includeRemote = this.parseBooleanRouteValue(query.include_remote, true)
       filters.includeHybrid = this.parseBooleanRouteValue(query.include_hybrid, true)
       filters.locationNames = []
+
+      if (
+        this.providerOptions.length
+        && this.normalizeProviderValue(filters.provider)
+        && !this.providerOptions.some(option => option.value === this.normalizeProviderValue(filters.provider))
+      ) {
+        filters.provider = ""
+      }
 
       const page = this.parsePositiveInteger(query.page, 1, 1, Number.MAX_SAFE_INTEGER)
       return { filters, page }
@@ -1186,6 +1246,7 @@ export default {
         this.draftFilters.categories = this.normalizeCategoryValues(this.draftFilters.categories)
         this.draftFilters.levels = this.normalizeLevelValues(this.draftFilters.levels)
         this.draftFilters.companies = this.normalizeUnique(this.draftFilters.companies)
+        this.draftFilters.provider = this.normalizeProviderValue(this.draftFilters.provider)
         this.draftFilters.sortBy = this.normalizeSortBy(this.draftFilters.sortBy)
         this.draftFilters.locationNames = preflightSelection.selected
         this.appliedFilters = this.cloneFilters(this.draftFilters)
@@ -1235,6 +1296,9 @@ export default {
       } else if (chip.type === "company") {
         this.draftFilters.companies = removeValue(this.draftFilters.companies, chip.value)
         this.appliedFilters.companies = removeValue(this.appliedFilters.companies, chip.value)
+      } else if (chip.type === "provider") {
+        this.draftFilters.provider = ""
+        this.appliedFilters.provider = ""
       } else if (chip.type === "keyword") {
         this.draftFilters.keyword = ""
         this.appliedFilters.keyword = ""
@@ -1587,6 +1651,42 @@ export default {
         this.maxLocationParams = Math.max(1, Math.floor(capValue))
       }
 
+      const countryValues = Array.isArray(payload.country_values)
+        ? payload.country_values
+          .map(item => ({
+            code: String(item?.code || "").trim().toUpperCase(),
+            name: String(item?.name || item?.code || "").trim(),
+            observed_count: Number(item?.observed_count || 0),
+          }))
+          .filter(item => item.code && item.name)
+        : []
+      this.countryOptions = countryValues.length
+        ? countryValues
+        : [{ code: DEFAULT_COUNTRY_CODE, name: "United States", observed_count: 0 }]
+      if (!this.countryOptions.some(country => country.code === this.draftFilters.countryCode)) {
+        const fallbackCountryCode = this.countryOptions[0]?.code || DEFAULT_COUNTRY_CODE
+        this.draftFilters.countryCode = fallbackCountryCode
+        this.appliedFilters.countryCode = fallbackCountryCode
+      }
+
+      const providerValues = Array.isArray(payload.provider_values)
+        ? payload.provider_values
+          .map(item => ({
+            value: this.normalizeProviderValue(item?.value || ""),
+            label: String(item?.label || item?.value || "").trim(),
+            observedCount: Number(item?.observed_count || 0),
+          }))
+          .filter(item => item.value && item.label)
+        : []
+      this.providerOptions = providerValues
+      if (
+        this.normalizeProviderValue(this.draftFilters.provider)
+        && !this.providerOptions.some(option => option.value === this.normalizeProviderValue(this.draftFilters.provider))
+      ) {
+        this.draftFilters.provider = ""
+        this.appliedFilters.provider = ""
+      }
+
       this.filterMetadataVersion = payload.metadata_version || ""
       this.filterMetadataHash = payload.metadata_hash || ""
     },
@@ -1615,31 +1715,8 @@ export default {
       }
     },
     async fetchCountryOptions() {
-      try {
-        if (this.locationSourceMode !== "muse") {
-          return
-        }
-        const payload = await this.fetchJson("/api/geolocation/muse-supported-countries")
-        const countries = (payload.countries || [])
-          .filter(country => country?.code)
-          .map(country => ({
-            code: country.code,
-            name: country.name || country.code,
-            location_count: Number(country.location_count || 0)
-          }))
-
-        if (!countries.length) {
-          this.locationWarning = "Country coverage is still loading. Try again shortly."
-          return
-        }
-
-        this.countryOptions = countries
-        if (!countries.some(country => country.code === this.draftFilters.countryCode)) {
-          this.draftFilters.countryCode = countries[0].code
-        }
-      } catch (error) {
-        this.locationWarning = "Could not load country coverage."
-        console.error("Failed to load Muse countries", error)
+      if (!Array.isArray(this.countryOptions) || !this.countryOptions.length) {
+        this.countryOptions = [{ code: DEFAULT_COUNTRY_CODE, name: "United States", observed_count: 0 }]
       }
     },
     normalizeLevelValues(values) {
@@ -2058,11 +2135,7 @@ export default {
       const mode = this.draftFilters.locationMode
 
       if (mode === "country") {
-        const endpoint = this.locationSourceMode === "muse"
-          ? "/api/geolocation/muse-supported-locations"
-          : "/api/geolocation/country-cities"
-
-        const payload = await this.fetchJson(`${endpoint}?country_code=${encodeURIComponent(this.draftFilters.countryCode)}&limit=200`)
+        const payload = await this.fetchJson(`/api/geolocation/country-cities?country_code=${encodeURIComponent(this.draftFilters.countryCode)}&limit=200`)
         const previewCities = (payload.locations || payload.cities || []).filter(city => city?.name)
         const candidates = this.dedupeLocationCandidates(
           this.orderLocationCandidates(this.buildLocationCandidates(previewCities, "country"), "country")
@@ -2176,6 +2249,10 @@ export default {
       for (const value of this.normalizeUnique(this.appliedFilters.companies)) {
         params.append("company", value)
       }
+      const provider = this.normalizeProviderValue(this.appliedFilters.provider)
+      if (provider) {
+        params.set("provider", provider)
+      }
       const keyword = (this.appliedFilters.keyword || "").trim()
       if (keyword) {
         params.set("q", keyword)
@@ -2269,6 +2346,8 @@ export default {
           short_name: job.short_name || "",
           company: job.company,
           location: job.locations?.[0] || "Unknown",
+          location_country_code: job.location_country_code || "",
+          location_country_name: job.location_country_name || "",
           locations: job.locations || [],
           level: job.levels?.[0] || "",
           levels: job.levels || [],
@@ -2283,6 +2362,7 @@ export default {
           local_compatibility_reason: job.local_compatibility_reason || "",
           location_constraints: job.location_constraints || {},
           publication_date: job.publication_date,
+          short_description: job.short_description || "",
           apply_link: job.apply_url || job.job_url,
           link: job.job_url,
           contents: job.contents || ""
@@ -2325,6 +2405,7 @@ export default {
         this.appliedFilters.categories = this.normalizeCategoryValues(this.appliedFilters.categories)
         this.appliedFilters.levels = this.normalizeLevelValues(this.appliedFilters.levels)
         this.appliedFilters.companies = this.normalizeUnique(this.appliedFilters.companies)
+        this.appliedFilters.provider = this.normalizeProviderValue(this.appliedFilters.provider)
         this.appliedFilters.locationNames = preflightSelection.selected
 
         this.page = 1

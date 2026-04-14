@@ -341,7 +341,7 @@ def _build_job_filter_metadata_query(db: Session):
     display_enabled_providers = list_enabled_provider_names(control_name="display")
     query = db.query(Job).filter(Job.is_active.is_(True)).filter(
         or_(Job.provider_url_status.is_(None), Job.provider_url_status != "bad")
-    ).filter(Job.display_tier == "active")
+    )
 
     if not display_enabled_providers:
         return query.filter(False)
@@ -385,6 +385,52 @@ def _query_observed_level_counts(db: Session) -> List[tuple[str, int]]:
     )
     return [
         (" ".join(str(row.value or "").split()), int(row.observed_count or 0))
+        for row in rows
+        if " ".join(str(row.value or "").split())
+    ]
+
+
+def _query_observed_country_counts(db: Session) -> List[tuple[str, str, int]]:
+    from app.models.job import Job
+
+    rows = (
+        _build_job_filter_metadata_query(db)
+        .with_entities(
+            Job.location_country_code.label("code"),
+            Job.location_country_name.label("name"),
+            func.count(Job.id).label("observed_count"),
+        )
+        .filter(Job.location_country_code.is_not(None))
+        .filter(func.length(func.btrim(Job.location_country_code)) > 0)
+        .group_by(Job.location_country_code, Job.location_country_name)
+        .all()
+    )
+    return [
+        (
+            " ".join(str(row.code or "").split()).upper(),
+            " ".join(str(row.name or "").split()),
+            int(row.observed_count or 0),
+        )
+        for row in rows
+        if " ".join(str(row.code or "").split())
+    ]
+
+
+def _query_observed_provider_counts(db: Session) -> List[tuple[str, int]]:
+    from app.models.job import Job
+
+    rows = (
+        _build_job_filter_metadata_query(db)
+        .with_entities(
+            Job.provider.label("value"),
+            func.count(Job.id).label("observed_count"),
+        )
+        .filter(Job.provider.is_not(None))
+        .group_by(Job.provider)
+        .all()
+    )
+    return [
+        (" ".join(str(row.value or "").split()).lower(), int(row.observed_count or 0))
         for row in rows
         if " ".join(str(row.value or "").split())
     ]
@@ -440,11 +486,73 @@ def _build_observed_level_values_payload(db: Optional[Session] = None) -> List[d
     ]
 
 
+def _build_observed_country_values_payload(db: Optional[Session] = None) -> List[dict[str, Any]]:
+    if db is None:
+        return []
+
+    counts: dict[str, dict[str, Any]] = {}
+    try:
+        for code, name, observed_count in _query_observed_country_counts(db):
+            if not code:
+                continue
+            current = counts.setdefault(
+                code,
+                {
+                    "code": code,
+                    "name": name or code,
+                    "observed_count": 0,
+                },
+            )
+            current["observed_count"] = int(current["observed_count"]) + max(int(observed_count or 0), 0)
+            if name and not current["name"]:
+                current["name"] = name
+    except Exception:
+        return []
+
+    return sorted(
+        counts.values(),
+        key=lambda item: (-int(item["observed_count"]), str(item["name"]).lower(), str(item["code"])),
+    )
+
+
+def _build_observed_provider_values_payload(db: Optional[Session] = None) -> List[dict[str, Any]]:
+    from app.providers.registry import list_provider_statuses
+
+    observed_counts: dict[str, int] = {}
+    if db is not None:
+        try:
+            observed_counts = {
+                value: max(int(observed_count or 0), 0)
+                for value, observed_count in _query_observed_provider_counts(db)
+            }
+        except Exception:
+            observed_counts = {}
+
+    values = []
+    for item in list_provider_statuses():
+        provider = " ".join(str(item.get("provider") or "").split()).lower()
+        if not provider or item.get("display_enabled") is not True:
+            continue
+        label = " ".join(str((item.get("attribution") or {}).get("label") or provider).split()) or provider
+        values.append(
+            {
+                "value": provider,
+                "label": label,
+                "observed_count": int(observed_counts.get(provider, 0)),
+                "display_enabled": True,
+            }
+        )
+
+    return sorted(values, key=lambda item: (-int(item["observed_count"]), item["label"].lower(), item["value"]))
+
+
 def _build_jobs_filter_metadata_payload(db: Optional[Session] = None) -> dict[str, Any]:
     category_groups = _build_category_groups_payload()
     category_aliases = _build_category_aliases_payload()
     category_values = _build_observed_category_values_payload(db)
     level_values = _build_observed_level_values_payload(db)
+    country_values = _build_observed_country_values_payload(db)
+    provider_values = _build_observed_provider_values_payload(db)
     levels = [item["label"] for item in level_values]
 
     core_payload = {
@@ -452,6 +560,8 @@ def _build_jobs_filter_metadata_payload(db: Optional[Session] = None) -> dict[st
         "category_aliases": category_aliases,
         "category_values": category_values,
         "level_values": level_values,
+        "country_values": country_values,
+        "provider_values": provider_values,
         "levels": levels,
         "location_param_cap": max(1, settings.MUSE_LOCATION_PARAM_CAP),
     }

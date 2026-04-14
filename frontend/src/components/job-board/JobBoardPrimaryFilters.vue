@@ -246,8 +246,8 @@ export default {
 }
 
 .mode-button.active {
-  background: var(--color-primary-600);
-  border-color: var(--color-primary-600);
+  background: #0f766e;
+  border-color: #0f766e;
   color: #ffffff;
 }
 

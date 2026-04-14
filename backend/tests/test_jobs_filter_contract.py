@@ -72,10 +72,14 @@ class JobsFilterContractTests(unittest.TestCase):
         self.assertTrue(payload.get("levels"))
         self.assertTrue(payload.get("category_values"))
         self.assertTrue(payload.get("level_values"))
+        self.assertIn("country_values", payload)
+        self.assertIn("provider_values", payload)
 
-    @patch("app.api.routes._query_observed_level_counts")
     @patch("app.api.routes._query_observed_category_counts")
-    def test_filter_metadata_uses_sorted_observed_values(self, category_mock, level_mock):
+    @patch("app.api.routes._query_observed_country_counts")
+    @patch("app.api.routes._query_observed_level_counts")
+    @patch("app.api.routes._query_observed_provider_counts")
+    def test_filter_metadata_uses_sorted_observed_values(self, provider_mock, level_mock, country_mock, category_mock):
         category_mock.return_value = [
             ("Software Engineer", 4),
             ("Design", 2),
@@ -85,6 +89,14 @@ class JobsFilterContractTests(unittest.TestCase):
             ("senior", 3),
             ("entry", 5),
             ("vp", 1),
+        ]
+        country_mock.return_value = [
+            ("US", "United States", 8),
+            ("DE", "Germany", 3),
+        ]
+        provider_mock.return_value = [
+            ("arbeitnow", 2),
+            ("the_muse", 6),
         ]
 
         payload = _build_jobs_filter_metadata_payload(db=object())
@@ -106,6 +118,15 @@ class JobsFilterContractTests(unittest.TestCase):
             ],
         )
         self.assertEqual(payload.get("levels"), ["Entry", "Senior", "VP"])
+        self.assertEqual(
+            payload.get("country_values"),
+            [
+                {"code": "US", "name": "United States", "observed_count": 8},
+                {"code": "DE", "name": "Germany", "observed_count": 3},
+            ],
+        )
+        self.assertEqual(payload.get("provider_values")[0]["value"], "the_muse")
+        self.assertEqual(payload.get("provider_values")[0]["observed_count"], 6)
 
     @patch("app.api.routes._query_observed_level_counts", return_value=[])
     @patch("app.api.routes._query_observed_category_counts", return_value=[])
@@ -118,6 +139,8 @@ class JobsFilterContractTests(unittest.TestCase):
         self.assertTrue(all(int(item.get("observed_count") or 0) == 0 for item in payload["level_values"]))
         self.assertTrue(any(item.get("value") == "Software Engineer" for item in payload["category_values"]))
         self.assertTrue(any(item.get("value") == "entry" for item in payload["level_values"]))
+        self.assertIsInstance(payload.get("country_values"), list)
+        self.assertTrue(payload.get("provider_values"))
 
     def test_category_expansion_allows_group_and_passthrough(self):
         expanded_group = _expand_category_for_muse("tech")

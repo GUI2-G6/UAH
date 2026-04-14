@@ -13,3 +13,7 @@ one more pass on filters and stuff's function once full job stuff is working
 4. USAJOBS API
 
 5. WhatJobs Publisher API
+
+
+jooble updated date
+Jobs by Adzuna validate url works on site
