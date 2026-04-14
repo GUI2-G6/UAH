@@ -226,6 +226,56 @@
         </div>
       </div>
 
+      <div class="service-card" v-if="diagnostics?.services?.job_board">
+        <div class="card-header">
+          <h3>
+            <span
+              class="dot"
+              :class="statusDotClass(diagnostics.services.job_board.status)"
+            ></span>
+            Job Board
+          </h3>
+          <span class="badge" :class="diagnostics.services.job_board.status">
+            {{ diagnostics.services.job_board.status }}
+          </span>
+        </div>
+        <table class="info-table" v-if="!diagnostics.services.job_board.error">
+          <tbody>
+            <tr>
+              <td class="label">Display providers</td>
+              <td>{{ (diagnostics.services.job_board.display_enabled_providers || []).join(', ') || 'none' }}</td>
+            </tr>
+            <tr>
+              <td class="label">Active jobs</td>
+              <td>{{ diagnostics.services.job_board.counts?.active_jobs ?? 'n/a' }}</td>
+            </tr>
+            <tr>
+              <td class="label">Bad provider URLs</td>
+              <td>{{ diagnostics.services.job_board.counts?.bad_provider_urls ?? 'n/a' }}</td>
+            </tr>
+            <tr>
+              <td class="label">Dedup collisions</td>
+              <td>{{ diagnostics.services.job_board.dedup?.active_collision_count ?? 'n/a' }}</td>
+            </tr>
+            <tr>
+              <td class="label">/api/jobs/search</td>
+              <td>{{ diagnostics.services.job_board.endpoints?.['/api/jobs/search']?.latency_ms ?? 'n/a' }} ms</td>
+            </tr>
+            <tr>
+              <td class="label">/api/jobs/filter-metadata</td>
+              <td>{{ diagnostics.services.job_board.endpoints?.['/api/jobs/filter-metadata']?.latency_ms ?? 'n/a' }} ms</td>
+            </tr>
+            <tr>
+              <td class="label">/api/providers/attribution</td>
+              <td>{{ diagnostics.services.job_board.endpoints?.['/api/providers/attribution']?.latency_ms ?? 'n/a' }} ms</td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-else class="error-detail">
+          <p>{{ diagnostics.services.job_board.error }}</p>
+        </div>
+      </div>
+
       <div class="service-card">
         <div class="card-header">
           <h3>

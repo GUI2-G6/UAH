@@ -1,0 +1,377 @@
+.dev-console {
+  min-height: 100%;
+  padding: 28px 24px 48px;
+  background:
+    radial-gradient(circle at top left, rgba(14, 165, 233, 0.12), transparent 34%),
+    radial-gradient(circle at top right, rgba(16, 185, 129, 0.1), transparent 32%),
+    linear-gradient(180deg, #f7fbff 0%, #eef5fb 52%, #f8fafc 100%);
+}
+
+.dev-console-header,
+.section-header,
+.panel-header,
+.probe-result-head,
+.job-sample-header,
+.action-row,
+.dev-header-actions,
+.two-column-grid,
+.card-grid,
+.probe-grid,
+.probe-json-grid,
+.insight-grid {
+  display: flex;
+}
+
+.dev-console-header,
+.section-header,
+.panel-header,
+.probe-result-head {
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.dev-console-header {
+  margin-bottom: 18px;
+}
+
+.dev-console-header h1,
+.section-header h2,
+.panel-header h3 {
+  margin: 0;
+  color: #0f172a;
+}
+
+.dev-eyebrow,
+.section-eyebrow {
+  margin: 0 0 6px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #0f766e;
+}
+
+.dev-subtitle,
+.panel-note,
+.job-sample-meta,
+.probe-result-head p {
+  margin: 6px 0 0;
+  color: #475569;
+}
+
+.dev-header-actions,
+.action-row {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.primary-btn,
+.secondary-btn,
+.field-input {
+  border-radius: 12px;
+  font: inherit;
+}
+
+.primary-btn,
+.secondary-btn {
+  border: 1px solid transparent;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.primary-btn {
+  background: #0f766e;
+  color: #ffffff;
+}
+
+.secondary-btn {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(15, 23, 42, 0.12);
+  color: #0f172a;
+}
+
+.primary-btn:disabled,
+.secondary-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dev-banner {
+  border-radius: 16px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  border: 1px solid transparent;
+  font-weight: 600;
+}
+
+.dev-banner.ok {
+  background: rgba(220, 252, 231, 0.86);
+  border-color: rgba(22, 163, 74, 0.24);
+  color: #166534;
+}
+
+.dev-banner.warning {
+  background: rgba(254, 249, 195, 0.88);
+  border-color: rgba(202, 138, 4, 0.24);
+  color: #854d0e;
+}
+
+.dev-banner.error {
+  background: rgba(254, 226, 226, 0.88);
+  border-color: rgba(220, 38, 38, 0.2);
+  color: #991b1b;
+}
+
+.dev-section {
+  margin-top: 22px;
+}
+
+.card-grid,
+.probe-grid,
+.insight-grid {
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.card-grid {
+  margin-bottom: 14px;
+}
+
+.two-column-grid,
+.probe-json-grid {
+  gap: 14px;
+}
+
+.two-column-grid > *,
+.probe-json-grid > * {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.metric-card,
+.panel-card,
+.probe-result-card {
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+  box-shadow: 0 18px 34px rgba(15, 23, 42, 0.05);
+}
+
+.metric-card {
+  flex: 1 1 160px;
+  padding: 16px;
+}
+
+.metric-card strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 1.8rem;
+  color: #0f172a;
+}
+
+.metric-label {
+  color: #475569;
+  font-size: 0.92rem;
+}
+
+.panel-card {
+  flex: 1 1 320px;
+  padding: 18px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+.data-table th,
+.data-table td {
+  padding: 10px 8px;
+  text-align: left;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  font-size: 0.92rem;
+}
+
+.data-table th {
+  color: #475569;
+  font-weight: 700;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 78px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pill.healthy {
+  background: rgba(220, 252, 231, 1);
+  color: #166534;
+}
+
+.pill.warning {
+  background: rgba(254, 249, 195, 1);
+  color: #854d0e;
+}
+
+.pill.unhealthy {
+  background: rgba(254, 226, 226, 1);
+  color: #991b1b;
+}
+
+.stack-list,
+.job-sample-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.stack-list li,
+.job-sample-list li {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(248, 250, 252, 0.92);
+}
+
+.stack-list li {
+  display: grid;
+  gap: 4px;
+}
+
+.probe-grid .panel-card {
+  flex: 1 1 360px;
+}
+
+.json-input,
+.snapshot-pre,
+.probe-result-card pre {
+  width: 100%;
+  min-height: 180px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 14px;
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 14px;
+  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+  font-size: 0.83rem;
+  line-height: 1.45;
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+.field-label {
+  display: block;
+  margin: 8px 0 6px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.field-input {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: #ffffff;
+}
+
+.probe-results {
+  margin-top: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.probe-result-card {
+  padding: 16px;
+}
+
+.probe-metrics {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  color: #475569;
+}
+
+.json-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+.probe-result-card pre {
+  min-height: 150px;
+  margin: 0;
+}
+
+.insight-search {
+  width: min(360px, 100%);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #ffffff;
+  font: inherit;
+}
+
+.job-sample-header {
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.job-sample-list p {
+  margin: 6px 0 0;
+  color: #475569;
+}
+
+.empty-state {
+  border: 1px dashed rgba(148, 163, 184, 0.4);
+  border-radius: 16px;
+  padding: 18px;
+  text-align: center;
+  color: #475569;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.empty-state.compact {
+  margin-top: 12px;
+  padding: 14px;
+}
+
+@media (max-width: 900px) {
+  .dev-console {
+    padding: 20px 14px 32px;
+  }
+
+  .dev-console-header,
+  .section-header,
+  .panel-header,
+  .probe-result-head,
+  .two-column-grid,
+  .probe-json-grid {
+    flex-direction: column;
+  }
+
+  .job-sample-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

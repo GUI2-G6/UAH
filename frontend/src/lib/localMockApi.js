@@ -1046,7 +1046,244 @@ function makeDiagnosticsPayload() {
           },
         },
       },
+      job_board: {
+        status: 'healthy',
+        counts: {
+          total_jobs: JOB_FIXTURES.length,
+          active_jobs: JOB_FIXTURES.length,
+          inactive_jobs: 0,
+          bad_provider_urls: 0,
+          bad_apply_urls: 0,
+          stale_jobs: 1,
+          active_hashed_jobs: 2,
+          active_null_hash_jobs: Math.max(JOB_FIXTURES.length - 2, 0),
+        },
+        dedup: {
+          active_collision_count: 0,
+        },
+        display_enabled_providers: ['the_muse', 'arbeitnow'],
+        latest_sync: {
+          id: 'mock-sync-1',
+          provider: 'the_muse',
+          category: 'sales and marketing',
+          started_at: nowIso(),
+          completed_at: nowIso(),
+          pages_fetched: 2,
+          jobs_found: 40,
+          jobs_new: 4,
+          jobs_updated: 12,
+          jobs_deduplicated: 1,
+          requests_used: 2,
+          stopped_reason: 'threshold_hit',
+          error_message: null,
+        },
+        endpoints: {
+          '/api/jobs/filter-metadata': { status: 'healthy', latency_ms: 1.2, metadata_version: 'jobs-filter-v1' },
+          '/api/providers/attribution': { status: 'healthy', latency_ms: 1.4, provider_count: Object.keys(PROVIDER_ATTRIBUTION_FIXTURES).length },
+          '/api/jobs/search': { status: 'healthy', latency_ms: 2.1, sample_total_jobs: JOB_FIXTURES.length },
+        },
+      },
     },
+  }
+}
+
+function toSearchParamsFromObject(raw = {}) {
+  const params = new URLSearchParams()
+  Object.entries(raw || {}).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item !== undefined && item !== null && item !== '') params.append(key, String(item))
+      })
+      return
+    }
+    if (value !== undefined && value !== null && value !== '') {
+      params.set(key, String(value))
+    }
+  })
+  return params
+}
+
+function buildMockJobsSearchPayload(searchParams) {
+  const page = Math.max(1, parseInteger(searchParams.get('page'), 1))
+  const pageSize = Math.max(1, Math.min(50, parseInteger(searchParams.get('page_size'), 10)))
+  const locationSelection = buildMockLocationSelection(searchParams)
+  const selectedLocations = locationSelection.selectedLocations
+  const droppedLocations = locationSelection.droppedLocations
+  const locationParamsTruncated = locationSelection.locationParamsTruncated
+
+  const filteredResult = applyJobSearchFilters(JOB_FIXTURES, searchParams, selectedLocations)
+  const filtered = filteredResult.jobs
+  const diagnostics = filteredResult.diagnostics || {}
+  const totalJobs = filtered.length
+  const totalPages = Math.max(1, Math.ceil(totalJobs / pageSize))
+  const start = (page - 1) * pageSize
+  const jobs = filtered.slice(start, start + pageSize)
+  const keywordQuery = normalizeTextLower(searchParams.get('q'))
+  const postedAfter = normalizeIsoDate(searchParams.get('posted_after'))
+  const metadata = buildMockFilterMetadata()
+
+  return {
+    jobs,
+    total_jobs: totalJobs,
+    total_jobs_estimated: totalJobs,
+    total_pages: totalPages,
+    total_pages_estimated: totalPages,
+    totals_are_estimated: false,
+    has_next_page: page < totalPages,
+    total_estimate_strategy: 'exact-mock',
+    guardrail_stop_reason: '',
+    source_pages_scanned: 1,
+    filtered_out_count: Number(diagnostics.filteredOutCount || 0),
+    requested_location_count: locationSelection.requestedLocationCount,
+    used_location_count: selectedLocations.length,
+    location_params_used: selectedLocations.length,
+    location_params_truncated: locationParamsTruncated,
+    dropped_location_count: droppedLocations.length,
+    dropped_locations_sample: droppedLocations.slice(0, 12),
+    location_mode: locationSelection.mode,
+    location_country_code: locationSelection.countryCode,
+    has_next_page_possible_raw: page < totalPages,
+    has_more_source_pages: page < totalPages,
+    source_page_count: totalPages,
+    window_start_page: page,
+    window_size: 1,
+    dropped_invalid_url_count: 0,
+    url_validation_checked_count: 0,
+    url_validation_cache_hit_count: 0,
+    location_relaxed_fallback: false,
+    location_selection_strategy: locationSelection.strategy,
+    canonicalized_location_count: selectedLocations.length,
+    transformed_location_count: 0,
+    unmatched_location_count: 0,
+    strict_state_blocked_count: 0,
+    selected_state_diversity_count: new Set(
+      selectedLocations
+        .map((location) => {
+          const match = String(location || '').match(/,\s*([A-Z]{2})(?:\s*,|\s*$)/)
+          return match ? match[1] : ''
+        })
+        .filter(Boolean)
+    ).size,
+    accepted_by_concrete_location: Number(diagnostics.acceptedByConcreteLocation || 0),
+    accepted_by_remote_override: Number(diagnostics.acceptedByRemoteOverride || 0),
+    accepted_by_hybrid_override: Number(diagnostics.acceptedByHybridOverride || 0),
+    accepted_by_constraint_overlap: Number(diagnostics.acceptedByConstraintOverlap || 0),
+    constraint_parse_high_confidence: Number(diagnostics.constraintParseHighConfidence || 0),
+    constraint_parse_medium_confidence: Number(diagnostics.constraintParseMediumConfidence || 0),
+    constraint_parse_low_confidence: Number(diagnostics.constraintParseLowConfidence || 0),
+    constraint_policy_remote_off: 'allow-if-overlap',
+    constraint_compatibility_enabled: true,
+    constraint_filter_min_confidence: 'high',
+    adaptive_chase_enabled: false,
+    adaptive_chase_extra_pages: 0,
+    effective_max_pages: 1,
+    effective_min_filtered_ratio: 0,
+    requested_locations_sample: locationSelection.requestedLocationsSample,
+    selected_locations_sample: locationSelection.selectedLocationsSample,
+    keyword_query: keywordQuery,
+    posted_after: postedAfter,
+    jobs_filter_metadata_version: metadata.metadata_version,
+    jobs_filter_metadata_hash: metadata.metadata_hash,
+    cache_hit: false,
+  }
+}
+
+function makeMockJobsDebugOverview() {
+  return {
+    providers: {
+      statuses: Object.values(PROVIDER_ATTRIBUTION_FIXTURES).map((provider) => asJson(provider)),
+      display_enabled: ['the_muse', 'arbeitnow'],
+      ingest_enabled: ['the_muse', 'arbeitnow'],
+      scheduled_enabled: ['the_muse', 'arbeitnow'],
+    },
+    recent_syncs: [
+      {
+        id: 'mock-sync-1',
+        provider: 'the_muse',
+        category: 'sales and marketing',
+        started_at: nowIso(),
+        completed_at: nowIso(),
+        pages_fetched: 2,
+        jobs_found: 40,
+        jobs_new: 4,
+        jobs_updated: 12,
+        jobs_deduplicated: 1,
+        requests_used: 2,
+        stopped_reason: 'threshold_hit',
+        error_message: null,
+      },
+      {
+        id: 'mock-sync-2',
+        provider: 'arbeitnow',
+        category: null,
+        started_at: nowIso(),
+        completed_at: nowIso(),
+        pages_fetched: 1,
+        jobs_found: 24,
+        jobs_new: 2,
+        jobs_updated: 8,
+        jobs_deduplicated: 0,
+        requests_used: 1,
+        stopped_reason: 'completed',
+        error_message: null,
+      },
+    ],
+    quota_usage: [
+      { provider: 'the_muse', hour_bucket: nowIso(), request_count: 2 },
+      { provider: 'arbeitnow', hour_bucket: nowIso(), request_count: 1 },
+    ],
+    database: {
+      counts: makeDiagnosticsPayload().services.job_board.counts,
+      by_provider: [
+        { value: 'the_muse', count: 3 },
+        { value: 'arbeitnow', count: 3 },
+      ],
+      by_display_tier: [{ value: 'active', count: JOB_FIXTURES.length }],
+      by_staleness_status: [{ value: 'fresh', count: JOB_FIXTURES.length - 1 }, { value: 'aging', count: 1 }],
+      by_provider_url_status: [{ value: 'unknown', count: JOB_FIXTURES.length }],
+      by_apply_url_status: [{ value: 'unknown', count: 2 }, { value: 'good', count: JOB_FIXTURES.length - 2 }],
+      dedup: {
+        active_collision_count: 0,
+        collision_samples: [],
+      },
+    },
+  }
+}
+
+function makeMockJobsDebugInsights() {
+  const samples = JOB_FIXTURES.map((job, index) => ({
+    id: job.id,
+    provider: job.provider,
+    provider_job_id: job.provider_job_id,
+    title: job.name,
+    company: job.company,
+    location: job.locations?.[0] || '',
+    is_active: true,
+    is_remote: job.has_remote === true,
+    display_tier: 'active',
+    staleness_status: index === 0 ? 'aging' : 'fresh',
+    provider_url_status: index === 4 ? 'bad' : 'unknown',
+    apply_url_status: index === 5 ? 'bad' : 'good',
+    repost_count: index === 1 ? 2 : 0,
+    dedup_hash: index === 1 ? 'mockdedup123' : '',
+    first_seen_at: nowIso(),
+    last_seen_at: nowIso(),
+    published_at: job.publication_date,
+  }))
+
+  return {
+    summary: makeDiagnosticsPayload().services.job_board.counts,
+    dedup: {
+      active_collision_count: 0,
+      collision_samples: [],
+    },
+    recent_syncs: makeMockJobsDebugOverview().recent_syncs,
+    recent_inserts: samples.slice(0, 4),
+    recent_updates: samples.slice(1, 5),
+    bad_provider_urls: samples.filter((row) => row.provider_url_status === 'bad'),
+    bad_apply_urls: samples.filter((row) => row.apply_url_status === 'bad'),
+    stale_jobs: samples.filter((row) => row.staleness_status !== 'fresh'),
+    dedup_owners: samples.filter((row) => row.dedup_hash),
   }
 }
 
@@ -1523,6 +1760,11 @@ async function handleMockApiRequest(request, requestUrl, state) {
         '/api/auth/login': {},
         '/api/jobs/filter-metadata': {},
         '/api/jobs/search': {},
+        '/api/jobs/debug/overview': {},
+        '/api/jobs/debug/db-insights': {},
+        '/api/jobs/debug/probe/provider': {},
+        '/api/jobs/debug/probe/local-search': {},
+        '/api/jobs/debug/probe/live-search': {},
         '/api/providers/attribution': {},
       },
     })
@@ -1545,6 +1787,81 @@ async function handleMockApiRequest(request, requestUrl, state) {
 
   if (pathname === '/api/diagnostics' && method === 'GET') {
     return toJsonResponse(makeDiagnosticsPayload())
+  }
+
+  if (pathname === '/api/jobs/debug/overview' && method === 'GET') {
+    return toJsonResponse(makeMockJobsDebugOverview())
+  }
+
+  if (pathname === '/api/jobs/debug/db-insights' && method === 'GET') {
+    return toJsonResponse(makeMockJobsDebugInsights())
+  }
+
+  if (pathname === '/api/jobs/debug/probe/provider' && method === 'POST') {
+    const body = await parseJsonBody(request)
+    const provider = normalizeTextLower(body.provider) || 'the_muse'
+    return toJsonResponse({
+      status: 'ok',
+      provider,
+      latency_ms: 82,
+      request_params: body.params || {},
+      item_count: 2,
+      sample: JOB_FIXTURES
+        .filter((job) => job.provider === provider)
+        .slice(0, 2)
+        .map((job) => ({
+          provider: job.provider,
+          provider_job_id: job.provider_job_id,
+          provider_url: job.provider_url,
+          apply_url: job.apply_url,
+          apply_host: '',
+          apply_portal: job.apply_portal,
+          source_tags: job.source_tags || [],
+          title: job.name,
+          company: job.company,
+          company_url: '',
+          location: job.locations?.[0] || '',
+          is_remote: job.has_remote === true,
+          job_type: job.type,
+          experience_level: job.levels?.[0] || '',
+          categories: job.categories || [],
+          description: job.contents || '',
+          published_at: job.publication_date,
+        })),
+      sample_truncated: 0,
+    })
+  }
+
+  if (pathname === '/api/jobs/debug/probe/local-search' && method === 'POST') {
+    const body = await parseJsonBody(request)
+    const payload = buildMockJobsSearchPayload(toSearchParamsFromObject(body.params || {}))
+    return toJsonResponse({
+      status: 'ok',
+      latency_ms: 4,
+      request_params: body.params || {},
+      payload_hash: 'mocklocal1234',
+      response_preview: {
+        ...payload,
+        jobs: (payload.jobs || []).slice(0, 5),
+        jobs_truncated: Math.max((payload.jobs || []).length - 5, 0),
+      },
+    })
+  }
+
+  if (pathname === '/api/jobs/debug/probe/live-search' && method === 'POST') {
+    const body = await parseJsonBody(request)
+    const payload = buildMockJobsSearchPayload(toSearchParamsFromObject(body.params || {}))
+    return toJsonResponse({
+      status: 'ok',
+      latency_ms: 48,
+      request_params: body.params || {},
+      payload_hash: 'mocklive12345',
+      response_preview: {
+        ...payload,
+        jobs: (payload.jobs || []).slice(0, 5),
+        jobs_truncated: Math.max((payload.jobs || []).length - 5, 0),
+      },
+    })
   }
 
   if (pathname === '/api/auth/login' && method === 'POST') {
@@ -2169,88 +2486,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
   }
 
   if (pathname === '/api/jobs/search' && method === 'GET') {
-    const page = Math.max(1, parseInteger(requestUrl.searchParams.get('page'), 1))
-    const pageSize = Math.max(1, Math.min(50, parseInteger(requestUrl.searchParams.get('page_size'), 10)))
-    const locationSelection = buildMockLocationSelection(requestUrl.searchParams)
-    const selectedLocations = locationSelection.selectedLocations
-    const droppedLocations = locationSelection.droppedLocations
-    const locationParamsTruncated = locationSelection.locationParamsTruncated
-
-    const filteredResult = applyJobSearchFilters(JOB_FIXTURES, requestUrl.searchParams, selectedLocations)
-    const filtered = filteredResult.jobs
-    const diagnostics = filteredResult.diagnostics || {}
-    const totalJobs = filtered.length
-    const totalPages = Math.max(1, Math.ceil(totalJobs / pageSize))
-    const start = (page - 1) * pageSize
-    const jobs = filtered.slice(start, start + pageSize)
-    const keywordQuery = normalizeTextLower(requestUrl.searchParams.get('q'))
-    const postedAfter = normalizeIsoDate(requestUrl.searchParams.get('posted_after'))
-    const metadata = buildMockFilterMetadata()
-
-    return toJsonResponse({
-      jobs,
-      total_jobs: totalJobs,
-      total_jobs_estimated: totalJobs,
-      total_pages: totalPages,
-      total_pages_estimated: totalPages,
-      totals_are_estimated: false,
-      has_next_page: page < totalPages,
-      total_estimate_strategy: 'exact-mock',
-      guardrail_stop_reason: '',
-      source_pages_scanned: 1,
-      filtered_out_count: Number(diagnostics.filteredOutCount || 0),
-      requested_location_count: locationSelection.requestedLocationCount,
-      used_location_count: selectedLocations.length,
-      location_params_used: selectedLocations.length,
-      location_params_truncated: locationParamsTruncated,
-      dropped_location_count: droppedLocations.length,
-      dropped_locations_sample: droppedLocations.slice(0, 12),
-      location_mode: locationSelection.mode,
-      location_country_code: locationSelection.countryCode,
-      has_next_page_possible_raw: page < totalPages,
-      has_more_source_pages: page < totalPages,
-      source_page_count: totalPages,
-      window_start_page: page,
-      window_size: 1,
-      dropped_invalid_url_count: 0,
-      url_validation_checked_count: 0,
-      url_validation_cache_hit_count: 0,
-      location_relaxed_fallback: false,
-      location_selection_strategy: locationSelection.strategy,
-      canonicalized_location_count: selectedLocations.length,
-      transformed_location_count: 0,
-      unmatched_location_count: 0,
-      strict_state_blocked_count: 0,
-      selected_state_diversity_count: new Set(
-        selectedLocations
-          .map((location) => {
-            const match = String(location || '').match(/,\s*([A-Z]{2})(?:\s*,|\s*$)/)
-            return match ? match[1] : ''
-          })
-          .filter(Boolean)
-      ).size,
-      accepted_by_concrete_location: Number(diagnostics.acceptedByConcreteLocation || 0),
-      accepted_by_remote_override: Number(diagnostics.acceptedByRemoteOverride || 0),
-      accepted_by_hybrid_override: Number(diagnostics.acceptedByHybridOverride || 0),
-      accepted_by_constraint_overlap: Number(diagnostics.acceptedByConstraintOverlap || 0),
-      constraint_parse_high_confidence: Number(diagnostics.constraintParseHighConfidence || 0),
-      constraint_parse_medium_confidence: Number(diagnostics.constraintParseMediumConfidence || 0),
-      constraint_parse_low_confidence: Number(diagnostics.constraintParseLowConfidence || 0),
-      constraint_policy_remote_off: 'allow-if-overlap',
-      constraint_compatibility_enabled: true,
-      constraint_filter_min_confidence: 'high',
-      adaptive_chase_enabled: false,
-      adaptive_chase_extra_pages: 0,
-      effective_max_pages: 1,
-      effective_min_filtered_ratio: 0,
-      requested_locations_sample: locationSelection.requestedLocationsSample,
-      selected_locations_sample: locationSelection.selectedLocationsSample,
-      keyword_query: keywordQuery,
-      posted_after: postedAfter,
-      jobs_filter_metadata_version: metadata.metadata_version,
-      jobs_filter_metadata_hash: metadata.metadata_hash,
-      cache_hit: false,
-    })
+    return toJsonResponse(buildMockJobsSearchPayload(requestUrl.searchParams))
   }
 
   return toJsonResponse({ detail: `No mock handler for ${method} ${pathname}` }, 404)

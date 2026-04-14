@@ -301,6 +301,7 @@
           :pretrim-location-notice="pretrimLocationNotice"
           :filter-metadata-version="filterMetadataVersion"
           :filter-metadata-hash="filterMetadataHash"
+          :api-summary="lastApiSummary"
         />
 
         <div class="pagination pagination-top" v-if="!loading && !error">
@@ -599,6 +600,7 @@ export default {
       filterMetadataVersion: "",
       filterMetadataHash: "",
       lastSearchDiagnostics: {},
+      lastApiSummary: {},
       maxLocationParams,
       locationSourceMode,
       categoryGroups,
@@ -1389,6 +1391,7 @@ export default {
         locationWarning: this.locationWarning,
         locationError: this.locationError,
         searchDiagnostics: this.lastSearchDiagnostics,
+        apiSummary: this.lastApiSummary,
       })
     },
     openLevelMenu() {
@@ -1529,6 +1532,7 @@ export default {
       this.draftFilters.locationRadius = Math.max(1, Math.min(this.maxRadiusForUnit, Math.round(converted)))
     },
     async fetchJson(url) {
+      const startedAt = performance.now()
       const response = await fetch(url)
       let payload = null
       try {
@@ -1537,12 +1541,44 @@ export default {
         payload = null
       }
 
+      this.recordApiSummary({
+        endpoint: url,
+        status: response.status,
+        ok: response.ok,
+        latencyMs: Math.round(performance.now() - startedAt),
+        payload,
+      })
+
       if (!response.ok) {
         const detail = payload?.detail?.message || payload?.detail || payload?.message || `Request failed (${response.status})`
         throw new Error(detail)
       }
 
       return payload
+    },
+    makePayloadHash(payload) {
+      try {
+        const raw = JSON.stringify(payload || {})
+        let hash = 0
+        for (let index = 0; index < raw.length; index += 1) {
+          hash = ((hash << 5) - hash) + raw.charCodeAt(index)
+          hash |= 0
+        }
+        return Math.abs(hash).toString(16).padStart(8, "0")
+      } catch {
+        return ""
+      }
+    },
+    recordApiSummary({ endpoint, status, ok, latencyMs, payload }) {
+      const trimmedEndpoint = String(endpoint || "").replace(window.location.origin, "")
+      this.lastApiSummary = {
+        endpoint: trimmedEndpoint || "unknown",
+        status: status ?? "",
+        ok: ok === true,
+        latencyMs: Number.isFinite(Number(latencyMs)) ? Number(latencyMs) : null,
+        payloadHash: this.makePayloadHash(payload),
+        observedAt: new Date().toISOString(),
+      }
     },
     async detectViaIp() {
       this.locationError = ""
@@ -1788,12 +1824,7 @@ export default {
 
       try {
         const query = this.buildSearchQuery(this.page)
-        const res = await fetch(`/api/jobs/search?${query}`)
-        if (!res.ok) {
-          throw new Error(`Request failed (${res.status})`)
-        }
-
-        const data = await res.json()
+        const data = await this.fetchJson(`/api/jobs/search?${query}`)
         this.totalJobs = Number(data.total_jobs_estimated || data.total_jobs || 0)
         this.totalPages = Math.max(1, Number(data.total_pages_estimated || data.total_pages || 1))
         this.totalsAreEstimated = data.totals_are_estimated === true
