@@ -12,12 +12,14 @@ from app.schemas.job import NormalizedJob
 from app.services.ingest import (
     _build_job_payload,
     _evaluate_staleness,
+    backfill_job_country_normalization_batch,
     build_short_description,
     compute_effective_last_updated_at,
     compute_dedup_hash,
     compute_content_fingerprint,
     compute_display_tier,
     compute_quality_score,
+    needs_country_normalization_backfill,
     needs_link_health_backfill,
     needs_stale_audit,
     quality_check,
@@ -143,6 +145,22 @@ def _dedup_hash_integrity_error() -> IntegrityError:
             super().__init__('duplicate key value violates unique constraint "idx_jobs_dedup_hash"')
 
     return IntegrityError("INSERT", {}, _Orig())
+
+
+class _FakeCountryBackfillQuery:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def limit(self, _limit):
+        return self
+
+    def all(self):
+        return list(self.rows)
+
+
+class _FakeCountryBackfillDB:
+    def __init__(self):
+        self.commit = MagicMock()
 
 
 class IngestServiceTests(unittest.TestCase):
@@ -372,6 +390,139 @@ class IngestServiceTests(unittest.TestCase):
         )
 
         self.assertFalse(needs_link_health_backfill(row, reference_time=now))
+
+    def test_country_backfill_scope_guards(self):
+        missing_row = SimpleNamespace(
+            id="missing-row",
+            is_active=True,
+            location="San Francisco, CA",
+            location_country_code="",
+            location_country_name="",
+        )
+        repaired_row = SimpleNamespace(
+            id="repair-row",
+            is_active=True,
+            location="San Francisco, CA",
+            location_country_code="CA",
+            location_country_name="Canada",
+        )
+        good_row = SimpleNamespace(
+            id="good-row",
+            is_active=True,
+            location="Toronto, ON, Canada",
+            location_country_code="CA",
+            location_country_name="Canada",
+        )
+
+        self.assertTrue(needs_country_normalization_backfill(missing_row, scope="missing"))
+        self.assertFalse(needs_country_normalization_backfill(repaired_row, scope="missing"))
+        self.assertTrue(needs_country_normalization_backfill(repaired_row, scope="repair"))
+        self.assertFalse(needs_country_normalization_backfill(good_row, scope="repair"))
+
+    @patch.object(ingest_module, "_country_backfill_query")
+    def test_country_backfill_batch_missing_scope_updates_and_commits_in_batches(self, country_query):
+        rows = [
+            SimpleNamespace(
+                id="job-1",
+                is_active=True,
+                location="San Francisco, CA",
+                location_country_code=None,
+                location_country_name=None,
+            ),
+            SimpleNamespace(
+                id="job-2",
+                is_active=True,
+                location="Remote",
+                location_country_code=None,
+                location_country_name=None,
+            ),
+            SimpleNamespace(
+                id="job-3",
+                is_active=True,
+                location="Berlin",
+                location_country_code="",
+                location_country_name="",
+            ),
+            SimpleNamespace(
+                id="job-4",
+                is_active=True,
+                location="Toronto, ON, Canada",
+                location_country_code="CA",
+                location_country_name="Canada",
+            ),
+        ]
+        db = _FakeCountryBackfillDB()
+        country_query.return_value = _FakeCountryBackfillQuery(rows)
+
+        with patch.object(ingest_module.settings, "JOB_COUNTRY_BACKFILL_BATCH_SIZE", 2):
+            summary = backfill_job_country_normalization_batch(scope="missing", db_session=db)
+
+        self.assertEqual(summary["scanned"], 3)
+        self.assertEqual(summary["updated"], 2)
+        self.assertEqual(summary["unchanged"], 1)
+        self.assertEqual(summary["unresolved"], 1)
+        self.assertEqual(summary["batches_committed"], 2)
+        self.assertEqual(rows[0].location_country_code, "US")
+        self.assertEqual(rows[0].location_country_name, "United States")
+        self.assertIsNone(rows[1].location_country_code)
+        self.assertIsNone(rows[1].location_country_name)
+        self.assertEqual(rows[2].location_country_code, "DE")
+        self.assertEqual(rows[2].location_country_name, "Germany")
+        self.assertEqual(rows[3].location_country_code, "CA")
+        self.assertEqual(rows[3].location_country_name, "Canada")
+        self.assertEqual(db.commit.call_count, 2)
+
+    @patch.object(ingest_module, "_country_backfill_query")
+    def test_country_backfill_batch_repair_scope_is_targeted(self, country_query):
+        rows = [
+            SimpleNamespace(
+                id="job-1",
+                is_active=True,
+                location="Toronto, ON, Canada",
+                location_country_code="CA",
+                location_country_name="Canada",
+            ),
+            SimpleNamespace(
+                id="job-2",
+                is_active=True,
+                location="San Francisco, CA",
+                location_country_code="CA",
+                location_country_name="Canada",
+            ),
+            SimpleNamespace(
+                id="job-3",
+                is_active=True,
+                location="Berlin",
+                location_country_code="XX",
+                location_country_name="Unknown",
+            ),
+            SimpleNamespace(
+                id="job-4",
+                is_active=True,
+                location="Chicago, Cook County",
+                location_country_code="US",
+                location_country_name="United States",
+            ),
+        ]
+        db = _FakeCountryBackfillDB()
+        country_query.return_value = _FakeCountryBackfillQuery(rows)
+
+        with patch.object(ingest_module.settings, "JOB_COUNTRY_BACKFILL_BATCH_SIZE", 10):
+            summary = backfill_job_country_normalization_batch(scope="repair", db_session=db)
+
+        self.assertEqual(summary["scanned"], 2)
+        self.assertEqual(summary["updated"], 2)
+        self.assertEqual(summary["unchanged"], 0)
+        self.assertEqual(summary["unresolved"], 0)
+        self.assertEqual(summary["batches_committed"], 1)
+        self.assertEqual(rows[0].location_country_code, "CA")
+        self.assertEqual(rows[1].location_country_code, "US")
+        self.assertEqual(rows[1].location_country_name, "United States")
+        self.assertEqual(rows[2].location_country_code, "DE")
+        self.assertEqual(rows[2].location_country_name, "Germany")
+        self.assertEqual(rows[3].location_country_code, "US")
+        self.assertEqual(rows[3].location_country_name, "United States")
+        db.commit.assert_called_once()
 
     @patch.object(ingest_module, "insert", side_effect=_fake_insert)
     @patch.object(ingest_module, "_build_job_payload")

@@ -7,7 +7,7 @@ import logging
 import re
 import uuid
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 
@@ -28,6 +28,8 @@ from app.services.job_link_health import (
 logger = logging.getLogger(__name__)
 
 _SPAM_PUNCTUATION_RE = re.compile(r"[!$#?*]{3,}")
+_COUNTRY_REPAIR_CITY_ONLY_LOCATIONS = {"berlin", "hamburg", "paris", "warsaw"}
+_COUNTRY_REPAIR_AMBIGUOUS_CODES = {"CA", "DE", "GA", "IN", "ME", "OR", "XX"}
 _DEDUP_NOISE_WORDS = (
     "senior",
     "sr",
@@ -708,6 +710,176 @@ def needs_stale_audit(job_row: Job, *, reference_time: datetime | None = None) -
         return False
     threshold = max(int(settings.JOB_STALE_AUDIT_RECHECK_HOURS), 1)
     return job_link_needs_recheck(job_row.staleness_checked_at, recheck_hours=threshold, now=now)
+
+
+def _normalized_optional_text(value: str | None) -> str:
+    return " ".join((value or "").strip().split())
+
+
+def _normalized_optional_code(value: str | None) -> str:
+    return _normalized_optional_text(value).upper()
+
+
+def _repair_risk_location(location: str | None) -> bool:
+    normalized = _normalized_optional_text(location)
+    if not normalized:
+        return False
+
+    lowered = normalized.lower()
+    pieces = [piece.strip() for piece in normalized.split(",") if piece.strip()]
+    if lowered in _COUNTRY_REPAIR_CITY_ONLY_LOCATIONS:
+        return True
+    if lowered.startswith("washington dc") or "washington, dc" in lowered or "district of columbia" in lowered:
+        return True
+    if any(lowered.endswith(f", {code.lower()}") or f", {code.lower()}," in lowered for code in _COUNTRY_REPAIR_AMBIGUOUS_CODES if code != "XX"):
+        return True
+    if len(pieces) == 2 and ("county" in lowered or normalize_job_location_country(normalized)[0] == "US"):
+        return True
+    return False
+
+
+def _country_backfill_row_key(job_row: Job) -> object:
+    return getattr(job_row, "id", None) or ("memory", id(job_row))
+
+
+def needs_country_normalization_backfill(job_row: Job, *, scope: str = "missing") -> bool:
+    """Return True when a stored row should be included in a country-normalization backfill batch."""
+    normalized_scope = (scope or "missing").strip().lower()
+    if normalized_scope not in {"missing", "repair"}:
+        raise ValueError(f"Unsupported country backfill scope: {scope}")
+    if not bool(getattr(job_row, "is_active", True)):
+        return False
+
+    stored_code = _normalized_optional_code(getattr(job_row, "location_country_code", None))
+    stored_name = _normalized_optional_text(getattr(job_row, "location_country_name", None))
+    is_missing = not stored_code
+    is_xx = stored_code == "XX"
+    if normalized_scope == "missing":
+        return is_missing
+
+    location = getattr(job_row, "location", None)
+    if is_missing or is_xx:
+        return True
+    if not _repair_risk_location(location):
+        return False
+
+    normalized_code, normalized_name = normalize_job_location_country(location)
+    return stored_code != _normalized_optional_code(normalized_code) or stored_name != _normalized_optional_text(normalized_name)
+
+
+def _country_backfill_query(db, *, scope: str):
+    normalized_scope = (scope or "missing").strip().lower()
+    normalized_code = func.upper(func.btrim(func.coalesce(Job.location_country_code, "")))
+    normalized_location = func.lower(func.btrim(func.coalesce(Job.location, "")))
+    is_blank_code = func.length(func.btrim(func.coalesce(Job.location_country_code, ""))) == 0
+
+    query = db.query(Job).filter(Job.is_active.is_(True))
+    if normalized_scope == "missing":
+        return query.filter(is_blank_code).order_by(Job.last_seen_at.desc(), Job.id.asc())
+    if normalized_scope != "repair":
+        raise ValueError(f"Unsupported country backfill scope: {scope}")
+
+    ambiguous_code_filters = []
+    for code in ("CA", "DE", "GA", "IN", "ME", "OR"):
+        ambiguous_code_filters.extend(
+            [
+                normalized_location.like(f"%, {code.lower()}"),
+                normalized_location.like(f"%, {code.lower()},%"),
+            ]
+        )
+
+    return (
+        query.filter(
+            or_(
+                is_blank_code,
+                normalized_code == "XX",
+                and_(or_(*ambiguous_code_filters), normalized_code.in_(tuple(sorted(_COUNTRY_REPAIR_AMBIGUOUS_CODES - {"XX"})))),
+                and_(
+                    or_(
+                        normalized_location.like("washington dc%"),
+                        normalized_location.like("%washington, dc%"),
+                        normalized_location.like("%district of columbia%"),
+                    ),
+                    normalized_code != "US",
+                ),
+                and_(normalized_location.like("%county%"), normalized_code != "US"),
+                and_(normalized_location.in_(tuple(sorted(_COUNTRY_REPAIR_CITY_ONLY_LOCATIONS))), normalized_code.in_(("", "XX"))),
+            )
+        )
+        .order_by(normalized_code.asc(), Job.last_seen_at.desc(), Job.id.asc())
+    )
+
+
+def backfill_job_country_normalization_batch(*, scope: str = "missing", batch_size: int | None = None, db_session=None) -> dict[str, int]:
+    """Backfill normalized country metadata for active jobs in small maintenance batches."""
+    normalized_scope = (scope or "missing").strip().lower()
+    if normalized_scope not in {"missing", "repair"}:
+        raise ValueError(f"Unsupported country backfill scope: {scope}")
+
+    manager = nullcontext(db_session) if db_session is not None else session_scope()
+    with manager as db:
+        limit = max(int(batch_size or settings.JOB_COUNTRY_BACKFILL_BATCH_SIZE), 1)
+        processed_row_ids: set[object] = set()
+        summary = {
+            "scanned": 0,
+            "updated": 0,
+            "unchanged": 0,
+            "unresolved": 0,
+            "batches_committed": 0,
+        }
+
+        while True:
+            rows = _country_backfill_query(db, scope=normalized_scope).limit(limit * 6).all()
+            candidates = [
+                row
+                for row in rows
+                if _country_backfill_row_key(row) not in processed_row_ids
+                and needs_country_normalization_backfill(row, scope=normalized_scope)
+            ][:limit]
+            if not candidates:
+                logger.info("Country normalization backfill scope=%s completed with summary=%s", normalized_scope, summary)
+                return summary
+
+            batch_summary = {
+                "scanned": 0,
+                "updated": 0,
+                "unchanged": 0,
+                "unresolved": 0,
+            }
+            for row in candidates:
+                batch_summary["scanned"] += 1
+                location_country_code, location_country_name = normalize_job_location_country(row.location)
+                next_code = _normalized_optional_code(location_country_code) or None
+                next_name = _normalized_optional_text(location_country_name) or None
+                current_code = _normalized_optional_code(row.location_country_code) or None
+                current_name = _normalized_optional_text(row.location_country_name) or None
+
+                if next_code is None:
+                    batch_summary["unresolved"] += 1
+
+                if current_code == next_code and current_name == next_name:
+                    batch_summary["unchanged"] += 1
+                    continue
+
+                row.location_country_code = next_code
+                row.location_country_name = next_name
+                batch_summary["updated"] += 1
+
+            db.commit()
+            processed_row_ids.update(_country_backfill_row_key(row) for row in candidates)
+            summary["scanned"] += batch_summary["scanned"]
+            summary["updated"] += batch_summary["updated"]
+            summary["unchanged"] += batch_summary["unchanged"]
+            summary["unresolved"] += batch_summary["unresolved"]
+            summary["batches_committed"] += 1
+            logger.info(
+                "Country normalization backfill batch scope=%s scanned=%s updated=%s unchanged=%s unresolved=%s",
+                normalized_scope,
+                batch_summary["scanned"],
+                batch_summary["updated"],
+                batch_summary["unchanged"],
+                batch_summary["unresolved"],
+            )
 
 
 def backfill_job_health_batch(*, batch_size: int | None = None, db_session=None) -> dict[str, int]:

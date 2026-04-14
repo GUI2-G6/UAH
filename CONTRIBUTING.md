@@ -28,6 +28,12 @@ Keep branch names lowercase and hyphenated. No spaces, no uppercase.
 3. Write commit messages that describe what changed and why, not just "fix stuff"
 4. Test your changes locally before opening a PR
 
+## Migrations and Backfills
+
+- If a migration adds a computed or derived column to `jobs`, ship an automated backfill path for existing rows in the same change
+- Prefer the existing Celery maintenance-task pattern over one-off manual scripts so older rows converge automatically after deploy
+- Do not drop and recreate a populated column just to backfill it unless the migration explicitly requires destructive replacement
+
 ## Pull Requests
 
 - For the full branch and PR workflow, see [WORKFLOW.md](WORKFLOW.md).
