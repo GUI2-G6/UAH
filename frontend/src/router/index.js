@@ -53,6 +53,11 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
+  // Returns scroll bar to top when switching pages (except if you are using back/forward).
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) return savedPosition  // If you have a saved pos. from using back/forward on browser, keep it.
+    else return { top: 0 }  // Else return to top.
+  }
 })
 
 router.beforeEach(async (to) => {
