@@ -1976,7 +1976,7 @@ export default {
       this.companyActiveIndex = next
     },
     addCompany(company) {
-      const clean = " ".join(String(company || "").split())
+      const clean = String(company || "").split(/\s+/).filter(Boolean).join(" ")
       if (!clean) return
       this.draftFilters.companies = this.normalizeUnique([
         ...(this.draftFilters.companies || []),
@@ -1987,7 +1987,7 @@ export default {
       this.companyActiveIndex = 0
     },
     chooseCompanyFromInput() {
-      const input = " ".join(String(this.companyInput || "").split())
+      const input = String(this.companyInput || "").split(/\s+/).filter(Boolean).join(" ")
       if (!input) return
 
       const exact = this.filteredCompanyOptions.find(option => option.value.toLowerCase() === input.toLowerCase())
@@ -2117,14 +2117,14 @@ export default {
     },
     buildSavedJobKey(job = {}) {
       const provider = this.normalizeProviderValue(job.provider)
-      const providerJobId = " ".join(String(job.provider_job_id || job.id || "").split())
+      const providerJobId = String(job.provider_job_id || job.id || "").split(/\s+/).filter(Boolean).join(" ")
       if (!provider || !providerJobId) return ""
       return `${provider}::${providerJobId}`
     },
     normalizeJobRecord(job = {}) {
       const title = String(job.name || job.title || job.short_name || "Untitled role").trim()
       const provider = this.normalizeProviderValue(job.provider)
-      const providerJobId = " ".join(String(job.provider_job_id || job.id || "").split())
+      const providerJobId = String(job.provider_job_id || job.id || "").split(/\s+/).filter(Boolean).join(" ")
       return {
         id: job.id || providerJobId || crypto.randomUUID(),
         saved_job_id: job.saved_job_id ?? null,
