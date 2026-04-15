@@ -1,357 +1,259 @@
-# UAH Backend - Local Development Guide
+# Backend Development Guide
 
-This guide explains how to run the FastAPI backend locally for testing purposes on your own machine. We use `docker-compose.local.yml` for a localhost-only database and optional localhost-only backend profile, then run either host `uvicorn` or backend passthrough mode for frontend integration.
+This is the current source of truth for running the FastAPI backend locally.
 
-**Note:** This setup will run the database on your local machine and will not touch or break the dev server infrastructure.
+Use it when you need:
 
-## Choose Your Local Mode
+- a host-run backend with a local Postgres container
+- a localhost-only Docker backend for frontend integration
+- queue-enabled local parsing and job-sync testing
 
-Use one of these paths depending on what you are testing:
+For repo-wide context, start with [../README.md](../README.md) and [../ARCHITECTURE.md](../ARCHITECTURE.md).
 
-- Host Development (recommended): database in `docker-compose.local.yml`, backend via `uvicorn`, frontend via `npm run dev:backend`.
-- Backend Compose Profile (optional): database + backend via `docker-compose.local.yml --profile backend`, frontend via `npm run dev:backend`.
-- Full Docker Dev Stack: all services via `docker-compose.yml` for VPN-networked dev environment behavior.
+## Choose A Local Mode
 
-This document is the source of truth for Host Development and is intentionally isolated from the remote dev and beta deployment workflows.
+| Mode | When to use it | Command surface |
+| --- | --- | --- |
+| Host-run backend | Best for backend iteration, debugging, and normal local API work | Python venv + `uvicorn` |
+| Compose backend profile | Best when you want a full localhost-only backend container | `docker-compose.local.yml --profile backend` |
+| Full dev stack | Best when you need the deployed dev shape | `docker-compose.yml` and `scripts/uah.sh` |
 
 ## Prerequisites
-- [Docker](https://www.docker.com/) installed and running.
-- [Python 3.10-3.13](https://www.python.org/downloads/) installed.
-- Optional for full local UI flow: [Node.js 20+](https://nodejs.org/).
 
-## Required Environment Variables for Local Backend
+- Docker running locally
+- Python 3.10-3.13
+- Node.js 20+ if you also want the frontend
+- A real repo-root `.env`
 
-The backend validates required secrets on startup. Set these before launching `uvicorn`:
+Runtime env files always live at the repository root as `.env`. Do not point the application directly at files in `env-examples/`.
+
+## Required Env For Startup
+
+At minimum, the backend must have:
 
 - `POSTGRES_PASSWORD`
 - `SECRET_KEY`
 - `SESSION_SECRET`
-- `POSTGRES_HOST=localhost` (required for host-run backend with local DB container)
+- `POSTGRES_HOST=localhost` for host-run backend with the local DB container
 
-Recommended: load these from the repository root `.env` file instead of typing placeholder values manually.
+Helpful related docs:
 
-### Optional: Dev Test Account Bootstrap
+- [../SERVER_ENV_CHECKLIST.md](../SERVER_ENV_CHECKLIST.md)
+- [../env-examples/README.md](../env-examples/README.md)
+- [../../env-examples/local/.env.example](../../env-examples/local/.env.example)
 
-The backend supports a dev/local-only seeded test account via env flags:
+### Identity compatibility notes
 
-- `DEV_AUTH_TEST_ACCOUNT_ENABLED`
-- `DEV_AUTH_TEST_PASSWORD`
-- `DEV_AUTH_TEST_EMAIL`
-- `DEV_AUTH_TEST_USERNAME` (legacy fallback only)
-- `DEV_AUTH_TEST_FIRST_NAME`
-- `DEV_AUTH_TEST_LAST_NAME`
-- `DEV_AUTH_TEST_IS_ADMIN`
-- `DEV_AUTH_TEST_ROTATE_PASSWORD`
+The backend is email-first today, but a few compatibility surfaces still exist:
 
-Behavior:
+- `username` remains in the schema and database as a compatibility mirror of email.
+- `DEV_AUTH_TEST_USERNAME` is legacy fallback only and should contain an email value if used.
+- `/api/account/change-username` is retained as a compatibility endpoint and returns `410 Gone`.
 
-- If `DEV_AUTH_TEST_ACCOUNT_ENABLED=true`, email and password must be set.
-- `DEV_AUTH_TEST_USERNAME` remains accepted as a temporary compatibility fallback identifier but should be treated as an email value.
-- This feature is blocked in beta/prod and should remain disabled there.
+## Option 1: Host-Run Backend
 
-You can generate secrets with:
+### 1. Start the local database
 
-```bash
-python -c "import secrets; print(secrets.token_hex(32))"
-```
-
-## Step 1: Start the Local Database
-
-From the **root of the repository** (where the `docker-compose.local.yml` file is located), start the PostgreSQL container:
+From the repo root:
 
 ```bash
 docker compose -f docker-compose.local.yml up -d db-local
 ```
 
-This will automatically create a database container running on `localhost:5432` with the correct default user, password, and database variables.
+### 2. Create and activate a virtual environment
 
-Optional: run local backend in Docker as well (still localhost-only):
+Windows PowerShell:
 
-```bash
-docker compose -f docker-compose.local.yml --profile backend up -d db-local backend-local
-```
-
-## Step 2: Set Up Python Virtual Environment
-
-Navigate into the `backend/` directory from a terminal and create a virtual environment:
-
-### On Windows (PowerShell/CMD):
 ```powershell
 cd backend
 py -3.12 -m venv venv
 .\venv\Scripts\activate
 python -V
-python -c "import sys; print(sys.executable)"
 pip -V
 ```
 
-If Python 3.12 is not installed, use Python 3.13 instead:
+macOS / Linux:
 
-```powershell
-py -3.13 -m venv venv
-```
-
-Important checks on Windows:
-
-- `pip -V` must point inside `...\\UAH\\backend\\venv\\...`
-- If `pip -V` points to a global Python path (for example Python 3.14 under AppData), venv activation did not apply correctly
-
-### On Mac/Linux:
 ```bash
 cd backend
 python3 -m venv venv
 source venv/bin/activate
 ```
 
-## Step 3: Install Dependencies
+### 3. Install dependencies
 
-With the virtual environment activated, install the backend libraries:
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-## Step 3.5: Apply Migrations
+### 4. Load repo-root `.env` values
 
-The jobs aggregation backend now uses Alembic for the local jobs catalog tables instead of relying on startup `create_all()` behavior.
+Windows PowerShell example:
 
-Run migrations from `backend/` after installing dependencies:
+```powershell
+Get-Content ..\.env | ForEach-Object {
+  if ($_ -match '^\s*#' -or $_ -match '^\s*$') { return }
+  $parts = $_.Split('=', 2)
+  if ($parts.Count -eq 2) {
+    [Environment]::SetEnvironmentVariable($parts[0], $parts[1], 'Process')
+  }
+}
+$env:POSTGRES_HOST = "localhost"
+```
+
+macOS / Linux example:
+
+```bash
+export POSTGRES_HOST=localhost
+```
+
+Use your real `.env` values. Do not swap in placeholder strings from the example files.
+
+### 5. Apply migrations
 
 ```bash
 alembic upgrade head
 ```
 
-If you are using host-run backend development, make sure `POSTGRES_HOST=localhost` is set in the current shell before running Alembic so it targets your local Postgres container.
-
-## Step 4: Run the Backend
-
-Before running the FastAPI server, you need to map PostgreSQL's host to `localhost` so Python knows where to find the database container you started in Step 1.
-
-Important: `POSTGRES_HOST=db` is for backend running inside Docker compose. For this host-run guide, use `POSTGRES_HOST=localhost`.
-
-Recommended on Windows (loads real values from repository root `.env`):
-
-```powershell
-# Run from backend/
-Get-Content ..\.env | ForEach-Object {
-	if ($_ -match '^\s*#' -or $_ -match '^\s*$') { return }
-	$parts = $_.Split('=',2)
-	if ($parts.Count -eq 2) {
-		[Environment]::SetEnvironmentVariable($parts[0], $parts[1], 'Process')
-	}
-}
-$env:POSTGRES_HOST="localhost"
-python -m uvicorn app.main:app --reload
-```
-
-Do not use placeholder values like `"your-db-password"` or `"your-generated-secret"` for local startup. Use your actual `.env` values.
-
-### On Windows (PowerShell):
-```powershell
-$env:POSTGRES_HOST="localhost"
-python -m uvicorn app.main:app --reload
-```
-
-### On Mac/Linux:
-```bash
-POSTGRES_PASSWORD="<actual-password>" \
-SECRET_KEY="<actual-secret-key>" \
-SESSION_SECRET="<actual-session-secret>" \
-POSTGRES_HOST=localhost \
-python -m uvicorn app.main:app --reload
-```
-
-## Step 5: Test the API
-
-Open your browser and navigate to the Swagger UI:
-- **API Sandbox:** [http://localhost:8000/docs](http://localhost:8000/docs)
-- **Health:** [http://localhost:8000/api/health](http://localhost:8000/api/health)
-- **API Root:** [http://localhost:8000/api/](http://localhost:8000/api/)
-
-Optional frontend dev flow (separate terminal from repository `frontend/` directory):
+### 6. Run the backend
 
 ```bash
+python -m uvicorn app.main:app --reload
+```
+
+### 7. Smoke test the local API
+
+```text
+http://localhost:8000/api/
+http://localhost:8000/api/health
+http://localhost:8000/api/status
+http://localhost:8000/docs
+```
+
+Notes:
+
+- `/docs`, `/redoc`, and `/openapi.json` are enabled only in `development`, `dev`, or `local` environments.
+- `/api/diagnostics` is admin-gated even in local/dev-style environments.
+
+## Option 2: Compose Backend Profile
+
+This keeps the backend inside Docker but still binds only to localhost.
+
+From the repo root:
+
+```bash
+docker compose -f docker-compose.local.yml --profile backend up -d db-local backend-local
+```
+
+Default local bindings:
+
+- DB: `127.0.0.1:5432`
+- Backend: `127.0.0.1:8000`
+
+This mode is a good match for `frontend` backend passthrough mode:
+
+```bash
+cd frontend
 npm install
 npm run dev:backend
 ```
 
-Then open [http://localhost:5173](http://localhost:5173). The Vite dev server proxies `/api`, `/docs`, and `/openapi.json` to `http://localhost:8000`.
+## Optional: Queue And Job Sync
 
-If you want frontend-only renderability without backend dependency, use `npm run dev` instead (mock mode).
+Resume parsing and local job-sync maintenance can run with Redis and Celery.
 
-## Optional: Run Job Sync Worker And Scheduler
+### Host-run worker path
 
-The local jobs catalog is refreshed by Celery worker/beat processes backed by Redis.
-
-Host-run example:
+Terminal 1, from repo root:
 
 ```bash
-# terminal 1, from repo root
 docker compose -f docker-compose.local.yml --profile jobs up -d redis-local
+```
 
-# terminal 2, from backend/
+Terminal 2, from `backend/`:
+
+```bash
 set REDIS_URL=redis://localhost:6379/0
 celery -A app.worker worker --loglevel=info --concurrency=2
+```
 
-# terminal 3, from backend/
+Terminal 3, from `backend/`:
+
+```bash
 set REDIS_URL=redis://localhost:6379/0
 celery -A app.worker beat --loglevel=info --scheduler celery.beat.PersistentScheduler
 ```
 
-Compose-only local path:
+### Compose-only jobs path
 
 ```bash
 docker compose -f docker-compose.local.yml --profile jobs up -d db-local redis-local celery-worker-local celery-beat-local
 ```
 
-Key env vars for jobs sync:
+### Common queue-related env knobs
 
-- `THE_MUSE_API_KEY`
-- `THE_MUSE_RATE_LIMIT_PER_HOUR`
-- `JOBS_URL_VALIDATION_ENABLED`
-- `JOBS_URL_VALIDATION_TIMEOUT_SECONDS`
-- `JOB_LINK_RECHECK_HOURS`
-- `JOB_SYNC_STALE_THRESHOLD_HOURS`
-- `JOB_SYNC_SOFT_DELETE_MISSES`
-- `JOB_SYNC_HARD_PURGE_DAYS`
-- `JOB_LINK_BACKFILL_BATCH_SIZE`
-- `JOB_LINK_BACKFILL_INTERVAL_SECONDS`
-- `JOB_COUNTRY_BACKFILL_BATCH_SIZE`
-- `JOB_COUNTRY_BACKFILL_INTERVAL_SECONDS`
-- `JOB_STALE_AUDIT_AGE_DAYS`
-- `JOB_STALE_AUDIT_ESCALATION_DAYS`
-- `JOB_STALE_AUDIT_BATCH_SIZE`
-- `JOB_STALE_AUDIT_INTERVAL_SECONDS`
-- `JOB_SYNC_CATEGORY_SCHEDULE_JSON`
+- `REDIS_ENABLED`
+- `REDIS_URL`
+- `PARSE_QUEUE_NAME*`
+- `PARSE_QUEUE_MAX_RETRIES*`
+- `PARSE_QUEUE_CONCURRENCY_*`
+- `JOB_SYNC_*`
+- `JOB_LINK_*`
+- `JOB_COUNTRY_BACKFILL_*`
 
-## Teardown
+See [../SERVER_ENV_CHECKLIST.md](../SERVER_ENV_CHECKLIST.md) for the categorized checklist.
 
-To shut down the backend, press `Ctrl + C` in the terminal where `uvicorn` is running.
+## Local Frontend Integration
 
-To shut down the local database:
-```bash
-# From the root of the repository
-docker compose -f docker-compose.local.yml down
-```
-
-## Full Docker Dev Stack (non-host mode)
-
-If you need to mirror the shared dev infrastructure behavior instead of host-run debugging, use `docker-compose.yml` from the repository root:
+When the backend is up locally:
 
 ```bash
-docker compose up -d --build
+cd frontend
+npm run dev:backend
 ```
 
-This mode expects the existing shared dev networking assumptions (including external infrastructure such as the VPN container). It is separate from the host-run local flow above.
+That Vite mode proxies:
 
-## Email Verification / Password Reset (Google Workspace)
+- `/api`
+- `/docs`
+- `/openapi.json`
 
-Right now, the API endpoints for email verification and password reset generate JWT tokens.
-
-- If `EMAILS_ENABLED=false`, the backend returns the token in the API response ("dev only") so you can test locally.
-- If `EMAILS_ENABLED=true`, the backend will email the token using SMTP.
-
-Dev token endpoints:
-
-- Password reset token: `POST /api/account/forgot-password`
-- Email verification token (authenticated): `POST /api/account/send-verification`
-
-### Option A (simplest): Gmail SMTP with an App Password
-
-1. Pick a real mailbox like `noreply@uahapp.com` (or `security@uahapp.com`).
-2. Enable 2‑Step Verification on that mailbox.
-3. Create an App Password (Google Account → Security → App passwords).
-4. Set these env vars for the backend:
-
-```powershell
-$env:EMAILS_ENABLED="true"
-$env:PUBLIC_APP_URL="https://uahapp.com"
-
-$env:SMTP_HOST="smtp.gmail.com"
-$env:SMTP_PORT="587"
-$env:SMTP_USE_TLS="true"
-$env:SMTP_USERNAME="noreply@uahapp.com"
-$env:SMTP_PASSWORD="<APP_PASSWORD>"
-$env:SMTP_FROM="UAH <noreply@uahapp.com>"
-```
-
-### Option B (production-friendly): Google Workspace SMTP relay
-
-If you don’t want to store a mailbox password on the server, set up an SMTP relay in Google Admin:
-
-- Admin console → Apps → Google Workspace → Gmail → Routing → SMTP relay service
-- Allow your backend server IP(s) to relay
-- Require TLS
-- Restrict sender domain to `uahapp.com`
-
-Then configure the backend with `SMTP_HOST="smtp-relay.gmail.com"` (port 587) and either:
-- no auth (IP allowlist), or
-- SMTP auth (depending on your relay configuration)
-
-### Deliverability (recommended)
-
-For best results, ensure your DNS has:
-- SPF including Google (`include:_spf.google.com`)
-- DKIM enabled in Google Admin and published to DNS
-- A basic DMARC record
+to the configured local backend origin. In plain mock mode (`npm run dev`), the frontend does not require the backend.
 
 ## Troubleshooting
 
-### Error: `[Errno 13] Permission denied: ...\\venv\\Scripts\\python.exe` or `[WinError 5] Access is denied`
+### Virtualenv activation did not apply on Windows
 
-This means files in `backend/venv` are locked by a running Python/Uvicorn process (or another tool scanning loaded `.pyd` files).
+Symptoms:
 
-Fix (fastest on Windows):
-
-1. Stop running backend processes (`Ctrl+C` in backend terminals).
-2. Create a fresh virtual environment in a new folder and use that instead of the locked one:
-
-```powershell
-cd backend
-py -3.12 -m venv .venv312
-.\.venv312\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-```
-
-Then run backend with the same environment-loading flow shown above.
-
-Optional cleanup later (when no process holds locks): remove old `venv`.
-
-### Error: `sqlalchemy.exc.OperationalError` / `password authentication failed for user "uah"`
-
-This means your running local Postgres volume has a different password than the one your backend is using.
-
-Fix (keeps current local volume data):
-
-1. Confirm your intended password in repository root `.env` (`POSTGRES_PASSWORD`).
-2. Update the DB role password inside the local container:
-
-```powershell
-docker exec uah-local-db psql -U uah -d uah_dev -c "ALTER USER uah WITH PASSWORD '<POSTGRES_PASSWORD from .env>';"
-```
-
-Alternative (fresh local DB):
-
-```powershell
-docker compose -f docker-compose.local.yml down
-docker compose -f docker-compose.local.yml up -d
-```
-
-### Error: `ModuleNotFoundError: No module named 'pydantic_core._pydantic_core'`
-
-This usually means the local venv is using an unsupported Python interpreter version for pinned dependency wheels (commonly Python 3.14).
+- `pip -V` points outside `backend/venv`
+- `python` resolves to a global interpreter
 
 Fix:
 
-1. Stop `uvicorn`.
-2. Remove the local venv.
-3. Recreate it with Python 3.13 (or 3.12) and reinstall dependencies.
+- reactivate the venv
+- verify `python -V`, `python -c "import sys; print(sys.executable)"`, and `pip -V`
 
-Windows example:
+### Database auth failures
 
-```powershell
-deactivate
-Remove-Item -Recurse -Force .\venv
-py -3.12 -m venv venv
-.\venv\Scripts\activate
-python -m pip install -r requirements.txt
-```
+Check:
+
+- repo-root `.env` contains the expected DB password
+- `POSTGRES_HOST=localhost` is set for the host-run path
+- the `db-local` container is healthy
+
+### Docs routes missing
+
+Check `ENVIRONMENT`. API docs are intentionally disabled outside `development`, `dev`, or `local`.
+
+### Diagnostics returns 401/403
+
+That is expected for non-admin sessions. `/api/status` is the public health-style route; `/api/diagnostics` is an admin-only troubleshooting surface.
+
+## Related Docs
+
+- Repo entrypoint: [../../README.md](../../README.md)
+- Architecture: [../ARCHITECTURE.md](../ARCHITECTURE.md)
+- Frontend guide: [../frontend/README.md](../frontend/README.md)
+- Extension guide: [../../uah-browser-extension/README.md](../../uah-browser-extension/README.md)
+- Historical backend implementation snapshots: [../archive/README.md](../archive/README.md)

@@ -1,45 +1,9 @@
 """
-API Routes
-==========
+Shared API routes that do not yet live in a narrower module.
 
-All /api/* endpoints live here.
-
-How routing works:
-  - This file defines an APIRouter that gets mounted in main.py.
-  - Each endpoint is a decorated async function.
-  - FastAPI automatically generates OpenAPI/Swagger docs from the
-    type hints and docstrings you provide.
-
-Where to add new routes:
-  - Simple CRUD routes can be added directly here.
-  - As the app grows, split into sub-routers:
-      app/api/v1/users.py
-      app/api/v1/jobs.py
-    and include them in main.py with version prefixes.
-
-Where business logic should go:
-  - Keep route handlers thin — they should validate input, call a
-    service function, and return the result.
-  - Business logic belongs in a services/ directory:
-      app/services/scraper.py    — web scraping with BeautifulSoup
-      app/services/jobs.py       — job application logic
-  - Import and call those services from route handlers.
-
-Where scraping services will live:
-  - app/services/scraper.py (create when needed)
-  - Use BeautifulSoup + httpx/requests for scraping.
-  - Keep scraping logic fully decoupled from route handlers.
-
-How DB session will be injected later:
-  - Import `get_db` from app.db.session
-  - Add it as a FastAPI dependency:
-      from fastapi import Depends
-      from app.db.session import get_db
-      from sqlalchemy.orm import Session
-
-      @router.get("/items")
-      async def list_items(db: Session = Depends(get_db)):
-          return db.query(Item).all()
+This file currently carries the jobs/geolocation/status/OAuth surfaces plus a
+few compatibility-heavy helpers. Purpose-specific routes such as auth, account,
+resume, applicant profile, Gmail, and apply sessions live in their own modules.
 """
 import asyncio
 from datetime import datetime, timezone

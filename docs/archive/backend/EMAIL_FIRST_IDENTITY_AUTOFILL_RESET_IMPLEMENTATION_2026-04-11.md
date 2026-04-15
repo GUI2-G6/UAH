@@ -1,3 +1,13 @@
+# Historical Snapshot: Email-First Identity + Autofill Scope Reset (2026-04-11)
+
+This document is an archival implementation note. It explains a specific migration window and should not be treated as the current setup guide.
+
+For current behavior, use:
+
+- [../../backend/README.md](../../backend/README.md)
+- [../../ARCHITECTURE.md](../../ARCHITECTURE.md)
+- [../../../uah-browser-extension/README.md](../../../uah-browser-extension/README.md)
+
 # Email-First Identity + Autofill Scope Reset (2026-04-11)
 
 ## What Changed

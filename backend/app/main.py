@@ -46,6 +46,8 @@ from app.models.apply_session import ApplySession, ApplySessionEvent
 
 logger = logging.getLogger(__name__)
 
+# These tables still rely on startup-time `create_all()` support for local/dev
+# compatibility. The newer jobs catalog schema is tracked through Alembic.
 LEGACY_STARTUP_TABLES = [
     User.__table__,
     SavedJob.__table__,
@@ -418,15 +420,18 @@ async def lifespan(app: FastAPI):
     init_engine()
     engine = get_engine()
 
-    # Create all tables on startup
+    # Local/dev startup still carries a small compatibility layer for older
+    # volumes so contributors can keep moving even when their schema lags.
     Base.metadata.create_all(bind=engine, tables=LEGACY_STARTUP_TABLES)
     _ensure_users_table_columns(engine)
     _ensure_resumes_table_columns(engine)
     _ensure_saved_jobs_table_columns(engine)
     _ensure_applicant_profiles_table_columns(engine)
+    # First normalize whatever already exists in the database.
     _enforce_email_first_identity_mirror()
     _bootstrap_admin_user_if_enabled()
     _ensure_dev_test_user_if_enabled()
+    # Then normalize any bootstrap-created rows using the same invariant.
     _enforce_email_first_identity_mirror()
 
     geo_dataset_status = ensure_city_dataset()
@@ -466,6 +471,8 @@ async def lifespan(app: FastAPI):
         logger.info("Redis parse queue worker stopped")
 
 _runtime_environment = (settings.ENVIRONMENT or os.getenv("ENVIRONMENT", "development")).strip().lower()
+# Generated API docs are a local/dev convenience. Beta-style environments
+# should expose the product surface, not a public OpenAPI explorer.
 _docs_enabled = _runtime_environment in {"development", "dev", "local"}
 
 app = FastAPI(

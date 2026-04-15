@@ -1,89 +1,172 @@
 # Server Environment Checklist
 
-This checklist captures environment variables that must exist on server-side `.env` files for reliable UAH operations.
+This checklist groups the server-side env keys that matter most for reliable UAH operation.
 
-## Required For Startup
+Treat it as an operator-facing summary. The detailed variable set still lives in:
+
+- `backend/app/core/config.py`
+- `env-examples/*/.env.example`
+- compose files and lifecycle scripts
+
+## Always Required
 
 - `POSTGRES_PASSWORD`
 - `SECRET_KEY`
 - `SESSION_SECRET`
+- `AUTH_NAMESPACE`
+- `SESSION_COOKIE_NAME`
 
-## Required For Core Auth and Search Features
+These are non-optional for backend startup in repo-managed environments.
+
+## Core Runtime Identity
+
+- `ENV`
+- `ENVIRONMENT`
+- `COMPOSE_PROJECT_NAME`
+- `PUBLIC_APP_URL`
+- `AUTH_COOKIE_NAME`
+- `SESSION_COOKIE_NAME`
+- `SESSION_COOKIE_SAMESITE`
+- `SESSION_COOKIE_PATH`
+- `SESSION_COOKIE_HTTPS_ONLY`
+
+These values control environment labeling, cookie naming, and whether generated API docs are enabled.
+
+## Dev / Local Test Account Controls
+
+Document these keys in templates even when disabled:
+
+- `DEV_AUTH_TEST_ACCOUNT_ENABLED`
+- `DEV_AUTH_TEST_EMAIL`
+- `DEV_AUTH_TEST_USERNAME` (legacy fallback only)
+- `DEV_AUTH_TEST_PASSWORD`
+- `DEV_AUTH_TEST_FIRST_NAME`
+- `DEV_AUTH_TEST_LAST_NAME`
+- `DEV_AUTH_TEST_IS_ADMIN`
+- `DEV_AUTH_TEST_IS_DEVELOPER`
+- `DEV_AUTH_TEST_ROTATE_PASSWORD`
+
+Policy:
+
+- local/dev may enable the seeded account intentionally
+- beta/prod should keep it disabled
+- if `DEV_AUTH_TEST_USERNAME` is used, it should contain an email value
+
+## OAuth And Account Integrations
+
+### Google sign-in
 
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - `GOOGLE_REDIRECT_URI`
-- `MUSE_API_KEY`
 
-## Dev Test Account Controls
-
-Document these keys in env templates even when disabled:
-
-- `DEV_AUTH_TEST_ACCOUNT_ENABLED`
-- `DEV_AUTH_TEST_PASSWORD`
-- `DEV_AUTH_TEST_EMAIL`
-- `DEV_AUTH_TEST_USERNAME` (legacy fallback only)
-- `DEV_AUTH_TEST_FIRST_NAME`
-- `DEV_AUTH_TEST_LAST_NAME`
-- `DEV_AUTH_TEST_IS_ADMIN`
-- `DEV_AUTH_TEST_ROTATE_PASSWORD`
-
-Environment policy:
-
-- Dev/local: may enable test account; when enabled, email and password must be set.
-- `DEV_AUTH_TEST_USERNAME` is legacy-only compatibility and should be an email value if used.
-- Beta/prod: must keep `DEV_AUTH_TEST_ACCOUNT_ENABLED=false`.
-
-## Required For Gmail Integration
+### Gmail integration
 
 - `GMAIL_CLIENT_ID`
 - `GMAIL_CLIENT_SECRET`
 - `GMAIL_REDIRECT_URI`
+- `GMAIL_TOKEN_ENCRYPTION_KEY`
 
-## Required For Beta Tunnel
+## Email Delivery
 
-- `CLOUDFLARE_BETA_TUNNEL_TOKEN` (beta only)
+- `EMAILS_ENABLED`
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_FROM`
+- `SMTP_USE_TLS`
+- `SMTP_USE_SSL`
+- `SMTP_TIMEOUT_SECONDS`
+- `SMTP_USERNAME` and `SMTP_PASSWORD` when the provider requires login
 
-## Required When Queue Is Enabled
+## Job Search Providers
 
-- `REDIS_ENABLED=true`
-- `REDIS_URL=redis://uah-redis:6379/0` (dev default)
+### Primary provider config
+
+- `MUSE_API_KEY`
+- `THE_MUSE_API_KEY`
+- `THE_MUSE_RATE_LIMIT_PER_HOUR`
+- `JOB_PROVIDER_CONTROLS_JSON`
+
+### Optional provider credentials / throttles
+
+- `FINDWORK_API_KEY`
+- `ADZUNA_APP_ID`
+- `ADZUNA_APP_KEY`
+- `JOOBLE_API_KEY`
+- `ARBEITNOW_INTER_REQUEST_DELAY`
+- `FINDWORK_INTER_REQUEST_DELAY`
+- `JOOBLE_INTER_REQUEST_DELAY`
+- `JOOBLE_PAGE_SIZE`
+- `ADZUNA_DAILY_REQUEST_BUDGET`
+
+## Search And Geolocation Controls
+
+- `MUSE_PAGE_CHASE_*`
+- `MUSE_ADAPTIVE_PAGE_CHASE_*`
+- `MUSE_LOCATION_PARAM_CAP`
+- `MUSE_LOCATION_INDEX_*`
+- `CONSTRAINT_COMPATIBILITY_ENABLED`
+- `CONSTRAINT_FILTER_MIN_CONFIDENCE`
+- `JOBS_DEFAULT_PAGE_SIZE`
+- `JOBS_CACHE_*`
+- `JOBS_URL_VALIDATION_*`
+- `JOB_LINK_RECHECK_HOURS`
+- `GEO_IP_PROVIDER`
+- `IPSTACK_API_KEY`
+- `GEOLOCATION_AUTO_BUILD_DATASET`
+- `GEOLOCATION_IGNORE_LOCAL_DATASET`
+- `GEOLOCATION_DATASET_TIMEOUT_SECONDS`
+- `NOMINATIM_USER_AGENT`
+
+## Queue And Background Work
+
+### Enablement and connection
+
+- `REDIS_ENABLED`
+- `REDIS_URL`
+- `REDIS_HOST_PORT`
+- `BETA_REDIS_URL`
+- `BETA_REDIS_HOST_PORT`
+
+### Queue naming and isolation
+
 - `PARSE_QUEUE_NAME`
 - `PARSE_QUEUE_NAME_CLOUD`
 - `PARSE_QUEUE_NAME_LOCAL`
 - `PARSE_QUEUE_NAME_RULES`
-- `BETA_REDIS_URL=redis://uah-beta-redis:6379/0` (beta compose override default)
 - `BETA_PARSE_QUEUE_NAME`
 - `BETA_PARSE_QUEUE_NAME_CLOUD`
 - `BETA_PARSE_QUEUE_NAME_LOCAL`
 - `BETA_PARSE_QUEUE_NAME_RULES`
-- `BETA_REDIS_HOST_PORT=6380` (when dev and beta run on the same host)
 
-## Recommended Parse Queue Controls
+### Retry / worker tuning
 
-- `PARSE_QUEUE_MAX_RETRIES`
-- `PARSE_QUEUE_MAX_RETRIES_CLOUD`
-- `PARSE_QUEUE_MAX_RETRIES_LOCAL`
-- `PARSE_QUEUE_MAX_RETRIES_RULES`
-- `PARSE_QUEUE_CONCURRENCY_CLOUD`
-- `PARSE_QUEUE_CONCURRENCY_LOCAL`
-- `PARSE_QUEUE_CONCURRENCY_RULES`
-- `PARSE_QUEUE_CLOUD_MIN_INTERVAL_SECONDS`
+- `PARSE_QUEUE_MAX_RETRIES*`
+- `PARSE_QUEUE_CONCURRENCY_*`
 - `PARSE_QUEUE_CLAIM_TTL_SECONDS`
 - `PARSE_QUEUE_SHUTDOWN_DRAIN_SECONDS`
 - `PARSE_QUEUE_STALE_JOB_MINUTES`
 
-## Optional Job Board URL Validation Controls
+### Job sync maintenance
 
-- `JOBS_URL_VALIDATION_ENABLED`
-- `JOBS_URL_VALIDATION_TIMEOUT_SECONDS`
-- `JOBS_URL_VALIDATION_MAX_CHECKS_PER_REQUEST`
-- `JOBS_URL_VALIDATION_CONCURRENCY`
-- `JOBS_URL_VALIDATION_BAD_TTL_SECONDS`
-- `JOBS_URL_VALIDATION_GOOD_TTL_SECONDS`
-- `JOBS_URL_VALIDATION_UNKNOWN_TTL_SECONDS`
+- `JOB_SYNC_ENABLED`
+- `JOB_SYNC_STALE_THRESHOLD_HOURS`
+- `JOB_SYNC_SOFT_DELETE_MISSES`
+- `JOB_SYNC_HARD_PURGE_DAYS`
+- `JOB_SYNC_DISPATCH_INTERVAL_SECONDS`
+- `JOB_SYNC_CLEANUP_INTERVAL_SECONDS`
+- `JOB_SYNC_LOCK_TTL_SECONDS`
+- `JOB_SYNC_CLEANUP_LOCK_TTL_SECONDS`
+- `JOB_SYNC_CATEGORY_SCHEDULE_JSON`
+- `JOB_SYNC_ENABLED_PROVIDERS_JSON`
+- `JOB_LINK_BACKFILL_*`
+- `JOB_DEDUP_BACKFILL_*`
+- `JOB_COUNTRY_BACKFILL_*`
+- `JOB_STALE_AUDIT_*`
 
-## Required For Cloud Parse
+## Resume Parsing
+
+### Cloud parsing
 
 - `ZAI_API_KEY`
 - `ZAI_OCR_URL`
@@ -91,23 +174,30 @@ Environment policy:
 - `ZAI_LLM_MODEL`
 - `ZAI_LLM_MAX_TOKENS`
 
-## Required When Local Pipeline Is Enabled
+### Local pipeline
 
-- `USE_LOCAL_PIPELINE=true`
+- `USE_LOCAL_PIPELINE`
 - `LOCAL_OCR_URL`
 - `LOCAL_OCR_MODEL`
 - `LOCAL_LLM_URL`
 - `LOCAL_LLM_MODEL`
+- `LOCAL_OCR_TIMEOUT`
+- `LOCAL_LLM_TIMEOUT`
+- `LOCAL_OCR_DPI`
 
-## Operational Notes
+## Beta-Specific Tunnel / Routing
 
-- Runtime script entrypoint is `scripts/uah.sh`.
-- `scripts/uah.sh` auto-detects environment context when env is omitted (path and root `.env` heuristics).
-- Lifecycle env requirement check entrypoint is `scripts/lib/env-feature-check.sh`.
-- Security audit entrypoint is `scripts/uah.sh <dev|beta|prod> audit`.
-- Dev cert sync hook is `scripts/dev/certbot-sync-dev-cert.sh`.
-- Password reset script reads `.env` from repo root by default and supports override via `UAH_ENV_FILE`.
-- Concurrent dev and beta on one host require distinct Redis host ports (`REDIS_HOST_PORT=6379`, `BETA_REDIS_HOST_PORT=6380`).
-- Beta queue defaults should use the `uah:beta:*` namespace to avoid cross-environment key overlap.
-- `scripts/uah.sh` runs env checks during startup preflight and warns after sync operations.
-- Debug operations are first-class under `scripts/uah.sh <env> debug ...` for connectivity, logs, queue, network, database, and dev user admin tasks.
+- `DEV_DOMAIN`
+- `CLOUDFLARE_BETA_TUNNEL_TOKEN`
+- `DEV_TLS_ENABLED`
+- `DEV_TLS_CERT_PATH`
+- `DEV_TLS_KEY_PATH`
+
+Current beta deployments use the `cloudflared` tunnel override, so the tunnel token is part of the repo-managed beta shape.
+
+## Operational Reminders
+
+- `scripts/uah.sh` is the canonical lifecycle entrypoint.
+- `scripts/lib/env-feature-check.sh` is the lifecycle-side env validation helper.
+- `bash scripts/uah.sh <env> audit ...` is the canonical security audit entrypoint.
+- Env templates should stay aligned with `backend/app/core/config.py` and the compose files.

@@ -41,6 +41,8 @@ export function sanitizeTokenMap(tokenMap = {}) {
 }
 
 export function buildProfileAutofillSource(profile = {}) {
+  // Prefer an explicitly curated token map when one exists. Falling back to
+  // flattened canonical data keeps older or lightly managed profiles usable.
   const baseTokenMap = sanitizeTokenMap(
     isObject(profile.token_map) && Object.keys(profile.token_map).length
       ? profile.token_map

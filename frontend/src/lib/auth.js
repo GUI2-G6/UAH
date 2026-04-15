@@ -42,12 +42,16 @@ function resolveFrontendAuthMode() {
 const DEFAULT_NAMESPACE = inferDefaultNamespace()
 const AUTH_NAMESPACE = normalizeNamespace(import.meta?.env?.VITE_AUTH_NAMESPACE) || DEFAULT_NAMESPACE
 const FRONTEND_AUTH_MODE = resolveFrontendAuthMode()
+// In backend mode the browser should trust the backend's HttpOnly cookie flow.
+// Only mock mode keeps an access token in local storage for isolated UI work.
 const SHOULD_PERSIST_ACCESS_TOKEN = FRONTEND_AUTH_MODE === 'mock'
 
 const LEGACY_ACCESS_TOKEN_KEY = 'uah_access_token'
 const LEGACY_CURRENT_USER_KEY = 'uah_current_user'
 const ACCESS_TOKEN_KEY = `uah_access_token:${AUTH_NAMESPACE}`
 const CURRENT_USER_KEY = `uah_current_user:${AUTH_NAMESPACE}`
+// Limit legacy-key migration to loopback development so deployed environments
+// do not unexpectedly inherit stale local-storage auth from older builds.
 const SHOULD_MIGRATE_LEGACY_KEYS = isLoopbackHost(window?.location?.hostname)
 const USER_SYNC_TTL_MS = 15_000
 
