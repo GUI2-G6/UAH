@@ -135,7 +135,20 @@ class ParseQueueIsolationTests(unittest.IsolatedAsyncioTestCase):
 
         with patch.object(parse_job_runner, "SessionLocal", return_value=fake_db), \
              patch.object(parse_job_runner, "get_parse_input_text", AsyncMock(return_value={"ok": True, "text": "resume markdown"})), \
-             patch.object(parse_job_runner, "parse_markdown_by_method", AsyncMock(return_value={"parsed": "ignored"})), \
+             patch.object(
+                 parse_job_runner,
+                 "parse_markdown_with_fallback",
+                 AsyncMock(
+                     return_value={
+                         "ok": True,
+                         "structured": {"parsed": "ignored"},
+                         "requested_method": "local",
+                         "effective_method": "local",
+                         "fallback_used": False,
+                         "attempted_methods": ["local"],
+                     }
+                 ),
+             ), \
              patch.object(parse_job_runner, "validate_and_fix", return_value=structured):
             ok = await parse_job_runner.run_parse_job(2)
 
@@ -152,6 +165,76 @@ class ParseQueueIsolationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(resume.review_updated_at)
         self.assertEqual(job.result_summary["portal_ready"], True)
         self.assertEqual(job.result_summary["skills_count"], 1)
+
+    async def test_run_parse_job_records_cloud_fallback_success_metadata(self):
+        structured = {
+            "personal_info": {"first_name": "Fallback", "last_name": "Success", "email": "fallback@example.com"},
+            "_validation": {
+                "portal_ready": True,
+                "has_name": True,
+                "has_email": True,
+                "education_count": 0,
+                "experience_count": 0,
+                "skills_count": 0,
+                "missing_required": [],
+            },
+        }
+        job = SimpleNamespace(
+            id=3,
+            status="queued",
+            resume_id=13,
+            user_id=200,
+            method="cloud",
+            error_code=None,
+            error_message=None,
+            progress_stage=None,
+            result_summary=None,
+        )
+        resume = SimpleNamespace(
+            id=13,
+            user_id=200,
+            pdf_data=b"pdf",
+            raw_markdown=None,
+            raw_markdown_source=None,
+            raw_markdown_method=None,
+            raw_markdown_updated_at=None,
+            structured_data=None,
+            parse_method=None,
+            portal_ready=False,
+            review_status=None,
+            review_draft=None,
+            review_updated_at=None,
+        )
+        fake_db = _FakeSession(job=job, resume=resume)
+
+        with patch.object(parse_job_runner, "SessionLocal", return_value=fake_db), \
+             patch.object(parse_job_runner, "get_parse_input_text", AsyncMock(return_value={"ok": True, "text": "resume markdown"})), \
+             patch.object(
+                 parse_job_runner,
+                 "parse_markdown_with_fallback",
+                 AsyncMock(
+                     return_value={
+                         "ok": True,
+                         "structured": {"parsed": "ignored"},
+                         "requested_method": "cloud",
+                         "effective_method": "local",
+                         "fallback_used": True,
+                         "fallback_reason_code": "LLM_EMPTY_RESPONSE",
+                         "fallback_reason_message": "AI returned no structured data. Try again or use rules-based parsing.",
+                         "attempted_methods": ["cloud", "local"],
+                     }
+                 ),
+             ), \
+             patch.object(parse_job_runner, "validate_and_fix", return_value=structured):
+            ok = await parse_job_runner.run_parse_job(3)
+
+        self.assertTrue(ok)
+        self.assertEqual(job.status, "success")
+        self.assertEqual(resume.parse_method, "local")
+        self.assertEqual(job.result_summary["requested_method"], "cloud")
+        self.assertEqual(job.result_summary["effective_method"], "local")
+        self.assertEqual(job.result_summary["fallback_used"], True)
+        self.assertEqual(job.result_summary["fallback_reason_code"], "LLM_EMPTY_RESPONSE")
 
 
 if __name__ == "__main__":

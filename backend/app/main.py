@@ -181,12 +181,15 @@ def _ensure_saved_jobs_table_columns(engine) -> None:
         if "saved_jobs" not in inspector.get_table_names():
             return
 
-        existing = {col["name"] for col in inspector.get_columns("saved_jobs")}
+        columns = inspector.get_columns("saved_jobs")
+        existing = {col["name"] for col in columns}
+        column_by_name = {col["name"]: col for col in columns}
 
         ddl_statements: list[str] = []
         required_columns: dict[str, str] = {
             "provider": "VARCHAR(50)",
             "provider_job_id": "VARCHAR(255)",
+            "url": "TEXT DEFAULT ''",
             "created_at": "TIMESTAMPTZ DEFAULT now()",
         }
 
@@ -196,6 +199,14 @@ def _ensure_saved_jobs_table_columns(engine) -> None:
             ddl_statements.append(
                 f"ALTER TABLE saved_jobs ADD COLUMN IF NOT EXISTS {column_name} {column_ddl}"
             )
+
+        job_id_column = column_by_name.get("job_id")
+        if job_id_column and not bool(job_id_column.get("nullable", True)):
+            ddl_statements.append("ALTER TABLE saved_jobs ALTER COLUMN job_id DROP NOT NULL")
+
+        url_column = column_by_name.get("url")
+        if url_column and "text" not in str(url_column.get("type") or "").lower():
+            ddl_statements.append("ALTER TABLE saved_jobs ALTER COLUMN url TYPE TEXT")
 
         if ddl_statements:
             with engine.begin() as conn:

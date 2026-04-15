@@ -18,6 +18,11 @@ LOCAL_PIPELINE_PROBE_TIMEOUT_SECONDS = 1.5
 _CLOUD_DEGRADED_UNTIL: datetime | None = None
 _CLOUD_DEGRADED_MESSAGE: str | None = None
 _CLOUD_DEGRADED_TTL_SECONDS = 300
+_CLOUD_PARSE_UNRELIABLE_UNTIL: datetime | None = None
+_CLOUD_PARSE_UNRELIABLE_MESSAGE: str | None = None
+_CLOUD_PARSE_UNRELIABLE_CODE: str | None = None
+_CLOUD_PARSE_UNRELIABLE_CATEGORY: str | None = None
+_CLOUD_PARSE_UNRELIABLE_TTL_SECONDS = 900
 _TRANSIENT_CLOUD_PARSE_ERROR_CODES = {
     "CLOUD_OCR_RATE_LIMITED",
     "CLOUD_OCR_PROVIDER_BUSY",
@@ -262,12 +267,37 @@ def _clear_cloud_degraded() -> None:
     _CLOUD_DEGRADED_MESSAGE = None
 
 
+def _set_cloud_parse_unreliable(error_code: str | None, message: str | None, category: str = "parse_content") -> None:
+    global _CLOUD_PARSE_UNRELIABLE_UNTIL, _CLOUD_PARSE_UNRELIABLE_MESSAGE
+    global _CLOUD_PARSE_UNRELIABLE_CODE, _CLOUD_PARSE_UNRELIABLE_CATEGORY
+    _CLOUD_PARSE_UNRELIABLE_UNTIL = _now_utc() + timedelta(seconds=_CLOUD_PARSE_UNRELIABLE_TTL_SECONDS)
+    _CLOUD_PARSE_UNRELIABLE_MESSAGE = (message or "").strip() or "Cloud AI returned an unusable parse result."
+    _CLOUD_PARSE_UNRELIABLE_CODE = (error_code or "").strip() or None
+    _CLOUD_PARSE_UNRELIABLE_CATEGORY = (category or "").strip() or "parse_content"
+
+
+def _clear_cloud_parse_unreliable() -> None:
+    global _CLOUD_PARSE_UNRELIABLE_UNTIL, _CLOUD_PARSE_UNRELIABLE_MESSAGE
+    global _CLOUD_PARSE_UNRELIABLE_CODE, _CLOUD_PARSE_UNRELIABLE_CATEGORY
+    _CLOUD_PARSE_UNRELIABLE_UNTIL = None
+    _CLOUD_PARSE_UNRELIABLE_MESSAGE = None
+    _CLOUD_PARSE_UNRELIABLE_CODE = None
+    _CLOUD_PARSE_UNRELIABLE_CATEGORY = None
+
+
 def get_cloud_provider_availability() -> dict:
-    degraded = bool(_CLOUD_DEGRADED_UNTIL and _CLOUD_DEGRADED_UNTIL > _now_utc())
+    now = _now_utc()
+    degraded = bool(_CLOUD_DEGRADED_UNTIL and _CLOUD_DEGRADED_UNTIL > now)
+    unreliable = bool(_CLOUD_PARSE_UNRELIABLE_UNTIL and _CLOUD_PARSE_UNRELIABLE_UNTIL > now)
+    message = _CLOUD_DEGRADED_MESSAGE if degraded else (_CLOUD_PARSE_UNRELIABLE_MESSAGE if unreliable else None)
     return {
         "available": True,
-        "degraded": degraded,
-        "message": _CLOUD_DEGRADED_MESSAGE if degraded else None,
+        "reachable": True,
+        "degraded": degraded or unreliable,
+        "unreliable": unreliable,
+        "message": message,
+        "last_error_code": _CLOUD_PARSE_UNRELIABLE_CODE if unreliable else None,
+        "last_failure_category": _CLOUD_PARSE_UNRELIABLE_CATEGORY if unreliable else None,
     }
 
 
@@ -499,12 +529,20 @@ async def categorize_with_llm(md_text: str) -> dict:
                         if json_match:
                             raw_content = json_match.group(0)
                         else:
+                            _set_cloud_parse_unreliable(
+                                "LLM_EMPTY_RESPONSE",
+                                "Cloud AI returned no structured data. UAH can fall back to another parser.",
+                            )
                             return {
                                 "ok": False,
                                 "error_code": "LLM_EMPTY_RESPONSE",
                                 "message": "AI returned no structured data. Try again or use rules-based parsing.",
                             }
                     else:
+                        _set_cloud_parse_unreliable(
+                            "LLM_EMPTY_RESPONSE",
+                            "Cloud AI returned no structured data. UAH can fall back to another parser.",
+                        )
                         return {
                             "ok": False,
                             "error_code": "LLM_EMPTY_RESPONSE",
@@ -522,9 +560,15 @@ async def categorize_with_llm(md_text: str) -> dict:
 
                 try:
                     _clear_cloud_degraded()
+                    _clear_cloud_parse_unreliable()
                     return json.loads(cleaned)
                 except json.JSONDecodeError:
                     logger.error("LLM returned invalid JSON: %s", cleaned[:200])
+                    _set_cloud_parse_unreliable(
+                        "LLM_INVALID_JSON",
+                        "Cloud AI returned malformed structured data. UAH can fall back to another parser.",
+                        category="parse_format",
+                    )
                     return {
                         "ok": False,
                         "error_code": "LLM_INVALID_JSON",
@@ -897,6 +941,89 @@ async def parse_markdown_by_method(md_text: str, method: str) -> dict:
     if normalized == "local":
         return await categorize_with_local_llm(md_text)
     return await categorize_with_llm(md_text)
+
+
+async def parse_markdown_with_fallback(md_text: str, method: str) -> dict:
+    """Parse markdown and optionally fall back when cloud returns an empty structured response."""
+    requested_method = normalize_parse_method(method)
+    if requested_method is None:
+        return {
+            "ok": False,
+            "error_code": "PARSE_METHOD_INVALID",
+            "message": f"Method must be one of: {', '.join(SUPPORTED_PARSE_METHODS)}",
+            "requested_method": None,
+            "effective_method": None,
+            "fallback_used": False,
+            "attempted_methods": [],
+        }
+
+    attempted_methods = [requested_method]
+    structured = await parse_markdown_by_method(md_text, requested_method)
+    if not (isinstance(structured, dict) and structured.get("ok") is False):
+        return {
+            "ok": True,
+            "structured": structured,
+            "requested_method": requested_method,
+            "effective_method": requested_method,
+            "fallback_used": False,
+            "attempted_methods": attempted_methods,
+        }
+
+    error_code = structured.get("error_code", "PARSE_FAILED")
+    message = structured.get("message", "Parsing failed")
+    if requested_method != "cloud" or error_code != "LLM_EMPTY_RESPONSE":
+        return {
+            "ok": False,
+            "error_code": error_code,
+            "message": message,
+            "requested_method": requested_method,
+            "effective_method": requested_method,
+            "fallback_used": False,
+            "attempted_methods": attempted_methods,
+        }
+
+    fallback_failures: list[dict[str, str]] = []
+    for fallback_method in ("local", "rules"):
+        attempted_methods.append(fallback_method)
+        fallback_result = await parse_markdown_by_method(md_text, fallback_method)
+        if not (isinstance(fallback_result, dict) and fallback_result.get("ok") is False):
+            return {
+                "ok": True,
+                "structured": fallback_result,
+                "requested_method": requested_method,
+                "effective_method": fallback_method,
+                "fallback_used": True,
+                "fallback_reason_code": error_code,
+                "fallback_reason_message": message,
+                "attempted_methods": attempted_methods,
+            }
+
+        fallback_failures.append(
+            {
+                "method": fallback_method,
+                "error_code": fallback_result.get("error_code", "PARSE_FAILED"),
+                "message": fallback_result.get("message", "Parsing failed"),
+            }
+        )
+
+    failure_summary = "; ".join(
+        f"{entry['method']}: {entry['error_code']}" for entry in fallback_failures
+    )
+    return {
+        "ok": False,
+        "error_code": error_code,
+        "message": (
+            "Cloud AI returned no structured data, and fallback parsing also failed."
+            + (f" Fallbacks tried: {failure_summary}." if failure_summary else "")
+        ),
+        "requested_method": requested_method,
+        "effective_method": requested_method,
+        "fallback_used": True,
+        "fallback_reason_code": error_code,
+        "fallback_reason_message": message,
+        "attempted_methods": attempted_methods,
+        "fallback_failures": fallback_failures,
+    }
 
 
 def _method_input_message(method: str) -> str:

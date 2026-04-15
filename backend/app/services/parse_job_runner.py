@@ -6,7 +6,7 @@ from app.models.parse_job import ParseJob
 from app.models.resume import Resume
 from app.services.resume_parser import (
     normalize_parse_method,
-    parse_markdown_by_method,
+    parse_markdown_with_fallback,
     validate_and_fix,
     get_parse_input_text,
 )
@@ -122,16 +122,19 @@ async def run_parse_job(job_id: int) -> bool:
         job.progress_stage = "Running parser..."
         db.commit()
 
-        structured = await parse_markdown_by_method(parse_text, method)
-
-        if isinstance(structured, dict) and structured.get("ok") is False:
+        parse_result = await parse_markdown_with_fallback(parse_text, method)
+        if parse_result.get("ok") is False:
             _fail_job(
                 job,
-                structured.get("error_code", "PARSE_FAILED"),
-                structured.get("message", "Parsing failed"),
+                parse_result.get("error_code", "PARSE_FAILED"),
+                parse_result.get("message", "Parsing failed"),
             )
             db.commit()
             return False
+
+        structured = parse_result.get("structured")
+        effective_method = parse_result.get("effective_method") or method
+        fallback_used = bool(parse_result.get("fallback_used"))
 
         if structured is None:
             _fail_job(job, "PARSE_EMPTY", "Parsing produced no results.")
@@ -149,7 +152,7 @@ async def run_parse_job(job_id: int) -> bool:
         structured = validate_and_fix(structured)
 
         resume.structured_data = structured
-        resume.parse_method = method
+        resume.parse_method = effective_method
         resume.portal_ready = structured.get("_validation", {}).get("portal_ready", False)
         resume.review_status = "pending"
         resume.review_draft = structured
@@ -157,7 +160,10 @@ async def run_parse_job(job_id: int) -> bool:
 
         validation = structured.get("_validation", {})
         job.status = "success"
-        job.progress_stage = "Complete"
+        if fallback_used:
+            job.progress_stage = f"Complete (fallback to {effective_method})"
+        else:
+            job.progress_stage = "Complete"
         job.error_code = None
         job.error_message = None
         job.result_summary = {
@@ -169,6 +175,12 @@ async def run_parse_job(job_id: int) -> bool:
             "skills_count": validation.get("skills_count", 0),
             "missing_count": len(validation.get("missing_required", [])),
             "missing_required": validation.get("missing_required", []),
+            "requested_method": method,
+            "effective_method": effective_method,
+            "fallback_used": fallback_used,
+            "fallback_reason_code": parse_result.get("fallback_reason_code"),
+            "fallback_reason_message": parse_result.get("fallback_reason_message"),
+            "attempted_methods": parse_result.get("attempted_methods", [method]),
         }
         db.commit()
         return True

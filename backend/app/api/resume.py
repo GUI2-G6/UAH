@@ -33,7 +33,7 @@ from app.services.parse_queue import (
 from app.services.resume_parser import (
     get_pipeline_availability,
     normalize_parse_method,
-    parse_markdown_by_method,
+    parse_markdown_with_fallback,
     validate_and_fix,
     get_parse_input_text,
     check_portal_required,
@@ -273,7 +273,7 @@ async def _build_queue_status_payload(
             "llm_model": settings.ZAI_LLM_MODEL,
             "provider_queue": "none",
             "provider_concurrency": "limited",
-            "description": "Cloud pipeline uses web ZAI OCR and GLM-4.7-Flash; provider throughput is concurrency-limited and does not expose a server-side waiting queue.",
+            "description": "Cloud pipeline uses web ZAI OCR and GLM-4.7-Flash; provider reachability and parse reliability are tracked separately so empty or malformed parses can surface as degraded even when the provider is reachable.",
         },
         "current_user": {
             "active_jobs": len(user_active_jobs),
@@ -440,25 +440,27 @@ async def parse_resume(
     db.commit()
     db.refresh(resume)
 
-    structured = await parse_markdown_by_method(parse_text, method)
+    parse_result = await parse_markdown_with_fallback(parse_text, method)
 
-    if structured is None:
-        raise HTTPException(status_code=500, detail="Parsing failed")
-
-    # Handle structured error returns from parser functions
-    if isinstance(structured, dict) and structured.get("ok") is False:
-        error_code = structured.get("error_code", "PARSE_FAILED")
-        message = structured.get("message", "Parsing failed")
+    if parse_result.get("ok") is False:
+        error_code = parse_result.get("error_code", "PARSE_FAILED")
+        message = parse_result.get("message", "Parsing failed")
         status = 504 if "TIMEOUT" in error_code else 502
         raise HTTPException(
             status_code=status,
             detail={"code": error_code, "message": message},
         )
 
+    structured = parse_result.get("structured")
+    effective_method = parse_result.get("effective_method") or method
+
+    if structured is None:
+        raise HTTPException(status_code=500, detail="Parsing failed")
+
     structured = validate_and_fix(structured)
 
     resume.structured_data = structured
-    resume.parse_method = method
+    resume.parse_method = effective_method
     resume.portal_ready = structured.get("_validation", {}).get("portal_ready", False)
     _set_review_draft(resume, structured, status="pending")
     db.commit()

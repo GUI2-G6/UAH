@@ -349,6 +349,53 @@ class ResumePipelineContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["error_code"], "CLOUD_LLM_QUOTA_EXHAUSTED")
         self.assertEqual(len(request_calls), 1)
 
+    async def test_cloud_llm_empty_response_marks_cloud_unreliable(self):
+        response_200 = httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": ""}}]},
+        )
+
+        class _FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            async def post(self, _url, json=None, headers=None):
+                return response_200
+
+        with patch.object(resume_parser.httpx, "AsyncClient", return_value=_FakeClient()):
+            result = await resume_parser.categorize_with_llm("resume markdown")
+            availability = resume_parser.get_cloud_provider_availability()
+
+        self.assertEqual(result["error_code"], "LLM_EMPTY_RESPONSE")
+        self.assertEqual(availability["available"], True)
+        self.assertEqual(availability["unreliable"], True)
+        self.assertEqual(availability["last_error_code"], "LLM_EMPTY_RESPONSE")
+
+    async def test_parse_markdown_with_fallback_uses_local_after_cloud_empty_response(self):
+        with patch.object(
+            resume_parser,
+            "parse_markdown_by_method",
+            AsyncMock(
+                side_effect=[
+                    {
+                        "ok": False,
+                        "error_code": "LLM_EMPTY_RESPONSE",
+                        "message": "AI returned no structured data. Try again or use rules-based parsing.",
+                    },
+                    {"parsed": "local"},
+                ]
+            ),
+        ):
+            result = await resume_parser.parse_markdown_with_fallback("resume markdown", "cloud")
+
+        self.assertEqual(result["ok"], True)
+        self.assertEqual(result["effective_method"], "local")
+        self.assertEqual(result["fallback_used"], True)
+        self.assertEqual(result["attempted_methods"], ["cloud", "local"])
+
     def test_update_review_draft_allows_persisted_review_draft_without_structured_data(self):
         resume = SimpleNamespace(
             id=101,

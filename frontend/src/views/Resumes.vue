@@ -2050,7 +2050,14 @@ export default {
 
                 if (job.status === 'success') {
                     const completedResumeId = this.parseResumeId
-                    showToast('Parse complete. Review the extracted data before filling a profile.', 'success')
+                    const effectiveMethod = String(job?.result_summary?.effective_method || '').trim().toLowerCase()
+                    const fallbackUsed = job?.result_summary?.fallback_used === true
+                    const effectiveMethodLabel = this.parseMethodDisplayName(effectiveMethod)
+                    if (fallbackUsed && effectiveMethodLabel) {
+                        showToast(`Cloud parse recovered via ${effectiveMethodLabel}. Review the extracted data before filling a profile.`, 'success')
+                    } else {
+                        showToast('Parse complete. Review the extracted data before filling a profile.', 'success')
+                    }
                     this.resetUploadFlow()
                     await this.loadResumes()
                     await this.loadQueueStatus()
@@ -2556,6 +2563,9 @@ export default {
         describeParseFailure(job) {
             const code = String(job?.error_code || '').trim()
             const message = String(job?.error_message || '').trim()
+            if (code === 'LLM_EMPTY_RESPONSE') {
+                return `[${code}] Cloud AI was reachable, but it returned no structured data for this resume. Retry, or switch pipelines if this keeps happening.`
+            }
             if (code === 'CLOUD_LLM_QUOTA_EXHAUSTED' || code === 'CLOUD_OCR_QUOTA_EXHAUSTED') {
                 return `[${code}] Cloud AI quota or usage limits are exhausted right now. Please try again later.`
             }
@@ -2563,6 +2573,13 @@ export default {
                 return `[${code}] Cloud AI capacity is temporarily constrained. UAH retried with backoff and still needs another attempt later.`
             }
             return code ? `[${code}] ${message || 'Parsing failed.'}` : (message || 'Parsing failed.')
+        },
+        parseMethodDisplayName(method) {
+            const normalized = String(method || '').trim().toLowerCase()
+            if (normalized === 'cloud') return 'Cloud AI'
+            if (normalized === 'local') return 'Local AI'
+            if (normalized === 'rules') return 'Rules-based parsing'
+            return ''
         },
     },
 }

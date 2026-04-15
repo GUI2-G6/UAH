@@ -50,5 +50,5 @@ class SavedJob(Base):
     provider_job_id = Column(String(255), nullable=True, index=True)
     title = Column(String(255), nullable=False)
     company = Column(String(255), nullable=False)
-    url = Column(String(255), nullable=False)
+    url = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)

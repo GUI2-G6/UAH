@@ -20,19 +20,11 @@ Jobs by Adzuna validate url works on site
 
 little mini player kinda thing that remains if you change pages while parsing a resume so you dont have to wait
 
-make widen search work by increasing the radius of valid job locations by like increments of 15-25miles/kilos, idk
-
-add an option for all countries ofc
-
 
 Dedup hash collisions are back — but this time they're on UPDATE statements, not INSERT. That's different from before. The agent's fix for upsert_job apparently handles the insert path, but the link health backfill is also writing dedup_hash during updates and hitting the same collision pattern. Job fb275fff hammered the same hash 4 times in a row within a second. This needs to be flagged to the agent — the dedup collision guard needs to cover the update path too, not just inserts.
 Unexpected EOF on client connection with an open transaction at 12:44:05 — a backend worker dropped its connection mid-transaction. Postgres cleaned it up fine but it's a sign of instability somewhere, possibly a Celery worker getting killed or timing out during a long operation.
 Checkpoints are taking a long time — the one at 12:16 took 269 seconds to write 48% of shared buffers. That's a lot of write pressure, likely from the sync churning through 27k jobs. Should settle down once the initial backfill activity calms.
 Nothing is on fire, but flag the dedup UPDATE collision to the agent — it's the same root bug in a different code path.
-
-
-
-still need to fix country display. why dont we also just check to see if the city refered to exists in that country or something idk, context clues in listings could also be utilized perhaps
 
 allow multi select of countrys for filters
 
@@ -74,4 +66,8 @@ iincrease the autofill capability to handle stuff
 
 job listings are a bit squished
 
-fix saved jobs
+deploy backend/frontend changes for saved jobs + beta CSP so duplicate saves stop 500ing and Google Fonts / Cloudflare Insights stop being blocked on beta
+
+beta verify:
+saved jobs save/unsave works end to end after deploy
+beta CSP header matches nginx config with explicit style-src-elem/script-src-elem

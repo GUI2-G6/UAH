@@ -3494,12 +3494,18 @@ async def diagnostics(
     for method_key in ("cloud", "local", "rules"):
         method_info = method_availability.get(method_key) or {}
         method_available = bool(method_info.get("available"))
-        method_status = "healthy" if method_available else "degraded"
+        method_degraded = bool(method_info.get("degraded")) or bool(method_info.get("unreliable"))
+        method_status = "healthy" if method_available and not method_degraded else "degraded"
         parse_method_statuses.append(method_status)
         parse_method_entries[method_key] = {
             "available": method_available,
+            "reachable": method_info.get("reachable"),
+            "degraded": method_info.get("degraded", False),
+            "unreliable": method_info.get("unreliable", False),
             "status": method_status,
             "message": method_info.get("message") or parse_method_messages[method_key],
+            "last_error_code": method_info.get("last_error_code"),
+            "last_failure_category": method_info.get("last_failure_category"),
         }
 
     result["services"]["parse_methods"] = {
