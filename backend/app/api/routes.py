@@ -46,6 +46,7 @@ from datetime import datetime, timezone
 import hashlib
 import ipaddress
 import json
+import logging
 import os
 import secrets
 import httpx
@@ -55,6 +56,7 @@ from urllib.parse import urlencode, urlparse
 from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_admin_user
 from app.models.user import User, SavedJob
@@ -90,6 +92,7 @@ from app.models.muse_location import MuseSupportedLocation
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
@@ -1570,6 +1573,49 @@ def _normalize_saved_job_legacy_id(raw_value: str | None) -> int | None:
     return int(normalized)
 
 
+def _find_existing_saved_job(
+    db: Session,
+    *,
+    user_id: int,
+    provider: str | None,
+    provider_job_id: str,
+    legacy_job_id: int | None,
+) -> SavedJob | None:
+    existing_job = None
+    if provider and provider_job_id:
+        existing_job = (
+            db.query(SavedJob)
+            .filter(
+                SavedJob.user_id == user_id,
+                SavedJob.provider == provider,
+                SavedJob.provider_job_id == provider_job_id,
+            )
+            .first()
+        )
+
+    if existing_job is None and legacy_job_id is not None:
+        existing_job = (
+            db.query(SavedJob)
+            .filter(
+                SavedJob.user_id == user_id,
+                SavedJob.job_id == legacy_job_id,
+            )
+            .first()
+        )
+
+    if existing_job is None and not provider and provider_job_id:
+        existing_job = (
+            db.query(SavedJob)
+            .filter(
+                SavedJob.user_id == user_id,
+                SavedJob.provider_job_id == provider_job_id,
+            )
+            .first()
+        )
+
+    return existing_job
+
+
 def _serialize_saved_job_row(saved_job: SavedJob, db: Session) -> dict[str, Any]:
     from app.models.job import Job
     from app.services.job_search import _serialize_job as serialize_local_job
@@ -2767,38 +2813,13 @@ async def save_job(
     """
     normalized_provider_job_id = " ".join(str(job_data.provider_job_id or "").split())
     legacy_job_id = _normalize_saved_job_legacy_id(normalized_provider_job_id)
-
-    existing_job = None
-    if job_data.provider and normalized_provider_job_id:
-        existing_job = (
-            db.query(SavedJob)
-            .filter(
-                SavedJob.user_id == current_user.id,
-                SavedJob.provider == job_data.provider,
-                SavedJob.provider_job_id == normalized_provider_job_id,
-            )
-            .first()
-        )
-
-    if existing_job is None and legacy_job_id is not None:
-        existing_job = (
-            db.query(SavedJob)
-            .filter(
-                SavedJob.user_id == current_user.id,
-                SavedJob.job_id == legacy_job_id,
-            )
-            .first()
-        )
-
-    if existing_job is None and not job_data.provider and normalized_provider_job_id:
-        existing_job = (
-            db.query(SavedJob)
-            .filter(
-                SavedJob.user_id == current_user.id,
-                SavedJob.provider_job_id == normalized_provider_job_id,
-            )
-            .first()
-        )
+    existing_job = _find_existing_saved_job(
+        db,
+        user_id=current_user.id,
+        provider=job_data.provider,
+        provider_job_id=normalized_provider_job_id,
+        legacy_job_id=legacy_job_id,
+    )
 
     if existing_job:
         raise HTTPException(status_code=400, detail="Job already saved")
@@ -2813,7 +2834,35 @@ async def save_job(
         url=job_data.url
     )
     db.add(new_saved_job)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing_job = _find_existing_saved_job(
+            db,
+            user_id=current_user.id,
+            provider=job_data.provider,
+            provider_job_id=normalized_provider_job_id,
+            legacy_job_id=legacy_job_id,
+        )
+        if existing_job:
+            raise HTTPException(status_code=400, detail="Job already saved")
+        logger.exception(
+            "Saved job commit failed with integrity error for user_id=%s provider=%s provider_job_id=%s",
+            current_user.id,
+            job_data.provider,
+            normalized_provider_job_id,
+        )
+        raise HTTPException(status_code=500, detail="Could not save job right now")
+    except SQLAlchemyError:
+        db.rollback()
+        logger.exception(
+            "Saved job commit failed for user_id=%s provider=%s provider_job_id=%s",
+            current_user.id,
+            job_data.provider,
+            normalized_provider_job_id,
+        )
+        raise HTTPException(status_code=500, detail="Could not save job right now")
     db.refresh(new_saved_job)
     return {
         "saved_job_id": new_saved_job.id,

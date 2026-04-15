@@ -28,7 +28,7 @@
           Reset
         </button>
         <button v-if="canWidenSearch" type="button" class="primary-action" @click="$emit('widen')" :disabled="loading">
-          Widen search
+          {{ widenLabel }}
         </button>
       </div>
     </div>
@@ -75,6 +75,10 @@ export default {
       type: Number,
       default: 0,
     },
+    totalPages: {
+      type: Number,
+      default: 1,
+    },
     totalsAreEstimated: {
       type: Boolean,
       default: false,
@@ -103,6 +107,10 @@ export default {
       type: Boolean,
       default: false,
     },
+    widenLabel: {
+      type: String,
+      default: 'Widen search',
+    },
     sortBy: {
       type: String,
       default: 'date_desc',
@@ -121,7 +129,10 @@ export default {
     headline() {
       if (this.boardMode === 'saved') {
         if (this.totalJobs > 0) {
-          return `Showing ${this.jobsLength} saved jobs on page ${this.page} of ${this.totalJobs}`
+          if (this.totalPages > 1) {
+            return `Showing ${this.jobsLength} saved jobs on page ${this.page} of ${this.totalPages}`
+          }
+          return `Showing ${this.jobsLength} of ${this.totalJobs} saved jobs`
         }
         if (this.jobsLength > 0) {
           return `Showing ${this.jobsLength} saved jobs`
@@ -130,7 +141,10 @@ export default {
       }
       if (this.totalJobs > 0) {
         const totalLabel = this.totalsAreEstimated ? `about ${this.totalJobs}` : `${this.totalJobs}`
-        return `Showing ${this.jobsLength} jobs on page ${this.page} of ${totalLabel}`
+        if (this.totalPages > 1) {
+          return `Showing ${this.jobsLength} jobs on page ${this.page} of ${this.totalPages} (${totalLabel} total)`
+        }
+        return `Showing ${this.jobsLength} of ${totalLabel} jobs`
       }
       if (this.jobsLength > 0) {
         return `Showing ${this.jobsLength} jobs on page ${this.page}`

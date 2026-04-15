@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import unittest
 
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.api import routes as routes_api
 from app.models.job import Job
@@ -88,6 +89,7 @@ class _FakeDb:
     def __init__(self, saved_jobs=None, jobs=None):
         self.saved_jobs = list(saved_jobs or [])
         self.jobs = list(jobs or [])
+        self.pending_saved_jobs = []
         self.next_saved_id = max([job.id for job in self.saved_jobs] or [0]) + 1
 
     def query(self, model):
@@ -104,16 +106,38 @@ class _FakeDb:
                 self.next_saved_id += 1
             if getattr(obj, "created_at", None) is None:
                 obj.created_at = datetime.now(timezone.utc)
-            self.saved_jobs.append(obj)
+            self.pending_saved_jobs.append(obj)
 
     def commit(self):
+        if self.pending_saved_jobs:
+            self.saved_jobs.extend(self.pending_saved_jobs)
+            self.pending_saved_jobs = []
         return None
+
+    def rollback(self):
+        self.pending_saved_jobs = []
 
     def refresh(self, _obj):
         return None
 
     def delete(self, obj):
         self.saved_jobs = [job for job in self.saved_jobs if job.id != obj.id]
+
+
+class _CommitIntegrityFailureDb(_FakeDb):
+    def __init__(self, race_saved_job=None, **kwargs):
+        super().__init__(**kwargs)
+        self.race_saved_job = race_saved_job
+
+    def commit(self):
+        if self.race_saved_job is not None:
+            self.saved_jobs.append(self.race_saved_job)
+        raise IntegrityError("insert into saved_jobs", {}, Exception("duplicate key value violates unique constraint"))
+
+
+class _CommitFailureDb(_FakeDb):
+    def commit(self):
+        raise SQLAlchemyError("database unavailable")
 
 
 class SavedJobsRouteTests(unittest.IsolatedAsyncioTestCase):
@@ -175,6 +199,47 @@ class SavedJobsRouteTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response["saved_job_id"], 2)
         self.assertEqual(len(db.saved_jobs), 2)
+
+    async def test_save_job_returns_duplicate_when_commit_hits_integrity_race(self):
+        db = _CommitIntegrityFailureDb(
+            race_saved_job=_saved_job(id=2, provider="the_muse", provider_job_id="7619281")
+        )
+        current_user = type("User", (), {"id": 1})()
+
+        with self.assertRaises(HTTPException) as exc:
+            await routes_api.save_job(
+                SaveJobRequest(
+                    provider="the_muse",
+                    provider_job_id="7619281",
+                    name="Software Engineer",
+                    company="Acme",
+                    url="https://example.com/7619281",
+                ),
+                db=db,
+                current_user=current_user,
+            )
+
+        self.assertEqual(exc.exception.status_code, 400)
+
+    async def test_save_job_returns_generic_500_for_non_duplicate_commit_failure(self):
+        db = _CommitFailureDb()
+        current_user = type("User", (), {"id": 1})()
+
+        with self.assertRaises(HTTPException) as exc:
+            await routes_api.save_job(
+                SaveJobRequest(
+                    provider="the_muse",
+                    provider_job_id="7619281",
+                    name="Software Engineer",
+                    company="Acme",
+                    url="https://example.com/7619281",
+                ),
+                db=db,
+                current_user=current_user,
+            )
+
+        self.assertEqual(exc.exception.status_code, 500)
+        self.assertEqual(exc.exception.detail, "Could not save job right now")
 
     async def test_get_saved_jobs_paginates_newest_first(self):
         db = _FakeDb(

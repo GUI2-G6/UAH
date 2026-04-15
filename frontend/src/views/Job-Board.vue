@@ -232,12 +232,14 @@
           :jobs-length="displayedJobs.length"
           :page="page"
           :total-jobs="totalJobs"
+          :total-pages="totalPages"
           :totals-are-estimated="totalsAreEstimated"
           :search-scope-summary="searchScopeSummary"
           :active-filter-chips="activeFilterChips"
           :compatibility-notice="compatibilityNotice"
           :location-limit-notice="locationLimitNotice"
           :can-widen-search="canWidenSearch"
+          :widen-label="widenSearchLabel"
           :sort-by="appliedFilters.sortBy"
           :sort-options="sortOptions"
           :saved-mode-note="savedModeNote"
@@ -323,6 +325,7 @@ import {
   requestBrowserLocation,
   setCachedLocation
 } from "../lib/geolocation";
+import { getWidenSearchPlan } from "../lib/jobBoardWidenSearch";
 import { authedFetch } from "../lib/auth";
 import { showToast } from "../services/toastService";
 import { publishCurrentPageDiagnostics, clearCurrentPageDiagnostics } from "../lib/debugDiagnostics";
@@ -888,13 +891,18 @@ export default {
 
       return chips
     },
+    widenSearchPlan() {
+      return getWidenSearchPlan(this.appliedFilters || {}, {
+        allCountriesCode: ALL_COUNTRIES_CODE,
+        countryName: this.getCountryName(this.appliedFilters?.countryCode),
+      })
+    },
     canWidenSearch() {
       if (this.isSavedMode) return false
-      const filters = this.appliedFilters || {}
-      const hasCountryMode = (filters.locationMode || "").trim().toLowerCase() === "country"
-      const hasBroadWorkSetup = filters.includeRemote === true && filters.includeHybrid === true
-      const hasAllCountriesScope = this.isAllCountriesCode(filters.countryCode)
-      return !(hasCountryMode && hasBroadWorkSetup && hasAllCountriesScope)
+      return this.widenSearchPlan.canWiden === true
+    },
+    widenSearchLabel() {
+      return this.widenSearchPlan.label || "Widen search"
     },
     searchScopeSummary() {
       if (this.isSavedMode) {
@@ -1357,23 +1365,13 @@ export default {
       this.publishDebugState("active-filter-chip-removed")
     },
     async widenSearch() {
-      this.draftFilters.includeRemote = true
-      this.appliedFilters.includeRemote = true
-      this.draftFilters.includeHybrid = true
-      this.appliedFilters.includeHybrid = true
-      this.draftFilters.locationMode = "country"
-      this.appliedFilters.locationMode = "country"
-      this.draftFilters.countryCode = ALL_COUNTRIES_CODE
-      this.appliedFilters.countryCode = ALL_COUNTRIES_CODE
-      this.draftFilters.locationNames = []
-      this.appliedFilters.locationNames = []
-      this.locationPreviewNames = []
-      this.locationPreviewCities = []
-      this.locationPreviewCandidates = []
-      this.locationPreviewCenter = null
+      const plan = this.widenSearchPlan
+      if (!plan?.canWiden || !plan?.nextFilters) return
+
+      this.draftFilters = this.cloneFilters(plan.nextFilters)
       this.page = 1
       await this.applyFilters()
-      this.publishDebugState("widen-search")
+      this.publishDebugState(`widen-search:${plan.action}`)
     },
     async enableRemoteAndSearch() {
       this.draftFilters.includeRemote = true
@@ -2086,7 +2084,10 @@ export default {
 
       if (!response.ok) {
         const detail = payload?.detail?.message || payload?.detail || payload?.message || `Request failed (${response.status})`
-        throw new Error(detail)
+        const error = new Error(detail)
+        error.status = response.status
+        error.payload = payload
+        throw error
       }
 
       return payload
@@ -2196,6 +2197,10 @@ export default {
 
         this.replaceSavedJobIndex(collected)
       } catch (error) {
+        const message = String(error?.message || "").toLowerCase()
+        if (message.includes("session expired") || message.includes("not authenticated")) {
+          this.replaceSavedJobIndex([])
+        }
         console.error("Failed to refresh saved job state", error)
       }
     },
@@ -2210,6 +2215,14 @@ export default {
       }
       const key = this.buildSavedJobKey(job)
       return key ? this.saveBusyByKey[key] === true : false
+    },
+    isSavedJobDuplicateError(error) {
+      const message = String(error?.message || "").toLowerCase()
+      return error?.status === 400 && message.includes("already saved")
+    },
+    isSavedJobMissingError(error) {
+      const message = String(error?.message || "").toLowerCase()
+      return error?.status === 404 && message.includes("saved job not found")
     },
     async setBoardMode(nextMode) {
       if (!["search", "saved"].includes(nextMode) || nextMode === this.boardMode) return
@@ -2226,6 +2239,7 @@ export default {
       this.page = nextMode === "saved" ? this.savedPage || 1 : this.searchPage || 1
 
       if (nextMode === "saved") {
+        await this.refreshSavedStateIndex()
         await this.loadSavedJobs()
       } else {
         await this.applyFilters({ resetPage: false })
@@ -2267,7 +2281,11 @@ export default {
         this.locationLimitNotice = ""
         this.pretrimLocationNotice = ""
         this.lastSearchDiagnostics = {}
-        this.mergeSavedJobIndex(this.savedJobs)
+        if (this.totalPages <= 1) {
+          this.replaceSavedJobIndex(this.savedJobs)
+        } else {
+          this.mergeSavedJobIndex(this.savedJobs)
+        }
         this.savedPage = this.page
 
         if (allowAutoClamp && this.page > 1 && !this.savedJobs.length && this.totalPages < this.page) {
@@ -2300,7 +2318,21 @@ export default {
       try {
         const savedJobId = normalizedJob.saved_job_id || this.savedJobIdByKey[key]
         if (savedJobId) {
-          await this.fetchJson(`/api/jobs/saved/${savedJobId}`, { method: "DELETE" }, { authenticated: true })
+          try {
+            await this.fetchJson(`/api/jobs/saved/${savedJobId}`, { method: "DELETE" }, { authenticated: true })
+          } catch (error) {
+            if (!this.isSavedJobMissingError(error)) {
+              throw error
+            }
+            if (key) {
+              const next = { ...this.savedJobIdByKey }
+              delete next[key]
+              this.savedJobIdByKey = next
+            }
+            await this.refreshSavedStateIndex()
+            showToast("Saved job was already removed.", "success")
+            return
+          }
           if (key) {
             const next = { ...this.savedJobIdByKey }
             delete next[key]
@@ -2319,27 +2351,38 @@ export default {
               await this.syncRouteQuery()
             }
           }
+          await this.refreshSavedStateIndex()
           showToast("Removed saved job.", "success")
           return
         }
 
-        const payload = await this.fetchJson(
-          "/api/jobs/save",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
+        let payload = null
+        try {
+          payload = await this.fetchJson(
+            "/api/jobs/save",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                provider: normalizedJob.provider,
+                provider_job_id: normalizedJob.provider_job_id || normalizedJob.id,
+                name: normalizedJob.title,
+                company: normalizedJob.company,
+                url: normalizedJob.apply_link || normalizedJob.link,
+              }),
             },
-            body: JSON.stringify({
-              provider: normalizedJob.provider,
-              provider_job_id: normalizedJob.provider_job_id || normalizedJob.id,
-              name: normalizedJob.title,
-              company: normalizedJob.company,
-              url: normalizedJob.apply_link || normalizedJob.link,
-            }),
-          },
-          { authenticated: true },
-        )
+            { authenticated: true },
+          )
+        } catch (error) {
+          if (!this.isSavedJobDuplicateError(error)) {
+            throw error
+          }
+          await this.refreshSavedStateIndex()
+          showToast("Job already saved.", "success")
+          return
+        }
 
         if (key && payload?.saved_job_id) {
           this.savedJobIdByKey = {
@@ -2347,6 +2390,7 @@ export default {
             [key]: payload.saved_job_id,
           }
         }
+        await this.refreshSavedStateIndex()
         showToast(payload?.message || "Job saved.", "success")
       } catch (error) {
         console.error("Failed to toggle saved job", error)
