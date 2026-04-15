@@ -68,7 +68,8 @@ router.beforeEach(async (to) => {
     '/forgot-password',
     '/reset-password',
     '/oauth-callback',
-    '/our-commitment'
+    '/our-commitment',
+    '/contributors',
   ])
   const isOAuthCallback = to.path === '/oauth-callback'
 

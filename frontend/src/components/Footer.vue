@@ -6,6 +6,7 @@
         <router-link to="/status">Status</router-link>
         <button v-if="showDebugTools" type="button" class="footer-link-button footer-link-button-dev" @click="$emit('open-debug-view')">Debug Tools · Dev only</button>
         <router-link to="/our-commitment">Our Commitment</router-link>
+        <router-link to="/contributors">Contributors</router-link>
         <p>Contact us: <a href="mailto:support@uahapp.com">support@uahapp.com</a></p>
         </nav>
     </footer>
