@@ -235,6 +235,10 @@
   border: 1px solid rgba(0, 0, 0, 0.5);
 }
 
+.dashboard button.danger:hover {
+  background: #ff5757;
+}
+
 .connected-accounts-group {
   width: 100%;
 }
