@@ -4,7 +4,7 @@
             <h1>Login</h1>
             <p class="subtitle">Track every application in one place</p>
 
-            <form @submit.prevent="login">
+            <form @submit.prevent="login" novalidate>
                 <input
                     id="login-email"
                     name="email"
