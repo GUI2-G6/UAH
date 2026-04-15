@@ -61,7 +61,15 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
-  const publicPaths = new Set(['/login', '/register', '/status', '/forgot-password', '/reset-password', '/oauth-callback'])
+  const publicPaths = new Set([
+    '/login',
+    '/register',
+    '/status',
+    '/forgot-password',
+    '/reset-password',
+    '/oauth-callback',
+    '/our-commitment'
+  ])
   const isOAuthCallback = to.path === '/oauth-callback'
 
   if (isOAuthCallback) {

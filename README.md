@@ -1,5 +1,8 @@
 # UAH — Unified Application Hub
 
+> **License Notice**
+> This project is licensed under AGPL-3.0 with Commons Clause. Commercial use, resale, or monetized hosting without explicit written permission from the UAH team is prohibited. We actively monitor derivative works.
+
 > **DEV Environment Documentation**
 > All commands assume you are SSH'd into the server at  `/srv/uah/environments/dev` on proxmox
 
