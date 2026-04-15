@@ -24,6 +24,6 @@ python-multipart==0.0.22
 # Utilities
 python-dotenv==1.0.1
 redis==5.0.1
-pypdf==6.10.0
+pypdf==6.10.1
 celery[redis]==5.4.0
 
