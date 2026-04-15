@@ -233,10 +233,12 @@
 
 .dashboard button.danger {
   border: 1px solid rgba(0, 0, 0, 0.5);
+  color: #ff5757; 
 }
 
 .dashboard button.danger:hover {
   background: #ff5757;
+  color: white
 }
 
 .connected-accounts-group {
