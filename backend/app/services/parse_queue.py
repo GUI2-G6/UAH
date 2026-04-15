@@ -33,7 +33,7 @@ from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.parse_job import ParseJob
 from app.services.parse_job_runner import run_parse_job
-from app.services.resume_parser import normalize_parse_method
+from app.services.resume_parser import is_retryable_cloud_parse_error, normalize_parse_method
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,7 @@ _DEPTH_KEY_BY_METHOD = {
     for method in QUEUE_METHODS
 }
 _IN_FLIGHT_BY_METHOD: dict[str, int] = {method: 0 for method in QUEUE_METHODS}
+_LAST_DISPATCH_AT_BY_METHOD: dict[str, datetime | None] = {method: None for method in QUEUE_METHODS}
 
 _worker_state: dict[str, Any] = {
     "enabled": False,
@@ -122,6 +123,37 @@ def _retry_delay_seconds(method: str, next_attempt: int) -> int:
     if method_key == "local":
         return max(2 * next_attempt, 1)
     return max(2 ** next_attempt, 1)
+
+
+def _can_retry_job(method: str, error_code: str | None) -> bool:
+    method_key = normalize_parse_method(method) or "local"
+    if method_key == "cloud":
+        return is_retryable_cloud_parse_error(error_code)
+    if method_key == "rules":
+        return False
+    return True
+
+
+def _mark_job_retry_state(job_id: int, status: str, progress_stage: str, error_code: str | None, error_message: str | None) -> None:
+    db = SessionLocal()
+    try:
+        job = db.query(ParseJob).filter(ParseJob.id == job_id).first()
+        if not job or job.status == "cancelled":
+            return
+        job.status = status
+        job.progress_stage = progress_stage
+        job.error_code = error_code
+        job.error_message = error_message
+        db.commit()
+    finally:
+        db.close()
+
+
+def _min_interval_for_method(method: str) -> int:
+    method_key = normalize_parse_method(method) or "local"
+    if method_key == "cloud":
+        return max(int(getattr(settings, "PARSE_QUEUE_CLOUD_MIN_INTERVAL_SECONDS", 5)), 0)
+    return 0
 
 
 def _claim_key(job_id: int) -> str:
@@ -385,8 +417,16 @@ async def _process_job(job_data: dict, queue_method: str | None = None) -> None:
             )
             return
 
+        db = SessionLocal()
+        try:
+            failed_job = db.query(ParseJob).filter(ParseJob.id == job_id).first()
+            failed_error_code = failed_job.error_code if failed_job else None
+            failed_error_message = failed_job.error_message if failed_job else None
+        finally:
+            db.close()
+
         max_retries = _max_retries_for_method(method)
-        if attempt < max_retries:
+        if attempt < max_retries and _can_retry_job(method, failed_error_code):
             next_attempt = attempt + 1
             delay_seconds = _retry_delay_seconds(method, next_attempt)
             job_data["attempt"] = next_attempt
@@ -397,10 +437,19 @@ async def _process_job(job_data: dict, queue_method: str | None = None) -> None:
                 {
                     "status": "retrying",
                     "progress_stage": f"Retrying in {delay_seconds}s",
-                    "error_code": "RETRY_SCHEDULED",
-                    "error_message": "Parser failed; retrying from Redis queue.",
+                    "error_code": failed_error_code or "RETRY_SCHEDULED",
+                    "error_message": failed_error_message or "Parser failed; retrying from Redis queue.",
                     "attempt": next_attempt,
+                    "next_retry_delay_seconds": delay_seconds,
+                    "retry_at": (_now_iso() if delay_seconds <= 0 else (datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)).isoformat()),
                 },
+            )
+            _mark_job_retry_state(
+                job_id=job_id,
+                status="queued",
+                progress_stage=f"Retrying in {delay_seconds}s",
+                error_code=failed_error_code,
+                error_message=failed_error_message,
             )
 
             if delay_seconds > 0:
@@ -422,6 +471,7 @@ async def _process_job(job_data: dict, queue_method: str | None = None) -> None:
                     "method": method,
                     "attempt": next_attempt,
                     "queue_name": _queue_name_for_method(method),
+                    "next_retry_delay_seconds": 0,
                 },
             )
             return
@@ -483,6 +533,12 @@ async def _worker_loop() -> None:
         for method in rotated_methods:
             if _IN_FLIGHT_BY_METHOD.get(method, 0) >= _concurrency_for_method(method):
                 continue
+            min_interval = _min_interval_for_method(method)
+            last_dispatch_at = _LAST_DISPATCH_AT_BY_METHOD.get(method)
+            if last_dispatch_at is not None and min_interval > 0:
+                elapsed = (datetime.now(timezone.utc) - last_dispatch_at).total_seconds()
+                if elapsed < min_interval:
+                    continue
 
             queue_name = _QUEUE_NAMES[method]
             raw_payload = await client.lpop(queue_name)
@@ -497,6 +553,7 @@ async def _worker_loop() -> None:
                 continue
 
             _dispatch_job(job_data, queue_method=method)
+            _LAST_DISPATCH_AT_BY_METHOD[method] = datetime.now(timezone.utc)
             dispatched = True
 
         method_cursor = (method_cursor + 1) % len(QUEUE_METHODS)

@@ -2,6 +2,7 @@ from io import BytesIO
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
+import httpx
 
 from fastapi import UploadFile
 
@@ -153,6 +154,27 @@ class ResumePipelineContractTests(unittest.IsolatedAsyncioTestCase):
         cloud_ocr.assert_awaited_once_with(b"pdf-bytes")
         local_ocr.assert_not_awaited()
 
+    async def test_cloud_parse_input_reuses_cached_cloud_ocr_markdown(self):
+        resume = SimpleNamespace(
+            raw_markdown="cached cloud text",
+            raw_markdown_method="cloud",
+            raw_markdown_source="cloud_ocr",
+        )
+        cloud_ocr = AsyncMock(return_value={"ok": True, "md_results": "fresh cloud text"})
+
+        with patch.object(resume_parser, "ocr_pdf", cloud_ocr):
+            payload = await resume_parser.get_parse_input_text(
+                b"pdf-bytes",
+                "cloud",
+                resume=resume,
+            )
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["text"], "cached cloud text")
+        self.assertEqual(payload["source"], "cloud_ocr")
+        self.assertEqual(payload["cache_hit"], True)
+        cloud_ocr.assert_not_awaited()
+
     async def test_rules_parse_input_uses_embedded_text_only(self):
         extract_text = Mock(return_value={"ok": True, "text": "embedded text", "source": "rules_embedded_pdf_text"})
         cloud_ocr = AsyncMock(return_value={"ok": True, "md_results": "cloud text"})
@@ -236,6 +258,96 @@ class ResumePipelineContractTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(payload["pipeline_availability"]["cloud"]["available"], True)
         self.assertEqual(payload["pipeline_availability"]["rules"]["available"], True)
+
+    async def test_queue_status_includes_cloud_degraded_message(self):
+        fake_db = _FakeQueueDb(rows=[])
+        current_user = SimpleNamespace(id=3)
+        availability_payload = {
+            "local": {
+                "available": False,
+                "message": "Local AI is unavailable right now.",
+            },
+            "cloud": {
+                "available": True,
+                "degraded": True,
+                "message": "Cloud AI is temporarily rate limited. UAH is retrying with provider-aware backoff.",
+            },
+            "rules": {
+                "available": True,
+            },
+        }
+
+        with patch.object(resume_api.settings, "REDIS_ENABLED", False), \
+             patch.object(
+                 resume_api,
+                 "get_pipeline_availability",
+                 AsyncMock(return_value=availability_payload),
+             ):
+            payload = await resume_api._build_queue_status_payload(
+                db=fake_db,
+                current_user=current_user,
+                scope="user",
+                focus_method="cloud",
+            )
+
+        self.assertEqual(payload["pipeline_availability"]["cloud"]["degraded"], True)
+        self.assertIn("rate limited", payload["pipeline_availability"]["cloud"]["message"])
+
+    async def test_cloud_llm_transient_429_retries_and_uses_configured_max_tokens(self):
+        response_429 = httpx.Response(
+            429,
+            headers={"Retry-After": "0"},
+            json={"code": "rate_limit_exceeded", "message": "too many requests"},
+        )
+        response_200 = httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "{\"summary\": \"ok\"}"}}]},
+        )
+        responses = [response_429, response_200]
+        request_payloads = []
+
+        class _FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            async def post(self, _url, json=None, headers=None):
+                request_payloads.append({"json": json, "headers": headers})
+                return responses.pop(0)
+
+        with patch.object(resume_parser.settings, "ZAI_LLM_MAX_TOKENS", 3072), \
+             patch.object(resume_parser.httpx, "AsyncClient", return_value=_FakeClient()):
+            parsed = await resume_parser.categorize_with_llm("resume markdown")
+
+        self.assertEqual(parsed["summary"], "ok")
+        self.assertEqual(len(request_payloads), 2)
+        self.assertEqual(request_payloads[0]["json"]["max_tokens"], 3072)
+
+    async def test_cloud_llm_quota_429_fails_without_retry(self):
+        response_429 = httpx.Response(
+            429,
+            json={"code": "quota_exhausted", "message": "daily quota exhausted"},
+        )
+        request_calls = []
+
+        class _FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            async def post(self, _url, json=None, headers=None):
+                request_calls.append({"json": json, "headers": headers})
+                return response_429
+
+        with patch.object(resume_parser.httpx, "AsyncClient", return_value=_FakeClient()):
+            result = await resume_parser.categorize_with_llm("resume markdown")
+
+        self.assertEqual(result["error_code"], "CLOUD_LLM_QUOTA_EXHAUSTED")
+        self.assertEqual(len(request_calls), 1)
 
     def test_update_review_draft_allows_persisted_review_draft_without_structured_data(self):
         resume = SimpleNamespace(

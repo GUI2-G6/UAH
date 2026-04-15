@@ -6,6 +6,7 @@ import logging
 from io import BytesIO
 from pathlib import Path
 import tempfile
+from datetime import datetime, timedelta, timezone
 import httpx
 from app.core.config import settings
 
@@ -14,6 +15,25 @@ logger = logging.getLogger(__name__)
 SUPPORTED_PARSE_METHODS = ("cloud", "local", "rules")
 LOCAL_PIPELINE_UNAVAILABLE_MESSAGE = "Local AI is unavailable right now."
 LOCAL_PIPELINE_PROBE_TIMEOUT_SECONDS = 1.5
+_CLOUD_DEGRADED_UNTIL: datetime | None = None
+_CLOUD_DEGRADED_MESSAGE: str | None = None
+_CLOUD_DEGRADED_TTL_SECONDS = 300
+_TRANSIENT_CLOUD_PARSE_ERROR_CODES = {
+    "CLOUD_OCR_RATE_LIMITED",
+    "CLOUD_OCR_PROVIDER_BUSY",
+    "CLOUD_OCR_PROVIDER_UNAVAILABLE",
+    "CLOUD_OCR_TIMEOUT",
+    "CLOUD_OCR_REQUEST_FAILED",
+    "CLOUD_LLM_RATE_LIMITED",
+    "CLOUD_LLM_PROVIDER_BUSY",
+    "CLOUD_LLM_PROVIDER_UNAVAILABLE",
+    "CLOUD_LLM_TIMEOUT",
+    "CLOUD_LLM_REQUEST_FAILED",
+}
+_TERMINAL_CLOUD_PARSE_ERROR_CODES = {
+    "CLOUD_OCR_QUOTA_EXHAUSTED",
+    "CLOUD_LLM_QUOTA_EXHAUSTED",
+}
 PLACEHOLDER_VALUES = {
     "null",
     "none",
@@ -135,6 +155,194 @@ Resume Text:
 """
 
 
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _trim_text(value: str | None, limit: int = 200) -> str:
+    return (value or "").strip()[:limit]
+
+
+def _extract_retry_after_seconds(headers: httpx.Headers | None) -> int | None:
+    if headers is None:
+        return None
+    raw = (headers.get("Retry-After") or "").strip()
+    if not raw:
+        return None
+    try:
+        return max(int(float(raw)), 0)
+    except Exception:
+        return None
+
+
+def _parse_provider_payload(resp: httpx.Response) -> dict:
+    try:
+        payload = resp.json()
+        if isinstance(payload, dict):
+            return payload
+    except Exception:
+        pass
+    return {}
+
+
+def _provider_message(payload: dict, fallback: str) -> str:
+    for key in ("message", "msg", "error_msg", "errorMessage", "detail"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    error = payload.get("error")
+    if isinstance(error, dict):
+        for key in ("message", "msg", "detail"):
+            value = error.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    if isinstance(error, str) and error.strip():
+        return error.strip()
+    return fallback
+
+
+def _provider_code(payload: dict) -> str:
+    for key in ("code", "error_code", "errorCode", "type"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip().lower()
+    error = payload.get("error")
+    if isinstance(error, dict):
+        for key in ("code", "type"):
+            value = error.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip().lower()
+    return ""
+
+
+def _looks_like_quota_limit(code: str, message: str) -> bool:
+    combined = f"{code} {message}".lower()
+    hard_limit_markers = (
+        "quota",
+        "balance",
+        "insufficient",
+        "billing",
+        "payment",
+        "fair use",
+        "fair-use",
+        "subscription",
+        "plan limit",
+        "daily limit",
+        "weekly limit",
+        "monthly limit",
+        "account limit",
+        "usage limit",
+    )
+    return any(marker in combined for marker in hard_limit_markers)
+
+
+def _looks_like_transient_rate_limit(code: str, message: str) -> bool:
+    combined = f"{code} {message}".lower()
+    transient_markers = (
+        "rate",
+        "throttle",
+        "concurr",
+        "frequency",
+        "too many",
+        "busy",
+        "capacity",
+    )
+    return any(marker in combined for marker in transient_markers)
+
+
+def _set_cloud_degraded(message: str | None) -> None:
+    global _CLOUD_DEGRADED_UNTIL, _CLOUD_DEGRADED_MESSAGE
+    _CLOUD_DEGRADED_UNTIL = _now_utc() + timedelta(seconds=_CLOUD_DEGRADED_TTL_SECONDS)
+    _CLOUD_DEGRADED_MESSAGE = (message or "").strip() or "Cloud AI is rate limited right now. UAH is retrying with provider-aware backoff."
+
+
+def _clear_cloud_degraded() -> None:
+    global _CLOUD_DEGRADED_UNTIL, _CLOUD_DEGRADED_MESSAGE
+    _CLOUD_DEGRADED_UNTIL = None
+    _CLOUD_DEGRADED_MESSAGE = None
+
+
+def get_cloud_provider_availability() -> dict:
+    degraded = bool(_CLOUD_DEGRADED_UNTIL and _CLOUD_DEGRADED_UNTIL > _now_utc())
+    return {
+        "available": True,
+        "degraded": degraded,
+        "message": _CLOUD_DEGRADED_MESSAGE if degraded else None,
+    }
+
+
+def is_retryable_cloud_parse_error(error_code: str | None) -> bool:
+    normalized = (error_code or "").strip().upper()
+    return normalized in _TRANSIENT_CLOUD_PARSE_ERROR_CODES
+
+
+def is_terminal_cloud_parse_error(error_code: str | None) -> bool:
+    normalized = (error_code or "").strip().upper()
+    return normalized in _TERMINAL_CLOUD_PARSE_ERROR_CODES
+
+
+def classify_cloud_provider_error(
+    stage: str,
+    status_code: int,
+    payload: dict | None = None,
+    response_text: str | None = None,
+    retry_after_seconds: int | None = None,
+) -> dict:
+    payload = payload or {}
+    stage_label = "OCR" if stage == "ocr" else "LLM"
+    provider_code = _provider_code(payload)
+    provider_message = _provider_message(payload, _trim_text(response_text))
+
+    if status_code == 429:
+        if _looks_like_quota_limit(provider_code, provider_message):
+            return {
+                "error_code": f"CLOUD_{stage_label}_QUOTA_EXHAUSTED",
+                "message": "Cloud AI quota or usage limits are exhausted right now. Please try again later.",
+                "retryable": False,
+                "provider_code": provider_code,
+                "provider_message": provider_message,
+                "retry_after_seconds": retry_after_seconds,
+            }
+        transient_message = "Cloud AI is temporarily rate limited. UAH will retry automatically." if stage == "llm" else "Cloud OCR is temporarily rate limited. UAH will retry automatically."
+        transient_code = f"CLOUD_{stage_label}_RATE_LIMITED"
+        if _looks_like_transient_rate_limit(provider_code, provider_message):
+            return {
+                "error_code": transient_code,
+                "message": transient_message,
+                "retryable": True,
+                "provider_code": provider_code,
+                "provider_message": provider_message,
+                "retry_after_seconds": retry_after_seconds,
+            }
+        return {
+            "error_code": f"CLOUD_{stage_label}_PROVIDER_BUSY",
+            "message": transient_message,
+            "retryable": True,
+            "provider_code": provider_code,
+            "provider_message": provider_message,
+            "retry_after_seconds": retry_after_seconds,
+        }
+
+    if status_code >= 500:
+        return {
+            "error_code": f"CLOUD_{stage_label}_PROVIDER_UNAVAILABLE",
+            "message": f"Cloud {stage_label.lower()} service is temporarily unavailable. UAH will retry automatically.",
+            "retryable": True,
+            "provider_code": provider_code,
+            "provider_message": provider_message,
+            "retry_after_seconds": retry_after_seconds,
+        }
+
+    return {
+        "error_code": f"CLOUD_{stage_label}_API_ERROR",
+        "message": f"Cloud {stage_label.lower()} service returned status {status_code}. Please retry.",
+        "retryable": False,
+        "provider_code": provider_code,
+        "provider_message": provider_message,
+        "retry_after_seconds": retry_after_seconds,
+    }
+
+
 async def ocr_pdf(pdf_bytes: bytes) -> dict:
     missing = settings.missing_resume_ocr_config()
     if missing:
@@ -165,46 +373,71 @@ async def ocr_pdf(pdf_bytes: bytes) -> dict:
             resp = await client.post(settings.ZAI_OCR_URL, json=request_body, headers=headers)
 
         if resp.status_code != 200:
+            payload = _parse_provider_payload(resp)
+            classified = classify_cloud_provider_error(
+                stage="ocr",
+                status_code=resp.status_code,
+                payload=payload,
+                response_text=resp.text,
+                retry_after_seconds=_extract_retry_after_seconds(resp.headers),
+            )
+            if classified.get("retryable"):
+                _set_cloud_degraded(classified.get("message"))
             logger.error(
                 f"OCR API error: status={resp.status_code}, url={settings.ZAI_OCR_URL}, "
                 f"response_text={resp.text[:200]}"
             )
             return {
                 "ok": False,
-                "error_code": "OCR_API_STATUS",
+                "error_code": classified["error_code"],
                 "status_code": resp.status_code,
                 "response_excerpt": (resp.text or "")[:200],
+                "message": classified["message"],
+                "retryable": classified.get("retryable", False),
+                "retry_after_seconds": classified.get("retry_after_seconds"),
+                "provider_code": classified.get("provider_code"),
+                "provider_message": classified.get("provider_message"),
             }
 
         payload = resp.json()
         payload["ok"] = True
+        _clear_cloud_degraded()
         return payload
     except httpx.TimeoutException as e:
         logger.error("OCR request timed out: %s", str(e))
+        _set_cloud_degraded("Cloud OCR timed out. UAH will retry automatically.")
         return {
             "ok": False,
-            "error_code": "OCR_TIMEOUT",
+            "error_code": "CLOUD_OCR_TIMEOUT",
             "status_code": 504,
             "exception_type": type(e).__name__,
             "exception_message": str(e),
+            "message": "Cloud OCR timed out. UAH will retry automatically.",
+            "retryable": True,
         }
     except httpx.HTTPError as e:
         logger.error("OCR request failed: %s: %s", type(e).__name__, str(e))
+        _set_cloud_degraded("Cloud OCR could not be reached. UAH will retry automatically.")
         return {
             "ok": False,
-            "error_code": "OCR_REQUEST_EXCEPTION",
+            "error_code": "CLOUD_OCR_REQUEST_FAILED",
             "status_code": 502,
             "exception_type": type(e).__name__,
             "exception_message": str(e),
+            "message": "Cloud OCR could not be reached. UAH will retry automatically.",
+            "retryable": True,
         }
     except Exception as e:
         logger.error("OCR PDF processing failed: %s: %s", type(e).__name__, str(e))
+        _set_cloud_degraded("Cloud OCR could not be reached. UAH will retry automatically.")
         return {
             "ok": False,
-            "error_code": "OCR_REQUEST_EXCEPTION",
+            "error_code": "CLOUD_OCR_REQUEST_FAILED",
             "status_code": 502,
             "exception_type": type(e).__name__,
             "exception_message": str(e),
+            "message": "Cloud OCR could not be reached. UAH will retry automatically.",
+            "retryable": True,
         }
 
 
@@ -227,75 +460,107 @@ async def categorize_with_llm(md_text: str) -> dict:
             },
         ],
         "temperature": 0.1,
-        "max_tokens": 8192,
+        "max_tokens": max(int(settings.ZAI_LLM_MAX_TOKENS), 512),
     }
+    max_attempts = 3
+    last_error: dict | None = None
 
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(settings.ZAI_LLM_URL, json=request_body, headers=headers)
-    except httpx.TimeoutException as e:
-        logger.error("LLM parse request timed out: %s", str(e))
-        return {
-            "ok": False,
-            "error_code": "LLM_TIMEOUT",
-            "message": "AI parsing timed out. Try again or use rules-based parsing.",
-        }
-    except httpx.HTTPError as e:
-        logger.error("LLM parse request failed: %s: %s", type(e).__name__, str(e))
-        return {
-            "ok": False,
-            "error_code": "LLM_REQUEST_FAILED",
-            "message": "Could not reach the AI parsing service. Please try again.",
-        }
-
-    if resp.status_code != 200:
-        logger.error("LLM API error: status=%d, body=%s", resp.status_code, resp.text[:200])
-        return {
-            "ok": False,
-            "error_code": "LLM_API_ERROR",
-            "message": f"AI service returned status {resp.status_code}. Please retry.",
-        }
-
-    result = resp.json()
-    raw_content = result["choices"][0]["message"]["content"]
-
-    if not raw_content or raw_content.strip() == "":
-        reasoning = result["choices"][0]["message"].get("reasoning_content", "")
-        if reasoning:
-            json_match = re.search(r'\{[\s\S]*\}', reasoning)
-            if json_match:
-                raw_content = json_match.group(0)
-            else:
-                return {
-                    "ok": False,
-                    "error_code": "LLM_EMPTY_RESPONSE",
-                    "message": "AI returned no structured data. Try again or use rules-based parsing.",
-                }
-        else:
-            return {
+    for attempt in range(1, max_attempts + 1):
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.post(settings.ZAI_LLM_URL, json=request_body, headers=headers)
+        except httpx.TimeoutException as e:
+            logger.error("LLM parse request timed out: %s", str(e))
+            last_error = {
                 "ok": False,
-                "error_code": "LLM_EMPTY_RESPONSE",
-                "message": "AI returned no structured data. Try again or use rules-based parsing.",
+                "error_code": "CLOUD_LLM_TIMEOUT",
+                "message": "Cloud AI timed out while parsing. UAH will retry automatically.",
+                "retryable": True,
+            }
+            _set_cloud_degraded(last_error["message"])
+        except httpx.HTTPError as e:
+            logger.error("LLM parse request failed: %s: %s", type(e).__name__, str(e))
+            last_error = {
+                "ok": False,
+                "error_code": "CLOUD_LLM_REQUEST_FAILED",
+                "message": "Cloud AI could not be reached. UAH will retry automatically.",
+                "retryable": True,
+            }
+            _set_cloud_degraded(last_error["message"])
+        else:
+            if resp.status_code == 200:
+                result = resp.json()
+                raw_content = result["choices"][0]["message"]["content"]
+
+                if not raw_content or raw_content.strip() == "":
+                    reasoning = result["choices"][0]["message"].get("reasoning_content", "")
+                    if reasoning:
+                        json_match = re.search(r'\{[\s\S]*\}', reasoning)
+                        if json_match:
+                            raw_content = json_match.group(0)
+                        else:
+                            return {
+                                "ok": False,
+                                "error_code": "LLM_EMPTY_RESPONSE",
+                                "message": "AI returned no structured data. Try again or use rules-based parsing.",
+                            }
+                    else:
+                        return {
+                            "ok": False,
+                            "error_code": "LLM_EMPTY_RESPONSE",
+                            "message": "AI returned no structured data. Try again or use rules-based parsing.",
+                        }
+
+                cleaned = raw_content.strip()
+                if cleaned.startswith("```json"):
+                    cleaned = cleaned[7:]
+                elif cleaned.startswith("```"):
+                    cleaned = cleaned[3:]
+                if cleaned.endswith("```"):
+                    cleaned = cleaned[:-3]
+                cleaned = cleaned.strip()
+
+                try:
+                    _clear_cloud_degraded()
+                    return json.loads(cleaned)
+                except json.JSONDecodeError:
+                    logger.error("LLM returned invalid JSON: %s", cleaned[:200])
+                    return {
+                        "ok": False,
+                        "error_code": "LLM_INVALID_JSON",
+                        "message": "AI returned malformed data. Please try again.",
+                    }
+
+            classified = classify_cloud_provider_error(
+                stage="llm",
+                status_code=resp.status_code,
+                payload=_parse_provider_payload(resp),
+                response_text=resp.text,
+                retry_after_seconds=_extract_retry_after_seconds(resp.headers),
+            )
+            logger.error("LLM API error: status=%d, body=%s", resp.status_code, resp.text[:200])
+            if classified.get("retryable"):
+                _set_cloud_degraded(classified.get("message"))
+            last_error = {
+                "ok": False,
+                "error_code": classified["error_code"],
+                "message": classified["message"],
+                "retryable": classified.get("retryable", False),
+                "retry_after_seconds": classified.get("retry_after_seconds"),
             }
 
-    cleaned = raw_content.strip()
-    if cleaned.startswith("```json"):
-        cleaned = cleaned[7:]
-    elif cleaned.startswith("```"):
-        cleaned = cleaned[3:]
-    if cleaned.endswith("```"):
-        cleaned = cleaned[:-3]
-    cleaned = cleaned.strip()
+        if not last_error or not last_error.get("retryable") or attempt >= max_attempts:
+            break
 
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        logger.error("LLM returned invalid JSON: %s", cleaned[:200])
-        return {
-            "ok": False,
-            "error_code": "LLM_INVALID_JSON",
-            "message": "AI returned malformed data. Please try again.",
-        }
+        retry_after_seconds = last_error.get("retry_after_seconds")
+        delay_seconds = retry_after_seconds if retry_after_seconds is not None else min(2 ** (attempt - 1), 8)
+        await asyncio.sleep(max(float(delay_seconds), 0))
+
+    return last_error or {
+        "ok": False,
+        "error_code": "CLOUD_LLM_REQUEST_FAILED",
+        "message": "Cloud AI parsing failed. Please retry.",
+    }
 
 
 async def ocr_pdf_local(pdf_bytes: bytes) -> dict:
@@ -573,9 +838,7 @@ async def get_pipeline_availability() -> dict:
             "available": local_available,
             "message": None if local_available else LOCAL_PIPELINE_UNAVAILABLE_MESSAGE,
         },
-        "cloud": {
-            "available": True,
-        },
+        "cloud": get_cloud_provider_availability(),
         "rules": {
             "available": True,
         },
@@ -690,7 +953,7 @@ def extract_embedded_pdf_text(pdf_bytes: bytes) -> dict:
         }
 
 
-async def get_parse_input_text(pdf_bytes: bytes, method: str) -> dict:
+async def get_parse_input_text(pdf_bytes: bytes, method: str, resume=None) -> dict:
     """Resolve parsing input text by selected method and return normalized payload."""
     normalized = normalize_parse_method(method)
     if normalized is None:
@@ -701,6 +964,18 @@ async def get_parse_input_text(pdf_bytes: bytes, method: str) -> dict:
             "message": f"Method must be one of: {', '.join(SUPPORTED_PARSE_METHODS)}",
         }
 
+    if resume is not None:
+        cached_markdown = (getattr(resume, "raw_markdown", None) or "").strip()
+        cached_method = normalize_parse_method(getattr(resume, "raw_markdown_method", None))
+        cached_source = (getattr(resume, "raw_markdown_source", None) or "").strip().lower()
+        if normalized == "cloud" and cached_markdown and cached_method == "cloud" and cached_source == "cloud_ocr":
+            return {
+                "ok": True,
+                "text": cached_markdown,
+                "source": "cloud_ocr",
+                "cache_hit": True,
+            }
+
     if normalized == "rules":
         return extract_embedded_pdf_text(pdf_bytes)
 
@@ -710,7 +985,9 @@ async def get_parse_input_text(pdf_bytes: bytes, method: str) -> dict:
             "ok": False,
             "error_code": ocr_result.get("error_code") or "OCR_EXTRACTION_FAILED",
             "status_code": int(ocr_result.get("status_code") or 502),
-            "message": _method_input_message(normalized),
+            "message": ocr_result.get("message") or _method_input_message(normalized),
+            "retryable": bool(ocr_result.get("retryable", False)),
+            "retry_after_seconds": ocr_result.get("retry_after_seconds"),
         }
 
     md_text = (ocr_result.get("md_results") or "").strip()
@@ -726,6 +1003,7 @@ async def get_parse_input_text(pdf_bytes: bytes, method: str) -> dict:
         "ok": True,
         "text": md_text,
         "source": f"{normalized}_ocr",
+        "cache_hit": False,
     }
 
 

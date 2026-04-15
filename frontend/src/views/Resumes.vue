@@ -330,6 +330,7 @@
                             <p class="queue-details-line" v-if="queueStatus.queue_namespace">Queue namespace: {{ queueStatus.queue_namespace }}</p>
                             <p class="queue-details-line" v-if="queueStatus.local_queue_note">{{ queueStatus.local_queue_note }}</p>
                             <p class="queue-details-line" v-if="queueStatus.cloud_behavior?.description">{{ queueStatus.cloud_behavior.description }}</p>
+                            <p class="queue-details-line" v-if="queueStatus.pipeline_availability?.cloud?.message">{{ queueStatus.pipeline_availability.cloud.message }}</p>
                         </div>
                     </details>
 
@@ -1298,6 +1299,9 @@ export default {
         },
         parseProgressHint() {
             const activeMethod = this.parseJobMethod || this.parseMethod
+            if (activeMethod === 'cloud' && this.parseStageLabel && this.parseStageLabel.toLowerCase().includes('retrying')) {
+                return 'Cloud AI is throttled right now. UAH is retrying with provider-aware backoff…'
+            }
             if (this.parseStatus === 'queued' && this.parseQueuePosition && this.parseQueueTotal) {
                 return `Queued #${this.parseQueuePosition} of ${this.parseQueueTotal} in ${activeMethod} pipeline…`
             }
@@ -2058,7 +2062,7 @@ export default {
                     return
                 }
                 if (job.status === 'failed') {
-                    const details = job.error_code ? `[${job.error_code}] ${job.error_message || 'Parsing failed.'}` : (job.error_message || 'Parsing failed.')
+                    const details = this.describeParseFailure(job)
                     this.uploadError = details
                     showToast('Parse failed. Review the error and retry.', 'error')
                     this.uploadStep = 'confirm'
@@ -2538,10 +2542,27 @@ export default {
             const detail = payload?.detail
             if (typeof detail === 'string' && detail.trim()) return detail
             if (detail && typeof detail === 'object') {
+                if (detail.code === 'CLOUD_LLM_QUOTA_EXHAUSTED' || detail.code === 'CLOUD_OCR_QUOTA_EXHAUSTED') {
+                    return 'Cloud AI quota or usage limits are exhausted right now. Please try again later.'
+                }
+                if (detail.code === 'CLOUD_LLM_RATE_LIMITED' || detail.code === 'CLOUD_LLM_PROVIDER_BUSY' || detail.code === 'CLOUD_OCR_RATE_LIMITED' || detail.code === 'CLOUD_OCR_PROVIDER_BUSY') {
+                    return 'Cloud AI is temporarily rate limited. Please wait a moment and retry.'
+                }
                 if (typeof detail.message === 'string' && detail.message.trim()) return detail.message
                 if (typeof detail.code === 'string' && detail.code.trim()) return `${fallbackLabel}: ${detail.code}`
             }
             return `${fallbackLabel} (HTTP ${status})`
+        },
+        describeParseFailure(job) {
+            const code = String(job?.error_code || '').trim()
+            const message = String(job?.error_message || '').trim()
+            if (code === 'CLOUD_LLM_QUOTA_EXHAUSTED' || code === 'CLOUD_OCR_QUOTA_EXHAUSTED') {
+                return `[${code}] Cloud AI quota or usage limits are exhausted right now. Please try again later.`
+            }
+            if (code === 'CLOUD_LLM_RATE_LIMITED' || code === 'CLOUD_LLM_PROVIDER_BUSY' || code === 'CLOUD_OCR_RATE_LIMITED' || code === 'CLOUD_OCR_PROVIDER_BUSY') {
+                return `[${code}] Cloud AI capacity is temporarily constrained. UAH retried with backoff and still needs another attempt later.`
+            }
+            return code ? `[${code}] ${message || 'Parsing failed.'}` : (message || 'Parsing failed.')
         },
     },
 }

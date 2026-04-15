@@ -141,6 +141,18 @@ def _set_review_draft(
     resume.review_updated_at = datetime.now(timezone.utc)
 
 
+def _persist_parse_input_cache(
+    resume: Resume,
+    parse_text: str,
+    method: str,
+    source: str | None,
+) -> None:
+    resume.raw_markdown = parse_text
+    resume.raw_markdown_method = method
+    resume.raw_markdown_source = source
+    resume.raw_markdown_updated_at = datetime.now(timezone.utc)
+
+
 async def _build_queue_status_payload(
     db: Session,
     current_user: User,
@@ -399,7 +411,7 @@ async def parse_resume(
     if method is None:
         raise HTTPException(status_code=400, detail="Method must be one of: cloud, local, rules")
 
-    input_payload = await get_parse_input_text(resume.pdf_data, method)
+    input_payload = await get_parse_input_text(resume.pdf_data, method, resume=resume)
     if input_payload.get("ok") is False:
         raise HTTPException(
             status_code=int(input_payload.get("status_code") or 422),
@@ -419,6 +431,15 @@ async def parse_resume(
             },
         )
 
+    _persist_parse_input_cache(
+        resume,
+        parse_text=parse_text,
+        method=method,
+        source=input_payload.get("source"),
+    )
+    db.commit()
+    db.refresh(resume)
+
     structured = await parse_markdown_by_method(parse_text, method)
 
     if structured is None:
@@ -436,7 +457,6 @@ async def parse_resume(
 
     structured = validate_and_fix(structured)
 
-    resume.raw_markdown = parse_text
     resume.structured_data = structured
     resume.parse_method = method
     resume.portal_ready = structured.get("_validation", {}).get("portal_ready", False)

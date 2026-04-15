@@ -20,6 +20,13 @@ def _fail_job(job: ParseJob, code: str, message: str) -> None:
     job.error_message = message
 
 
+def _persist_parse_input_cache(resume: Resume, parse_text: str, method: str, source: str | None) -> None:
+    resume.raw_markdown = parse_text
+    resume.raw_markdown_method = method
+    resume.raw_markdown_source = source
+    resume.raw_markdown_updated_at = datetime.now(timezone.utc)
+
+
 async def run_parse_job(job_id: int) -> bool:
     """Run a parse job and persist state transitions to the database."""
     db = SessionLocal()
@@ -84,7 +91,7 @@ async def run_parse_job(job_id: int) -> bool:
         job.progress_stage = "Preparing parse input..."
         db.commit()
 
-        input_payload = await get_parse_input_text(resume.pdf_data, method)
+        input_payload = await get_parse_input_text(resume.pdf_data, method, resume=resume)
         if input_payload.get("ok") is False:
             _fail_job(
                 job,
@@ -99,6 +106,14 @@ async def run_parse_job(job_id: int) -> bool:
             _fail_job(job, "PARSE_INPUT_EMPTY", "Could not prepare parse input text.")
             db.commit()
             return False
+
+        _persist_parse_input_cache(
+            resume,
+            parse_text=parse_text,
+            method=method,
+            source=input_payload.get("source"),
+        )
+        db.commit()
 
         db.refresh(job)
         if job.status == "cancelled":
@@ -133,7 +148,6 @@ async def run_parse_job(job_id: int) -> bool:
 
         structured = validate_and_fix(structured)
 
-        resume.raw_markdown = parse_text
         resume.structured_data = structured
         resume.parse_method = method
         resume.portal_ready = structured.get("_validation", {}).get("portal_ready", False)

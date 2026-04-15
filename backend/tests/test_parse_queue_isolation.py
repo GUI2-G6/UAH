@@ -58,6 +58,16 @@ class ParseQueueIsolationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(parse_queue._retry_delay_seconds("local", 2), 4)
         self.assertEqual(parse_queue._retry_delay_seconds("rules", 2), 0)
 
+    def test_cloud_retry_only_happens_for_retryable_cloud_codes(self):
+        self.assertTrue(parse_queue._can_retry_job("cloud", "CLOUD_LLM_RATE_LIMITED"))
+        self.assertFalse(parse_queue._can_retry_job("cloud", "CLOUD_LLM_QUOTA_EXHAUSTED"))
+        self.assertTrue(parse_queue._can_retry_job("local", "LLM_TIMEOUT"))
+
+    def test_cloud_min_interval_is_configurable(self):
+        with patch.object(parse_queue.settings, "PARSE_QUEUE_CLOUD_MIN_INTERVAL_SECONDS", 7):
+            self.assertEqual(parse_queue._min_interval_for_method("cloud"), 7)
+            self.assertEqual(parse_queue._min_interval_for_method("local"), 0)
+
     async def test_run_parse_job_fails_on_resume_owner_mismatch(self):
         job = SimpleNamespace(
             id=1,
@@ -111,6 +121,9 @@ class ParseQueueIsolationTests(unittest.IsolatedAsyncioTestCase):
             user_id=200,
             pdf_data=b"pdf",
             raw_markdown=None,
+            raw_markdown_source=None,
+            raw_markdown_method=None,
+            raw_markdown_updated_at=None,
             structured_data=None,
             parse_method=None,
             portal_ready=False,
@@ -130,6 +143,9 @@ class ParseQueueIsolationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(job.status, "success")
         self.assertEqual(resume.parse_method, "local")
         self.assertEqual(resume.raw_markdown, "resume markdown")
+        self.assertEqual(resume.raw_markdown_source, "local_ocr")
+        self.assertEqual(resume.raw_markdown_method, "local")
+        self.assertIsNotNone(resume.raw_markdown_updated_at)
         self.assertTrue(resume.portal_ready)
         self.assertEqual(resume.review_status, "pending")
         self.assertEqual(resume.review_draft, structured)

@@ -115,6 +115,7 @@ class Settings:
     ZAI_OCR_URL: str = os.getenv("ZAI_OCR_URL", "https://api.z.ai/api/paas/v4/layout_parsing")
     ZAI_LLM_URL: str = os.getenv("ZAI_LLM_URL", "https://api.z.ai/api/paas/v4/chat/completions")
     ZAI_LLM_MODEL: str = os.getenv("ZAI_LLM_MODEL", "GLM-4.7-Flash")
+    ZAI_LLM_MAX_TOKENS: int = int(os.getenv("ZAI_LLM_MAX_TOKENS", "3072"))
 
     # Local Ollama pipeline (replaces ZAI when USE_LOCAL_PIPELINE=true)
     USE_LOCAL_PIPELINE: bool = _env_bool("USE_LOCAL_PIPELINE", "false")
@@ -140,6 +141,7 @@ class Settings:
     PARSE_QUEUE_CONCURRENCY_CLOUD: int = int(os.getenv("PARSE_QUEUE_CONCURRENCY_CLOUD", "1"))
     PARSE_QUEUE_CONCURRENCY_LOCAL: int = int(os.getenv("PARSE_QUEUE_CONCURRENCY_LOCAL", "2"))
     PARSE_QUEUE_CONCURRENCY_RULES: int = int(os.getenv("PARSE_QUEUE_CONCURRENCY_RULES", "2"))
+    PARSE_QUEUE_CLOUD_MIN_INTERVAL_SECONDS: int = int(os.getenv("PARSE_QUEUE_CLOUD_MIN_INTERVAL_SECONDS", "5"))
     PARSE_QUEUE_CLAIM_TTL_SECONDS: int = int(os.getenv("PARSE_QUEUE_CLAIM_TTL_SECONDS", "1800"))
     PARSE_QUEUE_SHUTDOWN_DRAIN_SECONDS: int = int(os.getenv("PARSE_QUEUE_SHUTDOWN_DRAIN_SECONDS", "30"))
     PARSE_QUEUE_STALE_JOB_MINUTES: int = int(os.getenv("PARSE_QUEUE_STALE_JOB_MINUTES", "20"))
