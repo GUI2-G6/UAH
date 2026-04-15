@@ -30,6 +30,7 @@ from app.api.apply_session import router as apply_session_router
 from app.api.integrations import router as integrations_router
 from app.api.gmail import router as gmail_router
 from app.core.config import settings
+from app.core.runtime_environment import generated_docs_enabled
 from app.core.validation import normalize_email, require_valid_email
 from app.db.base import Base
 from app.db.session import get_engine, init_engine
@@ -470,10 +471,10 @@ async def lifespan(app: FastAPI):
         await stop_queue_worker()
         logger.info("Redis parse queue worker stopped")
 
-_runtime_environment = (settings.ENVIRONMENT or os.getenv("ENVIRONMENT", "development")).strip().lower()
 # Generated API docs are a local/dev convenience. Beta-style environments
-# should expose the product surface, not a public OpenAPI explorer.
-_docs_enabled = _runtime_environment in {"development", "dev", "local"}
+# should expose the product surface, not a public OpenAPI explorer. Fail
+# closed when ENVIRONMENT is missing or unknown.
+_docs_enabled = generated_docs_enabled(os.getenv("ENVIRONMENT"))
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

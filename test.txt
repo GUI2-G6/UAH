@@ -73,3 +73,5 @@ widen search doesnt fully work yet
 make sure zip code input cant be broken
 
 de gear the whole app process from being so tech oriented
+
+email verification token nice to link

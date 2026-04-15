@@ -13,10 +13,10 @@ Treat it as an operator-facing summary. The detailed variable set still lives in
 - `POSTGRES_PASSWORD`
 - `SECRET_KEY`
 - `SESSION_SECRET`
-- `AUTH_NAMESPACE`
-- `SESSION_COOKIE_NAME`
 
-These are non-optional for backend startup in repo-managed environments.
+These are the top-level secrets the backend refuses to start without. Cookie
+and auth namespace settings are still required, but they are grouped under Core
+Runtime Identity because they define environment-scoped runtime behavior.
 
 ## Core Runtime Identity
 
@@ -24,6 +24,7 @@ These are non-optional for backend startup in repo-managed environments.
 - `ENVIRONMENT`
 - `COMPOSE_PROJECT_NAME`
 - `PUBLIC_APP_URL`
+- `AUTH_NAMESPACE`
 - `AUTH_COOKIE_NAME`
 - `SESSION_COOKIE_NAME`
 - `SESSION_COOKIE_SAMESITE`
