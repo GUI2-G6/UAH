@@ -65,3 +65,5 @@ Executing inline script violates the following Content Security Policy directive
 add more advanced routing for early college, highschool, and other things that might be on a resume butnot normally directly translate to an ats application so we can standardize for them
 
 our commitment page added as our temp privacy policy thing, go through later and rewrite a lot wording wise
+
+some issues with the extension resizing lol

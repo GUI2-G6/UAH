@@ -7,7 +7,9 @@
     "dev": "node ./scripts/run-vite.mjs",
     "build": "node ./scripts/run-vite.mjs build",
     "preview": "node ./scripts/run-vite.mjs preview",
-    "test:autofill": "node --test --experimental-test-isolation=none ./test/autofill.test.js"
+    "test": "npm run test:autofill && npm run test:adapters",
+    "test:autofill": "node --test --experimental-test-isolation=none ./test/autofill.test.js",
+    "test:adapters": "node --test --experimental-test-isolation=none ./test/adapters.test.js"
   },
   "dependencies": {
     "vue": "^3.5.28"
