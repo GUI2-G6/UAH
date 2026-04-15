@@ -28,14 +28,6 @@ function requireHttpsOrigin(rawValue, name) {
   return parsed.origin
 }
 
-function isLocalHarnessOrigin(origin) {
-  try {
-    return new URL(origin).hostname.toLowerCase() === 'localhost'
-  } catch {
-    return false
-  }
-}
-
 const appOrigin = requireHttpsOrigin(import.meta.env.VITE_EXTENSION_APP_ORIGIN, 'VITE_EXTENSION_APP_ORIGIN')
 const apiOrigin = requireHttpsOrigin(import.meta.env.VITE_EXTENSION_API_ORIGIN, 'VITE_EXTENSION_API_ORIGIN')
 const namespace = normalizeNamespace(import.meta.env.VITE_EXTENSION_AUTH_NAMESPACE)
@@ -50,5 +42,4 @@ export const runtimeConfig = {
   appOrigin,
   apiOrigin,
   authCookieName,
-  isLocalHarness: isLocalHarnessOrigin(appOrigin) && isLocalHarnessOrigin(apiOrigin),
 }

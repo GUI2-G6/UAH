@@ -11,10 +11,24 @@
 html,
 body,
 #app {
+  margin: 0;
+}
+
+html[data-uah-surface="popup"],
+html[data-uah-surface="popup"] body,
+html[data-uah-surface="popup"] #app {
   width: 380px;
   min-width: 380px;
   min-height: 560px;
-  margin: 0;
+}
+
+html[data-uah-surface="pinned"],
+html[data-uah-surface="pinned"] body,
+html[data-uah-surface="pinned"] #app {
+  width: 100%;
+  min-width: 0;
+  min-height: 100%;
+  height: 100%;
 }
 
 body {
@@ -24,7 +38,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -39,7 +54,8 @@ button {
   flex-direction: column;
   gap: 14px;
   min-height: 100%;
-  padding: 14px;
+  min-width: 0;
+  padding: clamp(10px, 3vw, 14px);
 }
 
 .hero-card,
@@ -66,6 +82,15 @@ button {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .eyebrow,
@@ -102,7 +127,7 @@ button {
 
 .hero-copy {
   margin-top: 6px;
-  max-width: 250px;
+  max-width: 30ch;
   font-size: 0.84rem;
 }
 
@@ -111,6 +136,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
   padding: 12px 14px;
 }
 
@@ -128,11 +154,12 @@ button {
 
 .tab-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
 .tab-button {
+  min-width: 0;
   padding: 10px 12px;
   border: 1px solid var(--border-color-light);
   border-radius: var(--radius-sm);
@@ -159,7 +186,20 @@ button {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
   margin-bottom: 12px;
+}
+
+.panel-heading--compact {
+  margin-bottom: 10px;
+}
+
+.panel-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .selection-list {
@@ -201,6 +241,7 @@ button {
   margin: 0 0 4px;
   color: var(--color-text-primary);
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .detail-stack {
@@ -216,7 +257,8 @@ button {
 }
 
 .detail-row,
-.copy-card {
+.copy-card,
+.autofill-card {
   border: 1px solid rgba(203, 213, 225, 0.86);
   border-radius: var(--radius-sm);
   background: rgba(248, 250, 252, 0.88);
@@ -227,6 +269,7 @@ button {
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
+  flex-wrap: wrap;
   padding: 10px 12px;
 }
 
@@ -239,7 +282,8 @@ button {
   letter-spacing: 0.04em;
 }
 
-.copy-card {
+.copy-card,
+.autofill-card {
   padding: 10px 12px;
 }
 
@@ -248,11 +292,35 @@ button {
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
+  flex-wrap: wrap;
   margin-bottom: 8px;
 }
 
 .copy-card-body {
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.autofill-copy {
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.autofill-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.autofill-card .inline-banner {
+  margin-top: 10px;
+}
+
+.autofill-card--compact {
+  padding-top: 12px;
 }
 
 .status-pill {
@@ -364,7 +432,18 @@ button {
   color: var(--color-text-primary);
 }
 
-.field-group input:focus {
+.field-select {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.field-group input:focus,
+.field-select:focus {
   outline: none;
   border-color: color-mix(in srgb, var(--color-primary-600) 55%, white);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
@@ -426,4 +505,24 @@ button {
   border-color: rgba(22, 163, 74, 0.2);
   background: rgba(240, 253, 244, 0.96);
   color: var(--color-success-600);
+}
+
+@media (max-width: 360px) {
+  .hero-actions,
+  .autofill-actions,
+  .footer-actions {
+    width: 100%;
+  }
+
+  .hero-actions > *,
+  .autofill-actions > *,
+  .detail-row .copy-button,
+  .copy-card-header .copy-button {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  .account-meta {
+    align-items: flex-start;
+  }
 }

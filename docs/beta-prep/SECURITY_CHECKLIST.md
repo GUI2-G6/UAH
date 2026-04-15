@@ -9,7 +9,10 @@ All items must be checked before the beta URL is shared outside the core team.
 
 - [ ] All `.env` values confirmed set correctly for the beta environment (no dev URLs, no empty secrets)
 - [ ] No `.env` file committed to the `beta` branch — confirmed via `git status` and `.gitignore` check
-- [ ] `ENVIRONMENT=production` set in beta `.env` (backend debug mode disabled)
+- [ ] `ENVIRONMENT=beta` and `ENV=beta` set in beta `.env`
+- [ ] `AUTH_NAMESPACE=beta` and `VITE_AUTH_NAMESPACE=beta` set for cookie/storage isolation
+- [ ] `VITE_LOCAL_MODE=backend` set for beta builds (not `mock`)
+- [ ] `SESSION_COOKIE_HTTPS_ONLY=true` set in beta `.env`
 - [ ] `COMPOSE_PROJECT_NAME=uah-beta` set to avoid container name conflicts with dev
 - [ ] `PUBLIC_APP_URL=https://beta.uahapp.com` set correctly (used in email links)
 - [ ] `GOOGLE_REDIRECT_URI=https://beta.uahapp.com/api/auth/google/callback` set correctly
@@ -25,13 +28,14 @@ All items must be checked before the beta URL is shared outside the core team.
 
 ## Backend Security
 
-- [ ] `DEBUG` / development mode disabled — `ENVIRONMENT=production` confirmed in backend logs on startup
+- [ ] Beta runtime confirmed in backend logs/startup output (`ENVIRONMENT=beta`)
 - [ ] Hot-reload (`--reload`) flag removed from the backend process (use `command:` override in compose)
 - [ ] Source code volume mount (`./backend:/app`) removed from compose for beta
 - [ ] `/api/jobs/save` endpoint requires authentication (fix from `AUDIT.md` §1.5 applied)
 - [ ] `/api/jobs/saved` endpoint requires authentication (fix from `AUDIT.md` §1.5 applied)
 - [ ] `/api/diagnostics` is either removed, auth-gated (admin only), or not proxied by Nginx
 - [ ] `/docs`, `/redoc`, `/openapi.json` are either disabled in FastAPI or not proxied by Nginx
+- [ ] Beta celery worker and beat services are running and isolated from dev
 
 ## Frontend
 
@@ -89,6 +93,8 @@ All items must be checked before the beta URL is shared outside the core team.
 
 - [ ] `pip-audit` or `safety` run against `backend/requirements.txt` — no critical CVEs unaddressed
 - [ ] `npm audit` run against `frontend/package.json` — no critical CVEs unaddressed
+- [ ] `npm audit` run against `uah-browser-extension/package.json` when the extension lockfile is present
+- [ ] `gitleaks` scan run against tracked repo files — no unapproved secret findings
 - [ ] Dependabot alerts reviewed in GitHub — no critical vulnerabilities outstanding
 
 ## Final Verification

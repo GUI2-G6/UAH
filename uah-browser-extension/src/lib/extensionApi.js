@@ -88,8 +88,20 @@ export function tabsCreate(details) {
   return extensionCall((api) => api.tabs, 'create', details)
 }
 
+export function tabsQuery(queryInfo) {
+  return extensionCall((api) => api.tabs, 'query', queryInfo)
+}
+
+export function tabsGet(tabId) {
+  return extensionCall((api) => api.tabs, 'get', tabId)
+}
+
 export function tabsRemove(tabId) {
   return extensionCall((api) => api.tabs, 'remove', tabId)
+}
+
+export function scriptingExecuteScript(injection) {
+  return extensionCall((api) => api.scripting, 'executeScript', injection)
 }
 
 export function addTabsUpdatedListener(listener) {
@@ -98,6 +110,14 @@ export function addTabsUpdatedListener(listener) {
     throw new Error('tabs.onUpdated is unavailable.')
   }
   tabs.onUpdated.addListener(listener)
+}
+
+export function addTabsActivatedListener(listener) {
+  const tabs = browserApi?.tabs || chromeApi?.tabs
+  if (!tabs?.onActivated?.addListener) {
+    throw new Error('tabs.onActivated is unavailable.')
+  }
+  tabs.onActivated.addListener(listener)
 }
 
 export function removeTabsUpdatedListener(listener) {

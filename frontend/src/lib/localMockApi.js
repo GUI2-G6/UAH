@@ -984,11 +984,13 @@ function createDefaultState() {
       }),
     ],
     profiles: [createProfile(user)],
+    savedJobs: [],
     parseJobs: {},
     nextIds: {
       resume: 3,
       profile: 2,
       parseJob: 100,
+      savedJob: 1,
     },
   }
 }
@@ -1002,11 +1004,21 @@ function ensureStateShape(state) {
   safe.user = safe.user && typeof safe.user === 'object' ? { ...createDefaultUser(), ...safe.user } : createDefaultUser()
   safe.resumes = ensureArray(safe.resumes, []).map((resume) => syncMockResumeRecord(resume))
   safe.profiles = ensureArray(safe.profiles, []).map((profile) => syncMockProfileStorage(profile))
+  safe.savedJobs = ensureArray(safe.savedJobs, []).map((job) => ({
+    id: Number(job?.id || 0) || 0,
+    provider: normalizeTextLower(job?.provider),
+    provider_job_id: normalizeWhitespace(job?.provider_job_id),
+    title: normalizeWhitespace(job?.title),
+    company: normalizeWhitespace(job?.company),
+    url: normalizeWhitespace(job?.url),
+    created_at: normalizeIsoDate(job?.created_at) || nowIso(),
+  })).filter((job) => job.id > 0 && job.title && job.company && job.url)
   safe.parseJobs = safe.parseJobs && typeof safe.parseJobs === 'object' ? safe.parseJobs : {}
-  safe.nextIds = safe.nextIds && typeof safe.nextIds === 'object' ? safe.nextIds : { resume: 1, profile: 1, parseJob: 1 }
+  safe.nextIds = safe.nextIds && typeof safe.nextIds === 'object' ? safe.nextIds : { resume: 1, profile: 1, parseJob: 1, savedJob: 1 }
   safe.nextIds.resume = Number(safe.nextIds.resume || safe.resumes.length + 1)
   safe.nextIds.profile = Number(safe.nextIds.profile || safe.profiles.length + 1)
   safe.nextIds.parseJob = Number(safe.nextIds.parseJob || 100)
+  safe.nextIds.savedJob = Number(safe.nextIds.savedJob || safe.savedJobs.length + 1)
 
   if (!safe.profiles.length) {
     safe.profiles = [createProfile(safe.user)]
@@ -1279,11 +1291,29 @@ function buildMockProviderValues() {
     })
 }
 
+function buildMockCompanyValues() {
+  const counts = new Map()
+
+  for (const job of getMockSearchableJobs()) {
+    const company = normalizeWhitespace(job.company)
+    if (!company) continue
+    counts.set(company, Number(counts.get(company) || 0) + 1)
+  }
+
+  return [...counts.entries()]
+    .sort((a, b) => {
+      if (a[1] !== b[1]) return b[1] - a[1]
+      return a[0].localeCompare(b[0])
+    })
+    .map(([value, observed_count]) => ({ value, observed_count }))
+}
+
 function buildMockFilterMetadata() {
   const categoryValues = buildMockCategoryValues()
   const levelValues = buildMockLevelValues()
   const countryValues = buildMockCountryValues()
   const providerValues = buildMockProviderValues()
+  const companyValues = buildMockCompanyValues()
   const payload = {
     category_groups: CATEGORY_GROUPS.map((group) => ({
       key: group.key,
@@ -1295,6 +1325,7 @@ function buildMockFilterMetadata() {
     level_values: levelValues,
     country_values: countryValues,
     provider_values: providerValues,
+    company_values: companyValues,
     levels: levelValues.map((item) => item.label),
     location_param_cap: MOCK_LOCATION_PARAM_CAP,
   }
@@ -1672,7 +1703,7 @@ function toSearchParamsFromObject(raw = {}) {
 
 function buildMockJobsSearchPayload(searchParams) {
   const page = Math.max(1, parseInteger(searchParams.get('page'), 1))
-  const pageSize = Math.max(1, Math.min(50, parseInteger(searchParams.get('page_size'), 10)))
+  const pageSize = Math.max(1, Math.min(100, parseInteger(searchParams.get('page_size'), 10)))
   const locationSelection = buildMockLocationSelection(searchParams)
   const selectedLocations = locationSelection.selectedLocations
   const droppedLocations = locationSelection.droppedLocations
@@ -1735,13 +1766,13 @@ function buildMockJobsSearchPayload(searchParams) {
     accepted_by_concrete_location: Number(diagnostics.acceptedByConcreteLocation || 0),
     accepted_by_remote_override: Number(diagnostics.acceptedByRemoteOverride || 0),
     accepted_by_hybrid_override: Number(diagnostics.acceptedByHybridOverride || 0),
-    accepted_by_constraint_overlap: Number(diagnostics.acceptedByConstraintOverlap || 0),
+    accepted_by_constraint_overlap: 0,
     constraint_parse_high_confidence: Number(diagnostics.constraintParseHighConfidence || 0),
     constraint_parse_medium_confidence: Number(diagnostics.constraintParseMediumConfidence || 0),
     constraint_parse_low_confidence: Number(diagnostics.constraintParseLowConfidence || 0),
-    constraint_policy_remote_off: 'allow-if-overlap',
-    constraint_compatibility_enabled: true,
-    constraint_filter_min_confidence: 'high',
+    constraint_policy_remote_off: 'strict-exclude',
+    constraint_compatibility_enabled: false,
+    constraint_filter_min_confidence: '',
     adaptive_chase_enabled: false,
     adaptive_chase_extra_pages: 0,
     effective_max_pages: 1,
@@ -2249,14 +2280,12 @@ function applyJobSearchFilters(baseJobs, params, selectedLocations) {
   let acceptedByConcreteLocation = 0
   let acceptedByRemoteOverride = 0
   let acceptedByHybridOverride = 0
-  let acceptedByConstraintOverlap = 0
 
   const allowedJobs = []
   for (const job of jobs) {
     const hasRemote = job.has_remote === true
     const hasHybrid = job.has_hybrid === true
     const remoteOnly = hasRemote && !hasHybrid
-    const allowLocalCompatibleRemote = !includeRemote && job.is_local_compatible_remote === true
 
     const concreteLocationMatch = hasConcreteLocationMatch(job.locations || [], locations)
     let allowReason = locations.length ? 'concrete_location' : 'no-location-filter'
@@ -2266,8 +2295,6 @@ function applyJobSearchFilters(baseJobs, params, selectedLocations) {
         allowReason = 'remote_override'
       } else if (includeHybrid && hasHybrid) {
         allowReason = 'hybrid_override'
-      } else if (allowLocalCompatibleRemote && hasRemote) {
-        allowReason = 'constraint_overlap'
       } else {
         continue
       }
@@ -2276,14 +2303,13 @@ function applyJobSearchFilters(baseJobs, params, selectedLocations) {
     if (!includeHybrid && hasHybrid) {
       continue
     }
-    if (!includeRemote && remoteOnly && !allowLocalCompatibleRemote) {
+    if (!includeRemote && remoteOnly) {
       continue
     }
 
     if (allowReason === 'concrete_location') acceptedByConcreteLocation += 1
     if (allowReason === 'remote_override') acceptedByRemoteOverride += 1
     if (allowReason === 'hybrid_override') acceptedByHybridOverride += 1
-    if (allowReason === 'constraint_overlap') acceptedByConstraintOverlap += 1
 
     allowedJobs.push(job)
   }
@@ -2294,7 +2320,7 @@ function applyJobSearchFilters(baseJobs, params, selectedLocations) {
       acceptedByConcreteLocation,
       acceptedByRemoteOverride,
       acceptedByHybridOverride,
-      acceptedByConstraintOverlap,
+      acceptedByConstraintOverlap: 0,
       filteredOutCount: Math.max(0, baseJobs.length - allowedJobs.length),
       constraintParseHighConfidence: jobs.length,
       constraintParseMediumConfidence: 0,
@@ -2325,6 +2351,57 @@ function normalizeProfileContactPayload(body = {}) {
   }
 
   return next
+}
+
+function buildMockSavedJobKey(provider, providerJobId) {
+  const normalizedProvider = normalizeTextLower(provider)
+  const normalizedProviderJobId = normalizeWhitespace(providerJobId)
+  if (!normalizedProvider || !normalizedProviderJobId) return ''
+  return `${normalizedProvider}::${normalizedProviderJobId}`
+}
+
+function findMockJobBySaveKey(provider, providerJobId) {
+  const key = buildMockSavedJobKey(provider, providerJobId)
+  if (!key) return null
+  return getMockSearchableJobs().find((job) => buildMockSavedJobKey(job.provider, job.provider_job_id) === key) || null
+}
+
+function serializeMockSavedJob(savedJob) {
+  const liveJob = findMockJobBySaveKey(savedJob.provider, savedJob.provider_job_id)
+  if (liveJob) {
+    return {
+      ...asJson(liveJob),
+      saved_job_id: savedJob.id,
+      saved_at: savedJob.created_at,
+    }
+  }
+
+  const providerJobId = normalizeWhitespace(savedJob.provider_job_id) || `saved-${savedJob.id}`
+  return {
+    id: providerJobId,
+    saved_job_id: savedJob.id,
+    saved_at: savedJob.created_at,
+    provider: normalizeTextLower(savedJob.provider),
+    provider_job_id: providerJobId,
+    name: normalizeWhitespace(savedJob.title),
+    title: normalizeWhitespace(savedJob.title),
+    short_name: normalizeWhitespace(savedJob.title),
+    company: normalizeWhitespace(savedJob.company),
+    locations: [],
+    levels: [],
+    categories: [],
+    tags: [],
+    type: '',
+    model_type: '',
+    has_remote: false,
+    has_hybrid: false,
+    is_local_compatible_remote: false,
+    publication_date: '',
+    short_description: '',
+    job_url: normalizeWhitespace(savedJob.url),
+    apply_url: normalizeWhitespace(savedJob.url),
+    contents: '',
+  }
 }
 
 async function handleMockApiRequest(request, requestUrl, state) {
@@ -3106,6 +3183,76 @@ async function handleMockApiRequest(request, requestUrl, state) {
 
   if (pathname === '/api/jobs/filter-metadata' && method === 'GET') {
     return toJsonResponse(buildMockFilterMetadata())
+  }
+
+  if (pathname === '/api/jobs/save' && method === 'POST') {
+    const body = await parseJsonBody(request)
+    const provider = normalizeTextLower(body.provider)
+    const providerJobId = normalizeWhitespace(body.provider_job_id || body.providerJobId || body.job_id || body.jobId)
+    const title = normalizeWhitespace(body.name)
+    const company = normalizeWhitespace(body.company)
+    const url = normalizeWhitespace(body.url || body.job_url || body.jobUrl)
+
+    if (!providerJobId || !title || !company || !url) {
+      return toJsonResponse({ detail: 'Missing saved job fields.' }, 400)
+    }
+
+    const duplicate = state.savedJobs.find((savedJob) => {
+      if (provider) {
+        return savedJob.provider === provider && normalizeWhitespace(savedJob.provider_job_id) === providerJobId
+      }
+      return normalizeWhitespace(savedJob.provider_job_id) === providerJobId
+    })
+    if (duplicate) {
+      return toJsonResponse({ detail: 'Job already saved' }, 400)
+    }
+
+    const nextId = Number(state.nextIds.savedJob || 1)
+    state.nextIds.savedJob = nextId + 1
+    state.savedJobs.unshift({
+      id: nextId,
+      provider,
+      provider_job_id: providerJobId,
+      title,
+      company,
+      url,
+      created_at: nowIso(),
+    })
+
+    return toJsonResponse({
+      saved_job_id: nextId,
+      message: `Successfully saved ${title} at ${company}!`,
+    })
+  }
+
+  if (pathname === '/api/jobs/saved' && method === 'GET') {
+    const page = Math.max(1, parseInteger(requestUrl.searchParams.get('page'), 1))
+    const pageSize = Math.max(1, Math.min(100, parseInteger(requestUrl.searchParams.get('page_size'), 10)))
+    const sortedSavedJobs = [...state.savedJobs].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+    const totalJobs = sortedSavedJobs.length
+    const totalPages = Math.max(1, Math.ceil(totalJobs / pageSize))
+    const start = (page - 1) * pageSize
+    const savedJobs = sortedSavedJobs.slice(start, start + pageSize).map((job) => serializeMockSavedJob(job))
+
+    return toJsonResponse({
+      saved_jobs: savedJobs,
+      page,
+      page_size: pageSize,
+      total_jobs: totalJobs,
+      total_pages: totalPages,
+      has_next_page: page < totalPages,
+      has_previous_page: page > 1,
+    })
+  }
+
+  if (pathname.startsWith('/api/jobs/saved/') && method === 'DELETE') {
+    const savedJobId = Number(pathname.split('/').pop() || '0')
+    const beforeCount = state.savedJobs.length
+    state.savedJobs = state.savedJobs.filter((job) => Number(job.id) !== savedJobId)
+    if (state.savedJobs.length === beforeCount) {
+      return toJsonResponse({ detail: 'Saved job not found' }, 404)
+    }
+    return toJsonResponse({ message: 'Job removed from saved list' })
   }
 
   if (pathname === '/api/providers/attribution' && method === 'GET') {

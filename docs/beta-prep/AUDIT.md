@@ -54,7 +54,7 @@ Two critical security issues were found and are described in full in **Section 2
 - `GOOGLE_REDIRECT_URI=https://dev.uahapp.com/api/auth/google/callback` is domain-specific for `dev` — beta requires updating this value.  
 - `PUBLIC_APP_URL=https://dev.uahapp.com` is domain-specific for `dev` — beta requires updating this value.  
 - `ADMIN_BOOTSTRAP_PASSWORD` has no description. It is optional but if enabled it grants admin access.  
-- `ENVIRONMENT` variable is not present in `.env.example` but is read by `config.py`; defaults to `"development"`. Beta should set this to `"beta"` or `"production"`.
+- `ENVIRONMENT` variable is not present in `.env.example` but is read by `config.py`; defaults to `"development"`. Beta should set this to `"beta"` (or another intentional non-dev runtime label).
 
 ---
 
@@ -262,7 +262,7 @@ This file is only for local developer use and should never be deployed to any se
 | `PUBLIC_APP_URL` | ❌ No description | `dev.uahapp.com` URL | Must update for beta; used in email links |
 | `EMAILS_ENABLED` | ❌ No description | `false` | Must set to `true` for beta |
 | `ADMIN_BOOTSTRAP_PASSWORD` | ❌ No description | Empty | If used, must be a strong random value |
-| `ENVIRONMENT` | ❌ Not in example | Defaults to `"development"` | Should be added to example; set to `"production"` for beta |
+| `ENVIRONMENT` | ❌ Not in example | Defaults to `"development"` | Should be added to example; set to `"beta"` for beta |
 
 ---
 

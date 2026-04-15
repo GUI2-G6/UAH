@@ -144,7 +144,13 @@ Notes:
 
 ### Local HTTPS harness for the browser extension
 
-Use this path when you want to test the browser extension against a real local backend without relaxing the extension's HTTPS-only build rules.
+Use this path when you want to test the current extension flow against a real local backend without relaxing the extension's HTTPS-only build rules. The extension now supports:
+
+- popup auth and cached profile/resume/account views
+- a persistent pinned side panel on supported tabs
+- manual profile-driven `Scan page` and `Fill page` actions on the current tab
+
+For extension-specific behavior and architecture details, see [uah-browser-extension/README.md](./uah-browser-extension/README.md).
 
 Quick helper:
 
@@ -185,13 +191,18 @@ mkcert -cert-file volumes/certs/local/tls.crt -key-file volumes/certs/local/tls.
 3. Create `frontend/.env.local` from `frontend/.env.local.example`.
    `npm run dev` in `frontend/` still uses mock mode/email-only login, while `npm run dev:backend` is the real-backend path used by the localhost extension harness.
 
-4. Start the local backend:
+4. Configure the extension for localhost HTTPS:
+   - use `uah-browser-extension/.env.local` for the local harness
+   - keep both origins on `https://localhost:5173`
+   - set either `VITE_EXTENSION_AUTH_NAMESPACE=local` or an explicit `VITE_EXTENSION_AUTH_COOKIE_NAME`
+
+5. Start the local backend:
 
 ```bash
 docker compose -f docker-compose.local.yml --profile backend up -d db-local backend-local
 ```
 
-5. Start the frontend over HTTPS:
+6. Start the frontend over HTTPS:
 
 ```bash
 cd frontend
@@ -199,18 +210,24 @@ npm install
 npm run dev:backend
 ```
 
-6. Open `https://localhost:5173` and confirm the browser trusts the cert before loading the extension.
+7. Open `https://localhost:5173` and confirm the browser trusts the cert before loading the extension.
 
-7. Create `uah-browser-extension/.env.local` from `uah-browser-extension/.env.local.example`, then build and load the extension unpacked.
+8. Build and load the unpacked extension:
+
+```bash
+cd uah-browser-extension
+npm install
+npm run build
+```
 
 Notes:
 
 - The Vite dev server remains the single browser-facing origin for both app pages and `/api` requests.
 - Google OAuth is intentionally out of scope for the localhost harness; use email/password for local extension testing.
 - Cert files under `volumes/certs/local/` stay ignored by git through the existing `volumes/` ignore rule.
-- The helper script expects repo-root `.env`, `frontend/.env.local`, and `uah-browser-extension/.env.local` to already exist for the default `-ExtensionTarget local` flow.
-- Use `-ExtensionTarget beta` to build the extension from `uah-browser-extension/.env` and skip local backend/frontend startup.
-- The helper script starts backend-local, launches the HTTPS frontend in a new PowerShell window, builds the extension, and prints the manual Chrome smoke-test steps.
+- The local helper flow expects repo-root `.env`, `frontend/.env.local`, and a localhost-targeted extension env file before the default `-ExtensionTarget local` run.
+- Use `-ExtensionTarget beta` to build the extension against the remote HTTPS env in `uah-browser-extension/.env` and skip local backend/frontend startup.
+- The helper script starts `backend-local`, launches the HTTPS frontend in a new PowerShell window, builds the extension, and prints a Chrome smoke-test checklist that covers login, cached session restore, profile/resume loading, full-app links, and logout cleanup.
 
 ### Environment template
 

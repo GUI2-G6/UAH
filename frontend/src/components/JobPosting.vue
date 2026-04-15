@@ -4,7 +4,6 @@
             <template #header>
                 <div class="job-header-row">
                     <h3 class="job-title">{{ job.title }}</h3>
-                    <span v-if="formattedPublicationDate" class="meta-pill posted">Posted {{ formattedPublicationDate }}</span>
                 </div>
             </template>
             <template #subtitle>
@@ -54,6 +53,15 @@
                     </div>
 
                     <div class="job-actions">
+                        <button
+                            type="button"
+                            class="secondary save-action"
+                            :class="{ active: isSaved }"
+                            :disabled="savePending"
+                            @click="toggleSave"
+                        >
+                            {{ saveButtonLabel }}
+                        </button>
                         <button type="button" class="secondary" @click="openDetails">Details</button>
                         <button type="button" class="primary" @click="apply">Apply Now</button>
                     </div>
@@ -105,6 +113,15 @@
                     <a v-if="applicationLink" :href="applicationLink" target="_blank" rel="noopener noreferrer">
                         <button type="button" class="primary">Open Application</button>
                     </a>
+                    <button
+                        type="button"
+                        class="secondary save-action"
+                        :class="{ active: isSaved }"
+                        :disabled="savePending"
+                        @click="toggleSave"
+                    >
+                        {{ detailSaveButtonLabel }}
+                    </button>
                     <button type="button" class="secondary" @click="closeDetails">Close</button>
                 </div>
             </div>
@@ -129,8 +146,21 @@ export default {
         showDebugMeta: {
             type: Boolean,
             default: false,
-        }
+        },
+        boardMode: {
+            type: String,
+            default: "search",
+        },
+        isSaved: {
+            type: Boolean,
+            default: false,
+        },
+        savePending: {
+            type: Boolean,
+            default: false,
+        },
     },
+    emits: ["toggle-save"],
     data() {
         return {
             detailsOpen: false
@@ -213,6 +243,10 @@ export default {
                 this.buildMetaPill("work-setup", this.workSetupLabel, { classes: ["accent"] }),
             ]
 
+            if (this.formattedPublicationDate) {
+                pills.push(this.buildMetaPill("posted", `Posted ${this.formattedPublicationDate}`, { classes: ["posted"] }))
+            }
+
             const levelLabel = (this.job?.levels?.[0] || "").toString().trim()
             if (levelLabel) {
                 pills.push(this.buildMetaPill("level", levelLabel))
@@ -263,6 +297,24 @@ export default {
         },
         attributionRequired() {
             return this.providerAttribution?.required === true
+        },
+        saveButtonLabel() {
+            if (this.savePending) {
+                return this.isSaved ? "Updating..." : "Saving..."
+            }
+            if (this.boardMode === "saved") {
+                return "Remove saved"
+            }
+            return this.isSaved ? "Saved" : "Save job"
+        },
+        detailSaveButtonLabel() {
+            if (this.boardMode === "saved") {
+                return this.savePending ? "Removing..." : "Remove saved"
+            }
+            if (this.savePending) {
+                return this.isSaved ? "Updating..." : "Saving..."
+            }
+            return this.isSaved ? "Saved" : "Save job"
         }
     },
     methods: {
@@ -313,6 +365,10 @@ export default {
                 return
             }
             this.openDetails()
+        },
+        toggleSave() {
+            if (this.savePending) return
+            this.$emit("toggle-save", this.job)
         }
     }
 }
@@ -340,6 +396,8 @@ export default {
     color: #0f172a;
     font-size: 1.05rem;
     line-height: 1.35;
+    flex: 1;
+    min-width: 0;
     display: -webkit-box;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
@@ -463,6 +521,7 @@ export default {
 
 .job-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
 }
 
@@ -487,6 +546,13 @@ export default {
 .job-modal-actions .secondary {
     background: #ffffff;
     color: #1f2937;
+}
+
+.job-actions .save-action.active,
+.job-modal-actions .save-action.active {
+    border-color: #0f766e;
+    color: #0f766e;
+    background: rgba(15, 118, 110, 0.08);
 }
 
 .job-modal-overlay {

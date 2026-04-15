@@ -42,6 +42,8 @@ class JobSearchServiceTests(unittest.TestCase):
 
         payload = _serialize_job(row)
 
+        self.assertEqual(payload["provider"], "the_muse")
+        self.assertEqual(payload["provider_job_id"], "12345")
         self.assertEqual(payload["job_url"], row.provider_url)
         self.assertEqual(payload["apply_url"], row.apply_url)
         self.assertEqual(payload["apply_portal"], "ashby")

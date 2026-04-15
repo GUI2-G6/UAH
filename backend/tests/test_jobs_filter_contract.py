@@ -74,16 +74,23 @@ class JobsFilterContractTests(unittest.TestCase):
         self.assertTrue(payload.get("level_values"))
         self.assertIn("country_values", payload)
         self.assertIn("provider_values", payload)
+        self.assertIn("company_values", payload)
 
     @patch("app.api.routes._query_observed_category_counts")
     @patch("app.api.routes._query_observed_country_counts")
     @patch("app.api.routes._query_observed_level_counts")
+    @patch("app.api.routes._query_observed_company_counts")
     @patch("app.api.routes._query_observed_provider_counts")
-    def test_filter_metadata_uses_sorted_observed_values(self, provider_mock, level_mock, country_mock, category_mock):
+    def test_filter_metadata_uses_sorted_observed_values(self, provider_mock, company_mock, level_mock, country_mock, category_mock):
         category_mock.return_value = [
             ("Software Engineer", 4),
             ("Design", 2),
             ("Data Science", 4),
+        ]
+        company_mock.return_value = [
+            ("Beta Labs", 5),
+            ("Acme", 5),
+            ("Delta", 1),
         ]
         level_mock.return_value = [
             ("senior", 3),
@@ -127,6 +134,14 @@ class JobsFilterContractTests(unittest.TestCase):
         )
         self.assertEqual(payload.get("provider_values")[0]["value"], "the_muse")
         self.assertEqual(payload.get("provider_values")[0]["observed_count"], 6)
+        self.assertEqual(
+            payload.get("company_values"),
+            [
+                {"value": "Acme", "observed_count": 5},
+                {"value": "Beta Labs", "observed_count": 5},
+                {"value": "Delta", "observed_count": 1},
+            ],
+        )
 
     @patch("app.api.routes._query_observed_country_counts")
     def test_country_metadata_prefers_real_name_over_code_placeholder(self, country_mock):
@@ -174,6 +189,7 @@ class JobsFilterContractTests(unittest.TestCase):
         self.assertTrue(any(item.get("value") == "entry" for item in payload["level_values"]))
         self.assertIsInstance(payload.get("country_values"), list)
         self.assertTrue(payload.get("provider_values"))
+        self.assertIsInstance(payload.get("company_values"), list)
 
     def test_category_expansion_allows_group_and_passthrough(self):
         expanded_group = _expand_category_for_muse("tech")
@@ -226,7 +242,7 @@ class JobsFilterContractTests(unittest.TestCase):
         self.assertEqual(diagnostics.get("dropped_count"), 1)
         self.assertEqual(diagnostics.get("strategy"), "muse-index-country-aware")
 
-    def test_remote_off_policy_allows_constraint_overlap(self):
+    def test_remote_off_policy_blocks_constraint_overlap(self):
         allowed, reason = _is_job_allowed_by_preferences(
             has_remote=True,
             has_hybrid=False,
@@ -236,8 +252,8 @@ class JobsFilterContractTests(unittest.TestCase):
             selected_locations=["Boston, MA"],
             allow_local_compatible_remote=True,
         )
-        self.assertTrue(allowed)
-        self.assertEqual(reason, "constraint_overlap")
+        self.assertFalse(allowed)
+        self.assertEqual(reason, "no-match")
 
     def test_remote_off_policy_blocks_non_compatible_remote(self):
         allowed, reason = _is_job_allowed_by_preferences(

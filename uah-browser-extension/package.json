@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node ./scripts/run-vite.mjs",
     "build": "node ./scripts/run-vite.mjs build",
-    "preview": "node ./scripts/run-vite.mjs preview"
+    "preview": "node ./scripts/run-vite.mjs preview",
+    "test:autofill": "node --test --experimental-test-isolation=none ./test/autofill.test.js"
   },
   "dependencies": {
     "vue": "^3.5.28"

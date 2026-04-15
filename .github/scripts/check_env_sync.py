@@ -117,20 +117,20 @@ def main():
     env_example_display = f"env-examples/{args.template}/.env.example"
 
     if not CONFIG_FILE.exists():
-        print(f"❌ Config file not found: {CONFIG_FILE}")
+        print(f"ERROR: Config file not found: {CONFIG_FILE}")
         sys.exit(1)
 
     if not env_example.exists():
-        print(f"❌ {env_example_display} not found: {env_example}")
+        print(f"ERROR: {env_example_display} not found: {env_example}")
         sys.exit(1)
 
-    print(f"📄 Scanning: {CONFIG_FILE}")
-    print(f"📄 Checking against: {env_example}")
+    print(f"Scanning: {CONFIG_FILE}")
+    print(f"Checking against: {env_example}")
 
     config_vars = extract_env_vars_from_config(CONFIG_FILE)
     example_keys = extract_keys_from_env_example(env_example)
 
-    print(f"🔍 Vars found in config: {sorted(config_vars)}")
+    print(f"Vars found in config: {sorted(config_vars)}")
 
     # These are intentionally internal or auto-set — skip them
     skip = {
@@ -142,7 +142,7 @@ def main():
     missing = config_vars - example_keys
 
     if missing:
-        print(f"❌ The following env vars are used in config.py but missing from {env_example_display}:\n")
+        print(f"ERROR: The following env vars are used in config.py but missing from {env_example_display}:\n")
         for key in sorted(missing):
             print(f"  - {key}")
         print(f"\nAdd them to {env_example_display} with a description before merging.")
@@ -154,7 +154,7 @@ def main():
                 print(f"{key}=")
         sys.exit(1)
     else:
-        print(f"✅ {env_example_display} is in sync ({len(config_vars)} env vars checked)")
+        print(f"OK: {env_example_display} is in sync ({len(config_vars)} env vars checked)")
         sys.exit(0)
 
 

@@ -2,14 +2,14 @@
   <section class="results-summary-card">
     <div class="results-summary-top">
       <div>
-        <p class="eyebrow">Search summary</p>
+        <p class="eyebrow">{{ boardMode === 'saved' ? 'Saved jobs' : 'Search summary' }}</p>
         <h2 v-if="loading">Refreshing results…</h2>
         <h2 v-else-if="error">{{ error }}</h2>
         <h2 v-else>{{ headline }}</h2>
-        <p v-if="!error" class="summary-copy">{{ searchScopeSummary }}</p>
+        <p v-if="!error" class="summary-copy">{{ summaryCopy }}</p>
       </div>
 
-      <div class="summary-actions">
+      <div v-if="boardMode !== 'saved'" class="summary-actions">
         <label v-if="!error" class="sort-control">
           <span>Sort</span>
           <select
@@ -33,7 +33,7 @@
       </div>
     </div>
 
-    <div v-if="activeFilterChips.length" class="active-filter-chip-list">
+    <div v-if="boardMode !== 'saved' && activeFilterChips.length" class="active-filter-chip-list">
       <button
         type="button"
         class="active-filter-chip"
@@ -62,6 +62,10 @@ export default {
     error: {
       type: String,
       default: '',
+    },
+    boardMode: {
+      type: String,
+      default: 'search',
     },
     jobsLength: {
       type: Number,
@@ -107,10 +111,23 @@ export default {
       type: Array,
       default: () => [],
     },
+    savedModeNote: {
+      type: String,
+      default: '',
+    },
   },
   emits: ['clear', 'remove-chip', 'sort-change', 'widen'],
   computed: {
     headline() {
+      if (this.boardMode === 'saved') {
+        if (this.totalJobs > 0) {
+          return `Showing ${this.jobsLength} saved jobs on page ${this.page} of ${this.totalJobs}`
+        }
+        if (this.jobsLength > 0) {
+          return `Showing ${this.jobsLength} saved jobs`
+        }
+        return 'No saved jobs yet'
+      }
       if (this.totalJobs > 0) {
         const totalLabel = this.totalsAreEstimated ? `about ${this.totalJobs}` : `${this.totalJobs}`
         return `Showing ${this.jobsLength} jobs on page ${this.page} of ${totalLabel}`
@@ -119,6 +136,12 @@ export default {
         return `Showing ${this.jobsLength} jobs on page ${this.page}`
       }
       return 'No jobs matched that search yet'
+    },
+    summaryCopy() {
+      if (this.boardMode === 'saved') {
+        return this.savedModeNote || 'Saved jobs stay simple for now while a richer saved-jobs board is planned.'
+      }
+      return this.searchScopeSummary
     },
   },
 }
@@ -139,6 +162,10 @@ export default {
   justify-content: space-between;
   gap: 16px;
   align-items: flex-start;
+}
+
+.results-summary-top > div:first-child {
+  min-width: 0;
 }
 
 .eyebrow {
@@ -178,6 +205,8 @@ h2 {
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .secondary-action,
@@ -218,6 +247,7 @@ h2 {
 }
 
 .sort-control select {
+  max-width: 100%;
   min-height: 36px;
   border: 1px solid rgba(203, 213, 225, 0.95);
   border-radius: 10px;

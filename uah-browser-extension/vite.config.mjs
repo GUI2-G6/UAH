@@ -58,17 +58,9 @@ function parseExplicitEnvFile(envFilePath) {
 
 function loadExtensionEnv(mode) {
   const env = loadEnv(mode, process.cwd(), '')
-  const explicitEnvFile = String(process.env.UAH_EXTENSION_ENV_FILE || '').trim()
-  if (!explicitEnvFile) {
-    return env
-  }
-
-  const resolvedEnvFile = path.isAbsolute(explicitEnvFile)
-    ? explicitEnvFile
-    : path.resolve(process.cwd(), explicitEnvFile)
-
+  const resolvedEnvFile = path.resolve(process.cwd(), '.env')
   if (!existsSync(resolvedEnvFile)) {
-    throw new Error(`Configured UAH_EXTENSION_ENV_FILE was not found: ${resolvedEnvFile}`)
+    throw new Error(`UAH browser extension requires ${resolvedEnvFile}`)
   }
 
   return {

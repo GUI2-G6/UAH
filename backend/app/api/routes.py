@@ -441,6 +441,27 @@ def _query_observed_provider_counts(db: Session) -> List[tuple[str, int]]:
     ]
 
 
+def _query_observed_company_counts(db: Session) -> List[tuple[str, int]]:
+    from app.models.job import Job
+
+    rows = (
+        _build_job_filter_metadata_query(db)
+        .with_entities(
+            Job.company.label("value"),
+            func.count(Job.id).label("observed_count"),
+        )
+        .filter(Job.company.is_not(None))
+        .filter(func.length(func.btrim(Job.company)) > 0)
+        .group_by(Job.company)
+        .all()
+    )
+    return [
+        (" ".join(str(row.value or "").split()), int(row.observed_count or 0))
+        for row in rows
+        if " ".join(str(row.value or "").split())
+    ]
+
+
 def _build_observed_category_values_payload(db: Optional[Session] = None) -> List[dict[str, Any]]:
     counts: dict[str, int] = {}
 
@@ -553,6 +574,23 @@ def _build_observed_provider_values_payload(db: Optional[Session] = None) -> Lis
     return sorted(values, key=lambda item: (-int(item["observed_count"]), item["label"].lower(), item["value"]))
 
 
+def _build_observed_company_values_payload(db: Optional[Session] = None) -> List[dict[str, Any]]:
+    counts: dict[str, int] = {}
+
+    if db is not None:
+        try:
+            for value, observed_count in _query_observed_company_counts(db):
+                counts[value] = counts.get(value, 0) + max(int(observed_count or 0), 0)
+        except Exception:
+            counts = {}
+
+    ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0].lower(), item[0]))
+    return [
+        {"value": value, "observed_count": observed_count}
+        for value, observed_count in ordered
+    ]
+
+
 def _build_jobs_filter_metadata_payload(db: Optional[Session] = None) -> dict[str, Any]:
     category_groups = _build_category_groups_payload()
     category_aliases = _build_category_aliases_payload()
@@ -560,6 +598,7 @@ def _build_jobs_filter_metadata_payload(db: Optional[Session] = None) -> dict[st
     level_values = _build_observed_level_values_payload(db)
     country_values = _build_observed_country_values_payload(db)
     provider_values = _build_observed_provider_values_payload(db)
+    company_values = _build_observed_company_values_payload(db)
     levels = [item["label"] for item in level_values]
 
     core_payload = {
@@ -569,6 +608,7 @@ def _build_jobs_filter_metadata_payload(db: Optional[Session] = None) -> dict[st
         "level_values": level_values,
         "country_values": country_values,
         "provider_values": provider_values,
+        "company_values": company_values,
         "levels": levels,
         "location_param_cap": max(1, settings.MUSE_LOCATION_PARAM_CAP),
     }
@@ -1449,8 +1489,6 @@ def _is_job_allowed_by_preferences(
             reason = "remote_override"
         elif include_hybrid and has_hybrid:
             reason = "hybrid_override"
-        elif allow_local_compatible_remote and has_remote:
-            reason = "constraint_overlap"
         else:
             return False, "no-match"
     else:
@@ -1499,7 +1537,10 @@ def _map_muse_job(job: dict) -> dict:
 
     return {
         "id": job.get("id"),
+        "provider": "the_muse",
+        "provider_job_id": str(job.get("id") or ""),
         "name": job.get("name"),
+        "title": job.get("name"),
         "short_name": job.get("short_name"),
         "type": job.get("type"),
         "model_type": job.get("model_type"),
@@ -1519,6 +1560,96 @@ def _map_muse_job(job: dict) -> dict:
         "publication_date": job.get("publication_date"),
         "job_url": job.get("refs", {}).get("landing_page"),
         "contents": job.get("contents") or "",
+    }
+
+
+def _normalize_saved_job_legacy_id(raw_value: str | None) -> int | None:
+    normalized = " ".join(str(raw_value or "").split())
+    if not normalized or not normalized.isdigit():
+        return None
+    return int(normalized)
+
+
+def _serialize_saved_job_row(saved_job: SavedJob, db: Session) -> dict[str, Any]:
+    from app.models.job import Job
+    from app.services.job_search import _serialize_job as serialize_local_job
+
+    current_job = None
+    if saved_job.provider and saved_job.provider_job_id:
+        current_job = (
+            db.query(Job)
+            .filter(
+                Job.provider == saved_job.provider,
+                Job.provider_job_id == saved_job.provider_job_id,
+            )
+            .order_by(Job.last_seen_at.desc().nullslast(), Job.first_seen_at.desc().nullslast())
+            .first()
+        )
+
+    if current_job is not None:
+        payload = serialize_local_job(current_job)
+        payload["saved_job_id"] = saved_job.id
+        payload["saved_at"] = saved_job.created_at.isoformat() if saved_job.created_at else None
+        payload["provider"] = payload.get("provider") or (saved_job.provider or "")
+        payload["provider_job_id"] = payload.get("provider_job_id") or (
+            saved_job.provider_job_id or (str(saved_job.job_id) if saved_job.job_id is not None else "")
+        )
+        if not payload.get("apply_url"):
+            payload["apply_url"] = saved_job.url
+        if not payload.get("job_url"):
+            payload["job_url"] = saved_job.url
+        return payload
+
+    provider_job_id = saved_job.provider_job_id or (
+        str(saved_job.job_id) if saved_job.job_id is not None else f"saved-{saved_job.id}"
+    )
+    saved_at = saved_job.created_at.isoformat() if saved_job.created_at else None
+    return {
+        "local_id": f"saved-{saved_job.id}",
+        "id": provider_job_id,
+        "saved_job_id": saved_job.id,
+        "saved_at": saved_at,
+        "provider": saved_job.provider or "",
+        "provider_job_id": provider_job_id,
+        "provider_url": saved_job.url,
+        "provider_url_status": "unknown",
+        "job_url": saved_job.url,
+        "apply_url": saved_job.url,
+        "apply_url_status": "unknown",
+        "apply_portal": "saved_snapshot",
+        "source_tags": ["saved_snapshot"],
+        "title": saved_job.title,
+        "name": saved_job.title,
+        "short_name": saved_job.title,
+        "company": saved_job.company,
+        "company_url": None,
+        "location": "",
+        "location_country_code": "",
+        "location_country_name": "",
+        "locations": [],
+        "job_type": "",
+        "type": "",
+        "experience_level": "",
+        "levels": [],
+        "categories": [],
+        "tags": [],
+        "short_description": "",
+        "description": "",
+        "contents": "",
+        "is_remote": False,
+        "has_remote": False,
+        "has_hybrid": False,
+        "quality_score": 0.0,
+        "display_tier": "saved",
+        "staleness_status": "unknown",
+        "staleness_flags": [],
+        "published_at": None,
+        "publication_date": None,
+        "is_featured": False,
+        "is_active": True,
+        "work_mode_reason": "unknown",
+        "is_local_compatible_remote": False,
+        "local_compatibility_reason": "",
     }
 
 
@@ -2070,8 +2201,8 @@ async def search_jobs(
     page_size: int = Query(
         settings.JOBS_DEFAULT_PAGE_SIZE,
         ge=1,
-        le=20,
-        description="Number of jobs to return for the requested UI page. Max 20.",
+        le=100,
+        description="Number of jobs to return for the requested UI page. Max 100.",
     ),
     category: Optional[List[str]] = Query(
         None,
@@ -2339,8 +2470,9 @@ async def search_jobs(
                             and confidence_ok_for_filter
                             and constraint_compatible
                         )
-                        mapped["is_local_compatible_remote"] = constraint_compatible
-                        mapped["local_compatibility_reason"] = compatibility_reason
+                        del use_constraint_compatibility
+                        mapped["is_local_compatible_remote"] = False
+                        mapped["local_compatibility_reason"] = ""
 
                         allowed, allow_reason = _is_job_allowed_by_preferences(
                             has_remote=mapped.get("has_remote", False),
@@ -2349,7 +2481,7 @@ async def search_jobs(
                             include_hybrid=include_hybrid,
                             job_locations=mapped.get("all_location_names", []) or [],
                             selected_locations=scan_selected_locations,
-                            allow_local_compatible_remote=(not include_remote and use_constraint_compatibility),
+                            allow_local_compatible_remote=False,
                         )
 
                         if not allowed:
@@ -2387,9 +2519,6 @@ async def search_jobs(
                             accepted_by_remote_override += 1
                         elif allow_reason == "hybrid_override":
                             accepted_by_hybrid_override += 1
-                        elif allow_reason == "constraint_overlap":
-                            accepted_by_constraint_overlap += 1
-
                     filtered_out_count += page_filtered
 
                     if len(accepted_jobs) >= target_results:
@@ -2565,13 +2694,13 @@ async def search_jobs(
         "accepted_by_concrete_location": accepted_by_concrete_location,
         "accepted_by_remote_override": accepted_by_remote_override,
         "accepted_by_hybrid_override": accepted_by_hybrid_override,
-        "accepted_by_constraint_overlap": accepted_by_constraint_overlap,
+        "accepted_by_constraint_overlap": 0,
         "constraint_parse_high_confidence": constraint_parse_high_confidence,
         "constraint_parse_medium_confidence": constraint_parse_medium_confidence,
         "constraint_parse_low_confidence": constraint_parse_low_confidence,
-        "constraint_policy_remote_off": "allow-if-overlap",
-        "constraint_compatibility_enabled": settings.CONSTRAINT_COMPATIBILITY_ENABLED,
-        "constraint_filter_min_confidence": settings.CONSTRAINT_FILTER_MIN_CONFIDENCE,
+        "constraint_policy_remote_off": "strict-exclude",
+        "constraint_compatibility_enabled": False,
+        "constraint_filter_min_confidence": "",
         "adaptive_chase_enabled": settings.MUSE_ADAPTIVE_PAGE_CHASE_ENABLED,
         "adaptive_chase_extra_pages": adaptive_extra_pages,
         "effective_max_pages": max_pages,
@@ -2629,24 +2758,56 @@ async def save_job(
     """
     Save a job posting to a user's saved-jobs list.
 
-    Prevents duplicate saves based on `(user_id, job_id)` and stores job title,
-    company, and source URL for later retrieval.
+    Prevents duplicate saves based on provider-aware identifiers when available
+    and stores a legacy snapshot for later retrieval.
 
     Response codes:
     - 200: Job saved successfully.
     - 400: Job already saved for this user.
     """
-    existing_job = db.query(SavedJob).filter(
-        SavedJob.user_id == current_user.id,
-        SavedJob.job_id == job_data.job_id
-    ).first()
+    normalized_provider_job_id = " ".join(str(job_data.provider_job_id or "").split())
+    legacy_job_id = _normalize_saved_job_legacy_id(normalized_provider_job_id)
+
+    existing_job = None
+    if job_data.provider and normalized_provider_job_id:
+        existing_job = (
+            db.query(SavedJob)
+            .filter(
+                SavedJob.user_id == current_user.id,
+                SavedJob.provider == job_data.provider,
+                SavedJob.provider_job_id == normalized_provider_job_id,
+            )
+            .first()
+        )
+
+    if existing_job is None and legacy_job_id is not None:
+        existing_job = (
+            db.query(SavedJob)
+            .filter(
+                SavedJob.user_id == current_user.id,
+                SavedJob.job_id == legacy_job_id,
+            )
+            .first()
+        )
+
+    if existing_job is None and not job_data.provider and normalized_provider_job_id:
+        existing_job = (
+            db.query(SavedJob)
+            .filter(
+                SavedJob.user_id == current_user.id,
+                SavedJob.provider_job_id == normalized_provider_job_id,
+            )
+            .first()
+        )
 
     if existing_job:
         raise HTTPException(status_code=400, detail="Job already saved")
 
     new_saved_job = SavedJob(
         user_id=current_user.id,
-        job_id=job_data.job_id,
+        job_id=legacy_job_id,
+        provider=job_data.provider,
+        provider_job_id=normalized_provider_job_id,
         title=job_data.name,
         company=job_data.company,
         url=job_data.url
@@ -2654,7 +2815,10 @@ async def save_job(
     db.add(new_saved_job)
     db.commit()
     db.refresh(new_saved_job)
-    return {"message": f"Successfully saved {job_data.name} at {job_data.company}!"}
+    return {
+        "saved_job_id": new_saved_job.id,
+        "message": f"Successfully saved {job_data.name} at {job_data.company}!",
+    }
 
 
 @router.get(
@@ -2682,6 +2846,8 @@ async def save_job(
     },
 )
 async def get_saved_jobs(
+    page: int = Query(1, ge=1, description="Saved jobs page number."),
+    page_size: int = Query(10, ge=1, le=100, description="Saved jobs page size."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -2691,18 +2857,28 @@ async def get_saved_jobs(
     Response codes:
     - 200: Saved jobs returned successfully (possibly empty list).
     """
-    saved_jobs = db.query(SavedJob).filter(SavedJob.user_id == current_user.id).all()
+    page = max(int(page or 1), 1)
+    page_size = max(min(int(page_size or 10), 100), 1)
 
+    saved_query = (
+        db.query(SavedJob)
+        .filter(SavedJob.user_id == current_user.id)
+        .order_by(SavedJob.created_at.desc().nullslast(), SavedJob.id.desc())
+    )
+    total_jobs = int(saved_query.count() or 0)
+    total_pages = max(1, ((total_jobs - 1) // page_size) + 1) if total_jobs else 1
+    rows = saved_query.offset((page - 1) * page_size).limit(page_size).all()
 
-    saved_job_data = []
-    for job in saved_jobs:
-        saved_job_data.append({
-            "id": job.id,
-            "title": job.title,
-            "company": job.company,
-            "job_url": job.url,
-        })
-    return {"saved_jobs": saved_job_data}
+    saved_job_data = [_serialize_saved_job_row(job, db) for job in rows]
+    return {
+        "saved_jobs": saved_job_data,
+        "page": page,
+        "page_size": page_size,
+        "total_jobs": total_jobs,
+        "total_pages": total_pages,
+        "has_next_page": page < total_pages,
+        "has_previous_page": page > 1,
+    }
 
 
 @router.delete("/jobs/saved/{job_id}", tags=["jobs"])
