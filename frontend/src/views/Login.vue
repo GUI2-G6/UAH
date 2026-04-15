@@ -49,8 +49,6 @@
                 {{ oauthRedirecting ? 'Redirecting to Google…' : 'Continue with Google' }}
             </button>
 
-            <p v-if="error" class="subtitle">{{ error }}</p>
-
             <div class="signup-row">
                 <span>Don't have an account?</span>
                 <a @click.prevent="goToRegister" href="#">Create an account</a>
@@ -68,11 +66,12 @@
     import SecretInput from "../components/SecretInput.vue";
     import { setAuth } from "../lib/auth.js";
     import { assertValidEmail } from "../lib/validation.js";
+    import { showToast } from '@/services/toastService.js';
 
     export default{
         name: "Login",
         components: {
-            SecretInput,
+            SecretInput
         },
         data() {
             return {
@@ -119,7 +118,8 @@
                     const next = this.$route?.query?.next
                     this.$router.push(typeof next === 'string' && next.length ? next : '/home')
                 } catch (e) {
-                    this.error = e?.message ?? String(e)
+                    const msg = e?.message ?? String(e)
+                    showToast(msg, 'error')
                 } finally {
                     this.loading = false
                 }
