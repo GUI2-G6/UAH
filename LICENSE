@@ -23,6 +23,20 @@ Software: UAH (Unified Application Hub)
 
 ---
 
+Additional Terms (Section 7 of AGPL-3.0)
+
+Pursuant to Section 7 of the GNU Affero General Public License v3.0,
+the following additional terms apply to this software:
+
+Attribution Requirement: Any version of this Software made publicly
+accessible via a network (including hosted, deployed, or derivative
+works) must display a reasonably prominent notice in the user interface
+crediting "UAH (Unified Application Hub)" with a link to the original
+repository at https://github.com/GUI2-G6/UAH. This notice must be
+visible to end users and may not be obscured or removed.
+
+---
+
 GNU AFFERO GENERAL PUBLIC LICENSE
                        Version 3, 19 November 2007
 
