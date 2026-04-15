@@ -1,6 +1,6 @@
 <template>
   <div class="popup-shell">
-    <header class="hero-card">
+    <header v-if="surface === 'popup'" class="hero-card">
       <div>
         <p class="eyebrow">UAH Browser Companion</p>
         <h1>Quick Applicant Access</h1>
@@ -8,7 +8,13 @@
           Reference your profiles and resume details while browsing job boards, then jump back into the full UAH app when you need more.
         </p>
       </div>
-      <button class="btn-secondary btn-compact" @click="openFullApp('/home')">Open UAH</button>
+      <div class="hero-actions">
+        <button class="btn-secondary btn-compact" :disabled="pinBusy" @click="togglePinnedMode">
+          {{ pinBusy ? 'Saving…' : pinEnabled ? 'Unpin' : 'Pin' }}
+        </button>
+        <button class="btn-secondary btn-compact" @click="closePopupSurface">Close</button>
+        <button class="btn-secondary btn-compact" @click="openFullApp('/home')">Open UAH</button>
+      </div>
     </header>
 
     <section v-if="booting" class="state-card">
@@ -56,16 +62,11 @@
         </button>
       </form>
 
-      <template v-if="!localHarnessMode">
-        <div class="auth-divider"><span>or</span></div>
+      <div class="auth-divider"><span>or</span></div>
 
-        <button class="btn-secondary" :disabled="authBusy" @click="handleGoogleLogin">
-          {{ googleBusy ? 'Completing Google sign-in…' : 'Continue with Google' }}
-        </button>
-      </template>
-      <div v-else class="inline-banner">
-        Local extension testing uses email/password only. Google OAuth stays disabled in the localhost harness.
-      </div>
+      <button class="btn-secondary" :disabled="authBusy" @click="handleGoogleLogin">
+        {{ googleBusy ? 'Completing Google sign-in…' : 'Continue with Google' }}
+      </button>
 
       <div v-if="authError" class="inline-banner inline-banner--error">
         {{ authError }}
@@ -100,43 +101,99 @@
         </button>
       </nav>
 
-      <div v-if="feedbackMessage" class="inline-banner inline-banner--success">
+      <div
+        v-if="feedbackMessage"
+        :class="['inline-banner', feedbackType === 'error' ? 'inline-banner--error' : 'inline-banner--success']"
+      >
         {{ feedbackMessage }}
       </div>
 
       <section v-if="activeTab === 'profiles'" class="panel-stack">
         <div class="panel-card">
-          <div class="panel-heading">
+          <div class="panel-heading panel-heading--compact">
             <div>
-              <p class="panel-kicker">Profiles</p>
-              <h2>Your applicant profiles</h2>
+              <p class="panel-kicker">Active profile</p>
+              <h2>Quick source + page actions</h2>
             </div>
-            <button class="text-link" @click="refreshProfiles">Refresh</button>
+            <div class="panel-heading-actions">
+              <span class="status-pill">Profile</span>
+              <button class="text-link" @click="refreshProfiles">Refresh</button>
+            </div>
           </div>
 
-          <div v-if="profilesLoading" class="state-card state-card--nested">
-            <p>Loading your UAH profiles…</p>
+          <div v-if="profilesLoading && !profiles.length" class="state-card state-card--nested">
+            <p>Loading your profile options…</p>
           </div>
           <div v-else-if="profilesError" class="inline-banner inline-banner--error">{{ profilesError }}</div>
           <div v-else-if="!profiles.length" class="empty-card">
             <p>No applicant profiles are available yet.</p>
             <button class="text-link" @click="openFullApp('/resumes')">Create one in the full app</button>
           </div>
-          <div v-else class="selection-list">
-            <button
-              v-for="profile in profiles"
-              :key="profile.id"
-              :class="['selection-item', { active: selectedProfile?.id === profile.id }]"
-              @click="selectProfile(profile.id)"
-            >
-              <div>
-                <p class="selection-title">{{ profile.name || 'Untitled profile' }}</p>
-                <p class="selection-subtitle">
-                  {{ [profile.first_name, profile.last_name].filter(Boolean).join(' ') || 'No saved name yet' }}
-                </p>
+          <div v-else class="detail-stack">
+            <label class="field-group">
+              <span>Use this profile in the extension</span>
+              <select
+                class="field-select"
+                :value="selectedProfile?.id || ''"
+                :disabled="!profiles.length || profileDetailLoading"
+                @change="handleProfilePickerChange"
+              >
+                <option value="" disabled>Select a profile</option>
+                <option v-for="profile in profiles" :key="profile.id" :value="profile.id">
+                  {{ profile.name || [profile.first_name, profile.last_name].filter(Boolean).join(' ') || 'Untitled profile' }}
+                </option>
+              </select>
+            </label>
+
+            <div class="autofill-card autofill-card--compact">
+              <div class="copy-card-header">
+                <div>
+                  <p class="detail-label">Manual page scan</p>
+                  <p class="autofill-copy">
+                    Uses {{ autofillSource?.source?.profileName || 'the selected profile' }}
+                    and {{ autofillSource?.tokenCount || 0 }} prepared values from UAH.
+                  </p>
+                </div>
               </div>
-              <span v-if="profile.is_active" class="status-pill">Active</span>
-            </button>
+
+              <div class="autofill-actions">
+                <button
+                  class="btn-secondary"
+                  :disabled="Boolean(autofillBusy)"
+                  @click="runProfileAutofill('navigatePreviousPage')"
+                >
+                  {{ autofillBusy === 'navigatePreviousPage' ? 'Going back…' : 'Previous page' }}
+                </button>
+                <button
+                  class="btn-secondary"
+                  :disabled="Boolean(autofillBusy)"
+                  @click="runProfileAutofill('navigateNextPage')"
+                >
+                  {{ autofillBusy === 'navigateNextPage' ? 'Advancing…' : 'Next page' }}
+                </button>
+                <button
+                  class="btn-primary"
+                  :disabled="!autofillSource || Boolean(autofillBusy)"
+                  @click="runProfileAutofill('autofillScan')"
+                >
+                  {{ autofillBusy === 'autofillScan' ? 'Scanning…' : 'Scan page' }}
+                </button>
+                <button
+                  class="btn-secondary"
+                  :disabled="!autofillSource || Boolean(autofillBusy)"
+                  @click="runProfileAutofill('autofillFill')"
+                >
+                  {{ autofillBusy === 'autofillFill' ? 'Filling…' : 'Fill page' }}
+                </button>
+              </div>
+
+              <div
+                v-if="autofillStatusMessage"
+                :class="['inline-banner', autofillStatusType === 'error' ? 'inline-banner--error' : 'inline-banner--success']"
+              >
+                {{ autofillStatusMessage }}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -340,8 +397,8 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 
+import { buildProfileAutofillSource } from '@/autofill/source'
 import { requestBackground } from '@/lib/messages'
-import { runtimeConfig } from '@/lib/runtimeConfig'
 import {
   buildProfileLinks,
   buildProfileLocation,
@@ -355,12 +412,18 @@ import {
   summarizeWork,
 } from '@/lib/formatters'
 
+const props = defineProps({
+  surface: {
+    type: String,
+    default: 'popup',
+  },
+})
+
 const tabs = [
   { key: 'profiles', label: 'Profiles' },
   { key: 'resumes', label: 'Resumes' },
   { key: 'account', label: 'Account' },
 ]
-const localHarnessMode = runtimeConfig.isLocalHarness
 
 const booting = ref(true)
 const authenticated = ref(false)
@@ -368,6 +431,7 @@ const currentUser = ref(null)
 const expiresAt = ref(null)
 const activeTab = ref('profiles')
 const feedbackMessage = ref('')
+const feedbackType = ref('success')
 
 const email = ref('')
 const password = ref('')
@@ -381,6 +445,9 @@ const profilesError = ref('')
 const selectedProfile = ref(null)
 const profileDetailLoading = ref(false)
 const profileDetailError = ref('')
+const autofillBusy = ref('')
+const autofillStatusMessage = ref('')
+const autofillStatusType = ref('')
 
 const resumes = ref([])
 const resumesLoading = ref(false)
@@ -392,14 +459,41 @@ const resumeDetailError = ref('')
 const connectedAccounts = ref(null)
 const accountLoading = ref(false)
 const accountError = ref('')
+const pinEnabled = ref(false)
+const pinBusy = ref(false)
 
-function setFeedback(message = '') {
+function setFeedback(message = '', type = 'success') {
   feedbackMessage.value = message
+  feedbackType.value = type
   if (!message) return
   window.clearTimeout(setFeedback.timer)
   setFeedback.timer = window.setTimeout(() => {
     feedbackMessage.value = ''
+    feedbackType.value = 'success'
   }, 2200)
+}
+
+function setAutofillStatus(message = '', type = '') {
+  autofillStatusMessage.value = message
+  autofillStatusType.value = type
+}
+
+function formatAutofillResult(action, result = {}) {
+  if (action === 'autofillScan') {
+    return `Scanned ${result.total ?? 0} fields. ${result.matched ?? 0} matched, ${result.review ?? 0} review, ${result.missing ?? 0} missing.`
+  }
+  if (action === 'autofillFill') {
+    return `Filled ${result.filled ?? 0} of ${result.total ?? 0} planned fields.`
+  }
+  if (action === 'navigatePreviousPage') {
+    return result?.usedHistory
+      ? 'Went back using browser history.'
+      : 'Moved to the previous application step.'
+  }
+  if (action === 'navigateNextPage') {
+    return 'Moved to the next application step.'
+  }
+  return 'Updated autofill state for the active page.'
 }
 
 async function copyText(value, label) {
@@ -411,6 +505,38 @@ async function copyText(value, label) {
 
 async function openFullApp(pathname) {
   await requestBackground('openFullApp', { pathname })
+}
+
+async function hydratePinnedUiState() {
+  try {
+    const state = await requestBackground('getPinnedUiState')
+    pinEnabled.value = Boolean(state?.pinEnabled)
+  } catch {
+    pinEnabled.value = false
+  }
+}
+
+async function togglePinnedMode() {
+  pinBusy.value = true
+
+  try {
+    const nextState = await requestBackground('setPinnedUiState', {
+      pinEnabled: !pinEnabled.value,
+    })
+    pinEnabled.value = Boolean(nextState?.pinEnabled)
+    setFeedback(
+      pinEnabled.value ? 'Pinned panel enabled for supported tabs.' : 'Pinned panel disabled.',
+      'success',
+    )
+  } catch (error) {
+    setFeedback(String(error?.message || error), 'error')
+  } finally {
+    pinBusy.value = false
+  }
+}
+
+function closePopupSurface() {
+  window.close()
 }
 
 function applyAuthFailure(error) {
@@ -511,6 +637,7 @@ async function handleLogout() {
   connectedAccounts.value = null
   email.value = ''
   password.value = ''
+  setAutofillStatus()
 }
 
 async function loadProfiles(force = false) {
@@ -552,6 +679,12 @@ async function selectProfile(profileId, force = false) {
 
 async function refreshProfiles() {
   await loadProfiles(true)
+}
+
+async function handleProfilePickerChange(event) {
+  const profileId = Number(event?.target?.value)
+  if (!Number.isFinite(profileId)) return
+  await selectProfile(profileId)
 }
 
 async function loadResumes(force = false) {
@@ -612,6 +745,38 @@ async function refreshAccount() {
   await loadAccount(true)
 }
 
+const autofillSource = computed(() => {
+  if (!selectedProfile.value) return null
+  return buildProfileAutofillSource(selectedProfile.value)
+})
+
+async function runProfileAutofill(action) {
+  if (
+    !selectedProfile.value
+    && action !== 'autofillGetStats'
+    && action !== 'navigatePreviousPage'
+    && action !== 'navigateNextPage'
+  ) return
+  autofillBusy.value = action
+  setAutofillStatus()
+
+  try {
+    const payload = action === 'autofillScan' || action === 'autofillFill'
+      ? {
+          source: autofillSource.value?.source || null,
+          tokenMap: autofillSource.value?.tokenMap || null,
+        }
+      : {}
+    const result = await requestBackground(action, payload)
+    setAutofillStatus(formatAutofillResult(action, result), 'success')
+  } catch (error) {
+    if (applyAuthFailure(error)) return
+    setAutofillStatus(String(error?.message || error), 'error')
+  } finally {
+    autofillBusy.value = ''
+  }
+}
+
 watch(activeTab, async (tab) => {
   if (!authenticated.value) return
   if (tab === 'profiles' && !profiles.value.length && !profilesLoading.value) {
@@ -623,6 +788,10 @@ watch(activeTab, async (tab) => {
   if (tab === 'account' && !connectedAccounts.value && !accountLoading.value) {
     await loadAccount()
   }
+})
+
+watch(() => selectedProfile.value?.id, () => {
+  setAutofillStatus()
 })
 
 const profileFields = computed(() => {
@@ -698,6 +867,7 @@ const resumeBlocks = computed(() => {
 })
 
 onMounted(async () => {
+  await hydratePinnedUiState()
   await bootstrap()
   if (authenticated.value) {
     await loadProfiles()

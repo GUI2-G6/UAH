@@ -45,7 +45,10 @@ class SavedJob(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, nullable=False, index=True)
-    job_id = Column(Integer, nullable=False)
+    job_id = Column(Integer, nullable=True)
+    provider = Column(String(50), nullable=True, index=True)
+    provider_job_id = Column(String(255), nullable=True, index=True)
     title = Column(String(255), nullable=False)
     company = Column(String(255), nullable=False)
     url = Column(String(255), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)

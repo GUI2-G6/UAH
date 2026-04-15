@@ -14,12 +14,41 @@ if (!existsSync(viteBin)) {
   process.exit(1)
 }
 
-const child = spawn(process.execPath, [viteBin, ...process.argv.slice(2)], {
-  stdio: 'inherit',
-  cwd: fileURLToPath(new URL('../', import.meta.url)),
-  env: process.env,
-})
+const cwd = fileURLToPath(new URL('../', import.meta.url))
+const args = process.argv.slice(2)
 
-child.on('exit', (code) => {
-  process.exit(code ?? 0)
+function runVite(viteArgs) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [viteBin, ...viteArgs], {
+      stdio: 'inherit',
+      cwd,
+      env: process.env,
+    })
+
+    child.on('error', reject)
+    child.on('exit', (code) => {
+      if ((code ?? 0) === 0) {
+        resolve()
+        return
+      }
+      reject(new Error(`Vite exited with code ${code ?? 1}`))
+    })
+  })
+}
+
+async function main() {
+  if (args[0] === 'build') {
+    const buildArgs = args.slice(1)
+    await runVite(['build', ...buildArgs])
+    await runVite(['build', '--config', 'vite.autofill.config.mjs', ...buildArgs])
+    await runVite(['build', '--config', 'vite.pinned.config.mjs', ...buildArgs])
+    return
+  }
+
+  await runVite(args)
+}
+
+main().catch((error) => {
+  console.error(error?.message || error)
+  process.exit(1)
 })

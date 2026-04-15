@@ -73,9 +73,17 @@ export function buildManifest(rawEnv) {
     // bridge support and explicit logout cleanup.
     // `tabs`: opens UAH pages in a new tab and watches the Google OAuth tab
     // until it lands back on the configured UAH app origin.
-    permissions: ['storage', 'cookies', 'tabs'],
+    // `activeTab` + `scripting`: enable the manual profile-driven scan/fill
+    // workflow on the current tab only.
+    permissions: ['storage', 'cookies', 'tabs', 'activeTab', 'scripting'],
     // Restrict all backend access to the configured UAH HTTPS origin only.
     host_permissions: [config.apiHostPermission],
+    web_accessible_resources: [
+      {
+        resources: ['popup.html', 'assets/*'],
+        matches: ['<all_urls>'],
+      },
+    ],
     content_security_policy: {
       extension_pages: "script-src 'self'; object-src 'self';",
     },

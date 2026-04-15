@@ -50,13 +50,18 @@ bash scripts/prod/prod-security-audit.sh [options]
 
 Repository/build checks:
 
-- Required environment variable presence.
-- Queue and local pipeline environment consistency.
+- Beta-aware environment validation aligned with `config.py`, compose, and env templates.
+- Conditional OAuth, Gmail, SMTP, queue, and local pipeline validation.
 - Secret quality and placeholder detection.
 - Environment file permission checks.
+- Env example drift detection via `.github/scripts/check_env_sync.py`.
 - Compose render and compose hardening checks.
+- Frontend nginx header / HSTS / TLS-entrypoint static checks.
+- Frontend production-build safety checks (including Vue devtools gating).
+- Secret scanning parity with `gitleaks` when available.
 - Backend dependency vulnerability checks (`pip-audit` when available).
 - Frontend dependency vulnerability checks (`npm audit` when available).
+- Browser extension dependency vulnerability checks (`npm audit` when a lockfile is present).
 
 Runtime checks:
 
@@ -64,9 +69,10 @@ Runtime checks:
 - Container health state checks.
 - Privileged container and capability checks.
 - Host port exposure checks for backend/db/frontend/redis.
-- HTTP surface probes (`/api/`, `/api/diagnostics`, `/docs`, `/openapi.json`).
+- HTTP surface probes (`/api/`, `/api/diagnostics`, `/docs`, `/redoc`, `/openapi.json`).
 - Beta cloudflared runtime check.
 - Optional image vulnerability checks (`trivy` when available).
+- Beta manual-controls reminders for Cloudflare and other operator-managed hardening that the repo cannot prove automatically.
 
 Host firewall checks:
 
@@ -118,5 +124,7 @@ bash scripts/uah.sh dev audit --mode full --fix --json
 ## Notes
 
 - The default behavior is read-only.
-- Some checks are skipped or downgraded to warnings when tools are unavailable (`pip-audit`, `npm`, `trivy`, `iptables`, `ufw`) or when privilege is insufficient.
-- For beta deployments, treat warnings around docs/diagnostics endpoint exposure as release blockers unless explicitly accepted.
+- Some checks are skipped or downgraded to warnings when tools are unavailable (`pip-audit`, `npm`, `trivy`, `gitleaks`, `iptables`, `ufw`) or when privilege is insufficient.
+- Beta manual-controls findings are warnings by default because they require operator verification outside the repo.
+- In this repository, beta is modeled explicitly as `ENVIRONMENT=beta` / `ENV=beta`; the audit no longer assumes beta should masquerade as `production`.
+- If you run the audit from a Windows workstation, prefer CI or a real bash-capable environment for final verification when local bash integration is unreliable.

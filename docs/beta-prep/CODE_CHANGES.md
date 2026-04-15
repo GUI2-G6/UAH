@@ -276,7 +276,7 @@ app = FastAPI(
 )
 ```
 
-**Why:** When `ENVIRONMENT=production`, FastAPI will not serve `/docs`, `/redoc`, or `/openapi.json`. This removes the interactive API explorer and the full schema from public access. The dev environment retains these URLs unchanged.
+**Why:** When `ENVIRONMENT` resolves to a non-dev runtime such as `beta` or `production`, FastAPI will not serve `/docs`, `/redoc`, or `/openapi.json`. This removes the interactive API explorer and the full schema from public access. The dev environment retains these URLs unchanged.
 
 ---
 
@@ -318,7 +318,7 @@ COMPOSE_PROJECT_NAME=uah-dev
 
 Similarly add descriptions for:
 - `ENV` — "Short environment tag (dev, beta, prod). Used in log output."
-- `ENVIRONMENT` — "Controls backend debug mode. Set to 'production' for beta/prod."
+- `ENVIRONMENT` — "Controls backend docs/debug gating. Set to 'beta' for beta or 'production' for prod."
 - `DEV_DOMAIN` — "Public hostname for this deployment. Used by Nginx server_name."
 - `SESSION_SECRET` — "Signing key for session cookies. Generate same as SECRET_KEY."
 - `ADMIN_BOOTSTRAP_PASSWORD` — "Admin password if ADMIN_BOOTSTRAP_ENABLED=true. Must be strong."
@@ -326,7 +326,7 @@ Similarly add descriptions for:
 Add the missing variable:
 ```bash
 # Runtime environment label consumed by backend config.py.
-# Set to "production" for beta and prod deployments.
+# Set to "beta" for beta deployments and "production" for prod deployments.
 ENVIRONMENT=development
 ```
 
@@ -339,6 +339,6 @@ ENVIRONMENT=development
 | 🔴 Critical | `backend/app/api/routes.py` | Add `get_current_user` dependency to `/api/jobs/save` |
 | 🔴 Critical | `backend/app/api/routes.py` | Add `get_current_user` dependency to `/api/jobs/saved` |
 | 🔴 Critical | `backend/app/api/routes.py` or `nginx.http.conf` | Gate or block `/api/diagnostics` |
-| 🟡 High | `backend/app/main.py` | Disable `/docs`, `/redoc`, `/openapi.json` when `ENVIRONMENT=production` |
+| 🟡 High | `backend/app/main.py` | Disable `/docs`, `/redoc`, `/openapi.json` outside dev/local runtimes |
 | 🟠 Medium | `docker-compose.beta.yml` (new) | Remove hot-reload, add ports, remove VPN network mode, add resource limits |
 | 🟢 Low | `env-examples/dev/.env.example` | Add descriptions for undocumented variables, add `ENVIRONMENT` variable |

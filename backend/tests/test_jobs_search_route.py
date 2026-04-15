@@ -113,6 +113,32 @@ class JobsSearchRouteTests(unittest.TestCase):
         self.assertEqual(search_mock.call_args.kwargs["provider"], "the_muse")
         self.assertEqual(search_mock.call_args.kwargs["location_country_code"], "US")
 
+    def test_page_size_forwarded_to_local_search_with_new_cap(self):
+        payload = {
+            "jobs": [],
+            "total": 0,
+            "page": 1,
+            "page_size": 100,
+            "has_more": False,
+            "source": "local_db",
+        }
+
+        with patch.object(jobs_api, "search_local_jobs", return_value=dict(payload)) as search_mock, patch.object(
+            jobs_api, "_enqueue_thin_results_sync"
+        ):
+            jobs_api.search_jobs(
+                category=None,
+                catogory=None,
+                location=None,
+                experience_level=None,
+                level=None,
+                company=None,
+                page_size=100,
+                db=object(),
+            )
+
+        self.assertEqual(search_mock.call_args.kwargs["page_size"], 100)
+
     def test_all_country_contract_omits_country_filter_when_not_selected(self):
         payload = {
             "jobs": [],

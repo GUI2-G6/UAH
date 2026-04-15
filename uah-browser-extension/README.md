@@ -11,6 +11,9 @@ Vue 3 + Vite browser extension that gives UAH users quick access to their saved 
   - parsed resumes
   - account and connected sign-in status
 - Lets users copy individual fields like email, phone, summary, skills, and quick resume snapshots.
+- Lets users pin the extension into the current tab as a floating side panel. The pinned panel reuses the same popup app in an iframe, remembers its position, and can be dismissed per-tab or fully unpinned.
+- Lets users run a manual, profile-driven page scan/fill flow on the current tab. The popup sends a prepared token map to the background worker, which injects the in-page autofill runtime only when you click `Scan page` or `Fill page`.
+- Lets users step through multi-page application flows with `Previous page` and `Next page` actions that try visible navigation controls first, then fall back to browser history for back navigation.
 - Opens the full UAH app for anything that belongs in the full product experience.
 
 ## Legacy Reference Folders
@@ -20,7 +23,7 @@ The repo still contains `uah-test-extension/` and `uah-apply-overlay-prototype/`
 ## Storage Model
 
 - `chrome.storage.local`
-  - Stores only extension auth metadata: the JWT, its expiry, and basic auth bookkeeping so the extension can survive browser restarts.
+  - Stores only extension auth metadata and pinned UI preferences: the JWT, its expiry, and panel state so the extension can survive browser restarts.
 - `chrome.storage.session`
   - Stores non-sensitive view caches such as the current user snapshot, profile and resume summaries, and detail responses for the current browser session. These session caches are cleared on logout and whenever auth expires.
 - The extension does not use `localStorage` or `sessionStorage`.
@@ -43,9 +46,33 @@ The repo still contains `uah-test-extension/` and `uah-apply-overlay-prototype/`
 4. The background watches that auth tab, then reads the env-scoped UAH auth cookie from the configured API origin with `chrome.cookies`.
 5. The cookie JWT becomes the extension bearer token stored in `chrome.storage.local`.
 
+## Runtime Flow
+
+### Popup and Background
+
+1. `popup.html` mounts the Vue app and chooses either the normal popup surface or the pinned-panel surface.
+2. The Vue UI talks only to the background service worker through runtime messages.
+3. The background worker owns auth, API fetches, cache hydration, logout cleanup, tab opening, and content-script injection.
+4. Profile, resume, and account API responses are cached in `chrome.storage.session` until logout, expiry, or a forced refresh.
+
+### Manual Autofill
+
+1. The popup loads the selected applicant profile.
+2. The extension builds a sanitized token map from `profile.token_map` when present, otherwise from flattened canonical resume data plus a few profile-specific fields such as work authorization and links.
+3. Clicking `Scan page` or `Fill page` asks the background worker to inject `autofill-content.js` into the active tab.
+4. The injected runtime scans visible standard form controls on the top-level page and either reports matches or fills fields from the prepared token map.
+5. The extension does not run continuously in the page; the runtime is injected only when needed.
+
+### Pinned Panel
+
+1. Clicking `Pin` stores the preference in extension storage.
+2. The background worker watches supported tabs and injects `pinned-panel.js` when pinning is enabled.
+3. The pinned runtime renders a floating iframe that points back to `popup.html?surface=pinned`.
+4. Position and size changes are persisted, while a temporary dismiss only hides the panel for the current tab until that tab navigates again.
+
 ## Configuration
 
-Copy `.env.example` to `.env` inside `uah-browser-extension/` and set:
+Copy `.env.example` to `.env` inside `uah-browser-extension/` for shared remote targets, or set up the local harness config as described in the repo-root README. The build requires:
 
 - `VITE_EXTENSION_APP_ORIGIN`
 - `VITE_EXTENSION_API_ORIGIN`
@@ -53,7 +80,11 @@ Copy `.env.example` to `.env` inside `uah-browser-extension/` and set:
 
 Both origins must be HTTPS-only. The build intentionally fails for non-HTTPS values.
 
-For the reusable localhost harness, copy `.env.local.example` to `.env.local` instead. That local config points the extension at `https://localhost:5173`.
+The extension build emits three bundled surfaces into `dist/`:
+
+- `manifest.json`, `popup.html`, and `background.js` from the main Vite build
+- `autofill-content.js` from `vite.autofill.config.mjs`
+- `pinned-panel.js` from `vite.pinned.config.mjs`
 
 ## Local Build
 
@@ -64,74 +95,6 @@ npm run build
 ```
 
 This repo also supports a fallback where the extension reuses `frontend/node_modules` for Vite if that toolchain is already installed.
-
-## Local HTTPS Test Harness
-
-This is the supported local integration path for the extension.
-
-Quick helper:
-
-```powershell
-pwsh -File .\scripts\local\lifecycle\local-extension-test.ps1
-```
-
-Tiny wrappers:
-
-```powershell
-pwsh -File .\scripts\local\lifecycle\extension-local.ps1
-pwsh -File .\scripts\local\lifecycle\extension-beta.ps1
-```
-
-Use `extension-beta.ps1` when you want the unpacked extension built against beta with Google OAuth enabled.
-
-Build the unpacked extension for beta endpoints without starting the local harness:
-
-```powershell
-pwsh -File .\scripts\local\lifecycle\local-extension-test.ps1 -ExtensionTarget beta
-```
-
-1. Generate trusted localhost certs with `mkcert`:
-
-```bash
-mkdir -p volumes/certs/local
-mkcert -install
-mkcert -cert-file volumes/certs/local/tls.crt -key-file volumes/certs/local/tls.key localhost 127.0.0.1 ::1
-```
-
-2. Create the root local `.env` from `env-examples/local/.env.example`.
-3. If you want a seeded login, set:
-   - `DEV_AUTH_TEST_ACCOUNT_ENABLED=true`
-   - `DEV_AUTH_TEST_PASSWORD=<your local password>`
-4. Create `frontend/.env.local` from `frontend/.env.local.example`.
-5. Start the local backend:
-
-```bash
-docker compose -f docker-compose.local.yml --profile backend up -d db-local backend-local
-```
-
-6. Start the HTTPS frontend:
-
-```bash
-cd frontend
-npm install
-npm run dev:backend
-```
-
-7. Open `https://localhost:5173` once in the browser and confirm the cert is trusted.
-8. Create `uah-browser-extension/.env.local` from `uah-browser-extension/.env.local.example`.
-9. Build the extension:
-
-```bash
-cd uah-browser-extension
-npm run build
-```
-
-10. Load `uah-browser-extension/dist` unpacked in Chrome.
-11. Sign in with email/password using either your normal local account or the seeded test account.
-
-The local harness keeps the extension HTTPS-only and routes all app and API traffic through the same `https://localhost:5173` origin.
-The helper script validates the required local env files, starts backend-local, launches the HTTPS frontend in a new PowerShell window, builds the extension, and prints the manual smoke-test checklist.
-Pass `-ExtensionTarget beta` to reuse the same helper for a beta-targeted extension build that reads `uah-browser-extension/.env` and skips local backend/frontend startup.
 
 ## Load Unpacked In Chrome
 
@@ -155,8 +118,8 @@ The code isolates browser APIs behind a small wrapper to keep Firefox compatibil
 
 ## Known Limitations
 
-- The popup is intentionally read-only for profiles and resume data.
+- The popup is intentionally read-only for profile and resume editing.
 - Resume upload/parse flows stay in the full app.
-- The old overlay autofill prototype is not part of this extension build.
+- The manual autofill runtime is generic and intentionally limited to visible standard controls on the top-level page. It does not currently scan iframes or shadow DOM.
+- The navigation helpers only look for common visible button/link labels such as `Back`, `Previous`, `Next`, `Continue`, `Review`, and `Submit`.
 - Google sign-in depends on the configured UAH auth cookie name and the browser permitting the extension to read it through the `cookies` permission on the configured API origin.
-- Google sign-in is intentionally disabled when the extension is pointed at the localhost HTTPS harness; use email/password there and verify OAuth against dev or beta.

@@ -1,21 +1,28 @@
 import {
   addRuntimeMessageListener,
+  addTabsActivatedListener,
   addTabsRemovedListener,
   addTabsUpdatedListener,
   cookiesGet,
   cookiesRemove,
+  tabsGet,
   storageGet,
   storageRemove,
   storageSet,
+  scriptingExecuteScript,
   tabsCreate,
+  tabsQuery,
   tabsRemove,
   removeTabsRemovedListener,
   removeTabsUpdatedListener,
 } from '@/lib/extensionApi'
+import { sanitizeTokenMap } from '@/autofill/source'
+import { DEFAULT_PINNED_UI_STATE, mergePinnedUiState, PINNED_UI_STATE_KEY } from '@/lib/pinnedUiState'
 import { runtimeConfig } from '@/lib/runtimeConfig'
 
 const LOCAL_AUTH_KEY = 'uah.extension.auth'
 const SESSION_CACHE_PREFIX = 'uah.extension.cache.'
+const dismissedPinnedTabs = new Set()
 
 // Persist only the extension's auth token and its expiry across browser restarts.
 // Everything else is cached in chrome.storage.session because it is non-sensitive
@@ -26,6 +33,7 @@ const SESSION_CACHE_KEYS = {
   profiles: `${SESSION_CACHE_PREFIX}profiles`,
   resumes: `${SESSION_CACHE_PREFIX}resumes`,
 }
+const AUTOFILL_RESTRICTED_PREFIXES = ['chrome://', 'chrome-extension://', 'edge://', 'about:', 'moz-extension://']
 
 function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -70,6 +78,21 @@ async function readLocalAuthState() {
 
 async function writeLocalAuthState(value) {
   await storageSet('local', { [LOCAL_AUTH_KEY]: value })
+}
+
+async function readPinnedUiState() {
+  const result = await storageGet('local', PINNED_UI_STATE_KEY)
+  return {
+    ...mergePinnedUiState(DEFAULT_PINNED_UI_STATE, result?.[PINNED_UI_STATE_KEY] || {}),
+    // Resize unlock is a temporary convenience, not a sticky default.
+    panelResizeUnlocked: false,
+  }
+}
+
+async function writePinnedUiState(patch = {}) {
+  const nextState = mergePinnedUiState(await readPinnedUiState(), patch)
+  await storageSet('local', { [PINNED_UI_STATE_KEY]: nextState })
+  return nextState
 }
 
 async function readSessionCache(key) {
@@ -270,14 +293,6 @@ async function finishGoogleLogin() {
 }
 
 async function loginWithGoogle() {
-  if (runtimeConfig.isLocalHarness) {
-    throw buildError(
-      'Google sign-in is disabled for the local extension harness. Use email and password against your local backend instead.',
-      'GOOGLE_AUTH_UNAVAILABLE',
-      400,
-    )
-  }
-
   const authUrl = new URL('/api/auth/google', runtimeConfig.apiOrigin)
   authUrl.searchParams.set('intent', 'login')
   authUrl.searchParams.set('client', 'extension')
@@ -365,6 +380,338 @@ async function openFullApp(pathname) {
   return { opened: true }
 }
 
+function normalizeAutofillExecutionError(error) {
+  const message = String(error?.message || error || 'Autofill could not run on the active tab.')
+  const normalizedMessage = message.toLowerCase()
+
+  if (normalizedMessage.includes('cannot access') || normalizedMessage.includes('cannot be scripted')) {
+    return buildError(
+      'UAH autofill only runs on normal web pages. Open a job application tab and try again.',
+      'AUTOFILL_TAB_UNSUPPORTED',
+      400,
+    )
+  }
+
+  return buildError(message, 'AUTOFILL_EXECUTION_FAILED', 500)
+}
+
+function normalizePinnedPanelExecutionError(error) {
+  const message = String(error?.message || error || 'UAH panel could not run on the active tab.')
+  const normalizedMessage = message.toLowerCase()
+
+  if (normalizedMessage.includes('cannot access') || normalizedMessage.includes('cannot be scripted')) {
+    return buildError(
+      'The pinned UAH panel only runs on normal web pages. Your pin preference was saved and it will appear on supported tabs.',
+      'PINNED_PANEL_TAB_UNSUPPORTED',
+      400,
+    )
+  }
+
+  return buildError(message, 'PINNED_PANEL_EXECUTION_FAILED', 500)
+}
+
+function assertInjectableTab(tab) {
+  if (typeof tab?.id !== 'number') {
+    throw buildError('Open a job application tab before running UAH autofill.', 'AUTOFILL_TAB_NOT_FOUND', 400)
+  }
+
+  const url = String(tab.url || '')
+  if (!url || AUTOFILL_RESTRICTED_PREFIXES.some((prefix) => url.startsWith(prefix))) {
+    throw buildError(
+      'UAH autofill only runs on normal web pages. Open a job application tab and try again.',
+      'AUTOFILL_TAB_UNSUPPORTED',
+      400,
+    )
+  }
+}
+
+function isInjectableTab(tab) {
+  if (typeof tab?.id !== 'number') return false
+  const url = String(tab.url || '')
+  return Boolean(url) && !AUTOFILL_RESTRICTED_PREFIXES.some((prefix) => url.startsWith(prefix))
+}
+
+async function getCurrentActiveTab() {
+  const tabs = await tabsQuery({ active: true, currentWindow: true })
+  return Array.isArray(tabs) ? tabs[0] || null : null
+}
+
+async function getActiveTab() {
+  const tab = await getCurrentActiveTab()
+  assertInjectableTab(tab)
+  return tab
+}
+
+async function ensureAutofillRuntime(tabId) {
+  try {
+    await scriptingExecuteScript({
+      target: { tabId },
+      files: ['autofill-content.js'],
+    })
+  } catch (error) {
+    throw normalizeAutofillExecutionError(error)
+  }
+}
+
+async function ensurePinnedPanelRuntime(tabId) {
+  try {
+    await scriptingExecuteScript({
+      target: { tabId },
+      files: ['pinned-panel.js'],
+    })
+  } catch (error) {
+    throw normalizePinnedPanelExecutionError(error)
+  }
+}
+
+async function invokePinnedPanelRuntime(tabId, action, payload = undefined) {
+  try {
+    const results = await scriptingExecuteScript({
+      target: { tabId },
+      func: (nextAction, nextPayload) => {
+        const api = globalThis.window?.__UAH_PINNED_PANEL__
+        if (!api || typeof api[nextAction] !== 'function') {
+          return { error: 'UAH pinned panel runtime is unavailable on this page.' }
+        }
+        return api[nextAction](nextPayload)
+      },
+      args: [action, payload],
+    })
+    const result = Array.isArray(results) ? results[0]?.result : null
+    if (result?.error) {
+      throw buildError(result.error, 'PINNED_PANEL_RUNTIME_UNAVAILABLE', 500)
+    }
+    return result ?? null
+  } catch (error) {
+    if (error?.code) throw error
+    throw normalizePinnedPanelExecutionError(error)
+  }
+}
+
+async function invokeAutofillRuntime(tabId, action, payload, uiState = {}) {
+  try {
+    const results = await scriptingExecuteScript({
+      target: { tabId },
+      func: (nextAction, nextPayload, nextUiState) => {
+        const api = globalThis.window?.__UAH_RESUME_TESTER__
+        if (!api || typeof api[nextAction] !== 'function') {
+          return { error: 'UAH autofill runtime is unavailable on this page.' }
+        }
+        if (typeof api.configure === 'function') {
+          api.configure(nextUiState)
+        }
+        return api[nextAction](nextPayload)
+      },
+      args: [action, payload, uiState],
+    })
+    const result = Array.isArray(results) ? results[0]?.result : null
+    if (result?.error) {
+      throw buildError(result.error, 'AUTOFILL_RUNTIME_UNAVAILABLE', 500)
+    }
+    return result ?? null
+  } catch (error) {
+    if (error?.code) throw error
+    throw normalizeAutofillExecutionError(error)
+  }
+}
+
+async function hidePinnedPanelOnTab(tabId) {
+  if (typeof tabId !== 'number') return null
+
+  try {
+    const results = await scriptingExecuteScript({
+      target: { tabId },
+      func: () => {
+        const api = globalThis.window?.__UAH_PINNED_PANEL__
+        if (api && typeof api.hide === 'function') {
+          return api.hide()
+        }
+        return { ok: true }
+      },
+    })
+    return Array.isArray(results) ? results[0]?.result ?? null : null
+  } catch {
+    return null
+  }
+}
+
+async function hidePinnedPanelEverywhere() {
+  const tabs = await tabsQuery({})
+  const candidates = Array.isArray(tabs) ? tabs.filter(isInjectableTab) : []
+  await Promise.all(candidates.map((tab) => hidePinnedPanelOnTab(tab.id)))
+}
+
+async function showPinnedPanelOnTab(tab, options = {}) {
+  const { quietUnsupported = false } = options
+
+  if (!isInjectableTab(tab)) {
+    if (quietUnsupported) return { shown: false, reason: 'unsupported' }
+    assertInjectableTab(tab)
+  }
+
+  const uiState = await readPinnedUiState()
+
+  try {
+    await ensurePinnedPanelRuntime(tab.id)
+    await invokePinnedPanelRuntime(tab.id, 'show', {
+      pinEnabled: uiState.pinEnabled,
+      panelPosition: uiState.panelPosition,
+      panelSize: uiState.panelSize,
+      panelResizeUnlocked: uiState.panelResizeUnlocked,
+    })
+    return { shown: true, tabId: tab.id }
+  } catch (error) {
+    if (quietUnsupported && error?.code === 'PINNED_PANEL_TAB_UNSUPPORTED') {
+      return { shown: false, reason: 'unsupported' }
+    }
+    throw error
+  }
+}
+
+async function maybeShowPinnedPanelForTab(tabId) {
+  if (dismissedPinnedTabs.has(tabId)) return null
+
+  const uiState = await readPinnedUiState()
+  if (!uiState.pinEnabled) return null
+
+  const tab = await tabsGet(tabId).catch(() => null)
+  if (!tab || !isInjectableTab(tab)) return null
+  return showPinnedPanelOnTab(tab, { quietUnsupported: true })
+}
+
+async function setPinnedUiState(patch = {}) {
+  const previousState = await readPinnedUiState()
+  const nextState = await writePinnedUiState(patch)
+
+  if (typeof patch?.pinEnabled === 'boolean' && patch.pinEnabled !== previousState.pinEnabled) {
+    dismissedPinnedTabs.clear()
+
+    if (nextState.pinEnabled) {
+      const currentTab = await getCurrentActiveTab()
+      if (currentTab) {
+        await showPinnedPanelOnTab(currentTab, { quietUnsupported: true })
+      }
+    } else {
+      await hidePinnedPanelEverywhere()
+    }
+  }
+
+  return nextState
+}
+
+async function dismissPinnedPanel(sender) {
+  const tabId = sender?.tab?.id
+  if (typeof tabId === 'number') {
+    dismissedPinnedTabs.add(tabId)
+  }
+  return { dismissed: typeof tabId === 'number', tabId: tabId ?? null }
+}
+
+async function runAutofillAction(action, payload = {}) {
+  const tab = await getActiveTab()
+  await ensureAutofillRuntime(tab.id)
+
+  let argument = undefined
+  if (action === 'scan' || action === 'fill') {
+    const tokenMap = sanitizeTokenMap(payload.tokenMap)
+    if (!Object.keys(tokenMap).length) {
+      throw buildError('A prepared autofill token map is required.', 'AUTOFILL_SOURCE_REQUIRED', 400)
+    }
+    argument = tokenMap
+  }
+
+  const uiState = await readPinnedUiState()
+  const data = await invokeAutofillRuntime(tab.id, action, argument, {
+    debugPosition: uiState.debugPosition,
+  })
+  return {
+    ...(isObject(data) ? data : { value: data }),
+    source: isObject(payload.source) ? payload.source : null,
+    tabUrl: String(tab.url || ''),
+  }
+}
+
+async function runPageNavigationAction(direction) {
+  const tab = await getActiveTab()
+
+  try {
+    const results = await scriptingExecuteScript({
+      target: { tabId: tab.id },
+      func: (nextDirection) => {
+        const normalize = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ')
+        const isVisible = (element) => {
+          if (!element || element.disabled) return false
+          const rect = typeof element.getBoundingClientRect === 'function'
+            ? element.getBoundingClientRect()
+            : { width: 0, height: 0 }
+          return rect.width > 0 || rect.height > 0 || element.offsetParent !== null
+        }
+
+        const candidates = Array.from(document.querySelectorAll('button, a, input[type="button"], input[type="submit"]'))
+          .filter(isVisible)
+
+        const previousLabels = ['back', 'previous', 'prev', 'go back']
+        const nextLabels = ['next', 'continue', 'review', 'submit', 'save and continue']
+        const labels = nextDirection === 'previous' ? previousLabels : nextLabels
+
+        const match = candidates.find((element) => {
+          const aria = normalize(element.getAttribute?.('aria-label'))
+          const title = normalize(element.getAttribute?.('title'))
+          const value = normalize(element.value)
+          const text = normalize(element.innerText || element.textContent)
+          const haystacks = [aria, title, value, text].filter(Boolean)
+          return haystacks.some((haystack) => labels.some((label) => haystack === label || haystack.startsWith(`${label} `)))
+        })
+
+        if (match) {
+          match.click?.()
+          return {
+            clicked: true,
+            method: 'dom',
+            label: normalize(match.innerText || match.textContent || match.value || match.getAttribute?.('aria-label')),
+            usedHistory: false,
+          }
+        }
+
+        if (nextDirection === 'previous' && globalThis.history?.length > 1) {
+          globalThis.history.back()
+          return {
+            clicked: true,
+            method: 'history',
+            label: 'history.back',
+            usedHistory: true,
+          }
+        }
+
+        return {
+          clicked: false,
+          method: 'none',
+          usedHistory: false,
+        }
+      },
+      args: [direction],
+    })
+
+    const result = Array.isArray(results) ? results[0]?.result : null
+    if (!result?.clicked) {
+      throw buildError(
+        `Could not find a ${direction === 'previous' ? 'previous' : 'next'} page button on this application page.`,
+        'PAGE_NAVIGATION_NOT_FOUND',
+        404,
+      )
+    }
+
+    return {
+      direction,
+      ...result,
+      tabUrl: String(tab.url || ''),
+    }
+  } catch (error) {
+    if (error?.code) throw error
+    throw normalizeAutofillExecutionError(error)
+  }
+}
+
 function serializeError(error) {
   return {
     ok: false,
@@ -374,7 +721,25 @@ function serializeError(error) {
   }
 }
 
-addRuntimeMessageListener(async (message) => {
+addTabsActivatedListener(({ tabId }) => {
+  maybeShowPinnedPanelForTab(tabId).catch(() => null)
+})
+
+addTabsUpdatedListener((tabId, changeInfo) => {
+  if (typeof changeInfo?.url === 'string' || changeInfo?.status === 'loading') {
+    dismissedPinnedTabs.delete(tabId)
+  }
+
+  if (changeInfo?.status === 'complete') {
+    maybeShowPinnedPanelForTab(tabId).catch(() => null)
+  }
+})
+
+addTabsRemovedListener((tabId) => {
+  dismissedPinnedTabs.delete(tabId)
+})
+
+addRuntimeMessageListener(async (message, sender) => {
   try {
     switch (message?.type) {
       case 'bootstrap':
@@ -424,6 +789,39 @@ addRuntimeMessageListener(async (message) => {
             { force: Boolean(message?.payload?.force) },
           ),
         }
+      case 'autofillScan':
+        return { ok: true, data: await runAutofillAction('scan', message.payload || {}) }
+      case 'autofillFill':
+        return { ok: true, data: await runAutofillAction('fill', message.payload || {}) }
+      case 'autofillRemove':
+        return { ok: true, data: await runAutofillAction('remove', message.payload || {}) }
+      case 'autofillGetStats':
+        return { ok: true, data: await runAutofillAction('getStats', message.payload || {}) }
+      case 'navigatePreviousPage':
+        return { ok: true, data: await runPageNavigationAction('previous') }
+      case 'navigateNextPage':
+        return { ok: true, data: await runPageNavigationAction('next') }
+      case 'getPinnedUiState':
+        return { ok: true, data: await readPinnedUiState() }
+      case 'setPinnedUiState':
+        return { ok: true, data: await setPinnedUiState(message.payload || {}) }
+      case 'showPinnedPanel': {
+        const tab = await getCurrentActiveTab()
+        if (typeof tab?.id === 'number') {
+          dismissedPinnedTabs.delete(tab.id)
+        }
+        return { ok: true, data: tab ? await showPinnedPanelOnTab(tab, { quietUnsupported: true }) : { shown: false } }
+      }
+      case 'hidePinnedPanel': {
+        const tab = await getCurrentActiveTab()
+        if (typeof tab?.id === 'number') {
+          dismissedPinnedTabs.add(tab.id)
+          await hidePinnedPanelOnTab(tab.id)
+        }
+        return { ok: true, data: { hidden: true, tabId: tab?.id ?? null } }
+      }
+      case 'dismissPinnedPanel':
+        return { ok: true, data: await dismissPinnedPanel(sender) }
       case 'openFullApp':
         return { ok: true, data: await openFullApp(message?.payload?.pathname || '/home') }
       default:

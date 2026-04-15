@@ -169,6 +169,43 @@ def _ensure_resumes_table_columns(engine) -> None:
         logger.exception("Resumes table schema fixup failed: %s", exc)
 
 
+def _ensure_saved_jobs_table_columns(engine) -> None:
+    """Dev safety net: add newer saved_jobs columns when DB schema lags."""
+    try:
+        from sqlalchemy import inspect, text
+    except Exception:
+        return
+
+    try:
+        inspector = inspect(engine)
+        if "saved_jobs" not in inspector.get_table_names():
+            return
+
+        existing = {col["name"] for col in inspector.get_columns("saved_jobs")}
+
+        ddl_statements: list[str] = []
+        required_columns: dict[str, str] = {
+            "provider": "VARCHAR(50)",
+            "provider_job_id": "VARCHAR(255)",
+            "created_at": "TIMESTAMPTZ DEFAULT now()",
+        }
+
+        for column_name, column_ddl in required_columns.items():
+            if column_name in existing:
+                continue
+            ddl_statements.append(
+                f"ALTER TABLE saved_jobs ADD COLUMN IF NOT EXISTS {column_name} {column_ddl}"
+            )
+
+        if ddl_statements:
+            with engine.begin() as conn:
+                for ddl in ddl_statements:
+                    conn.execute(text(ddl))
+            logger.warning("Applied dev schema fixups to saved_jobs table")
+    except Exception as exc:
+        logger.exception("Saved jobs table schema fixup failed: %s", exc)
+
+
 def _ensure_applicant_profiles_table_columns(engine) -> None:
     """Dev safety net: add newer applicant profile columns when DB schema lags."""
     try:
@@ -374,6 +411,7 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine, tables=LEGACY_STARTUP_TABLES)
     _ensure_users_table_columns(engine)
     _ensure_resumes_table_columns(engine)
+    _ensure_saved_jobs_table_columns(engine)
     _ensure_applicant_profiles_table_columns(engine)
     _enforce_email_first_identity_mirror()
     _bootstrap_admin_user_if_enabled()

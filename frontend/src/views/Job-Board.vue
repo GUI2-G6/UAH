@@ -13,6 +13,7 @@
         <section class="filters job-board-filters">
             <JobBoardPrimaryFilters
               :draft-filters="draftFilters"
+              :board-mode="boardMode"
               :country-options="countryOptions"
               :loading="loading"
               :location-busy="locationBusy"
@@ -21,14 +22,29 @@
               :location-warning="locationWarning"
               :location-error="locationError"
               :advanced-filters-open="advancedFiltersOpen"
+              :page-size="pageSize"
+              :page-size-options="pageSizeOptions"
+              :company-input="companyInput"
+              :filtered-company-options="filteredCompanyOptions"
+              :show-company-menu="showCompanyMenu"
+              :company-active-index="companyActiveIndex"
               @apply="applyFilters"
               @reset="clearFilters"
               @set-location-mode="setLocationMode"
               @toggle-advanced="advancedFiltersOpen = !advancedFiltersOpen"
               @use-nearby="activateNearbyMode"
+              @set-board-mode="setBoardMode"
+              @set-page-size="applyPageSize"
+              @update-company-input="updateCompanyInput"
+              @open-company-menu="openCompanyMenu"
+              @close-company-menu="closeCompanyMenuSoon"
+              @choose-company-from-input="chooseCompanyFromInput"
+              @move-company-selection="moveCompanySelection"
+              @add-company="addCompany"
+              @remove-company="removeFilterValue('companies', $event)"
             />
 
-            <section v-if="advancedFiltersOpen" class="advanced-filters-panel">
+            <section v-if="advancedFiltersOpen && boardMode === 'search'" class="advanced-filters-panel">
                 <div class="advanced-filters-header">
                     <div>
                         <p class="advanced-eyebrow">Advanced filters</p>
@@ -38,29 +54,6 @@
                 </div>
 
                 <div class="filter-grid">
-                    <div class="filter-group">
-                        <label for="job-date-preset">Posted</label>
-                        <select id="job-date-preset" name="job_date_preset" autocomplete="off" v-model="draftFilters.datePreset">
-                            <option value="any">Any time</option>
-                            <option value="today">Today</option>
-                            <option value="3">Past 3 days</option>
-                            <option value="7">Last 7 days</option>
-                            <option value="30">Last 30 days</option>
-                            <option value="custom">After date</option>
-                        </select>
-                    </div>
-
-                    <div class="filter-group" v-if="draftFilters.datePreset === 'custom'">
-                        <label for="job-custom-date">After date</label>
-                        <input
-                            id="job-custom-date"
-                            name="job_custom_after_date"
-                            v-model="draftFilters.customAfterDate"
-                            type="date"
-                            autocomplete="off"
-                        />
-                    </div>
-
                     <div class="filter-group">
                       <label for="job-categories">Categories</label>
                       <div class="category-selector">
@@ -179,16 +172,6 @@
 
                 <div class="filter-grid">
                     <div class="filter-group">
-                        <label for="job-country-code">Country</label>
-                        <select id="job-country-code" name="job_country_code" autocomplete="off" v-model="draftFilters.countryCode">
-                          <option v-for="country in countryOptions" :key="country.code" :value="country.code">
-                            {{ country.name }}{{ country.observed_count ? ` (${country.observed_count})` : '' }}
-                          </option>
-                        </select>
-                        <p class="helper-text">Country mode stays broad. Nearby and custom location use this as a boundary when available.</p>
-                    </div>
-
-                    <div class="filter-group">
                         <label for="job-provider-filter">Source</label>
                         <select id="job-provider-filter" name="job_provider_filter" autocomplete="off" v-model="draftFilters.provider">
                           <option value="">All providers</option>
@@ -231,63 +214,22 @@
                           </button>
                         </div>
                     </div>
-
-                    <div class="filter-group">
-                        <label>Matched places</label>
-                        <button type="button" class="secondary-action" @click="previewLocationSelection" :disabled="locationBusy">
-                          {{ locationBusy ? 'Resolving area…' : 'Preview matched places' }}
-                        </button>
-                        <p v-if="locationPreviewSummary" class="hint-text">{{ locationPreviewSummary }}</p>
-                        <button
-                          v-if="hasMorePreviewCities"
-                          type="button"
-                          class="city-preview-more"
-                          @click="openCityPreviewModal"
-                        >
-                          Show all matched places
-                        </button>
-                    </div>
                 </div>
 
                 <div class="filter-grid">
-                    <div class="filter-group full-width">
-                        <label for="job-company-input">Company filters</label>
-                        <div class="custom-input-row">
-                            <input
-                                id="job-company-input"
-                                name="job_company_input"
-                                v-model.trim="companyInput"
-                                type="text"
-                                autocomplete="off"
-                                autocapitalize="none"
-                                autocorrect="off"
-                                spellcheck="false"
-                                placeholder="Add company and press Add"
-                                @keyup.enter="addCustomFilterValue('companies')"
-                            />
-                            <button type="button" class="secondary-action" @click="addCustomFilterValue('companies')">Add</button>
-                        </div>
-                        <div class="chip-list" v-if="draftFilters.companies.length">
-                            <button
-                                class="chip"
-                                type="button"
-                                v-for="company in draftFilters.companies"
-                                :key="company"
-                                @click="removeFilterValue('companies', company)"
-                                :title="`Remove ${company}`"
-                            >
-                                {{ company }} x
-                            </button>
-                        </div>
+                    <div class="filter-group full-width filter-group-placeholder">
+                        <label>More filters planned</label>
+                        <p class="helper-text">This space is intentionally open for the next round of narrowing tools without crowding the board right now.</p>
                     </div>
                 </div>
             </section>
         </section>
 
         <JobBoardResultsSummary
+          :board-mode="boardMode"
           :loading="loading"
           :error="error"
-          :jobs-length="jobs.length"
+          :jobs-length="displayedJobs.length"
           :page="page"
           :total-jobs="totalJobs"
           :totals-are-estimated="totalsAreEstimated"
@@ -298,6 +240,7 @@
           :can-widen-search="canWidenSearch"
           :sort-by="appliedFilters.sortBy"
           :sort-options="sortOptions"
+          :saved-mode-note="savedModeNote"
           @clear="clearFilters"
           @remove-chip="removeActiveFilterChip"
           @sort-change="applySortChange"
@@ -314,7 +257,7 @@
         />
 
         <JobBoardPagination
-          v-if="!loading && !error"
+          v-if="!loading && !error && totalJobs > 0"
           class="pagination pagination-top"
           id-prefix="jobs-top"
           :page="page"
@@ -329,9 +272,9 @@
         />
 
         <div class="dashboard">
-            <div class="empty-state" v-if="!loading && !error && !jobs.length">
-                No jobs matched the selected filters.
-                <div class="empty-state-actions">
+            <div class="empty-state" v-if="!loading && !error && !displayedJobs.length">
+                {{ emptyStateMessage }}
+                <div v-if="boardMode === 'search'" class="empty-state-actions">
                     <button type="button" @click="enableRemoteAndSearch" :disabled="loading || appliedFilters.includeRemote === true">Enable Remote</button>
                     <button type="button" @click="switchToCountryModeAndSearch" :disabled="loading || appliedFilters.locationMode === 'country'">Switch to Country</button>
                     <button type="button" @click="clearLocationAndSearch" :disabled="loading || !hasLocationFilterApplied">Clear Location</button>
@@ -339,16 +282,20 @@
             </div>
             <JobPosting
                 v-else
-                v-for="job in jobs"
-                :key="job.id"
+                v-for="job in displayedJobs"
+                :key="job.saved_job_id || job.id"
                 :job="job"
                 :provider-attribution="providerAttributionByName[job.provider] || null"
                 :show-debug-meta="showDebugTools"
+                :board-mode="boardMode"
+                :is-saved="isJobSaved(job)"
+                :save-pending="isSaveActionPending(job)"
+                @toggle-save="toggleSaveJob"
             />
         </div>
 
         <JobBoardPagination
-          v-if="!loading && !error"
+          v-if="!loading && !error && totalJobs > 0"
           class="pagination pagination-bottom"
           id-prefix="jobs-bottom"
           :page="page"
@@ -361,64 +308,6 @@
           @next="goToNextPage"
           @select-page="goToPage"
         />
-
-        <div
-          v-if="cityPreviewModalOpen"
-          class="city-modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label="All area cities"
-          @click="closeCityPreviewModal"
-        >
-          <div class="city-modal-dialog" v-draggable-modal="{ handle: '.city-modal-header' }" @click.stop>
-            <div class="city-modal-header drag-handle">
-              <h2>Matched Places</h2>
-              <button type="button" class="city-modal-close" @click="closeCityPreviewModal">Close</button>
-            </div>
-
-            <p class="city-modal-subtitle">Showing all {{ locationPreviewNames.length }} matched places.</p>
-
-            <div class="city-modal-scroll">
-              <div class="city-sort-row">
-                <button
-                  type="button"
-                  class="city-sort-btn"
-                  :class="{ active: citySortMode === 'closest' }"
-                  @click="setCitySortMode('closest')"
-                >
-                  Closest
-                </button>
-                <button
-                  type="button"
-                  class="city-sort-btn"
-                  :class="{ active: citySortMode === 'alpha' }"
-                  @click="setCitySortMode('alpha')"
-                >
-                  A to Z
-                </button>
-                <button
-                  type="button"
-                  class="city-sort-btn"
-                  :class="{ active: citySortMode === 'reverse' }"
-                  @click="setCitySortMode('reverse')"
-                >
-                  Z to A
-                </button>
-              </div>
-              <p class="warn-text" v-if="closestSortNotice">{{ closestSortNotice }}</p>
-              <ul class="city-modal-list">
-                <li v-for="city in sortedLocationPreviewCities" :key="city.sort_key">
-                  {{ city.name }}
-                  <span v-if="city.distance_miles !== null" class="city-distance">({{ city.distance_miles.toFixed(1) }} mi)</span>
-                </li>
-              </ul>
-            </div>
-
-            <div class="city-modal-actions">
-              <button type="button" @click="closeCityPreviewModal">Close</button>
-            </div>
-          </div>
-        </div>
     </div>
 </template>
 
@@ -434,6 +323,8 @@ import {
   requestBrowserLocation,
   setCachedLocation
 } from "../lib/geolocation";
+import { authedFetch } from "../lib/auth";
+import { showToast } from "../services/toastService";
 import { publishCurrentPageDiagnostics, clearCurrentPageDiagnostics } from "../lib/debugDiagnostics";
 import { subscribeDebugTools } from "../lib/debugTools";
 
@@ -450,6 +341,7 @@ const JOB_SORT_OPTIONS = [
   { value: "quality_desc", label: "Best Match" },
   { value: "date_asc", label: "Oldest First" },
 ]
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 const LEVEL_VALUE_ALIASES = {
   internship: "internship",
   entry: "entry",
@@ -656,6 +548,7 @@ export default {
 
     const countryOptions = buildCountryOptions()
     const providerOptions = []
+    const companyOptions = []
 
     const defaultFilters = {
       categories: [],
@@ -678,11 +571,16 @@ export default {
 
     return {
       jobs: [],
+      savedJobs: [],
       providerAttributionByName: {},
       loading: false,
       error: "",
+      boardMode: "search",
       page: 1,
+      searchPage: 1,
+      savedPage: 1,
       pageSize: uiPageSize,
+      pageSizeOptions: [...PAGE_SIZE_OPTIONS],
       totalJobs: 0,
       totalPages: 1,
       totalsAreEstimated: false,
@@ -704,6 +602,7 @@ export default {
       levelLabelLookup,
       countryOptions,
       providerOptions,
+      companyOptions,
       sortOptions: JOB_SORT_OPTIONS.map(option => ({ ...option })),
       categoryInput: "",
       categoryInfo: "",
@@ -714,6 +613,8 @@ export default {
       levelInfo: "",
       levelMenuOpen: false,
       levelActiveIndex: 0,
+      companyMenuOpen: false,
+      companyActiveIndex: 0,
       advancedLocationModalOpen: false,
       cityPreviewVisibleLimit: 10,
       cityPreviewModalOpen: false,
@@ -729,6 +630,8 @@ export default {
       locationPreviewCandidates: [],
       locationPreviewCenter: null,
       resolvedLocation: null,
+      savedJobIdByKey: {},
+      saveBusyByKey: {},
       showDebugTools: false,
       debugToolsUnsubscribe: null,
       routeHydrationReady: false,
@@ -778,6 +681,37 @@ export default {
     showLevelMenu() {
       return this.levelMenuOpen && this.filteredLevelOptions.length > 0
     },
+    filteredCompanyOptions() {
+      const selected = new Set((this.draftFilters.companies || []).map(value => value.toLowerCase()))
+      const query = (this.companyInput || "").trim().toLowerCase()
+
+      return (this.companyOptions || [])
+        .filter(option => {
+          const label = String(option?.value || "").trim()
+          if (!label || selected.has(label.toLowerCase())) return false
+          if (!query) return true
+          return label.toLowerCase().includes(query)
+        })
+        .slice(0, 12)
+    },
+    showCompanyMenu() {
+      return this.companyMenuOpen && this.filteredCompanyOptions.length > 0
+    },
+    isSavedMode() {
+      return this.boardMode === "saved"
+    },
+    displayedJobs() {
+      return this.isSavedMode ? this.savedJobs : this.jobs
+    },
+    savedModeNote() {
+      return "Saved jobs stay simple here for now. A richer saved-jobs subpage with better filtering is planned next."
+    },
+    emptyStateMessage() {
+      if (this.isSavedMode) {
+        return "No saved jobs yet. Save roles from search mode and they will show up here."
+      }
+      return "No jobs matched the selected filters."
+    },
     visibleLocationPreviewNames() {
       return (this.locationPreviewNames || []).slice(0, this.cityPreviewVisibleLimit)
     },
@@ -785,6 +719,9 @@ export default {
       return this.getCountryName(this.draftFilters.countryCode)
     },
     heroSearchCopy() {
+      if (this.isSavedMode) {
+        return "Keep the roles you want to revisit in one simple saved list."
+      }
       if (this.isAllCountriesCode(this.draftFilters.countryCode)) {
         return "Default results search across all countries with remote and hybrid roles included."
       }
@@ -792,14 +729,14 @@ export default {
     },
     locationPreviewSummary() {
       if (this.draftFilters.locationMode === "country" && this.isAllCountriesCode(this.draftFilters.countryCode)) {
-        return "All Countries stays broad, so matched-place previews are disabled for this mode."
+        return "All Countries stays broad, so location previews are disabled for this mode."
       }
       if (!this.locationPreviewNames.length) return ""
       if (this.draftFilters.locationMode === "country") {
-        return `Previewing ${this.locationPreviewNames.length} matched places in ${this.getCountryName(this.draftFilters.countryCode)}.`
+        return `Previewing ${this.locationPreviewNames.length} locations in ${this.getCountryName(this.draftFilters.countryCode)}.`
       }
       const centerName = this.resolvedLocation?.city || this.draftFilters.manualLocationQuery || "your selected area"
-      return `Previewing ${this.locationPreviewNames.length} matched places around ${centerName}.`
+      return `Previewing ${this.locationPreviewNames.length} locations around ${centerName}.`
     },
     hiddenLocationPreviewCount() {
       const hidden = (this.locationPreviewNames || []).length - this.cityPreviewVisibleLimit
@@ -879,12 +816,7 @@ export default {
       return pages
     },
     compatibilityNotice() {
-      const overlapCount = Number(this.lastSearchDiagnostics.acceptedByConstraintOverlap || 0)
-      if (!overlapCount) return ""
-      if (this.appliedFilters.includeRemote === true) return ""
-      const policy = (this.lastSearchDiagnostics.constraintPolicyRemoteOff || "").trim()
-      const policyHint = policy ? ` Policy: ${policy}.` : ""
-      return `${overlapCount} remote role(s) remained because location constraints overlapped your selected area.${policyHint}`
+      return ""
     },
     hasLocationFilterApplied() {
       const names = Array.isArray(this.appliedFilters.locationNames) ? this.appliedFilters.locationNames : []
@@ -892,6 +824,7 @@ export default {
       return this.appliedFilters.locationMode === "manual" || this.appliedFilters.locationMode === "nearby"
     },
     activeFilterChips() {
+      if (this.isSavedMode) return []
       const chips = []
       const filters = this.appliedFilters || {}
 
@@ -956,6 +889,7 @@ export default {
       return chips
     },
     canWidenSearch() {
+      if (this.isSavedMode) return false
       const filters = this.appliedFilters || {}
       const hasCountryMode = (filters.locationMode || "").trim().toLowerCase() === "country"
       const hasBroadWorkSetup = filters.includeRemote === true && filters.includeHybrid === true
@@ -963,6 +897,9 @@ export default {
       return !(hasCountryMode && hasBroadWorkSetup && hasAllCountriesScope)
     },
     searchScopeSummary() {
+      if (this.isSavedMode) {
+        return "Showing every saved job for your account. Search filters are paused here until the dedicated saved-jobs board lands."
+      }
       const filters = this.appliedFilters || {}
       const workSetup = this.buildWorkSetupSummary(filters)
       const providerSummary = this.normalizeProviderValue(filters.provider)
@@ -979,7 +916,7 @@ export default {
       const selectedCount = (filters.locationNames || []).length
       if (selectedCount > 0) {
         const centerName = this.resolvedLocation?.city || filters.manualLocationQuery || "your selected area"
-        return `Searching around ${centerName}${providerSummary} across ${selectedCount} matched locations with ${workSetup}.`
+        return `Searching around ${centerName}${providerSummary} across ${selectedCount} locations with ${workSetup}.`
       }
 
       return `Searching${providerSummary} with ${workSetup}.`
@@ -1083,18 +1020,16 @@ export default {
       const locationMode = (filters.locationMode || "country").trim().toLowerCase()
       const selectedCount = Array.isArray(filters.locationNames) ? filters.locationNames.length : 0
       if (locationMode === "nearby") {
-        return selectedCount
-          ? `Nearby (${selectedCount} matched places)`
-          : "Nearby search"
+        return selectedCount ? `Nearby (${selectedCount} locations)` : "Nearby search"
       }
       if (locationMode === "manual") {
         const query = (filters.manualLocationQuery || "").trim()
         if (selectedCount && query) {
-          return `Custom area: ${query} (${selectedCount} matched places)`
+          return `Custom area: ${query} (${selectedCount} locations)`
         }
         return query ? `Custom area: ${query}` : "Custom area"
       }
-      return selectedCount ? `Matched places (${selectedCount})` : "Location filter"
+      return selectedCount ? `Country selection (${selectedCount} locations)` : "Location filter"
     },
     parseBooleanRouteValue(value, fallback = false) {
       const normalized = normalizeRouteQueryScalar(value).toLowerCase()
@@ -1111,6 +1046,8 @@ export default {
     buildRouteQueryObject() {
       const filters = this.appliedFilters || this.createDefaultFilters()
       const query = {
+        board_mode: this.isSavedMode ? "saved" : "search",
+        page_size: String(this.pageSize),
         country_code: this.countryCodeForRoute(filters.countryCode),
         location_mode: (filters.locationMode || "country").trim().toLowerCase() || "country",
         include_remote: filters.includeRemote === false ? "false" : "true",
@@ -1189,6 +1126,8 @@ export default {
     },
     parseRouteQueryFilters(query = {}) {
       const filters = this.createDefaultFilters()
+      const boardMode = normalizeRouteQueryScalar(query.board_mode).toLowerCase() === "saved" ? "saved" : "search"
+      const pageSize = this.parsePositiveInteger(query.page_size, this.pageSizeOptions[0] || 10, 1, 100)
       filters.keyword = normalizeRouteQueryScalar(query.q)
       filters.categories = this.normalizeCategoryValues(normalizeRouteQueryList(query.category))
       filters.levels = this.normalizeLevelValues(normalizeRouteQueryList(query.level))
@@ -1237,7 +1176,7 @@ export default {
       }
 
       const page = this.parsePositiveInteger(query.page, 1, 1, Number.MAX_SAFE_INTEGER)
-      return { filters, page }
+      return { filters, page, pageSize, boardMode }
     },
     async restoreResolvedLocationFromRoute(filters, routeQuery = {}) {
       this.resolvedLocation = null
@@ -1295,13 +1234,19 @@ export default {
       this.levelActiveIndex = 0
       this.levelMenuOpen = false
       this.companyInput = ""
-      this.cityPreviewModalOpen = false
 
       try {
-        const { filters, page } = this.parseRouteQueryFilters(query)
+        const { filters, page, pageSize, boardMode } = this.parseRouteQueryFilters(query)
+        this.boardMode = boardMode
+        this.pageSize = pageSize
         this.draftFilters = this.cloneFilters(filters)
         this.appliedFilters = this.cloneFilters(filters)
         this.page = page
+        if (boardMode === "saved") {
+          this.savedPage = page
+        } else {
+          this.searchPage = page
+        }
         this.locationPreviewNames = []
         this.locationPreviewCities = []
         this.locationPreviewCandidates = []
@@ -1309,28 +1254,34 @@ export default {
 
         await this.restoreResolvedLocationFromRoute(this.draftFilters, query)
 
-        const useResolvedLocationList = this.draftFilters.locationMode !== "country"
-        const locationNames = useResolvedLocationList ? await this.resolveLocationNamesFromDraft() : []
-        const preflightSelection = this.buildPreflightLocationSelection(locationNames, this.draftFilters.locationMode)
-        this.pretrimLocationNotice = preflightSelection.requestedCount
-          ? `Using ${preflightSelection.usedCount} of ${preflightSelection.requestedCount} resolved locations (${preflightSelection.strategy}).`
-          : ""
-
         this.draftFilters.categories = this.normalizeCategoryValues(this.draftFilters.categories)
         this.draftFilters.levels = this.normalizeLevelValues(this.draftFilters.levels)
         this.draftFilters.companies = this.normalizeUnique(this.draftFilters.companies)
         this.draftFilters.provider = this.normalizeProviderValue(this.draftFilters.provider)
         this.draftFilters.sortBy = this.normalizeSortBy(this.draftFilters.sortBy)
-        this.draftFilters.locationNames = preflightSelection.selected
         this.appliedFilters = this.cloneFilters(this.draftFilters)
 
-        await this.loadJobs()
+        if (this.isSavedMode) {
+          this.pretrimLocationNotice = ""
+          await this.loadSavedJobs()
+        } else {
+          const useResolvedLocationList = this.draftFilters.locationMode !== "country"
+          const locationNames = useResolvedLocationList ? await this.resolveLocationNamesFromDraft() : []
+          const preflightSelection = this.buildPreflightLocationSelection(locationNames, this.draftFilters.locationMode)
+          this.pretrimLocationNotice = preflightSelection.requestedCount
+            ? `Using ${preflightSelection.usedCount} of ${preflightSelection.requestedCount} resolved locations (${preflightSelection.strategy}).`
+            : ""
+          this.draftFilters.locationNames = preflightSelection.selected
+          this.appliedFilters = this.cloneFilters(this.draftFilters)
+          await this.loadJobs()
+        }
         this.publishDebugState(reason)
       } finally {
         this.routeHydrationReady = true
       }
     },
     async applySortChange(nextSortBy) {
+      if (this.isSavedMode) return
       const normalizedSort = this.normalizeSortBy(nextSortBy)
       if (normalizedSort === this.normalizeSortBy(this.appliedFilters.sortBy)) {
         return
@@ -1760,6 +1711,15 @@ export default {
         this.appliedFilters.provider = ""
       }
 
+      this.companyOptions = Array.isArray(payload.company_values)
+        ? payload.company_values
+          .map(item => ({
+            value: String(item?.value || "").trim(),
+            observedCount: Number(item?.observed_count || 0),
+          }))
+          .filter(item => item.value)
+        : []
+
       this.filterMetadataVersion = payload.metadata_version || ""
       this.filterMetadataHash = payload.metadata_hash || ""
     },
@@ -1894,6 +1854,7 @@ export default {
     publishDebugState(reason = "state-update") {
       publishCurrentPageDiagnostics({
         reason,
+        boardMode: this.boardMode,
         loading: this.loading,
         error: this.error,
         page: this.page,
@@ -1904,6 +1865,7 @@ export default {
         hasNextPage: this.hasNextPage,
         locationMode: this.draftFilters.locationMode,
         locationPreviewCount: this.locationPreviewNames.length,
+        displayedJobCount: this.displayedJobs.length,
         appliedLocationCount: (this.appliedFilters.locationNames || []).length,
         categoryCount: (this.appliedFilters.categories || []).length,
         levelCount: (this.appliedFilters.levels || []).length,
@@ -1982,15 +1944,65 @@ export default {
 
       this.levelInfo = "Choose a valid level from suggestions."
     },
-    addCustomFilterValue(target) {
-      const input = this.companyInput
-      const clean = (input || "").trim()
+    openCompanyMenu() {
+      this.companyMenuOpen = true
+      this.companyActiveIndex = 0
+    },
+    closeCompanyMenuSoon(forceClose = false) {
+      if (forceClose === true) {
+        this.companyMenuOpen = false
+        return
+      }
+      window.setTimeout(() => {
+        this.companyMenuOpen = false
+      }, 120)
+    },
+    updateCompanyInput(value) {
+      this.companyInput = String(value || "")
+      this.companyMenuOpen = true
+      this.companyActiveIndex = 0
+    },
+    moveCompanySelection(step) {
+      if (!this.filteredCompanyOptions.length) return
+      const next = this.companyActiveIndex + step
+      if (next < 0) {
+        this.companyActiveIndex = this.filteredCompanyOptions.length - 1
+        return
+      }
+      if (next >= this.filteredCompanyOptions.length) {
+        this.companyActiveIndex = 0
+        return
+      }
+      this.companyActiveIndex = next
+    },
+    addCompany(company) {
+      const clean = " ".join(String(company || "").split())
       if (!clean) return
-
-      const existing = this.draftFilters[target] || []
-      this.draftFilters[target] = this.normalizeUnique([...existing, clean])
-
+      this.draftFilters.companies = this.normalizeUnique([
+        ...(this.draftFilters.companies || []),
+        clean,
+      ])
       this.companyInput = ""
+      this.companyMenuOpen = true
+      this.companyActiveIndex = 0
+    },
+    chooseCompanyFromInput() {
+      const input = " ".join(String(this.companyInput || "").split())
+      if (!input) return
+
+      const exact = this.filteredCompanyOptions.find(option => option.value.toLowerCase() === input.toLowerCase())
+      if (exact) {
+        this.addCompany(exact.value)
+        return
+      }
+
+      if (this.filteredCompanyOptions.length > 0) {
+        const highlighted = this.filteredCompanyOptions[this.companyActiveIndex] || this.filteredCompanyOptions[0]
+        this.addCompany(highlighted.value)
+        return
+      }
+
+      this.addCompany(input)
     },
     removeFilterValue(target, value) {
       this.draftFilters[target] = (this.draftFilters[target] || []).filter(item => item !== value)
@@ -2051,9 +2063,12 @@ export default {
       this.draftFilters.radiusUnit = unit
       this.draftFilters.locationRadius = Math.max(1, Math.min(this.maxRadiusForUnit, Math.round(converted)))
     },
-    async fetchJson(url) {
+    async fetchJson(url, options = {}, requestOptions = {}) {
+      const authenticated = requestOptions.authenticated === true
       const startedAt = performance.now()
-      const response = await fetch(url)
+      const response = authenticated
+        ? await authedFetch(url, options)
+        : await fetch(url, options)
       let payload = null
       try {
         payload = await response.json()
@@ -2098,6 +2113,250 @@ export default {
         latencyMs: Number.isFinite(Number(latencyMs)) ? Number(latencyMs) : null,
         payloadHash: this.makePayloadHash(payload),
         observedAt: new Date().toISOString(),
+      }
+    },
+    buildSavedJobKey(job = {}) {
+      const provider = this.normalizeProviderValue(job.provider)
+      const providerJobId = " ".join(String(job.provider_job_id || job.id || "").split())
+      if (!provider || !providerJobId) return ""
+      return `${provider}::${providerJobId}`
+    },
+    normalizeJobRecord(job = {}) {
+      const title = String(job.name || job.title || job.short_name || "Untitled role").trim()
+      const provider = this.normalizeProviderValue(job.provider)
+      const providerJobId = " ".join(String(job.provider_job_id || job.id || "").split())
+      return {
+        id: job.id || providerJobId || crypto.randomUUID(),
+        saved_job_id: job.saved_job_id ?? null,
+        saved_at: job.saved_at || "",
+        provider,
+        provider_job_id: providerJobId,
+        title,
+        name: title,
+        short_name: job.short_name || title,
+        company: job.company || "Unknown company",
+        location: job.locations?.[0] || job.location || "Unknown",
+        location_country_code: job.location_country_code || "",
+        location_country_name: job.location_country_name || "",
+        locations: Array.isArray(job.locations) ? job.locations : (job.location ? [job.location] : []),
+        level: job.levels?.[0] || "",
+        levels: Array.isArray(job.levels) ? job.levels : [],
+        categories: Array.isArray(job.categories) ? job.categories : [],
+        tags: Array.isArray(job.tags) ? job.tags : [],
+        type: job.type || job.job_type || "",
+        model_type: job.model_type || "",
+        work_mode_reason: job.work_mode_reason || "",
+        has_remote: job.has_remote === true,
+        has_hybrid: job.has_hybrid === true,
+        is_local_compatible_remote: job.is_local_compatible_remote === true,
+        local_compatibility_reason: job.local_compatibility_reason || "",
+        location_constraints: job.location_constraints || {},
+        publication_date: job.publication_date || job.published_at || "",
+        short_description: job.short_description || "",
+        apply_link: job.apply_url || job.job_url || job.url || "",
+        link: job.job_url || job.url || "",
+        contents: job.contents || job.description || "",
+      }
+    },
+    replaceSavedJobIndex(entries = []) {
+      const next = {}
+      for (const row of entries || []) {
+        const key = this.buildSavedJobKey(row)
+        if (!key || !row?.saved_job_id) continue
+        next[key] = row.saved_job_id
+      }
+      this.savedJobIdByKey = next
+    },
+    mergeSavedJobIndex(entries = []) {
+      const next = { ...this.savedJobIdByKey }
+      for (const row of entries || []) {
+        const key = this.buildSavedJobKey(row)
+        if (!key || !row?.saved_job_id) continue
+        next[key] = row.saved_job_id
+      }
+      this.savedJobIdByKey = next
+    },
+    async refreshSavedStateIndex() {
+      const collected = []
+      let nextPage = 1
+      let totalPages = 1
+
+      try {
+        do {
+          const payload = await this.fetchJson(
+            `/api/jobs/saved?page=${nextPage}&page_size=100`,
+            {},
+            { authenticated: true },
+          )
+          const rows = (payload.saved_jobs || []).map(job => this.normalizeJobRecord(job))
+          collected.push(...rows)
+          totalPages = Math.max(1, Number(payload.total_pages || 1))
+          nextPage += 1
+        } while (nextPage <= totalPages)
+
+        this.replaceSavedJobIndex(collected)
+      } catch (error) {
+        console.error("Failed to refresh saved job state", error)
+      }
+    },
+    isJobSaved(job) {
+      if (this.isSavedMode && job?.saved_job_id) return true
+      const key = this.buildSavedJobKey(job)
+      return key ? Boolean(this.savedJobIdByKey[key]) : false
+    },
+    isSaveActionPending(job) {
+      if (this.isSavedMode && job?.saved_job_id) {
+        return this.saveBusyByKey[`saved-id:${job.saved_job_id}`] === true
+      }
+      const key = this.buildSavedJobKey(job)
+      return key ? this.saveBusyByKey[key] === true : false
+    },
+    async setBoardMode(nextMode) {
+      if (!["search", "saved"].includes(nextMode) || nextMode === this.boardMode) return
+
+      if (this.boardMode === "search") {
+        this.searchPage = this.page
+      } else {
+        this.savedPage = this.page
+      }
+
+      this.boardMode = nextMode
+      this.advancedFiltersOpen = false
+      this.error = ""
+      this.page = nextMode === "saved" ? this.savedPage || 1 : this.searchPage || 1
+
+      if (nextMode === "saved") {
+        await this.loadSavedJobs()
+      } else {
+        await this.applyFilters({ resetPage: false })
+      }
+
+      this.publishDebugState("board-mode-changed")
+    },
+    async applyPageSize(nextPageSize) {
+      const normalized = this.parsePositiveInteger(nextPageSize, this.pageSize, 1, 100)
+      if (normalized === this.pageSize) return
+
+      this.pageSize = normalized
+      this.page = 1
+      this.searchPage = 1
+      this.savedPage = 1
+
+      if (this.isSavedMode) {
+        await this.loadSavedJobs()
+      } else {
+        await this.applyFilters({ resetPage: false })
+      }
+      this.publishDebugState("page-size-changed")
+    },
+    async loadSavedJobs(allowAutoClamp = true) {
+      this.loading = true
+      this.error = ""
+
+      try {
+        const data = await this.fetchJson(
+          `/api/jobs/saved?page=${this.page}&page_size=${this.pageSize}`,
+          {},
+          { authenticated: true },
+        )
+        this.savedJobs = (data.saved_jobs || []).map(job => this.normalizeJobRecord(job))
+        this.totalJobs = Number(data.total_jobs || 0)
+        this.totalPages = Math.max(1, Number(data.total_pages || 1))
+        this.totalsAreEstimated = false
+        this.hasNextPage = data.has_next_page === true
+        this.locationLimitNotice = ""
+        this.pretrimLocationNotice = ""
+        this.lastSearchDiagnostics = {}
+        this.mergeSavedJobIndex(this.savedJobs)
+        this.savedPage = this.page
+
+        if (allowAutoClamp && this.page > 1 && !this.savedJobs.length && this.totalPages < this.page) {
+          this.page = this.totalPages
+          this.savedPage = this.page
+          await this.loadSavedJobs(false)
+          return
+        }
+      } catch (error) {
+        this.savedJobs = []
+        this.error = "Failed to load saved jobs. Please try again."
+        console.error("Failed to load saved jobs", error)
+      } finally {
+        this.loading = false
+        try {
+          await this.syncRouteQuery()
+        } catch (routeError) {
+          console.error("Failed to sync job board URL", routeError)
+        }
+      }
+    },
+    async toggleSaveJob(job) {
+      const normalizedJob = this.normalizeJobRecord(job)
+      const key = this.buildSavedJobKey(normalizedJob)
+      const pendingKey = this.isSavedMode && normalizedJob.saved_job_id ? `saved-id:${normalizedJob.saved_job_id}` : key
+      if (pendingKey) {
+        this.saveBusyByKey = { ...this.saveBusyByKey, [pendingKey]: true }
+      }
+
+      try {
+        const savedJobId = normalizedJob.saved_job_id || this.savedJobIdByKey[key]
+        if (savedJobId) {
+          await this.fetchJson(`/api/jobs/saved/${savedJobId}`, { method: "DELETE" }, { authenticated: true })
+          if (key) {
+            const next = { ...this.savedJobIdByKey }
+            delete next[key]
+            this.savedJobIdByKey = next
+          }
+          if (this.isSavedMode) {
+            this.savedJobs = this.savedJobs.filter(item => item.saved_job_id !== savedJobId)
+            this.totalJobs = Math.max(0, this.totalJobs - 1)
+            if (!this.savedJobs.length && this.page > 1) {
+              this.page = Math.max(1, this.page - 1)
+              this.savedPage = this.page
+              await this.loadSavedJobs(false)
+            } else {
+              this.totalPages = Math.max(1, Math.ceil(Math.max(this.totalJobs, 1) / this.pageSize))
+              this.hasNextPage = this.page < this.totalPages
+              await this.syncRouteQuery()
+            }
+          }
+          showToast("Removed saved job.", "success")
+          return
+        }
+
+        const payload = await this.fetchJson(
+          "/api/jobs/save",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              provider: normalizedJob.provider,
+              provider_job_id: normalizedJob.provider_job_id || normalizedJob.id,
+              name: normalizedJob.title,
+              company: normalizedJob.company,
+              url: normalizedJob.apply_link || normalizedJob.link,
+            }),
+          },
+          { authenticated: true },
+        )
+
+        if (key && payload?.saved_job_id) {
+          this.savedJobIdByKey = {
+            ...this.savedJobIdByKey,
+            [key]: payload.saved_job_id,
+          }
+        }
+        showToast(payload?.message || "Job saved.", "success")
+      } catch (error) {
+        console.error("Failed to toggle saved job", error)
+        showToast(error?.message || "Could not update saved jobs.", "error")
+      } finally {
+        if (pendingKey) {
+          const next = { ...this.saveBusyByKey }
+          delete next[pendingKey]
+          this.saveBusyByKey = next
+        }
       }
     },
     async detectViaIp() {
@@ -2308,7 +2567,7 @@ export default {
         this.closeCityPreviewModal()
         await this.resolveLocationNamesFromDraft()
       } catch (e) {
-        this.locationError = "Failed to preview matched places. Please try again."
+        this.locationError = "Failed to preview locations. Please try again."
         console.error("Location preview failed", e)
       } finally {
         this.locationBusy = false
@@ -2414,6 +2673,7 @@ export default {
         }
         if (this.page > this.totalPages) {
           this.page = this.totalPages
+          this.searchPage = this.page
         }
         if (data.location_params_truncated === true) {
           const used = Number(data.used_location_count || data.location_params_used || 0)
@@ -2429,39 +2689,12 @@ export default {
           this.locationLimitNotice = ""
         }
 
-        const mappedJobs = (data.jobs || []).map(job => ({
-          id: job.id,
-          provider: job.provider,
-          title: job.name,
-          short_name: job.short_name || "",
-          company: job.company,
-          location: job.locations?.[0] || "Unknown",
-          location_country_code: job.location_country_code || "",
-          location_country_name: job.location_country_name || "",
-          locations: job.locations || [],
-          level: job.levels?.[0] || "",
-          levels: job.levels || [],
-          categories: job.categories || [],
-          tags: job.tags || [],
-          type: job.type || "",
-          model_type: job.model_type || "",
-          work_mode_reason: job.work_mode_reason || "",
-          has_remote: job.has_remote === true,
-          has_hybrid: job.has_hybrid === true,
-          is_local_compatible_remote: job.is_local_compatible_remote === true,
-          local_compatibility_reason: job.local_compatibility_reason || "",
-          location_constraints: job.location_constraints || {},
-          publication_date: job.publication_date,
-          short_description: job.short_description || "",
-          apply_link: job.apply_url || job.job_url,
-          link: job.job_url,
-          contents: job.contents || ""
-        }))
-
-        this.jobs = mappedJobs
+        this.jobs = (data.jobs || []).map(job => this.normalizeJobRecord(job))
+        this.searchPage = this.page
 
         if (allowAutoClamp && this.page > 1 && !this.jobs.length && !this.hasNextPage) {
           this.page = Math.max(1, this.page - 1)
+          this.searchPage = this.page
           await this.loadJobs(false)
           return
         }
@@ -2481,7 +2714,8 @@ export default {
         this.publishDebugState(debugReason)
       }
     },
-    async applyFilters() {
+    async applyFilters(options = {}) {
+      const resetPage = options.resetPage !== false
       this.locationBusy = true
       try {
         const useResolvedLocationList = this.draftFilters.locationMode !== "country"
@@ -2498,7 +2732,10 @@ export default {
         this.appliedFilters.provider = this.normalizeProviderValue(this.appliedFilters.provider)
         this.appliedFilters.locationNames = preflightSelection.selected
 
-        this.page = 1
+        if (resetPage) {
+          this.page = 1
+        }
+        this.searchPage = this.page
         await this.loadJobs()
         this.publishDebugState("filters-applied")
       } catch (e) {
@@ -2511,6 +2748,7 @@ export default {
       }
     },
     async clearFilters() {
+      this.boardMode = "search"
       this.draftFilters = this.createDefaultFilters()
       this.appliedFilters = this.createDefaultFilters()
       this.categoryInput = ""
@@ -2522,8 +2760,9 @@ export default {
       this.levelInfo = ""
       this.levelActiveIndex = 0
       this.levelMenuOpen = false
+      this.companyMenuOpen = false
+      this.companyActiveIndex = 0
       this.advancedLocationModalOpen = false
-      this.cityPreviewModalOpen = false
       this.companyInput = ""
       this.locationFallbackInput = ""
       this.locationInfo = ""
@@ -2540,7 +2779,10 @@ export default {
       this.hasNextPage = false
       this.locationLimitNotice = ""
       this.pretrimLocationNotice = ""
+      this.savedJobs = []
       this.page = 1
+      this.searchPage = 1
+      this.savedPage = 1
 
       await this.loadJobs()
       this.publishDebugState("filters-cleared")
@@ -2548,18 +2790,36 @@ export default {
     async goToNextPage() {
       if (!this.hasNextPage || this.loading) return
       this.page += 1
-      await this.loadJobs()
+      if (this.isSavedMode) {
+        this.savedPage = this.page
+        await this.loadSavedJobs()
+      } else {
+        this.searchPage = this.page
+        await this.loadJobs()
+      }
     },
     async goToPreviousPage() {
       if (this.page <= 1 || this.loading) return
       this.page -= 1
-      await this.loadJobs()
+      if (this.isSavedMode) {
+        this.savedPage = this.page
+        await this.loadSavedJobs()
+      } else {
+        this.searchPage = this.page
+        await this.loadJobs()
+      }
     },
     async goToPage(pageNumber) {
       const target = Number(pageNumber || 1)
       if (this.loading || target < 1 || target > this.totalPages || target === this.page) return
       this.page = target
-      await this.loadJobs()
+      if (this.isSavedMode) {
+        this.savedPage = this.page
+        await this.loadSavedJobs()
+      } else {
+        this.searchPage = this.page
+        await this.loadJobs()
+      }
     }
   },
   async mounted() {
@@ -2570,6 +2830,7 @@ export default {
     await this.fetchFilterMetadata()
     await this.fetchProviderAttribution()
     await this.fetchCountryOptions()
+    await this.refreshSavedStateIndex()
 
     const cached = getCachedLocation()
     if (cached?.latitude && cached?.longitude) {

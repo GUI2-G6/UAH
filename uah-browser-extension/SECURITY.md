@@ -10,7 +10,6 @@ This extension is a compact companion to the UAH web app. It reads existing UAH 
 - `manifest.json` grants host permissions only for the configured API origin.
 - No wildcard origins are used.
 - All backend requests are sent with `X-UAH-Client: extension`.
-- The localhost test harness still uses HTTPS; there is no HTTP-only extension bypass.
 
 ## Permissions
 
@@ -20,8 +19,10 @@ This extension is a compact companion to the UAH web app. It reads existing UAH 
   - Required to read and clear the existing UAH auth cookie on the configured API origin for Google sign-in bridging and explicit logout cleanup.
 - `tabs`
   - Required to open the full UAH app and watch the Google OAuth tab until it lands back on the configured UAH origin.
-
-No content scripts, `activeTab`, `scripting`, or broad site permissions are used in v1.
+- `activeTab`
+  - Required so manual autofill actions can run only on the currently active page after the user clicks Scan or Fill.
+- `scripting`
+  - Required to inject the on-demand autofill runtime into the active tab. The extension does not use a persistent content script.
 
 ## Stored Data
 
@@ -70,7 +71,6 @@ Reason:
 - The extension checks the stored JWT expiry before using it.
 - It then confirms the session against `/api/auth/me`.
 - Any `401` clears local auth state and returns the popup to the sign-in flow.
-- Google OAuth is disabled in the localhost harness so local testing stays on the email/password path.
 
 ## CSP
 

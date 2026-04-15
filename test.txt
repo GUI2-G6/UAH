@@ -47,3 +47,25 @@ on review readyness make sure csv typing works, make the form values more clear
 improve the resume profile parsing options and stuff to fit better. 
 
 direct key based ssh
+
+address disjointness between the statements for the "parsed data" on the resume viewing thing and then the actual data stated to be found in the review readyness. improve it
+
+"open full editor in extension does not make proper sense, it just takes you to the resume import page, long term it should take you to the applicant info page.
+
+mandatory disclosures should be linked into the extension as they are a part of the profiles. make them display when verifying your profile selected but require you to change them on the uahapp site to update them 
+
+Current / Most Recent Job Title = make a dropdown that lets you swap between stuff listed as jobs youve worked on work history or something, also allow manual add but uh yeah.
+
+im going to also try and implement a easy click to state the feature filled wrong or something for testing, low user friction, high roi for getting good user responses
+
+allow changing the active profile on the extension, would be good.
+
+make sure there is a hard limit on the amount of profiles you can have for stuff
+
+do audit on the extension for any attack planes introduced there. foreign to me.
+
+create the job board page compatibility wrapper assist framework.
+
+analyze performance of pinned job board thing
+
+uhh figure out why the extension both expands rapidly when unlocked resizing and also lets you still expand it (visibily glitchy when done) while locked 

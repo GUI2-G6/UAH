@@ -138,6 +138,11 @@
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
 }
 
+.filter-group-placeholder {
+  border-style: dashed;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.92), rgba(255, 255, 255, 0.96));
+}
+
 .filter-group label {
   font-size: 0.875rem;
   color: var(--color-text-secondary);
@@ -556,7 +561,7 @@
   background: transparent;
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   align-items: stretch;
   gap: 16px;
   padding: 16px;

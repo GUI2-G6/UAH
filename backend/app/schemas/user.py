@@ -230,10 +230,16 @@ class SaveJobRequest(BaseModel):
         description="Deprecated — ignored, user is derived from JWT token.",
         examples=[42],
     )
-    job_id: int = Field(
-        validation_alias=AliasChoices("job_id", "jobId"),
-        description="External or provider job identifier used to deduplicate saved jobs.",
-        examples=[7619281],
+    provider: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("provider", "source"),
+        description="Optional provider slug associated with the saved job.",
+        examples=["the_muse"],
+    )
+    provider_job_id: str = Field(
+        validation_alias=AliasChoices("provider_job_id", "providerJobId", "job_id", "jobId"),
+        description="External/provider job identifier stored as a string for cross-provider compatibility.",
+        examples=["7619281", "staff-product-designer-emea"],
     )
     name: str = Field(
         ...,
@@ -254,3 +260,17 @@ class SaveJobRequest(BaseModel):
         description="Canonical URL of the job posting landing page.",
         examples=["https://www.themuse.com/jobs/acme/software-engineer-ii"],
     )
+
+    @field_validator("provider")
+    @classmethod
+    def normalize_provider(cls, value: str | None) -> str | None:
+        normalized = " ".join(str(value or "").split()).lower()
+        return normalized or None
+
+    @field_validator("provider_job_id")
+    @classmethod
+    def normalize_provider_job_id(cls, value: str) -> str:
+        normalized = " ".join(str(value or "").split())
+        if not normalized:
+            raise ValueError("provider_job_id is required")
+        return normalized
