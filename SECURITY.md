@@ -4,8 +4,8 @@
 
 | Version | Supported |
 |---|---|
-| beta (beta.uahapp.com) | ❌ Not Yet Active |
-| dev (dev.uahapp.com) | ✅ Active (team only) |
+| beta (beta.uahapp.com) | ✅ Currently Active|
+| dev (dev.uahapp.com) | ❌ Sunset |
 | prod (uahapp.com) | ❌ Not Yet Active |
 
 ## Reporting a Vulnerability
