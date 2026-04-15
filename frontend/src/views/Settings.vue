@@ -756,14 +756,13 @@ export default {
         },
 
         async changeName() {
-            if (!this.firstName || !this.lastName) {
-                this.setActionStatus('changeName', 'error', 'First and last name are required');
+            const emptyField = !this.firstName || !this.lastName
+            if (emptyField) {
                 showToast('Please fill out all required fields', 'error');
                 return;
             }
 
             this.working = true
-            this.setActionStatus('changeName', 'working', 'Updating…')
             try {
                 const res = await authedFetch('/api/account/change-name', {
                     method: 'PUT',
@@ -778,10 +777,8 @@ export default {
 
                 this.currentUser = data
                 setCurrentUser(data)
-                this.setActionStatus('changeName', 'success', 'Name updated')
                 showToast('Name updated successfully!', 'success');
             } catch (e) {
-                this.setActionStatus('changeName', 'error', this.formatFailure('Update name', e))
                 showToast('Failed to update name: ' + e.message, 'error');
             } finally {
                 this.working = false
@@ -790,15 +787,14 @@ export default {
 
         async changePassword() {
             if (!this.newPassword || !this.confirmNewPassword) {
-                this.setActionStatus('changePassword', 'error', 'Please enter and confirm your new password')
+                showToast('Please enter and confirm your new password', 'error')
                 return
             }
             if (this.newPassword !== this.confirmNewPassword) {
-                this.setActionStatus('changePassword', 'error', 'New passwords do not match')
+                showToast('New passwords do not match', 'error')
                 return
             }
             this.working = true
-            this.setActionStatus('changePassword', 'working', 'Updating…')
             try {
                 const res = await authedFetch('/api/account/change-password', {
                     method: 'PUT',
@@ -810,12 +806,12 @@ export default {
                 })
                 const data = await res.json().catch(() => null)
                 if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
-                this.setActionStatus('changePassword', 'success', data?.message || 'Password changed successfully')
+                showToast('Password changed successfully', 'success')
                 this.currentPassword = ''
                 this.newPassword = ''
                 this.confirmNewPassword = ''
             } catch (e) {
-                this.setActionStatus('changePassword', 'error', this.formatFailure('Update password', e))
+                showToast('Failed to update password:' + e.message, 'error')
             } finally {
                 this.working = false
             }
@@ -829,24 +825,20 @@ export default {
                 newEmailConfirm = assertValidEmail(this.changeEmailNewConfirm, 'confirm email')
             } catch (e) {
                 const msg = e?.message ?? 'Please enter a valid email address'
-                this.setActionStatus('changeEmail', 'error', msg)
                 showToast(msg, 'error')
                 return
             }
             if (!newEmail || !newEmailConfirm) {
                 const msg = 'Please enter and confirm your new email'
-                this.setActionStatus('changeEmail', 'error', msg)
                 showToast(msg, 'error')
                 return
             }
             if (newEmail.toLowerCase() !== newEmailConfirm.toLowerCase()) {
                 const msg = 'Emails do not match'
-                this.setActionStatus('changeEmail', 'error', msg)
                 showToast(msg, 'error')
                 return
             }
             this.working = true
-            this.setActionStatus('changeEmail', 'working', 'Updating…')
             try {
                 const res = await authedFetch('/api/account/change-email', {
                     method: 'PUT',
@@ -857,7 +849,6 @@ export default {
                 })
                 const data = await res.json().catch(() => null)
                 if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
-                this.setActionStatus('changeEmail', 'success', data?.message || 'Email updated')
                 showToast('Email updated successfully!', 'success')
                 this.changeEmailNewConfirm = ''
 
@@ -875,7 +866,6 @@ export default {
                 await this.loadUser()
             } catch (e) {
                 const msg = this.formatFailure('Update email', e)
-                this.setActionStatus('changeEmail', 'error', msg)
                 showToast(msg, 'error')
             } finally {
                 this.working = false
