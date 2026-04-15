@@ -1,3 +1,13 @@
+# Historical Snapshot: UAH Codebase Security & Production-Readiness Audit
+
+This document is an archival audit snapshot. It captures findings at the time it was written, not guaranteed current behavior.
+
+Use these active docs for the current beta posture:
+
+- [../../beta-prep/BETA_SETUP.md](../../beta-prep/BETA_SETUP.md)
+- [../../beta-prep/SECURITY_CHECKLIST.md](../../beta-prep/SECURITY_CHECKLIST.md)
+- [../../SECURITY_AUDIT_GUIDE.md](../../SECURITY_AUDIT_GUIDE.md)
+
 # UAH Codebase Security & Production-Readiness Audit
 
 **Branch audited:** `dev`  

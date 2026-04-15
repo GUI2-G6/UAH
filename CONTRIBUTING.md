@@ -1,68 +1,73 @@
-# Contributing to UAH
+# Contributing To UAH
 
-Thanks for being part of the project. This guide covers how we work together so things stay organized as the codebase grows.
+This guide covers the day-to-day contribution rules for the repository. For the detailed branch and PR flow, use [docs/WORKFLOW.MD](docs/WORKFLOW.MD).
 
 ## Before You Start
 
-- Check the [issues board](https://github.com/GUI2-G6/UAH/issues) for open work
-- Comment on an issue before starting — this signals to the team that you're working on it and prevents duplicate effort
-- If something you want to work on doesn't have an issue yet, create one first and assign yourself
+- Check the [issues board](https://github.com/GUI2-G6/UAH/issues) for existing work.
+- Comment on the issue before starting so ownership is visible.
+- If there is no issue yet, create one first.
 
 ## Branch Naming
 
-All work happens on branches off `dev`. Use this format:
+All work should branch from `dev`.
 
 | Type | Format | Example |
-|---|---|---|
-| New feature | `feature/short-description` | `feature/gmail-oauth-scope` |
-| Bug fix | `fix/short-description` | `fix/pdf-viewer-auth` |
-| Chore/infra | `chore/short-description` | `chore/update-dependencies` |
-| Documentation | `docs/short-description` | `docs/beta-setup-guide` |
+| --- | --- | --- |
+| Feature | `feature/short-description` | `feature/gmail-oauth-status` |
+| Bug fix | `fix/short-description` | `fix/status-page-auth-state` |
+| Chore / infra | `chore/short-description` | `chore/update-env-sync-check` |
+| Docs | `docs/short-description` | `docs/rewrite-backend-guide` |
 
-Keep branch names lowercase and hyphenated. No spaces, no uppercase.
+Keep names lowercase and hyphenated.
 
-## Making Changes
+## What To Update With Your Change
 
-1. Branch off `dev` — never branch off `prod` or `beta`
-2. Make your changes in focused, logical commits
-3. Write commit messages that describe what changed and why, not just "fix stuff"
-4. Test your changes locally before opening a PR
+If your change affects any of these surfaces, update the matching docs in the same PR:
 
-## Migrations and Backfills
+- backend behavior or required env vars
+- frontend route or auth/runtime behavior
+- browser extension build/runtime/autofill behavior
+- operator-facing lifecycle or deployment behavior
 
-- If a migration adds a computed or derived column to `jobs`, ship an automated backfill path for existing rows in the same change
-- Prefer the existing Celery maintenance-task pattern over one-off manual scripts so older rows converge automatically after deploy
-- Do not drop and recreate a populated column just to backfill it unless the migration explicitly requires destructive replacement
+Use [docs/README.md](docs/README.md) to find the current source-of-truth doc before you open the PR.
+
+## Migrations And Backfills
+
+- If a migration adds a derived field to `jobs`, ship an automated backfill path in the same change.
+- Prefer the existing Celery maintenance-task pattern over one-off manual scripts.
+- Do not destroy and recreate populated columns just to backfill them unless the migration explicitly requires destructive replacement.
 
 ## Pull Requests
 
-- For the full branch and PR workflow, see [WORKFLOW.md](WORKFLOW.md).
-- All changes to `dev` must come through a pull request — no direct pushes
-- Title your PR clearly: what does it do?
-- Reference the issue it closes using `Closes #XX` in the PR description
-- Use the PR template — fill it out completely
-- At least one team member should review before merging
-- Do not merge your own PR without a review unless it is a critical hotfix and you have confirmed with @TrentBrownUML
+- All changes to `dev` should go through a pull request.
+- Use a clear PR title that describes the outcome.
+- Link the issue with `Closes #XX` when appropriate.
+- Fill out the PR template completely.
+- If a change alters setup, behavior, or operator workflow, mention which docs you updated.
 
 ## Commit Style
 
-Use clear, present-tense commit messages:
-- `Add Gmail OAuth scope endpoint`
-- `Fix PDF viewer auth header not being passed`
-- `Update CORS origins for beta environment`
+Prefer clear, present-tense messages:
 
-Not:
+- `Add Gmail integration status endpoint`
+- `Fix saved jobs pagination for authenticated users`
+- `Rewrite beta setup docs for cloudflared tunnel flow`
+
+Avoid vague messages like:
+
 - `stuff`
 - `fixed it`
 - `wip`
 
-## Environment and Secrets
+## Environment And Secrets
 
-- Never commit `.env` files — they are gitignored, keep it that way
-- If you add a new environment variable, add it to `env-examples/dev/.env.example` with a description and a safe placeholder value
-- Runtime `.env` must live at the repository root when running the app/compose (do not run from files inside `env-examples/`)
-- If you accidentally commit a secret, notify @TrentBrownUML immediately
+- Never commit `.env` files.
+- If you add a new env var, update the relevant `env-examples/*/.env.example` files.
+- Runtime `.env` always belongs at the repository root for repo-managed workflows.
+- If you suspect a secret was committed, notify the maintainers immediately.
 
 ## Questions
 
-Reach out on Discord or comment on the relevant GitHub issue. @TrentBrownUML handles PM and infra questions.
+- Product / infra / workflow questions: comment on the issue or reach out to the project lead.
+- For uncertainty about documentation placement, start with [docs/README.md](docs/README.md) instead of creating a new ad hoc doc.

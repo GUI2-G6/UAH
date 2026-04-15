@@ -16,7 +16,8 @@ async function resolveAuthenticatedUser(force = false) {
   }
 }
 
-/* This grabs everything from and generates routes for everything in the views folder */
+// File-based route generation keeps the view directory honest: if a routed page
+// exists in `views/`, it is mounted here unless we explicitly special-case it.
 const viewRoutes = Object.keys(modules).map((path) => {
   const name = path
     .split('/')
@@ -61,6 +62,8 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
+  // These routes stay reachable without an existing session, but they may still
+  // redirect signed-in users away from auth pages once identity is resolved.
   const publicPaths = new Set([
     '/login',
     '/register',
@@ -93,6 +96,8 @@ router.beforeEach(async (to) => {
     }
   }
 
+  // Keep the dev surface routed for contributors without making it a public UI
+  // entrypoint in normal browser sessions.
   if (to.meta?.debugOnly && !shouldShowDebugTools()) {
     return '/home'
   }

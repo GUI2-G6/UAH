@@ -130,6 +130,8 @@ function removePanel(doc = document) {
 }
 
 function buildPopupUrl() {
+  // The pinned surface reuses the same popup app in an iframe so background
+  // messaging, auth state, and UI logic stay shared across both surfaces.
   const popupUrl = globalThis.chrome?.runtime?.getURL?.('popup.html') || ''
   return `${popupUrl}?surface=pinned`
 }

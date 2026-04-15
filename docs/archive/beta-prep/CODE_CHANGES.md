@@ -1,3 +1,12 @@
+# Historical Snapshot: Beta Environment — Required Code Changes
+
+This document is preserved as a point-in-time implementation delta list from an earlier beta planning pass.
+
+It should not be treated as the current beta setup guide. Use these active docs instead:
+
+- [../../beta-prep/BETA_SETUP.md](../../beta-prep/BETA_SETUP.md)
+- [../../beta-prep/SECURITY_CHECKLIST.md](../../beta-prep/SECURITY_CHECKLIST.md)
+
 # Beta Environment — Required Code Changes
 
 This document lists every specific file and change needed to support the beta deployment at `beta.uahapp.com`. Items are grouped by category. Changes that apply to a new `docker-compose.beta.yml` file are described as additions, not modifications to the existing dev file.

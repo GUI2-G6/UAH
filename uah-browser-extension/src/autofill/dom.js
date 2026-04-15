@@ -31,6 +31,8 @@ export function getLabelFor(element, root = document) {
     if (text) return text
   }
 
+  // Real application forms are inconsistent, so the fallback chain broadens
+  // from explicit labels to nearby text only after stronger signals fail.
   const ariaLabel = element.getAttribute?.('aria-label')
   if (ariaLabel) return ariaLabel
 
@@ -147,6 +149,8 @@ export function fillPlan(plan, tokenMap) {
     const value = tokenMap?.[item.matchPath]
     if (value === null || value === undefined || value === '') continue
 
+    // Avoid filling stale end dates into entries that are explicitly marked as
+    // current in the source token map.
     if (item.matchPath.match(/\.(end_month|end_year|end_date)$/)) {
       const prefix = item.matchPath.replace(/\.(end_month|end_year|end_date)$/, '')
       if (tokenMap?.[`${prefix}.is_current`] === true) continue

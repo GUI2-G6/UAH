@@ -1,107 +1,148 @@
-# frontend
+# Frontend Development Guide
 
-This template should help get you started developing with Vue 3 in Vite.
+This is the current source of truth for the Vue frontend.
 
-For end-to-end local setup (database + backend + frontend), follow the authoritative flow in [../backend/README.md](../backend/README.md). This file only covers frontend commands.
+For repo-wide context, use:
 
-## Recommended IDE Setup
+- [../../README.md](../../README.md)
+- [../ARCHITECTURE.md](../ARCHITECTURE.md)
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+## What This App Is
 
-## Recommended Browser Setup
+The frontend is a Vue 3 SPA that talks to the FastAPI backend through same-origin `/api` routes in deployed environments. In local development it can run in one of two modes:
 
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
+- mock-first mode for UI work with no backend dependency
+- backend passthrough mode for real API behavior on localhost
 
-## Customize configuration
+## Scripts
 
-See [Vite Configuration Reference](https://vite.dev/config/).
+Run these from `frontend/`:
 
-## Project Setup
-
-Run commands from the `frontend/` directory:
-
-```sh
+```bash
 npm install
+npm run dev
+npm run dev:backend
+npm run build
+npm run check:cards
 ```
 
-### Compile and Hot-Reload for Development
+### What each script does
 
-Mock-first mode (default) renders the app without requiring backend services:
+| Script | Purpose |
+| --- | --- |
+| `npm run dev` | Mock-first local development. Uses the in-browser mock API layer. |
+| `npm run dev:backend` | Proxies `/api`, `/docs`, and `/openapi.json` to the configured backend origin. |
+| `npm run build` | Production build of the SPA bundle. |
+| `npm run check:cards` | Contract check for the shared card component and its consumers. |
 
-```sh
+## Auth And Runtime Behavior
+
+### Backend mode
+
+- The app expects backend-issued auth cookies and session-backed API behavior.
+- `syncCurrentUser()` is the main frontend-side identity refresh path.
+- `/api/status` is the lightweight public connectivity check.
+- `/api/diagnostics` is admin-gated, so the status page must handle limited-access states gracefully.
+
+### Mock mode
+
+- The mock API layer emulates auth and common data flows entirely in-browser.
+- Mock mode keeps local storage namespaced by `VITE_AUTH_NAMESPACE`.
+- Mock mode is for renderability and workflow development, not for proving backend correctness.
+
+## Current Route Surface
+
+### Active, non-placeholder views
+
+- `Home`
+- `Job-Board`
+- `Resumes`
+- `Applicant-Information`
+- `Settings`
+- `Login`
+- `Register`
+- `Forgot-Password`
+- `Reset-Password`
+- `Status`
+- `Our-Commitment`
+- `Contributors`
+- `Dev` (debug-tools gated)
+
+### Placeholder or thin-shell views
+
+These routes exist, but they are not full product surfaces yet:
+
+- `Analytics`
+- `Timeline`
+- `Application`
+
+`Notifications` has a routed surface, but it is currently a simple static shell rather than a fully wired reminders system.
+
+Document those views as partial, not complete.
+
+## Local Development Modes
+
+### Mock-first mode
+
+```bash
 npm run dev
 ```
 
-Backend passthrough mode proxies `/api`, `/docs`, and `/openapi.json` to local backend:
+Use this for:
 
-```sh
+- layout work
+- component iteration
+- route flow scaffolding
+- work that should not depend on backend availability
+
+### Backend passthrough mode
+
+```bash
 npm run dev:backend
 ```
 
-Security notes:
+Important behavior:
 
-- Local dev server binds to `127.0.0.1` by default.
-- Backend mode only allows loopback targets unless you explicitly set `VITE_ALLOW_REMOTE_API=true`.
-- Keep `VITE_AUTH_NAMESPACE=dev` for local workflows to avoid auth storage collisions with other environments.
-
-### Compile and Minify for Production
-
-```sh
-npm run build
-```
+- defaults to `http://localhost:8000` unless overridden
+- refuses non-loopback backend targets unless `VITE_ALLOW_REMOTE_API=true`
+- can optionally serve over HTTPS when the local HTTPS env vars are configured
 
 ## Shared Card Contract
 
-- `frontend/src/components/Card.vue` is the shared structural card primitive.
-- Its internal class contract is namespaced as `ui-card*`; do not target bare `.card` or `.big-card`.
-- Public variants are limited to:
-  - `default` for dashboard and form cards
-  - `job` for job listing cards
-  - `minimal` for inset or nested cards
-- Page-level tuning must happen through caller-owned classes and these documented CSS variables:
-  - `--ui-card-bg`
-  - `--ui-card-border`
-  - `--ui-card-shadow`
-  - `--ui-card-padding`
-  - `--ui-card-header-bg`
-  - `--ui-card-header-padding`
-- Do not restyle shared internals globally.
-- Run `npm run check:cards` before opening a PR that changes shared card consumers or the card primitive.
+`frontend/src/components/Card.vue` is a shared UI primitive, not a page-specific card.
+
+Public variants:
+
+- `default`
+- `job`
+- `minimal`
+
+Caller-owned tuning should happen through documented CSS variables rather than global overrides:
+
+- `--ui-card-bg`
+- `--ui-card-border`
+- `--ui-card-shadow`
+- `--ui-card-padding`
+- `--ui-card-header-bg`
+- `--ui-card-header-padding`
+
+Run `npm run check:cards` if a change touches the card primitive or many card consumers.
 
 ## Job Board Notes
 
-- Filter metadata is backend-owned via `GET /api/jobs/filter-metadata` and includes:
-  - Canonical category groups/aliases
-  - Supported level labels
-  - `location_param_cap`
-- Default discovery is intentionally broad:
-  - `Remote` and `Hybrid` start enabled.
-  - Backend may run a one-time relaxed-location fallback when strict location matching returns no jobs.
-- Job search sends keyword/date server-side (`q`, `posted_after`) so totals and pagination match backend filtering.
-- Before search, the UI preflights location trimming and shows `Using X of Y resolved locations`.
-- Compatibility transparency:
-  - With Remote off, constraint-overlap roles can still appear (policy: `allow-if-overlap`).
-  - The Job Board shows a diagnostics hint when this happens.
-- Local mock mode emulates:
-  - Category expansion behavior
-  - Location cap/truncation diagnostics
-  - Search diagnostics fields used by Job Board transparency UI
+- Filter metadata is backend-owned through `GET /api/jobs/filter-metadata`.
+- Keyword search and `posted_after` filtering are sent server-side so totals and pagination stay consistent.
+- Location canonicalization and cap/truncation diagnostics are surfaced in the UI before search.
+- Result totals from provider-backed search are conservative estimates; local DB-backed search can return exact totals.
 
-## Identity And Autofill Notes (April 11, 2026)
+## Docs And Debug Expectations
 
-- Identity is now email-first in UI flows.
-  - Login uses email as the sign-in identifier.
-  - Register no longer asks for username.
-  - Settings no longer shows username management.
-- Autofill policy is intentionally narrow:
-  - Keep browser/password-manager metadata only on auth + account-security forms:
-    - `Login`, `Register`, `Forgot-Password`, `Reset-Password`
-    - Settings `Change Email` + `Change Password`
-  - All profile/resume/settings-preference data-entry fields are `autocomplete="off"` to avoid noisy autofill interference.
-- Password manager compatibility is preserved for credential updates:
-  - Account-security forms provide username/email context and keep `current-password` / `new-password` semantics for password updates.
+- In local/dev-style environments, `/docs` and `/openapi.json` may be available through backend passthrough mode.
+- In beta-like environments, generated docs are intentionally disabled by the backend.
+- The `Dev` route should be treated as a gated troubleshooting surface, not a public product page.
+
+## Related Docs
+
+- Backend guide: [../backend/README.md](../backend/README.md)
+- Extension guide: [../../uah-browser-extension/README.md](../../uah-browser-extension/README.md)
+- Architecture: [../ARCHITECTURE.md](../ARCHITECTURE.md)
