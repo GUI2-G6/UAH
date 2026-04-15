@@ -1,3 +1,13 @@
+# Historical Snapshot: Google OAuth + Connected Accounts Implementation (2026-04-11)
+
+This document is an archival implementation note tied to a specific change window.
+
+Use these active docs for current behavior:
+
+- [../../backend/README.md](../../backend/README.md)
+- [../../frontend/README.md](../../frontend/README.md)
+- [../../../uah-browser-extension/README.md](../../../uah-browser-extension/README.md)
+
 # Google OAuth + Connected Accounts Implementation (2026-04-11)
 
 ## Scope Implemented

@@ -1,48 +1,40 @@
-# Environment Example Templates
+# Environment Example Files
 
-This folder contains sanitized, committed templates for each deployment stage.
+This folder contains sanitized example env files for each environment shape used by the repository.
 
-## Runtime Rule (Important)
+## Runtime Rule
 
-The application expects a real `.env` file in the repository root at runtime.
+The application does not run directly from files inside this directory.
 
-- Runtime location: `./.env`
-- Template location only: `env-examples/*/.env.example`
+- Runtime file location: repo-root `.env`
+- Template location: `env-examples/*/.env.example`
 
-Do not run the app directly from files inside this folder.
-Copy the relevant template values into root `.env` before starting services.
+Copy the relevant example into a real root `.env`, then replace placeholder values with environment-specific secrets and URLs.
 
-## Folder Intent
+## Available Templates
 
-- `env-examples/dev/.env.example`
-  - Canonical development template.
-  - Mirrors current dev variables and defaults.
-  - Uses fake placeholders for secret values.
+| Template | Purpose |
+| --- | --- |
+| `env-examples/dev/.env.example` | Team-oriented dev stack values |
+| `env-examples/beta/.env.example` | Beta deployment values, namespacing, and tunnel-related settings |
+| `env-examples/local/.env.example` | Frontend-first local development with optional localhost backend |
+| `env-examples/prod/.env.example` | Production placeholder/stub for future production hardening |
 
-- `env-examples/beta/.env.example`
-  - Canonical beta/staging template.
-  - Mirrors beta values (domain, compose name, cloudflare token var).
-  - Uses fake placeholders for secret values.
+## Repository Policy
 
-- `env-examples/prod/.env.example`
-  - Placeholder production stub.
-  - Tracks required production fields without storing real credentials.
+- Never commit a real `.env`.
+- Never replace placeholders in `*.env.example` with live credentials.
+- Keep templates aligned with `backend/app/core/config.py`, compose files, and lifecycle/audit expectations.
+- When a new environment variable is added, update the relevant example files in the same change.
 
-- `env-examples/local/.env.example`
-  - Frontend-first local template with secure defaults.
-  - Supports mock-only frontend mode and optional local backend profile.
-  - Keeps localhost-only host bindings and admin bootstrap disabled by default.
+## Template Design Notes
 
-## Security Notes
+- Placeholders are intentionally fake values so secret scanners do not treat them as leaked credentials.
+- Beta and local templates keep some disabled-by-default keys present on purpose so audits and setup flows can verify them explicitly.
+- A documented key may be required only when a feature is enabled. That still belongs in the example file.
 
-- Never commit real `.env` files.
-- Never paste real credentials into any `*.env.example` file.
-- Placeholders are intentionally non-secret strings so scanners do not treat them as leaked keys.
+## Related Docs
 
-## Sync Notes
-
-- CI validates that `backend/app/core/config.py` env usage is represented in:
-  - `env-examples/dev/.env.example`
-  - `env-examples/beta/.env.example`
-- Keep variables present even when a feature is disabled in that environment.
-  - Example: beta keeps `DEV_AUTH_TEST_*` keys documented with empty values while `DEV_AUTH_TEST_ACCOUNT_ENABLED=false`.
+- Repo entrypoint: [../../README.md](../../README.md)
+- Server checklist: [../SERVER_ENV_CHECKLIST.md](../SERVER_ENV_CHECKLIST.md)
+- Backend guide: [../backend/README.md](../backend/README.md)

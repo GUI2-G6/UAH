@@ -1,5 +1,7 @@
 # Temporary Desktop Ollama Routing Runbook
 
+This is an operational workaround runbook, not a permanent architecture doc. Keep it only as long as the desktop-routed local pipeline path is intentionally in use.
+
 ## Purpose
 Provide a scoped, reversible temporary route so the backend container can reach desktop Ollama at `10.8.0.8:11434` through the existing `uah-dev-vpn` WireGuard container.
 

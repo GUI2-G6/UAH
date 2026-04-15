@@ -3,6 +3,8 @@
 This guide covers the full loop from picking up an issue to getting your code into `dev`.
 Follow this every time. It keeps everything logged, traceable, and clean.
 
+If your change affects setup, runtime behavior, or operator workflow, update the relevant source-of-truth docs in the same PR. Use [README.md](README.md) and [../CONTRIBUTING.md](../CONTRIBUTING.md) as the starting points.
+
 ---
 
 ## The Core Rule

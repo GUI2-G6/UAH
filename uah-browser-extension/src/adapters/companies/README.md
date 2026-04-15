@@ -1,20 +1,27 @@
 # Company Overrides
 
-Company overrides exist because ATS platforms are only partly standardized. Two employers can both use Workday, Greenhouse, Lever, or iCIMS and still ship meaningfully different application steps, labels, validation rules, and custom sections.
+Company overrides are the narrowest layer in the extension adapter system.
+
+They exist because two employers using the same ATS can still ship different field labels, extra custom sections, or non-standard page structure.
 
 ## Rules
 
-- Name override files as `[CompanyName][ATS]Adapter.js`.
-- Always extend the relevant base ATS adapter, never `BaseATSAdapter` directly.
-- Keep overrides minimal. Only replace the methods that differ from the shared ATS behavior.
+- Name files as `[CompanyName][ATS]Adapter.js`.
+- Extend the relevant ATS adapter, never `BaseATSAdapter` directly.
+- Keep the override minimal.
+- Add a top-level doc comment explaining what the employer does differently.
 
-## How To Spot A Real Deviation
+## When To Create An Override
 
-- Compare the target company's page structure against the base ATS adapter selectors.
-- Look for extra required sections, renamed labels, non-standard apply-step banners, or job detail elements moved into custom wrappers.
-- Confirm that the difference is company-specific and not a reusable improvement that belongs in the base ATS adapter.
+Create one when the difference is clearly employer-specific, such as:
 
-## Minimal Override Pattern
+- a custom work authorization section
+- a differently labeled required field
+- an employer-specific detail wrapper for job metadata
+
+Do not create one when the improvement belongs in the shared ATS adapter.
+
+## Minimal Pattern
 
 ```js
 import WorkdayAdapter from '../../ats/WorkdayAdapter.js'
@@ -30,15 +37,13 @@ export default class AcmeCorpWorkdayAdapter extends WorkdayAdapter {
   getCompanyName() {
     return 'Acme Corp'
   }
-
-  detectFormFields() {
-    const baseFields = super.detectFormFields()
-    const customField = this.findFieldByLabel(['work authorization'])
-    return customField
-      ? { ...baseFields, workAuthorization: customField }
-      : baseFields
-  }
 }
 ```
 
-When an override grows large, pause and check whether the base ATS adapter should learn a new shared selector instead.
+## Review Heuristic
+
+If an override starts growing large, stop and ask whether the shared platform adapter should learn a better generic selector or helper instead.
+
+## Related Docs
+
+- [../ADAPTERS.md](../ADAPTERS.md)

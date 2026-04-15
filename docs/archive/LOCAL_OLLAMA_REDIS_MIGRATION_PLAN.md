@@ -1,3 +1,13 @@
+# Historical Snapshot: UAH Resume Pipeline Migration Plan
+
+This document is preserved as a dated migration record.
+
+It is not the current source of truth for resume parsing or queue setup. Use these active docs first:
+
+- [../README.md](../README.md)
+- [../backend/README.md](../backend/README.md)
+- [../SERVER_ENV_CHECKLIST.md](../SERVER_ENV_CHECKLIST.md)
+
 # UAH Resume Pipeline Migration Plan
 
 ## Goal

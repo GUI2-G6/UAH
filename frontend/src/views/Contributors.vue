@@ -116,7 +116,7 @@ const founders = [
   {
     name: 'Trent Brown',
     role: 'Lead architect & infrastructure',
-    blurb: 'Core systems design, infrastructure, project leadership, and most of what makes UAH unique.',
+    blurb: 'Core systems design, infrastructure, project leadership, envisioned many of the things that make UAH unique.',
     initials: 'TB',
     tint: 'rgba(99, 102, 241, 0.18)',
   },

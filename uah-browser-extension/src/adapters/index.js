@@ -57,6 +57,8 @@ export function resolveAdapter(url) {
   const normalizedUrl = normalizeUrl(url)
   if (!normalizedUrl) return null
 
+  // Company overrides are more specific than the generic ATS matchers and must
+  // win first when one employer deviates from the platform defaults.
   for (const adapter of companyOverrides) {
     if (adapter.matches(normalizedUrl)) {
       return adapter
@@ -76,6 +78,7 @@ export function getSupportedATS() {
   const names = []
   const seen = new Set()
 
+  // Report supported platform families, not every company-specific override.
   for (const adapter of baseAdapters) {
     const atsName = adapter.getATSName()
     if (seen.has(atsName)) continue

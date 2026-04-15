@@ -67,3 +67,9 @@ add more advanced routing for early college, highschool, and other things that m
 our commitment page added as our temp privacy policy thing, go through later and rewrite a lot wording wise
 
 some issues with the extension resizing lol
+
+widen search doesnt fully work yet
+
+make sure zip code input cant be broken
+
+de gear the whole app process from being so tech oriented

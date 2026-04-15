@@ -79,6 +79,8 @@ def _build_search_tags(job: Job) -> list[str]:
 def _serialize_job(job: Job) -> dict:
     compat_id: int | str
     raw_provider_job_id = str(job.provider_job_id)
+    # Older clients treated some provider job ids as integers, so keep the
+    # numeric shape when we can while still exposing the canonical string id.
     compat_id = int(raw_provider_job_id) if raw_provider_job_id.isdigit() else raw_provider_job_id
     published_at_iso = job.published_at.astimezone(timezone.utc).isoformat() if job.published_at else None
     locations = [job.location] if job.location else []
@@ -236,6 +238,8 @@ def search_local_jobs(
     total_pages = max(ceil(total / page_size), 1) if total else 1
     filter_metadata = _build_jobs_filter_metadata_payload(db)
 
+    # Mirror the provider-backed search response shape so the frontend can swap
+    # between local-catalog and provider results without a second serializer.
     return {
         "jobs": jobs,
         "total": total,

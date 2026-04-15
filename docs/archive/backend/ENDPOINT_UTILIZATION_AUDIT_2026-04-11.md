@@ -1,3 +1,13 @@
+# Historical Snapshot: Endpoint Utilization Audit (Active Runtime Scope)
+
+This audit captured route usage on 2026-04-11. It is preserved for historical context and should not be treated as the current product roadmap or API usage matrix.
+
+Use these active docs first:
+
+- [../../backend/README.md](../../backend/README.md)
+- [../../frontend/README.md](../../frontend/README.md)
+- [../../ARCHITECTURE.md](../../ARCHITECTURE.md)
+
 # Endpoint Utilization Audit (Active Runtime Scope)
 
 Date: 2026-04-11
@@ -249,6 +259,6 @@ Scope rules applied:
 
 ## Evidence Notes
 
-- Backend inventory source: `docs/backend/endpoint_inventory_backend.tsv`.
-- Frontend active-call inventory source: `docs/backend/endpoint_inventory_frontend_calls.tsv`.
+- Backend inventory source: `docs/archive/backend/endpoint_inventory_backend.tsv`.
+- Frontend active-call inventory source: `docs/archive/backend/endpoint_inventory_frontend_calls.tsv`.
 - Active runtime route scope source: `frontend/src/router/index.js`.

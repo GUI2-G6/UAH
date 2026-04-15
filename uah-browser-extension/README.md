@@ -1,125 +1,140 @@
 # UAH Browser Extension
 
-Vue 3 + Vite browser extension that gives UAH users quick access to their saved applicant profiles and parsed resume data without leaving the current job board tab.
+The browser extension gives users quick access to UAH profile and resume data without leaving the current job board tab.
 
-## What It Does
+It is Chrome-first, MV3-based, and intentionally built around explicit user actions rather than a continuously running page agent.
 
-- Signs in against the existing UAH backend. There is no separate extension auth system.
-- Supports email/password login and Google sign-in through the existing UAH OAuth endpoints.
-- Shows compact read-only views for:
-  - applicant profiles
-  - parsed resumes
-  - account and connected sign-in status
-- Lets users copy individual fields like email, phone, summary, skills, and quick resume snapshots.
-- Lets users pin the extension into the current tab as a floating side panel. The pinned panel reuses the same popup app in an iframe, remembers its position, and can be dismissed per-tab or fully unpinned.
-- Lets users run a manual, profile-driven page scan/fill flow on the current tab. The popup sends a prepared token map to the background worker, which injects the in-page autofill runtime only when you click `Scan page` or `Fill page`.
-- Lets users step through multi-page application flows with `Previous page` and `Next page` actions that try visible navigation controls first, then fall back to browser history for back navigation.
-- Opens the full UAH app for anything that belongs in the full product experience.
+## What It Does Today
 
-## Legacy Reference Folders
+- signs in against the existing UAH backend
+- supports email/password login and Google sign-in
+- shows cached read-only profile, resume, and account snapshots
+- injects a pinned side panel into supported tabs
+- runs a manual `Scan page` / `Fill page` flow on the active tab
+- provides simple application-step navigation helpers such as previous/next-page actions
 
-The repo still contains `uah-test-extension/` and `uah-apply-overlay-prototype/` as rough historical references. They are legacy prototypes and are not part of the supported build path for this extension.
+## Source Of Truth
+
+Use these docs together:
+
+- repo entrypoint: [../README.md](../README.md)
+- docs map: [../docs/README.md](../docs/README.md)
+- extension adapter system: [src/adapters/ADAPTERS.md](src/adapters/ADAPTERS.md)
+
+## Architecture
+
+### Popup app
+
+- `popup.html` mounts the Vue app
+- the same UI can render as the standard popup or the pinned panel surface
+- the popup does not talk to the backend directly
+
+### Background worker
+
+- owns auth, API fetches, storage, and cache invalidation
+- opens OAuth tabs
+- reads the environment-scoped backend auth cookie for the extension Google login bridge
+- injects the autofill and pinned-panel runtimes when needed
+
+### Injected runtimes
+
+- `src/autofill/` discovers visible fields, builds a fill plan, and writes values only when the user requests it
+- `src/pinned-panel/` renders the floating iframe surface inside the active page
 
 ## Storage Model
 
 - `chrome.storage.local`
-  - Stores only extension auth metadata and pinned UI preferences: the JWT, its expiry, and panel state so the extension can survive browser restarts.
+  - long-lived auth metadata
+  - pinned UI preferences
 - `chrome.storage.session`
-  - Stores non-sensitive view caches such as the current user snapshot, profile and resume summaries, and detail responses for the current browser session. These session caches are cleared on logout and whenever auth expires.
-- The extension does not use `localStorage` or `sessionStorage`.
+  - non-sensitive cached API payloads for the current browser session
 
-## Auth Flow
+The extension does not use `localStorage` or `sessionStorage`.
 
-### Email / Password
+## Auth Model
 
-1. The popup sends the credentials to the background service worker.
+### Email / password
+
+1. The popup sends credentials to the background worker.
 2. The background posts to `/api/auth/login` with `X-UAH-Client: extension`.
-3. The backend returns the normal token payload and also sets the same HttpOnly auth cookie it uses for the web app.
-4. The extension stores the JWT and expiry metadata in `chrome.storage.local`.
-5. Each popup open validates the stored expiry first, then calls `/api/auth/me`; any `401` clears auth and returns to the sign-in screen.
+3. The backend returns the normal token payload and sets the same environment-scoped auth cookie used by the web app.
+4. The extension persists JWT expiry metadata locally and validates it on future popup opens.
 
-### Google OAuth
+### Google sign-in
 
-1. The popup asks the background worker to start Google sign-in.
-2. The background opens `/api/auth/google?intent=login&client=extension` in a new tab.
-3. The backend completes the normal OAuth flow and redirects back to the configured UAH app origin.
-4. The background watches that auth tab, then reads the env-scoped UAH auth cookie from the configured API origin with `chrome.cookies`.
-5. The cookie JWT becomes the extension bearer token stored in `chrome.storage.local`.
+1. The background opens `/api/auth/google?intent=login&client=extension`.
+2. After the backend completes OAuth, the background reads the configured backend auth cookie from the API origin.
+3. That cookie value becomes the extension bearer token for subsequent API calls.
 
-## Runtime Flow
+This is why the build requires either `VITE_EXTENSION_AUTH_COOKIE_NAME` or `VITE_EXTENSION_AUTH_NAMESPACE`.
 
-### Popup and Background
-
-1. `popup.html` mounts the Vue app and chooses either the normal popup surface or the pinned-panel surface.
-2. The Vue UI talks only to the background service worker through runtime messages.
-3. The background worker owns auth, API fetches, cache hydration, logout cleanup, tab opening, and content-script injection.
-4. Profile, resume, and account API responses are cached in `chrome.storage.session` until logout, expiry, or a forced refresh.
-
-### Manual Autofill
+## Manual Autofill Flow
 
 1. The popup loads the selected applicant profile.
-2. The extension builds a sanitized token map from `profile.token_map` when present, otherwise from flattened canonical resume data plus a few profile-specific fields such as work authorization and links.
-3. Clicking `Scan page` or `Fill page` asks the background worker to inject `autofill-content.js` into the active tab.
-4. The injected runtime scans visible standard form controls on the top-level page and either reports matches or fills fields from the prepared token map.
-5. The extension does not run continuously in the page; the runtime is injected only when needed.
+2. The extension builds a sanitized token map from `profile.token_map` when present.
+3. If there is no explicit token map, the extension falls back to flattened canonical resume/profile data.
+4. Clicking `Scan page` or `Fill page` injects the content runtime into the active tab.
+5. The runtime inspects visible standard controls on the top-level page only.
 
-### Pinned Panel
+Current limitations:
 
-1. Clicking `Pin` stores the preference in extension storage.
-2. The background worker watches supported tabs and injects `pinned-panel.js` when pinning is enabled.
-3. The pinned runtime renders a floating iframe that points back to `popup.html?surface=pinned`.
-4. Position and size changes are persisted, while a temporary dismiss only hides the panel for the current tab until that tab navigates again.
+- no always-on monitoring
+- no iframe traversal
+- no shadow DOM support
+- no automatic final submission
 
-## Configuration
+## Pinned Panel
 
-Copy `.env.example` to `.env` inside `uah-browser-extension/` for shared remote targets, or set up the local harness config as described in the repo-root README. The build requires:
+- pinning is a user preference stored in extension storage
+- the background injects the pinned runtime on supported tabs when pinning is enabled
+- the pinned panel is an iframe that points back to `popup.html?surface=pinned`
+- panel position and size persist, but temporary dismissals stay tab-scoped
+
+## Build Configuration
+
+Required env values:
 
 - `VITE_EXTENSION_APP_ORIGIN`
 - `VITE_EXTENSION_API_ORIGIN`
 - `VITE_EXTENSION_AUTH_COOKIE_NAME` or `VITE_EXTENSION_AUTH_NAMESPACE`
 
-Both origins must be HTTPS-only. The build intentionally fails for non-HTTPS values.
+Both origins must be HTTPS origins. The build intentionally fails for non-HTTPS origins.
 
-The extension build emits three bundled surfaces into `dist/`:
+The build emits:
 
-- `manifest.json`, `popup.html`, and `background.js` from the main Vite build
-- `autofill-content.js` from `vite.autofill.config.mjs`
-- `pinned-panel.js` from `vite.pinned.config.mjs`
+- main extension bundle and `manifest.json`
+- `autofill-content.js`
+- `pinned-panel.js`
 
-## Local Build
+## Commands
+
+Run from `uah-browser-extension/`:
 
 ```bash
-cd uah-browser-extension
 npm install
 npm run build
+npm test
 ```
 
-This repo also supports a fallback where the extension reuses `frontend/node_modules` for Vite if that toolchain is already installed.
+### Tests
 
-## Load Unpacked In Chrome
+- `npm run test:autofill`
+- `npm run test:adapters`
 
-1. Build the extension with `npm run build`.
-2. Open `chrome://extensions`.
-3. Enable `Developer mode`.
-4. Click `Load unpacked`.
-5. Select `uah-browser-extension/dist`.
+## Local Harness
 
-## Load Temporarily In Firefox
+For the localhost HTTPS flow that pairs the extension with a real local backend/frontend, use the repo-root guidance in [../README.md](../README.md). The PowerShell helper remains:
 
-1. Build the extension with `npm run build`.
-2. Open `about:debugging`.
-3. Choose `This Firefox`.
-4. Click `Load Temporary Add-on...`.
-5. Select the generated `uah-browser-extension/dist/manifest.json`.
+```powershell
+pwsh -File .\scripts\local\lifecycle\local-extension-test.ps1
+```
 
-## Firefox Note
+## Known Boundaries
 
-The code isolates browser APIs behind a small wrapper to keep Firefox compatibility feasible later, but this version is Chrome-first and has only been planned and wired for MV3 behavior.
+- profile and resume editing stay in the main web app
+- the extension is a productivity surface, not a second full product shell
+- adapter coverage varies by ATS and company override depth
 
-## Known Limitations
+## Historical Note
 
-- The popup is intentionally read-only for profile and resume editing.
-- Resume upload/parse flows stay in the full app.
-- The manual autofill runtime is generic and intentionally limited to visible standard controls on the top-level page. It does not currently scan iframes or shadow DOM.
-- The navigation helpers only look for common visible button/link labels such as `Back`, `Previous`, `Next`, `Continue`, `Review`, and `Submit`.
-- Google sign-in depends on the configured UAH auth cookie name and the browser permitting the extension to read it through the `cookies` permission on the configured API origin.
+Legacy prototype folders may still exist in the repo as references, but they are not part of the supported build path for this extension.
