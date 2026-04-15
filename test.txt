@@ -69,3 +69,5 @@ create the job board page compatibility wrapper assist framework.
 analyze performance of pinned job board thing
 
 uhh figure out why the extension both expands rapidly when unlocked resizing and also lets you still expand it (visibily glitchy when done) while locked 
+
+iincrease the autofill capability to handle stuff
