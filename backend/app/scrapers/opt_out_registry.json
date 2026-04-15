@@ -1,0 +1,5 @@
+{
+  "_comment": "Providers who have requested UAH stop indexing their content. Add provider base_url to opt out. Do not remove entries without explicit written confirmation from the provider.",
+  "opted_out": [],
+  "opted_out_log": []
+}
