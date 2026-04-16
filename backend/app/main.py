@@ -16,10 +16,11 @@ To run locally (outside Docker):
   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 """
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.responses import PlainTextResponse
 import os
 from contextlib import asynccontextmanager
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from app.api.routes import router as api_router
 from app.api.jobs import router as jobs_router
 from app.api.auth import router as auth_router
@@ -30,7 +31,11 @@ from app.api.apply_session import router as apply_session_router
 from app.api.integrations import router as integrations_router
 from app.api.gmail import router as gmail_router
 from app.core.config import settings
-from app.core.runtime_environment import generated_docs_enabled
+from app.core.runtime_environment import (
+    generated_docs_auth_required,
+    generated_docs_authenticate_header,
+    generated_docs_enabled,
+)
 from app.core.validation import normalize_email, require_valid_email
 from app.db.base import Base
 from app.db.session import get_engine, init_engine
@@ -472,9 +477,13 @@ async def lifespan(app: FastAPI):
         logger.info("Redis parse queue worker stopped")
 
 # Generated API docs are a local/dev convenience. Beta-style environments
-# should expose the product surface, not a public OpenAPI explorer. Fail
+# should expose the product surface, not a public OpenAPI explorer. Beta can
+# opt into docs only when they are auth-gated by a dedicated passcode. Fail
 # closed when ENVIRONMENT is missing or unknown.
-_docs_enabled = generated_docs_enabled(os.getenv("ENVIRONMENT"))
+_docs_enabled = generated_docs_enabled(
+    os.getenv("ENVIRONMENT"),
+    settings.BETA_DOCS_PASSCODE,
+)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -494,6 +503,27 @@ app.add_middleware(
     https_only=settings.SESSION_COOKIE_HTTPS_ONLY,
     path=settings.SESSION_COOKIE_PATH,
 )
+
+
+@app.middleware("http")
+async def beta_docs_basic_auth_gate(request: Request, call_next):
+    requires_auth = generated_docs_auth_required(
+        path=request.url.path,
+        raw_environment=os.getenv("ENVIRONMENT"),
+        authorization_header=request.headers.get("Authorization"),
+        expected_username=settings.BETA_DOCS_USERNAME,
+        expected_passcode=settings.BETA_DOCS_PASSCODE,
+    )
+    if requires_auth:
+        return PlainTextResponse(
+            "Authentication required.",
+            status_code=401,
+            headers={
+                "WWW-Authenticate": generated_docs_authenticate_header(),
+                "Cache-Control": "no-store",
+            },
+        )
+    return await call_next(request)
 
 # ---------------------------------------------------------------------------
 # Mount the API router
