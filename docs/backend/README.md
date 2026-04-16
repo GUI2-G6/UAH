@@ -132,7 +132,8 @@ http://localhost:8000/docs
 
 Notes:
 
-- `/docs`, `/redoc`, and `/openapi.json` are enabled only in `development`, `dev`, or `local` environments.
+- `/docs`, `/redoc`, and `/openapi.json` are enabled by default only in `development`, `dev`, or `local` environments.
+- Beta can opt in by setting `BETA_DOCS_PASSCODE`; when present, docs stay behind HTTP Basic auth using `BETA_DOCS_USERNAME` (default `dev`).
 - `/api/diagnostics` is admin-gated even in local/dev-style environments.
 
 ## Option 2: Compose Backend Profile

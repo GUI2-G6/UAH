@@ -75,3 +75,21 @@ make sure zip code input cant be broken
 de gear the whole app process from being so tech oriented
 
 email verification token nice to link
+
+for local backend + frontend make sure default test creds are given
+
+make sure local extension script works
+
+swagger docs
+
+extension/themeing sets and stuff long term idea, kinda like vscode
+
+applicant picture (profile pic)
+
+ethnicity resume geared profile extaction, modularly geared parse model method or sum
+
+auto translate
+
+add version number tracker shit for fun or whatever, make it increment and shit
+
+add industry specific resume profile templates
