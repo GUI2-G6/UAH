@@ -624,6 +624,26 @@ class AuthSecurityTests(unittest.TestCase):
 
         self.assertEqual(resolved_user.id, user.id)
 
+    def test_dependency_rejects_inactive_user_token(self):
+        user = self._create_user(
+            email="inactive-dependency@example.com",
+            username="inactive-dependency@example.com",
+            is_active=False,
+            email_verified=True,
+        )
+
+        with patch.object(auth_session_api.settings, "SECRET_KEY", "inactive-dependency-secret"):
+            token = auth_session_api.create_access_token_for_client(
+                data={"sub": str(user.id)},
+                client="web",
+            )
+
+            with self.assertRaises(HTTPException) as dependency_error:
+                deps_api.get_current_user(db=self.db, token=token)
+
+        self.assertEqual(dependency_error.exception.status_code, 403)
+        self.assertEqual(dependency_error.exception.detail, "Account is deactivated")
+
 
 class GoogleOAuthExtensionTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):

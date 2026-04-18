@@ -111,3 +111,9 @@ transition the verify email function to send a link to verify rather than the ra
 make sure the current community input thing on the landing isnt just angled towards gripes, it should also ask people for any cool ideas regardless of if they may seem like a stretch
 
 we should later implement a way for people who have made accounts with us to vote for user ids, the person who made the inital request is anonamyous of course.
+
+remove sign in with google option from register page
+
+add easy report issue persistient thing in a spot of the ui that is always layered highest. user can select a hide option for it in setting. if the user chooses to report something let them type a name for issue and a short description. and then let them check off if the want to send logs (make system for getting those relevant to whatever page they were on)
+
+make things auto save upon clicking off box or whatever in review readyness pipeline

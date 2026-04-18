@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from fastapi import Response
+from starlette.requests import Request
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -49,9 +51,23 @@ class AdminInviteTests(unittest.TestCase):
         self.db.refresh(user)
         return user
 
+    def _build_request(self, client_host: str = "127.0.0.1") -> Request:
+        return Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/api/admin/invites",
+                "headers": [],
+                "client": (client_host, 12345),
+                "server": ("testserver", 80),
+                "scheme": "http",
+            }
+        )
+
     def test_create_invite_sets_creator_and_defaults(self):
         invite = admin_api.create_invite(
             payload=InviteCreate(),
+            request=self._build_request(),
             db=self.db,
             current_user=self.admin_user,
         )
@@ -64,6 +80,7 @@ class AdminInviteTests(unittest.TestCase):
     def test_batch_list_and_revoke_invites(self):
         invites = admin_api.create_invites_batch(
             payload=InviteBatchCreate(count=3),
+            request=self._build_request(),
             db=self.db,
             current_user=self.admin_user,
         )
@@ -92,6 +109,7 @@ class AdminInviteTests(unittest.TestCase):
 
         response = admin_api.revoke_invite(
             code=invites[2].code,
+            request=self._build_request(),
             db=self.db,
             current_user=self.admin_user,
         )
@@ -100,3 +118,17 @@ class AdminInviteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 204)
         revoked = self.db.query(Invite).filter(Invite.code == invites[2].code).first()
         self.assertFalse(revoked.is_active)
+
+    def test_create_invite_enforces_rate_limits(self):
+        with patch.object(admin_api, "enforce_ip_rate_limit") as ip_limit, patch.object(
+            admin_api, "enforce_subject_rate_limit"
+        ) as subject_limit:
+            admin_api.create_invite(
+                payload=InviteCreate(),
+                request=self._build_request("203.0.113.10"),
+                db=self.db,
+                current_user=self.admin_user,
+            )
+
+        self.assertEqual(ip_limit.call_count, 1)
+        self.assertEqual(subject_limit.call_count, 1)

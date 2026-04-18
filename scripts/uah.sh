@@ -4891,6 +4891,11 @@ debug_invites() {
     exit 1
   fi
 
+  if [[ "$action" == "menu" || "$action" == "ui" || "$action" == "interactive" ]]; then
+    debug_invites_menu "$env_name"
+    return
+  fi
+
   debug_profile_init "$env_name"
   debug_header "$env_name" "Invites :: $action"
 
@@ -4918,7 +4923,7 @@ debug_invites() {
           exit 1
           ;;
       esac
-      docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -c "SELECT code, is_active, created_by, used_by, used_at, expires_at, created_at FROM invites WHERE ${filter_sql} ORDER BY created_at DESC LIMIT 200;" 2>&1 | sed 's/^/  /'
+      docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -P pager=off -P border=2 -c "SELECT code, CASE WHEN is_active=false THEN 'revoked' WHEN used_by IS NOT NULL THEN 'used' WHEN expires_at IS NOT NULL AND expires_at <= now() THEN 'expired' ELSE 'available' END AS state, created_by, COALESCE(used_by::text, '-') AS used_by, COALESCE(to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') || 'Z', '-') AS expires_utc, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') || 'Z' AS created_utc FROM invites WHERE ${filter_sql} ORDER BY created_at DESC LIMIT 200;" 2>&1 | sed 's/^/  /'
       ;;
     show)
       if [[ -z "$arg" ]]; then
@@ -4999,10 +5004,107 @@ PY
       ;;
     *)
       echo "Unknown invites action '$action'." >&2
-      echo "Supported: list [all|used|unused|active|inactive], show <code>, create <count> [expires_at_iso8601], revoke <code>, stats" >&2
+      echo "Supported: menu|ui|interactive, list [all|used|unused|active|inactive], show <code>, create <count> [expires_at_iso8601], revoke <code>, stats" >&2
       exit 1
       ;;
   esac
+}
+
+debug_invites_menu() {
+  local env_name="$1"
+  local stats_line
+  local total
+  local active
+  local inactive
+  local used
+  local unused
+  local choice
+  local filter
+  local code
+  local count
+  local expires_at
+
+  debug_profile_init "$env_name"
+
+  while true; do
+    debug_header "$env_name" "Invites :: Console"
+
+    stats_line="$(docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -At -F '|' -c "SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE is_active) AS active, COUNT(*) FILTER (WHERE NOT is_active) AS inactive, COUNT(*) FILTER (WHERE used_by IS NOT NULL) AS used, COUNT(*) FILTER (WHERE used_by IS NULL) AS unused FROM invites;" 2>/dev/null | tail -n 1 || true)"
+    IFS='|' read -r total active inactive used unused <<< "$stats_line"
+
+    echo -e "${BOLD}  Invite Management${NC}"
+    echo ""
+    echo "  Summary"
+    echo "    Total:    ${total:-0}"
+    echo "    Active:   ${active:-0}"
+    echo "    Inactive: ${inactive:-0}"
+    echo "    Used:     ${used:-0}"
+    echo "    Unused:   ${unused:-0}"
+    echo ""
+    echo "  Actions"
+    echo "    1) List invites (all)"
+    echo "    2) List invites (filtered)"
+    echo "    3) Show invite by code"
+    echo "    4) Create invite(s)"
+    echo "    5) Revoke invite"
+    echo "    6) View stats"
+    echo "    0) Back"
+    echo ""
+    read -rp "  Choice [0-6]: " choice
+
+    case "$choice" in
+      1)
+        debug_invites "$env_name" list all
+        debug_press_enter
+        ;;
+      2)
+        echo ""
+        echo "  Filters: all, used, unused, active, inactive"
+        read -rp "  Filter [all]: " filter
+        filter="${filter:-all}"
+        debug_invites "$env_name" list "$filter"
+        debug_press_enter
+        ;;
+      3)
+        read -rp "  Invite code: " code
+        if [[ -z "$code" ]]; then
+          debug_print_warn "Invite code is required."
+        else
+          debug_invites "$env_name" show "$code"
+        fi
+        debug_press_enter
+        ;;
+      4)
+        read -rp "  Count [1-50]: " count
+        if [[ -z "$count" ]]; then
+          count="1"
+        fi
+        read -rp "  Expires at ISO8601 (blank for none): " expires_at
+        debug_invites "$env_name" create "$count" "$expires_at"
+        debug_press_enter
+        ;;
+      5)
+        read -rp "  Invite code to revoke: " code
+        if [[ -z "$code" ]]; then
+          debug_print_warn "Invite code is required."
+        else
+          debug_invites "$env_name" revoke "$code"
+        fi
+        debug_press_enter
+        ;;
+      6)
+        debug_invites "$env_name" stats
+        debug_press_enter
+        ;;
+      0)
+        return
+        ;;
+      *)
+        debug_print_warn "Invalid choice '$choice'."
+        debug_press_enter
+        ;;
+    esac
+  done
 }
 
 debug_network() {
@@ -5119,7 +5221,7 @@ Debug subcommands:
   bash scripts/uah.sh <env> debug queue [status|clear|clear-redis|clear-stuck|active|recent|failed|retry <id>|test-parse <local|cloud|rules>]
   bash scripts/uah.sh <env> debug database [isolation|user-count|resume-count|parse-stats|recent|raw <SQL>|size]
   bash scripts/uah.sh <env> debug users [list|show <email>|toggle-active <email> <true|false>|toggle-developer <email> <true|false>|reset-password <email> <password>]
-  bash scripts/uah.sh <env> debug invites [list [all|used|unused|active|inactive]|show <code>|create <count> [expires_at_iso8601]|revoke <code>|stats]
+  bash scripts/uah.sh <env> debug invites [menu|ui|interactive|list [all|used|unused|active|inactive]|show <code>|create <count> [expires_at_iso8601]|revoke <code>|stats]
   bash scripts/uah.sh <env> debug network [show-topology|show-routes|show-docker-user|show-vpn-iptables|apply-route|rollback-route|check-route]
   bash scripts/uah.sh beta debug network [apply-bridge|remove-bridge|full-reapply|rollback-all]
 EOF
