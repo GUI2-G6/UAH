@@ -569,7 +569,6 @@ def delete_account(
     db.query(Invite).filter(Invite.used_by == current_user.id).update(
         {
             Invite.used_by: None,
-            Invite.is_active: False,
         },
         synchronize_session=False,
     )

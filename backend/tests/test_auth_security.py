@@ -345,10 +345,69 @@ class AuthSecurityTests(unittest.TestCase):
         self.assertEqual(result.user.email, "invitee@example.com")
         self.assertEqual(created_user.invite_code_used, "VALID-INVITE-CODE")
         self.assertEqual(consumed_invite.used_by, created_user.id)
+        self.assertEqual(consumed_invite.use_count, 1)
+        self.assertEqual(consumed_invite.max_uses, 1)
         self.assertIsNotNone(consumed_invite.used_at)
-        self.assertTrue(consumed_invite.is_active)
+        self.assertFalse(consumed_invite.is_active)
         self.assertIsNotNone(created_user.email_verify_token_id)
         self.assertFalse(created_user.email_verified)
+
+    def test_register_allows_reuse_until_invite_max_uses(self):
+        inviter = self._create_user(
+            email="multiuse-inviter@example.com",
+            username="multiuse-inviter@example.com",
+            email_verified=True,
+        )
+        invite = Invite(code="MULTI-USE-INVITE", created_by=inviter.id, is_active=True, max_uses=2, use_count=0)
+        self.db.add(invite)
+        self.db.commit()
+
+        with patch.object(account_api.settings, "EMAILS_ENABLED", False):
+            auth_api.register(
+                payload=UserRegister(
+                    email="multiuse-1@example.com",
+                    password="Password123!",
+                    first_name="First",
+                    last_name="User",
+                    invite_code="MULTI-USE-INVITE",
+                ),
+                request=_build_request(),
+                response=Response(),
+                db=self.db,
+            )
+
+            auth_api.register(
+                payload=UserRegister(
+                    email="multiuse-2@example.com",
+                    password="Password123!",
+                    first_name="Second",
+                    last_name="User",
+                    invite_code="MULTI-USE-INVITE",
+                ),
+                request=_build_request(),
+                response=Response(),
+                db=self.db,
+            )
+
+        refreshed_invite = self.db.query(Invite).filter(Invite.code == "MULTI-USE-INVITE").first()
+        self.assertEqual(refreshed_invite.use_count, 2)
+        self.assertFalse(refreshed_invite.is_active)
+
+        with self.assertRaises(HTTPException) as register_error:
+            auth_api.register(
+                payload=UserRegister(
+                    email="multiuse-3@example.com",
+                    password="Password123!",
+                    first_name="Third",
+                    last_name="User",
+                    invite_code="MULTI-USE-INVITE",
+                ),
+                request=_build_request(),
+                response=Response(),
+                db=self.db,
+            )
+
+        self.assertEqual(register_error.exception.status_code, 400)
 
     def test_register_rejects_invalid_invite_code(self):
         with self.assertRaises(HTTPException) as register_error:

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 
+set -euo pipefail
+
 # Shared security audit helpers for UAH operations scripts.
 # This file is sourced by environment-specific audit entrypoints.
 

@@ -10,7 +10,10 @@ class Invite(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     code = Column(String(64), unique=True, nullable=False, index=True)
+    name = Column(String(120), nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    max_uses = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    use_count = Column(Integer, nullable=False, default=0, server_default=text("0"))
     used_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     used_at = Column(DateTime(timezone=True), nullable=True)
     expires_at = Column(DateTime(timezone=True), nullable=True)

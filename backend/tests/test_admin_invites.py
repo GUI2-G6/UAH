@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import unittest
 from unittest.mock import patch
 
-from fastapi import Response
+from fastapi import HTTPException, Response
 from starlette.requests import Request
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -75,7 +76,39 @@ class AdminInviteTests(unittest.TestCase):
         self.assertEqual(invite.created_by, self.admin_user.id)
         self.assertTrue(invite.is_active)
         self.assertIsNone(invite.used_by)
+        self.assertEqual(invite.max_uses, 1)
+        self.assertEqual(invite.use_count, 0)
+        self.assertIsNone(invite.name)
         self.assertGreaterEqual(len(invite.code), 32)
+
+    def test_create_invite_supports_name_uses_and_relative_expiry(self):
+        before = datetime.now(timezone.utc)
+        invite = admin_api.create_invite(
+            payload=InviteCreate(name="Campus Ambassadors", max_uses=3, expires_in="1w"),
+            request=self._build_request(),
+            db=self.db,
+            current_user=self.admin_user,
+        )
+
+        self.assertEqual(invite.name, "Campus Ambassadors")
+        self.assertEqual(invite.max_uses, 3)
+        self.assertEqual(invite.use_count, 0)
+        self.assertIsNotNone(invite.expires_at)
+        before_comparison = before
+        if invite.expires_at.tzinfo is None:
+            before_comparison = before.replace(tzinfo=None)
+        self.assertGreater(invite.expires_at, before_comparison)
+
+    def test_create_invite_rejects_conflicting_expiry_inputs(self):
+        with self.assertRaises(HTTPException) as create_error:
+            admin_api.create_invite(
+                payload=InviteCreate(expires_in="1w", expires_at=datetime.now(timezone.utc)),
+                request=self._build_request(),
+                db=self.db,
+                current_user=self.admin_user,
+            )
+
+        self.assertEqual(create_error.exception.status_code, 400)
 
     def test_batch_list_and_revoke_invites(self):
         invites = admin_api.create_invites_batch(
@@ -85,6 +118,7 @@ class AdminInviteTests(unittest.TestCase):
             current_user=self.admin_user,
         )
 
+        invites[0].use_count = 1
         invites[0].used_by = self.member_user.id
         invites[1].is_active = False
         self.db.commit()

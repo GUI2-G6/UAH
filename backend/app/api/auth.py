@@ -143,7 +143,7 @@ def register(
         .filter(
             Invite.code == invite_code,
             Invite.is_active.is_(True),
-            Invite.used_by.is_(None),
+            Invite.use_count < Invite.max_uses,
             or_(Invite.expires_at.is_(None), Invite.expires_at > datetime.now(timezone.utc)),
         )
         .first()
@@ -164,8 +164,11 @@ def register(
     db.add(user)
     db.flush()
 
+    invite.use_count = int(invite.use_count or 0) + 1
     invite.used_by = user.id
     invite.used_at = datetime.now(timezone.utc)
+    if invite.use_count >= int(invite.max_uses or 1):
+        invite.is_active = False
     user.invite_code_used = invite.code
 
     db.commit()

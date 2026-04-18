@@ -1,6 +1,8 @@
 #!/bin/bash
 # UAH Dev Interactive Debug Console
 
+set -euo pipefail
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 SCRIPTS_DEV_DIR="$ROOT_DIR/scripts/dev"
 COMPOSE="docker compose --env-file $ROOT_DIR/.env -f $ROOT_DIR/docker-compose.yml"

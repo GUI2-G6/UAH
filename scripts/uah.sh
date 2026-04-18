@@ -4038,8 +4038,10 @@ choose_tooling_action() {
     echo "    4) Security audit wizard"
     echo "    5) Environment safety review"
     echo "    6) Quick backend status snapshot"
+    echo "    7) Script doctor audit"
+    echo "    8) Script doctor fix CRLF"
     echo "    0) Back"
-    read -rp "  Choice [1-6/0]: " choice
+    read -rp "  Choice [1-8/0]: " choice
 
     case "$choice" in
       1)
@@ -4074,6 +4076,18 @@ choose_tooling_action() {
         build_mode_reset_selection
         ACTION="debug"
         EXTRA_ARGS=("status")
+        return 0
+        ;;
+      7)
+        build_mode_reset_selection
+        ACTION="debug"
+        EXTRA_ARGS=("scripts" "audit")
+        return 0
+        ;;
+      8)
+        build_mode_reset_selection
+        ACTION="debug"
+        EXTRA_ARGS=("scripts" "fix")
         return 0
         ;;
       0)
@@ -4234,7 +4248,8 @@ Debug:
   bash scripts/uah.sh <env> debug queue [status|clear|clear-redis|clear-stuck|active|recent|failed|retry <id>|test-parse <local|cloud|rules>]
   bash scripts/uah.sh <env> debug database [isolation|user-count|resume-count|parse-stats|recent|raw <SQL>|size]
   bash scripts/uah.sh <env> debug users [list|show <email>|toggle-active <email> <true|false>|toggle-developer <email> <true|false>|reset-password <email> <password>]
-  bash scripts/uah.sh <env> debug invites [menu|ui|interactive|list [all|used|unused|active|inactive]|show <code>|create <count> [expires_at_iso8601]|revoke <code>|stats|audit [tail]]
+  bash scripts/uah.sh <env> debug invites [menu|ui|interactive|list [all|used|unused|active|inactive]|show <code>|create <count> [max_uses] [expires_in_or_iso] [name]|revoke <code>|stats|audit [tail]]
+  bash scripts/uah.sh <env> debug scripts [audit|fix]
   bash scripts/uah.sh <env> debug network [show-topology|show-routes|show-docker-user|show-vpn-iptables|apply-route|rollback-route|check-route]
   bash scripts/uah.sh beta debug network [apply-bridge|remove-bridge|full-reapply|rollback-all]
 
@@ -5013,6 +5028,8 @@ debug_invites() {
   local action="${2:-list}"
   local arg="${3:-}"
   local arg2="${4:-}"
+  local arg3="${5:-}"
+  local arg4="${6:-}"
   local tail_lines="${arg:-120}"
   local escaped_code
   local filter_sql="1=1"
@@ -5037,10 +5054,10 @@ debug_invites() {
           filter_sql="1=1"
           ;;
         used)
-          filter_sql="used_by IS NOT NULL"
+          filter_sql="use_count > 0"
           ;;
         unused)
-          filter_sql="used_by IS NULL"
+          filter_sql="use_count = 0"
           ;;
         active)
           filter_sql="is_active = true"
@@ -5054,7 +5071,7 @@ debug_invites() {
           exit 1
           ;;
       esac
-      docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -P pager=off -P border=2 -c "SELECT code, CASE WHEN is_active=false THEN 'revoked' WHEN used_by IS NOT NULL THEN 'used' WHEN expires_at IS NOT NULL AND expires_at <= now() THEN 'expired' ELSE 'available' END AS state, created_by, COALESCE(used_by::text, '-') AS used_by, COALESCE(to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') || 'Z', '-') AS expires_utc, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') || 'Z' AS created_utc FROM invites WHERE ${filter_sql} ORDER BY created_at DESC LIMIT 200;" 2>&1 | sed 's/^/  /'
+          docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -P pager=off -P border=2 -c "SELECT code, COALESCE(name, '-') AS name, CASE WHEN is_active=false THEN 'revoked' WHEN expires_at IS NOT NULL AND expires_at <= now() THEN 'expired' WHEN use_count >= max_uses THEN 'depleted' ELSE 'available' END AS state, max_uses, use_count, GREATEST(max_uses - use_count, 0) AS remaining_uses, created_by, COALESCE(used_by::text, '-') AS last_used_by, COALESCE(to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') || 'Z', '-') AS expires_utc, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') || 'Z' AS created_utc FROM invites WHERE ${filter_sql} ORDER BY created_at DESC LIMIT 200;" 2>&1 | sed 's/^/  /'
       ;;
     show)
       if [[ -z "$arg" ]]; then
@@ -5062,47 +5079,45 @@ debug_invites() {
         exit 1
       fi
       escaped_code="$(sql_escape_literal "$arg")"
-      docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -c "SELECT id, code, is_active, created_by, used_by, used_at, expires_at, created_at FROM invites WHERE code='${escaped_code}';" 2>&1 | sed 's/^/  /'
+      docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -c "SELECT id, code, name, is_active, max_uses, use_count, created_by, used_by AS last_used_by, used_at AS last_used_at, expires_at, created_at FROM invites WHERE code='${escaped_code}';" 2>&1 | sed 's/^/  /'
       ;;
     create)
       if [[ -z "$arg" ]]; then
-        echo "Usage: bash scripts/uah.sh $env_name debug invites create <count> [expires_at_iso8601]" >&2
+        echo "Usage: bash scripts/uah.sh $env_name debug invites create <count> [max_uses] [expires_in_or_iso] [name]" >&2
         exit 1
       fi
       if ! [[ "$arg" =~ ^[0-9]+$ ]] || ((arg < 1 || arg > 50)); then
         echo "Invite create count must be between 1 and 50." >&2
         exit 1
       fi
-      docker exec -i -e UAH_INVITE_COUNT="$arg" -e UAH_INVITE_EXPIRES_AT="$arg2" "$DEBUG_BACKEND_CONTAINER" python3 - <<'PY'
-from datetime import datetime, timezone
+      if [[ -z "$arg2" ]]; then
+        arg2="1"
+      fi
+      if ! [[ "$arg2" =~ ^[0-9]+$ ]] || ((arg2 < 1 || arg2 > 10000)); then
+        echo "Invite max uses must be between 1 and 10000." >&2
+        exit 1
+      fi
+      docker exec -i -e UAH_INVITE_COUNT="$arg" -e UAH_INVITE_MAX_USES="$arg2" -e UAH_INVITE_EXPIRES_SPEC="$arg3" -e UAH_INVITE_NAME="$arg4" "$DEBUG_BACKEND_CONTAINER" python3 - <<'PY'
 import os
 import sys
 
-from app.api.admin import _build_invites
+from app.api.admin import _build_invites, parse_invite_expiry_spec
 from app.db.session import SessionLocal
 from app.models.user import User
 
-
-def parse_expires_at(raw: str | None):
-    value = (raw or "").strip()
-    if not value:
-        return None
-    value = value.replace("Z", "+00:00")
-    try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError as exc:
-        raise ValueError("expires_at must be ISO8601, example: 2026-05-01T00:00:00Z") from exc
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
-
-
 count = int(os.environ.get("UAH_INVITE_COUNT", "1"))
-expires_raw = os.environ.get("UAH_INVITE_EXPIRES_AT")
+max_uses = int(os.environ.get("UAH_INVITE_MAX_USES", "1"))
+expires_raw = os.environ.get("UAH_INVITE_EXPIRES_SPEC")
+invite_name = (os.environ.get("UAH_INVITE_NAME") or "").strip() or None
 
 db = SessionLocal()
 try:
-    expires_at = parse_expires_at(expires_raw)
+    try:
+        expires_at = parse_invite_expiry_spec(expires_raw)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1)
+
     admin_user = db.query(User).filter(User.is_admin.is_(True)).order_by(User.id.asc()).first()
     if not admin_user:
         print("No admin user exists; cannot assign created_by for invite codes.", file=sys.stderr)
@@ -5113,9 +5128,11 @@ try:
         current_user=admin_user,
         count=count,
         expires_at=expires_at,
+        max_uses=max_uses,
+        name=invite_name,
     )
 
-    print(f"Created {len(invites)} invite(s):")
+    print(f"Created {len(invites)} invite(s) (max_uses={max_uses}, name={invite_name or '-'}):")
     for invite in invites:
         print(invite.code)
 finally:
@@ -5131,7 +5148,7 @@ PY
       docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -c "UPDATE invites SET is_active=false WHERE code='${escaped_code}' RETURNING code, is_active;" 2>&1 | sed 's/^/  /'
       ;;
     stats)
-      docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -c "SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE is_active) AS active, COUNT(*) FILTER (WHERE NOT is_active) AS inactive, COUNT(*) FILTER (WHERE used_by IS NOT NULL) AS used, COUNT(*) FILTER (WHERE used_by IS NULL) AS unused FROM invites;" 2>&1 | sed 's/^/  /'
+      docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -c "SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE is_active) AS active, COUNT(*) FILTER (WHERE NOT is_active) AS inactive, COUNT(*) FILTER (WHERE use_count > 0) AS used, COUNT(*) FILTER (WHERE use_count = 0) AS unused, SUM(max_uses) AS total_capacity, SUM(use_count) AS consumed_uses, SUM(GREATEST(max_uses - use_count, 0)) AS remaining_uses FROM invites;" 2>&1 | sed 's/^/  /'
       ;;
     audit)
       if ! [[ "$tail_lines" =~ ^[0-9]+$ ]] || ((tail_lines < 1 || tail_lines > 5000)); then
@@ -5142,7 +5159,7 @@ PY
       ;;
     *)
       echo "Unknown invites action '$action'." >&2
-      echo "Supported: menu|ui|interactive, list [all|used|unused|active|inactive], show <code>, create <count> [expires_at_iso8601], revoke <code>, stats, audit [tail]" >&2
+      echo "Supported: menu|ui|interactive, list [all|used|unused|active|inactive], show <code>, create <count> [max_uses] [expires_in_or_iso] [name], revoke <code>, stats, audit [tail]" >&2
       exit 1
       ;;
   esac
@@ -5160,14 +5177,16 @@ debug_invites_menu() {
   local filter
   local code
   local count
-  local expires_at
+  local max_uses
+  local expires_in
+  local invite_name
 
   debug_profile_init "$env_name"
 
   while true; do
     debug_header "$env_name" "Invites :: Console"
 
-    stats_line="$(docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -At -F '|' -c "SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE is_active) AS active, COUNT(*) FILTER (WHERE NOT is_active) AS inactive, COUNT(*) FILTER (WHERE used_by IS NOT NULL) AS used, COUNT(*) FILTER (WHERE used_by IS NULL) AS unused FROM invites;" 2>/dev/null | tail -n 1 || true)"
+    stats_line="$(docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -At -F '|' -c "SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE is_active) AS active, COUNT(*) FILTER (WHERE NOT is_active) AS inactive, COUNT(*) FILTER (WHERE use_count > 0) AS used, COUNT(*) FILTER (WHERE use_count = 0) AS unused FROM invites;" 2>/dev/null | tail -n 1 || true)"
     IFS='|' read -r total active inactive used unused <<< "$stats_line"
 
     echo -e "${BOLD}  Invite Management${NC}"
@@ -5218,8 +5237,12 @@ debug_invites_menu() {
         if [[ -z "$count" ]]; then
           count="1"
         fi
-        read -rp "  Expires at ISO8601 (blank for none): " expires_at
-        debug_invites "$env_name" create "$count" "$expires_at"
+        read -rp "  Max uses per invite [1]: " max_uses
+        max_uses="${max_uses:-1}"
+        echo "  Expiry examples: 1w, 1hr, 1min, 1m, 1y, or ISO8601"
+        read -rp "  Expires in (blank for none): " expires_in
+        read -rp "  Invite name/label (blank for none): " invite_name
+        debug_invites "$env_name" create "$count" "$max_uses" "$expires_in" "$invite_name"
         debug_press_enter
         ;;
       5)
@@ -5356,6 +5379,140 @@ debug_network() {
   esac
 }
 
+script_doctor_has_strict_mode() {
+  local file_path="$1"
+  grep -Eq '^[[:space:]]*set -euo pipefail|^[[:space:]]*set -eu' "$file_path"
+}
+
+script_doctor_has_shebang() {
+  local file_path="$1"
+  local first_line=""
+  first_line="$(head -n 1 "$file_path" 2>/dev/null || true)"
+  [[ "$first_line" == '#!'* ]]
+}
+
+script_doctor_has_crlf() {
+  local file_path="$1"
+  grep -q $'\r' "$file_path"
+}
+
+script_doctor_normalize_lf() {
+  local file_path="$1"
+  sed -i 's/\r$//' "$file_path"
+}
+
+debug_scripts() {
+  local env_name="$1"
+  local action="${2:-audit}"
+  local file_path
+  local rel_path
+  local parse_ok
+  local strict_ok
+  local shebang_ok
+  local crlf_flag
+  local changed_count=0
+  local total=0
+  local parse_fail=0
+  local strict_missing=0
+  local shebang_missing=0
+  local crlf_count=0
+  local -a script_files=()
+
+  case "$action" in
+    audit|scan|check|fix)
+      ;;
+    *)
+      echo "Unknown scripts action '$action'." >&2
+      echo "Supported: audit, fix" >&2
+      exit 1
+      ;;
+  esac
+
+  mapfile -t script_files < <(find "$ROOT_DIR/scripts" -type f -name "*.sh" | sort)
+
+  debug_header "$env_name" "Scripts :: ${action^^}"
+  debug_print_section "Script Doctor"
+
+  if [[ ${#script_files[@]} -eq 0 ]]; then
+    debug_print_warn "No shell scripts found under scripts/."
+    return 0
+  fi
+
+  printf "  %-52s %-6s %-6s %-8s %-6s\n" "Script" "Parse" "Strict" "Shebang" "CRLF"
+  printf "  %-52s %-6s %-6s %-8s %-6s\n" "----------------------------------------------------" "-----" "------" "-------" "----"
+
+  for file_path in "${script_files[@]}"; do
+    rel_path="${file_path#$ROOT_DIR/}"
+    total=$((total + 1))
+
+    if bash -n "$file_path" >/dev/null 2>&1; then
+      parse_ok="ok"
+    else
+      parse_ok="fail"
+      parse_fail=$((parse_fail + 1))
+    fi
+
+    if script_doctor_has_strict_mode "$file_path"; then
+      strict_ok="ok"
+    else
+      strict_ok="miss"
+      strict_missing=$((strict_missing + 1))
+    fi
+
+    if script_doctor_has_shebang "$file_path"; then
+      shebang_ok="ok"
+    else
+      shebang_ok="miss"
+      shebang_missing=$((shebang_missing + 1))
+    fi
+
+    if script_doctor_has_crlf "$file_path"; then
+      crlf_flag="yes"
+      crlf_count=$((crlf_count + 1))
+      if [[ "$action" == "fix" ]]; then
+        script_doctor_normalize_lf "$file_path"
+        changed_count=$((changed_count + 1))
+      fi
+    else
+      crlf_flag="no"
+    fi
+
+    printf "  %-52s %-6s %-6s %-8s %-6s\n" "$rel_path" "$parse_ok" "$strict_ok" "$shebang_ok" "$crlf_flag"
+  done
+
+  echo ""
+  debug_print_section "Summary"
+  startup_status_chip "ok" "Scripts scanned: $total"
+
+  if ((parse_fail > 0)); then
+    startup_status_chip "error" "Parse failures: $parse_fail"
+  else
+    startup_status_chip "ok" "Parse failures: 0"
+  fi
+
+  if ((strict_missing > 0)); then
+    startup_status_chip "warn" "Missing strict mode: $strict_missing"
+  else
+    startup_status_chip "ok" "Missing strict mode: 0"
+  fi
+
+  if ((shebang_missing > 0)); then
+    startup_status_chip "warn" "Missing shebang: $shebang_missing"
+  else
+    startup_status_chip "ok" "Missing shebang: 0"
+  fi
+
+  if ((crlf_count > 0)); then
+    if [[ "$action" == "fix" ]]; then
+      startup_status_chip "ok" "CRLF normalized: $changed_count file(s)"
+    else
+      startup_status_chip "warn" "CRLF files: $crlf_count"
+    fi
+  else
+    startup_status_chip "ok" "CRLF files: 0"
+  fi
+}
+
 print_debug_usage() {
   cat <<'EOF'
 Debug subcommands:
@@ -5366,8 +5523,9 @@ Debug subcommands:
   bash scripts/uah.sh <env> debug queue [status|clear|clear-redis|clear-stuck|active|recent|failed|retry <id>|test-parse <local|cloud|rules>]
   bash scripts/uah.sh <env> debug database [isolation|user-count|resume-count|parse-stats|recent|raw <SQL>|size]
   bash scripts/uah.sh <env> debug users [list|show <email>|toggle-active <email> <true|false>|toggle-developer <email> <true|false>|reset-password <email> <password>]
-  bash scripts/uah.sh <env> debug invites [menu|ui|interactive|list [all|used|unused|active|inactive]|show <code>|create <count> [expires_at_iso8601]|revoke <code>|stats|audit [tail]]
+  bash scripts/uah.sh <env> debug invites [menu|ui|interactive|list [all|used|unused|active|inactive]|show <code>|create <count> [max_uses] [expires_in_or_iso] [name]|revoke <code>|stats|audit [tail]]
   bash scripts/uah.sh <env> debug network [show-topology|show-routes|show-docker-user|show-vpn-iptables|apply-route|rollback-route|check-route]
+  bash scripts/uah.sh <env> debug scripts [audit|fix]
   bash scripts/uah.sh beta debug network [apply-bridge|remove-bridge|full-reapply|rollback-all]
 EOF
 }
@@ -5415,6 +5573,9 @@ run_debug() {
       ;;
     network)
       debug_network "$env_name" "$@"
+      ;;
+    scripts)
+      debug_scripts "$env_name" "${1:-audit}"
       ;;
     route-check)
       debug_network "$env_name" check-route
