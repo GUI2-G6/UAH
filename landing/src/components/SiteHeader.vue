@@ -1,0 +1,86 @@
+<!-- Renders the sticky landing header and owns the mobile drawer state and lifecycle listeners. -->
+<template>
+  <header class="site-header">
+    <div class="nav-shell">
+      <div class="nav-inner">
+        <a class="brand" href="#top" @click="closeMenu">
+          <span class="brand-chip" aria-hidden="true">UAH</span>
+          <span class="brand-copy">
+            <strong>Unified Application Hub</strong>
+            <span>Job search infrastructure for people</span>
+          </span>
+        </a>
+
+        <button
+          class="nav-toggle"
+          type="button"
+          :aria-expanded="String(isMenuOpen)"
+          aria-controls="site-nav-menu"
+          aria-label="Open navigation menu"
+          @click="toggleMenu"
+        >
+          <span class="nav-toggle-line" aria-hidden="true"></span>
+        </button>
+
+        <div class="nav-overlay" data-nav-overlay :class="{ 'is-open': isMenuOpen }" @click="closeMenu"></div>
+
+        <nav class="nav-panel" id="site-nav-menu" aria-label="Primary" :class="{ 'is-open': isMenuOpen }">
+          <div class="nav-links">
+            <a v-for="link in navLinks" :key="link.href" :href="link.href" @click="closeMenu">{{ link.label }}</a>
+          </div>
+        </nav>
+      </div>
+    </div>
+  </header>
+</template>
+
+<script setup>
+import { onMounted, onUnmounted, ref, watch } from 'vue'
+
+const isMenuOpen = ref(false)
+
+const navLinks = [
+  { href: '#problem', label: 'The Problem' },
+  { href: '#what-uah-does', label: 'What UAH Does' },
+  { href: '#built', label: "How It's Built" },
+  { href: '#values', label: 'Open Source' },
+  { href: '#partners', label: 'Partners' },
+  { href: '#access', label: 'Beta Access' },
+  { href: '#wishlist', label: 'Wishlist' },
+]
+
+function closeMenu() {
+  isMenuOpen.value = false
+}
+
+function toggleMenu() {
+  isMenuOpen.value = !isMenuOpen.value
+}
+
+function handleKeydown(event) {
+  if (event.key === 'Escape') {
+    closeMenu()
+  }
+}
+
+function handleResize() {
+  if (window.innerWidth > 860) {
+    closeMenu()
+  }
+}
+
+watch(isMenuOpen, (value) => {
+  document.body.classList.toggle('nav-open', value)
+})
+
+onMounted(() => {
+  document.addEventListener('keydown', handleKeydown)
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  document.body.classList.remove('nav-open')
+  document.removeEventListener('keydown', handleKeydown)
+  window.removeEventListener('resize', handleResize)
+})
+</script>

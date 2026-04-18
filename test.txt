@@ -95,3 +95,7 @@ add version number tracker shit for fun or whatever, make it increment and shit
 add industry specific resume profile templates
 
 add links to mandatory disclosure stuff
+
+make splash page 
+
+migrate out of cf zero trust

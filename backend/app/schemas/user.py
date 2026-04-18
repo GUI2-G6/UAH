@@ -29,11 +29,26 @@ class UserRegister(BaseModel):
         description="Optional family name shown in profile displays and generated messages.",
         examples=["Doe"],
     )
+    invite_code: str = Field(
+        ...,
+        min_length=1,
+        max_length=64,
+        description="Invite-only beta access code required for email/password account registration.",
+        examples=["2h5S8Gv8oX3mR6ytm2G0kz0PwK7H6JmA"],
+    )
 
     @field_validator("email")
     @classmethod
     def validate_email(cls, value: str) -> str:
         return require_valid_email(value)
+
+    @field_validator("invite_code")
+    @classmethod
+    def validate_invite_code(cls, value: str) -> str:
+        normalized = str(value or "").strip()
+        if not normalized:
+            raise ValueError("invite_code is required")
+        return normalized
 
 class UserLogin(BaseModel):
     email: str = Field(

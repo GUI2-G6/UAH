@@ -48,6 +48,13 @@
   line-height: 1.6;
 }
 
+.auth-label {
+  color: var(--color-text-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: left;
+}
+
 .email-input {
   width: 100%;
   padding: 14px 16px;
@@ -62,6 +69,26 @@
 
 .email-input::placeholder {
   color: #aab0bc;
+}
+
+.field-input-error {
+  box-shadow: inset 0 0 0 1px var(--color-danger-600);
+}
+
+.field-error,
+.auth-feedback {
+  font-size: 0.88rem;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.field-error,
+.auth-feedback--error {
+  color: var(--color-danger-600);
+}
+
+.auth-feedback--success {
+  color: var(--color-success-600);
 }
 
 .submit-btn {

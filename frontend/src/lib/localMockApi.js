@@ -2527,6 +2527,15 @@ async function handleMockApiRequest(request, requestUrl, state) {
     const body = await parseJsonBody(request)
     const email = normalizeTextLower(body.email || body.username) || 'localdev@uah.local'
 
+    if (!state.user.email_verified) {
+      return toJsonResponse(
+        {
+          detail: 'Please verify your email address before logging in. Check your inbox for a verification link.',
+        },
+        403
+      )
+    }
+
     state.user = {
       ...state.user,
       email,
@@ -2544,13 +2553,20 @@ async function handleMockApiRequest(request, requestUrl, state) {
 
   if (pathname === '/api/auth/register' && method === 'POST') {
     const body = await parseJsonBody(request)
+    const inviteCode = normalizeText(body.invite_code)
     const email = normalizeTextLower(body.email) || 'localdev@uah.local'
+
+    if (!inviteCode) {
+      return toJsonResponse({ detail: 'Invalid or expired invite code' }, 400)
+    }
 
     state.user = createDefaultUser({
       username: email,
       email,
       first_name: normalizeText(body.first_name) || 'Local',
       last_name: normalizeText(body.last_name) || 'Developer',
+      invite_code_used: inviteCode,
+      email_verified: false,
     })
 
     if (!state.profiles.length) {

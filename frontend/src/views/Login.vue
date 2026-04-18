@@ -49,6 +49,9 @@
                 {{ oauthRedirecting ? 'Redirecting to Google…' : 'Continue with Google' }}
             </button>
 
+            <p v-if="message" class="auth-feedback auth-feedback--success">{{ message }}</p>
+            <p v-if="error" class="auth-feedback auth-feedback--error">{{ error }}</p>
+
             <div class="signup-row">
                 <span>Don't have an account?</span>
                 <a @click.prevent="goToRegister" href="#">Create an account</a>
@@ -64,9 +67,8 @@
 
 <script>
     import SecretInput from "../components/SecretInput.vue";
-    import { setAuth } from "../lib/auth.js";
+    import { readApiError, setAuth } from "../lib/auth.js";
     import { assertValidEmail } from "../lib/validation.js";
-    import { showToast } from '@/services/toastService.js';
 
     export default{
         name: "Login",
@@ -79,10 +81,14 @@
                 password: "",
                 loading: false,
                 oauthRedirecting: false,
+                message: null,
                 error: null,
             }
         },
         mounted() {
+            if (this.$route?.query?.registered === '1') {
+                this.message = 'Account created! Please check your email to verify your address before logging in.'
+            }
             const oauthError = this.$route?.query?.oauth
             const reason = this.$route?.query?.reason
             if (oauthError === 'error') {
@@ -95,6 +101,7 @@
             },
             async login() {
                 this.loading = true
+                this.message = null
                 this.error = null
                 try {
                     const email = assertValidEmail(this.email)
@@ -109,8 +116,10 @@
                     })
 
                     if (!res.ok) {
-                        const text = await res.text()
-                        throw new Error(text || `HTTP ${res.status}`)
+                        const message = await readApiError(res)
+                        const error = new Error(message || `HTTP ${res.status}`)
+                        error.status = res.status
+                        throw error
                     }
 
                     const data = await res.json()
@@ -118,8 +127,7 @@
                     const next = this.$route?.query?.next
                     this.$router.push(typeof next === 'string' && next.length ? next : '/home')
                 } catch (e) {
-                    const msg = e?.message ?? String(e)
-                    showToast(msg, 'error')
+                    this.error = e?.message ?? String(e)
                 } finally {
                     this.loading = false
                 }

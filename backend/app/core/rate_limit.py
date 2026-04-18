@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from collections import deque
-from math import ceil
-from threading import Lock
-from time import monotonic
+import logging
 
 from fastapi import HTTPException, Request, status
+import redis
 
-_RATE_LIMIT_BUCKETS: dict[str, deque[float]] = {}
-_RATE_LIMIT_LOCK = Lock()
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+_RATE_LIMIT_KEY_PREFIX = "uah:rate_limit"
+_redis_client: redis.Redis | None = None
+_redis_warning_logged = False
 
 
 def _normalize_key(value: str | int | None) -> str:
@@ -35,23 +38,61 @@ def get_request_client_ip(request: Request) -> str:
     return "unknown"
 
 
+def _mark_redis_failure(exc: Exception) -> None:
+    global _redis_client, _redis_warning_logged
+
+    _redis_client = None
+    if not _redis_warning_logged:
+        logger.warning("Rate-limit Redis unavailable at %s: %s", settings.REDIS_URL, exc)
+        _redis_warning_logged = True
+
+
+def _get_redis_client() -> redis.Redis | None:
+    global _redis_client, _redis_warning_logged
+
+    if not settings.REDIS_ENABLED:
+        return None
+
+    try:
+        if _redis_client is None:
+            _redis_client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        _redis_client.ping()
+        if _redis_warning_logged:
+            logger.info("Rate-limit Redis connection restored")
+            _redis_warning_logged = False
+        return _redis_client
+    except redis.RedisError as exc:
+        _mark_redis_failure(exc)
+        return None
+
+
 def _consume_rate_limit(bucket_key: str, limit: int, window_seconds: int) -> int | None:
-    now = monotonic()
-    cutoff = now - max(1, window_seconds)
+    client = _get_redis_client()
+    if client is None:
+        return None
 
-    with _RATE_LIMIT_LOCK:
-        bucket = _RATE_LIMIT_BUCKETS.setdefault(bucket_key, deque())
-        while bucket and bucket[0] <= cutoff:
-            bucket.popleft()
+    normalized_limit = max(1, int(limit))
+    normalized_window = max(1, int(window_seconds))
+    redis_key = f"{_RATE_LIMIT_KEY_PREFIX}:{bucket_key}"
 
-        if len(bucket) >= max(1, limit):
-            retry_after = max(1, int(ceil(window_seconds - (now - bucket[0]))))
-            return retry_after
+    try:
+        pipeline = client.pipeline()
+        pipeline.incr(redis_key)
+        pipeline.ttl(redis_key)
+        current_count, ttl_seconds = pipeline.execute()
 
-        bucket.append(now)
+        current_count = int(current_count)
+        ttl_seconds = int(ttl_seconds)
 
-        if not bucket:
-            _RATE_LIMIT_BUCKETS.pop(bucket_key, None)
+        if current_count == 1 or ttl_seconds < 0:
+            client.expire(redis_key, normalized_window)
+            ttl_seconds = normalized_window
+
+        if current_count > normalized_limit:
+            return max(1, ttl_seconds if ttl_seconds > 0 else normalized_window)
+    except redis.RedisError as exc:
+        _mark_redis_failure(exc)
+        return None
 
     return None
 
@@ -90,5 +131,17 @@ def enforce_subject_rate_limit(scope: str, subject: str | int | None, *, limit: 
 
 
 def reset_rate_limit_state() -> None:
-    with _RATE_LIMIT_LOCK:
-        _RATE_LIMIT_BUCKETS.clear()
+    global _redis_client, _redis_warning_logged
+
+    client = _get_redis_client()
+    _redis_client = None
+    _redis_warning_logged = False
+    if client is None:
+        return
+
+    try:
+        keys = list(client.scan_iter(match=f"{_RATE_LIMIT_KEY_PREFIX}:*"))
+        if keys:
+            client.delete(*keys)
+    except redis.RedisError as exc:
+        _mark_redis_failure(exc)

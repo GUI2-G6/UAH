@@ -30,6 +30,7 @@ class User(Base):
     email_verify_token_id = Column(String(255), nullable=True)
     email_verify_target_email = Column(String(255), nullable=True)
     email_verify_expires_at = Column(DateTime(timezone=True), nullable=True)
+    invite_code_used = Column(String(64), nullable=True)
 
     email_verified = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)

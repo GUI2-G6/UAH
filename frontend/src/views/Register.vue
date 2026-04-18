@@ -4,6 +4,26 @@
       <h1>Create account</h1>
       <p class="subtitle">Create an account to access UAH</p>
       <form @submit.prevent="register">
+        <label class="auth-label" for="register-invite-code">Invite Code</label>
+        <input
+          id="register-invite-code"
+          name="invite_code"
+          class="email-input"
+          :class="{ 'field-input-error': !!inviteCodeError }"
+          type="text"
+          v-model="inviteCode"
+          required
+          :disabled="loading"
+          :aria-invalid="inviteCodeError ? 'true' : 'false'"
+          aria-describedby="register-invite-code-error"
+          autocomplete="one-time-code"
+          autocapitalize="none"
+          autocorrect="off"
+          spellcheck="false"
+          placeholder="Invite Code"
+          @input="inviteCodeError = null"
+        />
+        <p v-if="inviteCodeError" id="register-invite-code-error" class="field-error">{{ inviteCodeError }}</p>
         <input id="register-email" name="email" class="email-input" type="email" v-model="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Email" />
         <input id="register-confirm-email" name="confirm_email" class="email-input" type="email" v-model="confirmEmail" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Confirm email" />
         <SecretInput v-model="password" id="register-password" name="new-password" inputClass="email-input" autocomplete="new-password" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" placeholder="Password" :disabled="loading" />
@@ -28,7 +48,8 @@
         {{ oauthRedirecting ? 'Redirecting to Google…' : 'Continue with Google' }}
       </button>
 
-      <p v-if="error" class="subtitle">{{ error }}</p>
+      <p v-if="message" class="auth-feedback auth-feedback--success">{{ message }}</p>
+      <p v-if="error" class="auth-feedback auth-feedback--error">{{ error }}</p>
 
       <div class="signup-row">
         <span>Already have an account?</span>
@@ -40,7 +61,7 @@
 
 <script>
 import SecretInput from '../components/SecretInput.vue'
-import { setAuth } from '../lib/auth.js'
+import { logout, readApiError } from '../lib/auth.js'
 import { assertValidEmail } from '../lib/validation.js'
 
 export default {
@@ -50,6 +71,7 @@ export default {
   },
   data() {
     return {
+      inviteCode: '',
       email: '',
       confirmEmail: '',
       password: '',
@@ -58,6 +80,8 @@ export default {
       last_name: '',
       loading: false,
       oauthRedirecting: false,
+      inviteCodeError: null,
+      message: null,
       error: null,
     }
   },
@@ -69,11 +93,10 @@ export default {
     }
   },
   methods: {
-    storeAuth(data) {
-      setAuth(data)
-    },
     async register() {
       this.loading = true
+      this.inviteCodeError = null
+      this.message = null
       this.error = null
       try {
         const email = assertValidEmail(this.email)
@@ -90,6 +113,7 @@ export default {
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            invite_code: String(this.inviteCode || '').trim(),
             email,
             password: this.password,
             first_name: this.first_name || null,
@@ -98,16 +122,28 @@ export default {
         })
 
         if (!res.ok) {
-          const text = await res.text()
-          throw new Error(text || `HTTP ${res.status}`)
+          const message = await readApiError(res)
+          const error = new Error(message || `HTTP ${res.status}`)
+          error.status = res.status
+          throw error
         }
 
-        const data = await res.json()
-        this.storeAuth(data)
-        const next = this.$route?.query?.next
-        this.$router.push(typeof next === 'string' && next.length ? next : '/home')
+        await res.json()
+        await logout()
+        this.message = 'Account created! Please check your email to verify your address before logging in.'
+        window.setTimeout(() => {
+          this.$router.push({
+            path: '/login',
+            query: { registered: '1' },
+          })
+        }, 1200)
       } catch (e) {
-        this.error = e?.message ?? String(e)
+        const message = e?.message ?? String(e)
+        if (e?.status === 400 && message === 'Invalid or expired invite code') {
+          this.inviteCodeError = message
+          return
+        }
+        this.error = message
       } finally {
         this.loading = false
       }

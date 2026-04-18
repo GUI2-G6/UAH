@@ -200,6 +200,31 @@ export async function logout() {
     }
 }
 
+export async function readApiError(response) {
+    try {
+        const payload = await response.clone().json()
+        if (typeof payload?.detail === 'string' && payload.detail.trim()) {
+            return payload.detail.trim()
+        }
+        if (typeof payload?.message === 'string' && payload.message.trim()) {
+            return payload.message.trim()
+        }
+    } catch {
+        // Fall through to raw text parsing.
+    }
+
+    try {
+        const text = await response.text()
+        if (text && text.trim()) {
+            return text.trim()
+        }
+    } catch {
+        // Ignore body parsing errors and fall back to status text.
+    }
+
+    return `HTTP ${response.status}`
+}
+
 /**
  * Authenticated fetch with optional timeout (default 5 min for long parse ops).
  * Pass `options.timeout` in ms to override, or `options.signal` for your own AbortController.

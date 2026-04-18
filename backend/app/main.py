@@ -24,6 +24,7 @@ from fastapi import FastAPI, Request
 from app.api.routes import router as api_router
 from app.api.jobs import router as jobs_router
 from app.api.auth import router as auth_router
+from app.api.admin import router as admin_router
 from app.api.account import router as account_router
 from app.api.resume import router as resume_router
 from app.api.applicant_profile import router as profile_router
@@ -49,6 +50,7 @@ from app.models.parse_job import ParseJob
 from app.models.applicant_profile import ApplicantProfile
 from app.models.muse_location import MuseSupportedLocation
 from app.models.apply_session import ApplySession, ApplySessionEvent
+from app.models.invite import Invite
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +65,7 @@ LEGACY_STARTUP_TABLES = [
     MuseSupportedLocation.__table__,
     ApplySession.__table__,
     ApplySessionEvent.__table__,
+    Invite.__table__,
 ]
 
 # Fail fast on missing critical secrets when running the backend.
@@ -113,6 +116,7 @@ def _ensure_users_table_columns(engine) -> None:
             "email_verify_token_id": "VARCHAR(255)",
             "email_verify_target_email": "VARCHAR(255)",
             "email_verify_expires_at": "TIMESTAMPTZ",
+            "invite_code_used": "VARCHAR(64)",
             "created_at": "TIMESTAMPTZ DEFAULT now()",
             "updated_at": "TIMESTAMPTZ DEFAULT now()",
         }
@@ -535,6 +539,7 @@ async def beta_docs_basic_auth_gate(request: Request, call_next):
 app.include_router(api_router, prefix="/api")
 app.include_router(jobs_router, prefix="/api")
 app.include_router(auth_router)
+app.include_router(admin_router, prefix="/api/admin")
 app.include_router(account_router)
 app.include_router(resume_router)
 app.include_router(profile_router)

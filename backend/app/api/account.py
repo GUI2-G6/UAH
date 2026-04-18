@@ -107,6 +107,42 @@ def _issue_email_verification_token(user: User, target_email: str) -> str:
     )
 
 
+def trigger_verification_email_flow(db: Session, user: User) -> MessageResponse:
+    if user.email_verified:
+        return MessageResponse(message="Email is already verified")
+
+    if not user.email:
+        raise HTTPException(status_code=400, detail="No email set on this account")
+
+    token = _issue_email_verification_token(user, user.email)
+    db.commit()
+    db.refresh(user)
+
+    if not settings.EMAILS_ENABLED:
+        return MessageResponse(message=f"Verification token (dev only): {token}")
+
+    public_url = (settings.PUBLIC_APP_URL or "").rstrip("/")
+    text = (
+        "Verify your email for your UAH account.\n\n"
+        f"Verification token: {token}\n"
+    )
+    if public_url:
+        text += f"\nOpen Settings to paste the token: {public_url}/settings\n"
+
+    try:
+        send_email(
+            to=user.email,
+            subject="Verify your UAH email",
+            text=text,
+        )
+    except EmailNotConfiguredError as e:
+        raise HTTPException(status_code=500, detail=f"Email not configured: {e}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to send verification email")
+
+    return MessageResponse(message="Verification email sent")
+
+
 def _password_reset_token_is_valid(user: User, decoded: dict | None) -> bool:
     if not decoded:
         return False
@@ -436,36 +472,7 @@ def send_verification_email(
 
     if current_user.email_verified:
         return MessageResponse(message="Email is already verified")
-
-    if not current_user.email:
-        raise HTTPException(status_code=400, detail="No email set on this account")
-
-    token = _issue_email_verification_token(current_user, current_user.email)
-    db.commit()
-
-    if not settings.EMAILS_ENABLED:
-        return MessageResponse(message=f"Verification token (dev only): {token}")
-
-    public_url = (settings.PUBLIC_APP_URL or "").rstrip("/")
-    text = (
-        "Verify your email for your UAH account.\n\n"
-        f"Verification token: {token}\n"
-    )
-    if public_url:
-        text += f"\nOpen Settings to paste the token: {public_url}/settings\n"
-
-    try:
-        send_email(
-            to=current_user.email,
-            subject="Verify your UAH email",
-            text=text,
-        )
-    except EmailNotConfiguredError as e:
-        raise HTTPException(status_code=500, detail=f"Email not configured: {e}")
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to send verification email")
-
-    return MessageResponse(message="Verification email sent")
+    return trigger_verification_email_flow(db=db, user=current_user)
 
 
 @router.post("/verify-email", response_model=MessageResponse)

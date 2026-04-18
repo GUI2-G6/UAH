@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import unittest
 from http.cookies import SimpleCookie
+from math import ceil
+from time import monotonic
 from unittest.mock import patch
 
 from fastapi import HTTPException, Response
@@ -16,15 +18,18 @@ from app.api import deps as deps_api
 from app.api import routes as routes_api
 from app.core import auth_cookie as auth_cookie_api
 from app.core import auth_session as auth_session_api
+from app.core import rate_limit as rate_limit_api
 from app.core.rate_limit import reset_rate_limit_state
 from app.core.security import create_access_token, hash_password
 from app.db.base import Base
 from app.google.service import GoogleAuthService
+from app.models.invite import Invite
 from app.models.user import User
 from app.schemas.user import (
     ForgotPasswordRequest,
     ResetPasswordRequest,
     UserLogin,
+    UserRegister,
     VerifyEmailRequest,
 )
 
@@ -97,10 +102,91 @@ class _MockGoogleAsyncClient:
         )
 
 
+class _FakeRedisPipeline:
+    def __init__(self, client):
+        self.client = client
+        self.operations = []
+
+    def incr(self, key):
+        self.operations.append(("incr", key))
+        return self
+
+    def ttl(self, key):
+        self.operations.append(("ttl", key))
+        return self
+
+    def execute(self):
+        results = []
+        for operation, key in self.operations:
+            if operation == "incr":
+                results.append(self.client.incr(key))
+            elif operation == "ttl":
+                results.append(self.client.ttl(key))
+        self.operations.clear()
+        return results
+
+
+class _FakeRedis:
+    def __init__(self):
+        self.values = {}
+        self.expires_at = {}
+
+    def _purge_expired(self, key):
+        expires_at = self.expires_at.get(key)
+        if expires_at is not None and expires_at <= monotonic():
+            self.values.pop(key, None)
+            self.expires_at.pop(key, None)
+
+    def pipeline(self):
+        return _FakeRedisPipeline(self)
+
+    def ping(self):
+        return True
+
+    def incr(self, key):
+        self._purge_expired(key)
+        self.values[key] = int(self.values.get(key, 0)) + 1
+        return self.values[key]
+
+    def ttl(self, key):
+        self._purge_expired(key)
+        if key not in self.values:
+            return -2
+        expires_at = self.expires_at.get(key)
+        if expires_at is None:
+            return -1
+        return max(0, int(ceil(expires_at - monotonic())))
+
+    def expire(self, key, ttl_seconds):
+        self._purge_expired(key)
+        if key not in self.values:
+            return False
+        self.expires_at[key] = monotonic() + max(int(ttl_seconds), 1)
+        return True
+
+    def scan_iter(self, match=None):
+        prefix = str(match or "").rstrip("*")
+        keys = list(self.values.keys())
+        for key in keys:
+            self._purge_expired(key)
+        for key in list(self.values.keys()):
+            if not match or key.startswith(prefix):
+                yield key
+
+    def delete(self, *keys):
+        deleted = 0
+        for key in keys:
+            if key in self.values:
+                deleted += 1
+            self.values.pop(key, None)
+            self.expires_at.pop(key, None)
+        return deleted
+
+
 class AuthSecurityTests(unittest.TestCase):
     def setUp(self):
         engine = create_engine("sqlite:///:memory:")
-        Base.metadata.create_all(bind=engine, tables=[User.__table__])
+        Base.metadata.create_all(bind=engine, tables=[User.__table__, Invite.__table__])
         SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
         self.db = SessionLocal()
         reset_rate_limit_state()
@@ -181,8 +267,10 @@ class AuthSecurityTests(unittest.TestCase):
     def test_login_rate_limit_blocks_repeated_attempts(self):
         self._create_user(email="login@example.com", username="login@example.com")
         request = _build_request("203.0.113.8")
+        fake_redis = _FakeRedis()
 
-        with patch.object(auth_api, "LOGIN_IP_LIMIT", 2), \
+        with patch.object(rate_limit_api, "_get_redis_client", return_value=fake_redis), \
+             patch.object(auth_api, "LOGIN_IP_LIMIT", 2), \
              patch.object(auth_api, "LOGIN_IDENTIFIER_LIMIT", 2):
             with self.assertRaises(HTTPException) as first_error:
                 auth_api.login(
@@ -212,8 +300,85 @@ class AuthSecurityTests(unittest.TestCase):
 
         self.assertEqual(limited_error.exception.status_code, 429)
 
+    def test_register_requires_valid_invite_and_marks_invite_used(self):
+        inviter = self._create_user(
+            email="inviter@example.com",
+            username="inviter@example.com",
+            email_verified=True,
+        )
+        invite = Invite(code="VALID-INVITE-CODE", created_by=inviter.id, is_active=True)
+        self.db.add(invite)
+        self.db.commit()
+
+        with patch.object(account_api.settings, "EMAILS_ENABLED", False), \
+             patch.object(auth_api.settings, "SECRET_KEY", "register-secret"), \
+             patch.object(auth_cookie_api.settings, "AUTH_COOKIE_NAME", "uah_auth_test"), \
+             patch.object(auth_cookie_api.settings, "SESSION_COOKIE_HTTPS_ONLY", True), \
+             patch.object(auth_cookie_api.settings, "SESSION_COOKIE_SAMESITE", "lax"), \
+             patch.object(auth_cookie_api.settings, "SESSION_COOKIE_PATH", "/"):
+            result = auth_api.register(
+                payload=UserRegister(
+                    email="invitee@example.com",
+                    password="Password123!",
+                    first_name="Invite",
+                    last_name="User",
+                    invite_code="VALID-INVITE-CODE",
+                ),
+                request=_build_request(),
+                response=Response(),
+                db=self.db,
+            )
+
+        created_user = self.db.query(User).filter(User.email == "invitee@example.com").first()
+        consumed_invite = self.db.query(Invite).filter(Invite.code == "VALID-INVITE-CODE").first()
+
+        self.assertIsNotNone(created_user)
+        self.assertEqual(result.user.email, "invitee@example.com")
+        self.assertEqual(created_user.invite_code_used, "VALID-INVITE-CODE")
+        self.assertEqual(consumed_invite.used_by, created_user.id)
+        self.assertIsNotNone(consumed_invite.used_at)
+        self.assertTrue(consumed_invite.is_active)
+        self.assertIsNotNone(created_user.email_verify_token_id)
+        self.assertFalse(created_user.email_verified)
+
+    def test_register_rejects_invalid_invite_code(self):
+        with self.assertRaises(HTTPException) as register_error:
+            auth_api.register(
+                payload=UserRegister(
+                    email="missing-invite@example.com",
+                    password="Password123!",
+                    first_name="Missing",
+                    last_name="Invite",
+                    invite_code="MISSING-INVITE",
+                ),
+                request=_build_request(),
+                response=Response(),
+                db=self.db,
+            )
+
+        self.assertEqual(register_error.exception.status_code, 400)
+        self.assertEqual(register_error.exception.detail, "Invalid or expired invite code")
+
+    def test_login_rejects_unverified_email_accounts(self):
+        self._create_user(
+            email="pending@example.com",
+            username="pending@example.com",
+            email_verified=False,
+        )
+
+        with self.assertRaises(HTTPException) as login_error:
+            auth_api.login(
+                payload=UserLogin(email="pending@example.com", password="Password123!"),
+                request=_build_request(),
+                response=Response(),
+                db=self.db,
+            )
+
+        self.assertEqual(login_error.exception.status_code, 403)
+        self.assertEqual(login_error.exception.detail, auth_api.EMAIL_VERIFICATION_REQUIRED_MESSAGE)
+
     def test_login_sets_http_only_auth_cookie(self):
-        self._create_user(email="cookie@example.com", username="cookie@example.com")
+        self._create_user(email="cookie@example.com", username="cookie@example.com", email_verified=True)
         response = Response()
 
         with patch.object(auth_cookie_api.settings, "AUTH_COOKIE_NAME", "uah_auth_test"), \
@@ -233,7 +398,7 @@ class AuthSecurityTests(unittest.TestCase):
         self.assertIn("Secure", set_cookie)
 
     def test_web_login_uses_default_token_lifetime(self):
-        self._create_user(email="default-ttl@example.com", username="default-ttl@example.com")
+        self._create_user(email="default-ttl@example.com", username="default-ttl@example.com", email_verified=True)
         response = Response()
 
         with patch.object(auth_api.settings, "SECRET_KEY", "ttl-secret"), \
@@ -256,7 +421,7 @@ class AuthSecurityTests(unittest.TestCase):
         self.assertEqual(_token_lifetime_seconds(token), 3600)
 
     def test_extension_login_uses_extension_token_lifetime(self):
-        self._create_user(email="extension-ttl@example.com", username="extension-ttl@example.com")
+        self._create_user(email="extension-ttl@example.com", username="extension-ttl@example.com", email_verified=True)
         response = Response()
 
         with patch.object(auth_api.settings, "SECRET_KEY", "extension-ttl-secret"), \
@@ -321,8 +486,8 @@ class AuthSecurityTests(unittest.TestCase):
                 data={"sub": str(user.id)},
                 client="extension",
             )
+            resolved_user = deps_api.get_current_user(db=self.db, token=token)
 
-        resolved_user = deps_api.get_current_user(db=self.db, token=token)
         self.assertEqual(resolved_user.id, user.id)
 
 

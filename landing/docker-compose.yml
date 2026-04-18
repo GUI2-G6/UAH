@@ -1,0 +1,13 @@
+services:
+  uah-landing:
+    image: nginx:alpine
+    container_name: uah-landing
+    restart: unless-stopped
+    volumes:
+      - ./dist:/usr/share/nginx/html:ro
+    networks:
+      - uah-beta-infra
+
+networks:
+  uah-beta-infra:
+    external: true

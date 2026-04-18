@@ -1,9 +1,13 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 import os
+from app.api.account import trigger_verification_email_flow
 from app.db.session import get_db
+from app.models.invite import Invite
 from app.models.user import User
 from app.schemas.user import UserRegister, UserLogin, UserResponse, TokenResponse, MessageResponse
 from app.core.security import hash_password, verify_password
@@ -13,6 +17,7 @@ from app.core.auth_session import (
     resolve_auth_client,
 )
 from app.core.auth_cookie import clear_auth_cookie, set_auth_cookie, set_no_store_headers
+from app.core.config import settings
 from app.core.validation import normalize_email, require_valid_email
 from app.core.rate_limit import enforce_ip_rate_limit, enforce_subject_rate_limit
 from app.api.deps import get_current_user as get_authenticated_user
@@ -34,6 +39,9 @@ TOKEN_IDENTIFIER_WINDOW_SECONDS = 300
 
 
 ADMIN_EMAIL = "admincontact@uahapp.com"
+EMAIL_VERIFICATION_REQUIRED_MESSAGE = (
+    "Please verify your email address before logging in. Check your inbox for a verification link."
+)
 
 
 def _ensure_admin_user(db: Session) -> User:
@@ -103,7 +111,7 @@ def register(
 
     Response codes:
     - 201: Account created successfully and token issued.
-    - 400: Email already registered.
+    - 400: Email already registered, or invite code is invalid/expired.
     - 422: Request validation failed (for example, missing fields).
     - 500: Server/database error while creating the account.
     """
@@ -127,6 +135,24 @@ def register(
             detail="Email already registered",
         )
 
+    invite_code = str(payload.invite_code or "").strip()
+    invite = (
+        db.query(Invite)
+        .with_for_update()
+        .filter(
+            Invite.code == invite_code,
+            Invite.is_active.is_(True),
+            Invite.used_by.is_(None),
+            or_(Invite.expires_at.is_(None), Invite.expires_at > datetime.now(timezone.utc)),
+        )
+        .first()
+    )
+    if not invite:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired invite code",
+        )
+
     user = User(
         email=normalized_email,
         username=normalized_email,
@@ -135,8 +161,15 @@ def register(
         last_name=payload.last_name,
     )
     db.add(user)
+    db.flush()
+
+    invite.used_by = user.id
+    invite.used_at = datetime.now(timezone.utc)
+    user.invite_code_used = invite.code
+
     db.commit()
     db.refresh(user)
+    trigger_verification_email_flow(db=db, user=user)
 
     auth_client = resolve_auth_client(request)
     token = create_access_token_for_client(data={"sub": str(user.id)}, client=auth_client)
@@ -164,7 +197,7 @@ def login(
     Response codes:
     - 200: Authentication succeeded and token issued.
     - 401: Invalid email/password combination.
-    - 403: Account exists but is deactivated.
+    - 403: Account exists but is deactivated or email verification is still pending.
     - 422: Request validation failed.
     """
     enforce_ip_rate_limit(
@@ -194,6 +227,11 @@ def login(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is deactivated",
         )
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=EMAIL_VERIFICATION_REQUIRED_MESSAGE,
+        )
 
     auth_client = resolve_auth_client(request)
     token = create_access_token_for_client(data={"sub": str(user.id)}, client=auth_client)
@@ -221,7 +259,7 @@ def token_login(
     Response codes:
     - 200: Token generated successfully.
     - 401: Invalid email/password.
-    - 403: Account is deactivated.
+    - 403: Account is deactivated or email verification is still pending.
     - 422: Invalid form payload.
     """
     enforce_ip_rate_limit(
@@ -253,6 +291,11 @@ def token_login(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is deactivated",
+        )
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=EMAIL_VERIFICATION_REQUIRED_MESSAGE,
         )
 
     auth_client = resolve_auth_client(request)
