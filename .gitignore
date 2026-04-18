@@ -25,6 +25,7 @@ desktop.ini
 *.swo
 *~
 .vscode/
+.worktrees/
 
 # ----- Python / Backend -----
 __pycache__/
