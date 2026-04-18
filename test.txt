@@ -4,8 +4,6 @@ NATURAL LANGUAGE MODEL FILTER APPLICATION?? yes this
 
 pin drop map featue for job search
 
-fix dropdowns in resume profile stuff to make them usable
-
 one more pass on filters and stuff's function once full job stuff is working
 
 2. Reed.co.uk API
@@ -25,15 +23,13 @@ allow multi select of countrys for filters
 
 reporting jobs that are potentially stale/or even fraudulent (community notes for job board kinda)
 
-nother pass on validating job listings are still active on the secondary links on sites.
+nother pass on validating job listings are still active on the secondary links on sites, may not be fully possible on certain sites with automated things. ugh.
 
 another pass on making sure we simply expunge returned job listings that dont fit our max age of job and or link valididity params
 
 on review readyness make sure csv typing works, make the form values more clear
 
 improve the resume profile parsing options and stuff to fit better. 
-
-direct key based ssh
 
 address disjointness between the statements for the "parsed data" on the resume viewing thing and then the actual data stated to be found in the review readyness. improve it
 
@@ -117,3 +113,5 @@ remove sign in with google option from register page
 add easy report issue persistient thing in a spot of the ui that is always layered highest. user can select a hide option for it in setting. if the user chooses to report something let them type a name for issue and a short description. and then let them check off if the want to send logs (make system for getting those relevant to whatever page they were on)
 
 make things auto save upon clicking off box or whatever in review readyness pipeline
+
+make it so invites can have an amount of uses chosen before expiration.
