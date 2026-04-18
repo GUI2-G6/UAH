@@ -115,13 +115,13 @@
                 <div class="settings-group">
                     <h4>Email Verification</h4>
                     <form @submit.prevent="sendVerification" class="account-security-form">
-                        <button type="submit" :disabled="working" :class="buttonStatusClass('sendVerification')">Send verification token</button>
+                        <button type="submit" :disabled="working" :class="buttonStatusClass('sendVerification')">Send verification link</button>
                     </form>
                     <div v-if="actionStatus.sendVerification.message" :class="feedbackClass('sendVerification')">
                         {{ actionStatus.sendVerification.message }}
                     </div>
                     <form @submit.prevent="verifyEmail" class="account-security-form">
-                        <SecretInput id="settings-email-verification-token" name="email_verification_token" v-model="verifyToken" placeholder="Verification token" autocomplete="one-time-code" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
+                        <SecretInput id="settings-email-verification-token" name="email_verification_token" v-model="verifyToken" placeholder="Verification token (manual fallback)" autocomplete="one-time-code" inputmode="text" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="working" />
                         <button type="submit" :disabled="working" :class="buttonStatusClass('verifyEmail')">Verify email</button>
                     </form>
                     <div v-if="actionStatus.verifyEmail.message" :class="feedbackClass('verifyEmail')">
@@ -392,6 +392,7 @@ export default {
         ])
         this.handleConnectedAccountRedirectState()
         this.handleServiceRedirectState()
+        this.handleEmailVerificationRedirectState()
         this.debugToolsUnsubscribe = subscribeDebugTools((state) => {
             this.canAccessDebugTools = state.canAccessDebugTools === true
             this.showDebugTools = state.showDebugTools === true
@@ -547,6 +548,24 @@ export default {
             delete nextQuery.service
             delete nextQuery.service_state
             delete nextQuery.service_reason
+            this.$router.replace({ path: this.$route.path, query: nextQuery })
+        },
+        handleEmailVerificationRedirectState() {
+            const verifyState = typeof this.$route?.query?.verify_email === 'string' ? this.$route.query.verify_email : ''
+            const reason = typeof this.$route?.query?.verify_reason === 'string' ? this.$route.query.verify_reason : ''
+
+            if (!verifyState) return
+
+            if (verifyState === 'success') {
+                showToast('Email verified successfully', 'success')
+            } else if (verifyState === 'error') {
+                const detail = reason ? ` (${reason.replaceAll('_', ' ')})` : ''
+                showToast(`Could not verify email${detail}`, 'error')
+            }
+
+            const nextQuery = { ...this.$route.query }
+            delete nextQuery.verify_email
+            delete nextQuery.verify_reason
             this.$router.replace({ path: this.$route.path, query: nextQuery })
         },
         async loadConnectedAccounts() {

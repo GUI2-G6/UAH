@@ -1,11 +1,14 @@
 from datetime import datetime, timedelta, timezone
 import secrets
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.db.session import get_db
+from app.models.invite import Invite
 from app.models.user import User
+from app.models.user import SavedJob
 from app.api.deps import get_current_user
 from app.schemas.user import (
     ChangePasswordRequest, ResetPasswordRequest, ForgotPasswordRequest,
@@ -21,6 +24,7 @@ from app.core.auth_cookie import clear_auth_cookie
 from app.core.config import settings
 from app.core.rate_limit import enforce_ip_rate_limit, enforce_subject_rate_limit
 from app.core.validation import normalize_email, require_valid_email
+from app.services.deleted_identities import record_deleted_identities_for_user
 from app.services.email import send_email, EmailNotConfiguredError
 
 router = APIRouter(prefix="/api/account", tags=["account"])
@@ -107,6 +111,13 @@ def _issue_email_verification_token(user: User, target_email: str) -> str:
     )
 
 
+def _build_verify_email_link(token: str) -> str | None:
+    public_url = (settings.PUBLIC_APP_URL or "").rstrip("/")
+    if not public_url:
+        return None
+    return f"{public_url}/verify-email?token={quote(token, safe='')}"
+
+
 def trigger_verification_email_flow(db: Session, user: User) -> MessageResponse:
     if user.email_verified:
         return MessageResponse(message="Email is already verified")
@@ -121,13 +132,18 @@ def trigger_verification_email_flow(db: Session, user: User) -> MessageResponse:
     if not settings.EMAILS_ENABLED:
         return MessageResponse(message=f"Verification token (dev only): {token}")
 
-    public_url = (settings.PUBLIC_APP_URL or "").rstrip("/")
-    text = (
-        "Verify your email for your UAH account.\n\n"
-        f"Verification token: {token}\n"
-    )
-    if public_url:
-        text += f"\nOpen Settings to paste the token: {public_url}/settings\n"
+    verify_link = _build_verify_email_link(token)
+    if verify_link:
+        text = (
+            "Verify your email for your UAH account.\n\n"
+            "Use the secure verification link below:\n"
+            f"{verify_link}\n"
+        )
+    else:
+        text = (
+            "Verify your email for your UAH account.\n\n"
+            f"Verification token: {token}\n"
+        )
 
     try:
         send_email(
@@ -355,19 +371,27 @@ def change_email(
     if not current_user.email_verified:
         token = _issue_email_verification_token(current_user, old_email)
         db.commit()
+        verify_link = _build_verify_email_link(token)
         if not settings.EMAILS_ENABLED:
             return MessageResponse(
                 message=f"You must verify your current email first. Verification token (dev only): {token}"
             )
         try:
+            body = (
+                "You requested an email change on your UAH account, but your current email "
+                "is not yet verified. Please verify it first.\n\n"
+            )
+            if verify_link:
+                body += (
+                    "Use the secure verification link below:\n"
+                    f"{verify_link}\n"
+                )
+            else:
+                body += f"Verification token: {token}\n"
             send_email(
                 to=old_email,
                 subject="Verify your current email — UAH",
-                text=(
-                    "You requested an email change on your UAH account, but your current email "
-                    "is not yet verified. Please verify it first.\n\n"
-                    f"Verification token: {token}\n"
-                ),
+                text=body,
             )
         except Exception:
             pass
@@ -537,6 +561,19 @@ def delete_account(
     Response codes:
     - 200: Account deleted successfully.
     """
+    record_deleted_identities_for_user(db, current_user)
+
+    # Remove detached user artifacts and preserve invite safety before hard-delete.
+    db.query(SavedJob).filter(SavedJob.user_id == current_user.id).delete(synchronize_session=False)
+    db.query(Invite).filter(Invite.created_by == current_user.id).delete(synchronize_session=False)
+    db.query(Invite).filter(Invite.used_by == current_user.id).update(
+        {
+            Invite.used_by: None,
+            Invite.is_active: False,
+        },
+        synchronize_session=False,
+    )
+
     db.delete(current_user)
     db.commit()
     clear_auth_cookie(response)

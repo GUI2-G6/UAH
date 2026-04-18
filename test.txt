@@ -99,3 +99,15 @@ add links to mandatory disclosure stuff
 make splash page 
 
 migrate out of cf zero trust
+
+make generation/deletion/management of invite codes incorperated into uah.sh
+
+make sure delete account 100% deletes account if used. google signin oauth should not allow you to re-enter the site with the deleted account
+
+make sure continue with google, oauth, doesnt allow bypass of invite code requirement
+
+transition the verify email function to send a link to verify rather than the raw token
+
+make sure the current community input thing on the landing isnt just angled towards gripes, it should also ask people for any cool ideas regardless of if they may seem like a stretch
+
+we should later implement a way for people who have made accounts with us to vote for user ids, the person who made the inital request is anonamyous of course.

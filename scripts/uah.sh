@@ -4878,6 +4878,133 @@ debug_users() {
   esac
 }
 
+debug_invites() {
+  local env_name="$1"
+  local action="${2:-list}"
+  local arg="${3:-}"
+  local arg2="${4:-}"
+  local escaped_code
+  local filter_sql="1=1"
+
+  if [[ "$env_name" != "dev" && "$env_name" != "beta" ]]; then
+    echo "Invite management is only supported for dev and beta." >&2
+    exit 1
+  fi
+
+  debug_profile_init "$env_name"
+  debug_header "$env_name" "Invites :: $action"
+
+  case "$action" in
+    list)
+      case "${arg:-all}" in
+        all)
+          filter_sql="1=1"
+          ;;
+        used)
+          filter_sql="used_by IS NOT NULL"
+          ;;
+        unused)
+          filter_sql="used_by IS NULL"
+          ;;
+        active)
+          filter_sql="is_active = true"
+          ;;
+        inactive)
+          filter_sql="is_active = false"
+          ;;
+        *)
+          echo "Unknown invite list filter '${arg}'." >&2
+          echo "Supported: all, used, unused, active, inactive" >&2
+          exit 1
+          ;;
+      esac
+      docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -c "SELECT code, is_active, created_by, used_by, used_at, expires_at, created_at FROM invites WHERE ${filter_sql} ORDER BY created_at DESC LIMIT 200;" 2>&1 | sed 's/^/  /'
+      ;;
+    show)
+      if [[ -z "$arg" ]]; then
+        echo "Usage: bash scripts/uah.sh $env_name debug invites show <code>" >&2
+        exit 1
+      fi
+      escaped_code="$(sql_escape_literal "$arg")"
+      docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -c "SELECT id, code, is_active, created_by, used_by, used_at, expires_at, created_at FROM invites WHERE code='${escaped_code}';" 2>&1 | sed 's/^/  /'
+      ;;
+    create)
+      if [[ -z "$arg" ]]; then
+        echo "Usage: bash scripts/uah.sh $env_name debug invites create <count> [expires_at_iso8601]" >&2
+        exit 1
+      fi
+      if ! [[ "$arg" =~ ^[0-9]+$ ]] || ((arg < 1 || arg > 50)); then
+        echo "Invite create count must be between 1 and 50." >&2
+        exit 1
+      fi
+      docker exec -i -e UAH_INVITE_COUNT="$arg" -e UAH_INVITE_EXPIRES_AT="$arg2" "$DEBUG_BACKEND_CONTAINER" python3 - <<'PY'
+from datetime import datetime, timezone
+import os
+import sys
+
+from app.api.admin import _build_invites
+from app.db.session import SessionLocal
+from app.models.user import User
+
+
+def parse_expires_at(raw: str | None):
+    value = (raw or "").strip()
+    if not value:
+        return None
+    value = value.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError("expires_at must be ISO8601, example: 2026-05-01T00:00:00Z") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+count = int(os.environ.get("UAH_INVITE_COUNT", "1"))
+expires_raw = os.environ.get("UAH_INVITE_EXPIRES_AT")
+
+db = SessionLocal()
+try:
+    expires_at = parse_expires_at(expires_raw)
+    admin_user = db.query(User).filter(User.is_admin.is_(True)).order_by(User.id.asc()).first()
+    if not admin_user:
+        print("No admin user exists; cannot assign created_by for invite codes.", file=sys.stderr)
+        raise SystemExit(1)
+
+    invites = _build_invites(
+        db=db,
+        current_user=admin_user,
+        count=count,
+        expires_at=expires_at,
+    )
+
+    print(f"Created {len(invites)} invite(s):")
+    for invite in invites:
+        print(invite.code)
+finally:
+    db.close()
+PY
+      ;;
+    revoke)
+      if [[ -z "$arg" ]]; then
+        echo "Usage: bash scripts/uah.sh $env_name debug invites revoke <code>" >&2
+        exit 1
+      fi
+      escaped_code="$(sql_escape_literal "$arg")"
+      docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -c "UPDATE invites SET is_active=false WHERE code='${escaped_code}' RETURNING code, is_active;" 2>&1 | sed 's/^/  /'
+      ;;
+    stats)
+      docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -c "SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE is_active) AS active, COUNT(*) FILTER (WHERE NOT is_active) AS inactive, COUNT(*) FILTER (WHERE used_by IS NOT NULL) AS used, COUNT(*) FILTER (WHERE used_by IS NULL) AS unused FROM invites;" 2>&1 | sed 's/^/  /'
+      ;;
+    *)
+      echo "Unknown invites action '$action'." >&2
+      echo "Supported: list [all|used|unused|active|inactive], show <code>, create <count> [expires_at_iso8601], revoke <code>, stats" >&2
+      exit 1
+      ;;
+  esac
+}
+
 debug_network() {
   local env_name="$1"
   local action="${2:-show-topology}"
@@ -4992,6 +5119,7 @@ Debug subcommands:
   bash scripts/uah.sh <env> debug queue [status|clear|clear-redis|clear-stuck|active|recent|failed|retry <id>|test-parse <local|cloud|rules>]
   bash scripts/uah.sh <env> debug database [isolation|user-count|resume-count|parse-stats|recent|raw <SQL>|size]
   bash scripts/uah.sh <env> debug users [list|show <email>|toggle-active <email> <true|false>|toggle-developer <email> <true|false>|reset-password <email> <password>]
+  bash scripts/uah.sh <env> debug invites [list [all|used|unused|active|inactive]|show <code>|create <count> [expires_at_iso8601]|revoke <code>|stats]
   bash scripts/uah.sh <env> debug network [show-topology|show-routes|show-docker-user|show-vpn-iptables|apply-route|rollback-route|check-route]
   bash scripts/uah.sh beta debug network [apply-bridge|remove-bridge|full-reapply|rollback-all]
 EOF
@@ -5034,6 +5162,9 @@ run_debug() {
       ;;
     users)
       debug_users "$env_name" "$@"
+      ;;
+    invites|invite)
+      debug_invites "$env_name" "$@"
       ;;
     network)
       debug_network "$env_name" "$@"

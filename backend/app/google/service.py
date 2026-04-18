@@ -2,6 +2,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.models.user import User
 from app.core.validation import normalize_email
+from app.services.deleted_identities import ensure_identity_not_blocked
 
 
 class GoogleAuthService:
@@ -19,38 +20,31 @@ class GoogleAuthService:
         if not normalized_email:
             raise ValueError("Google profile email is missing")
 
-        # Prefer existing account already linked by Google subject id.
+        ensure_identity_not_blocked(db, email=normalized_email, google_id=google_id)
+
+        if not email_verified:
+            raise ValueError("email_not_verified")
+
+        # OAuth login is allowed only for accounts already linked to Google.
         user = db.query(User).filter(User.google_id == google_id).first()
-
-        # Fall back to matching by email so existing local accounts can link.
         if not user:
-            email_owner = db.query(User).filter(func.lower(User.email) == normalized_email).first()
-            if email_owner and not email_verified:
-                raise ValueError("email_not_verified")
-            user = email_owner
+            raise ValueError("google_not_linked")
 
-        if user:
-            user.email = normalized_email
-            user.username = normalized_email
-            if not user.google_id:
-                user.google_id = google_id
-            if picture_url:
-                user.picture_url = picture_url
-            if full_name and not user.full_name:
-                user.full_name = full_name
-            if email_verified:
-                user.email_verified = True
-        else:
-            user = User(
-                google_id=google_id,
-                email=normalized_email,
-                username=normalized_email,
-                full_name=full_name,
-                picture_url=picture_url,
-                email_verified=bool(email_verified),
-                is_active=True,
-            )
-            db.add(user)
+        email_owner = (
+            db.query(User)
+            .filter(func.lower(User.email) == normalized_email, User.id != user.id)
+            .first()
+        )
+        if email_owner:
+            raise ValueError("email_conflict")
+
+        user.email = normalized_email
+        user.username = normalized_email
+        if picture_url:
+            user.picture_url = picture_url
+        if full_name and not user.full_name:
+            user.full_name = full_name
+        user.email_verified = True
 
         db.commit()
         db.refresh(user)

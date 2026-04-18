@@ -71,6 +71,7 @@ router.beforeEach(async (to) => {
     '/forgot-password',
     '/reset-password',
     '/oauth-callback',
+    '/verify-email',
     '/our-commitment',
     '/contributors',
   ])

@@ -23,8 +23,9 @@ from app.core.rate_limit import reset_rate_limit_state
 from app.core.security import create_access_token, hash_password
 from app.db.base import Base
 from app.google.service import GoogleAuthService
+from app.models.deleted_identity import DeletedIdentity
 from app.models.invite import Invite
-from app.models.user import User
+from app.models.user import SavedJob, User
 from app.schemas.user import (
     ForgotPasswordRequest,
     ResetPasswordRequest,
@@ -186,7 +187,15 @@ class _FakeRedis:
 class AuthSecurityTests(unittest.TestCase):
     def setUp(self):
         engine = create_engine("sqlite:///:memory:")
-        Base.metadata.create_all(bind=engine, tables=[User.__table__, Invite.__table__])
+        Base.metadata.create_all(
+            bind=engine,
+            tables=[
+                User.__table__,
+                Invite.__table__,
+                DeletedIdentity.__table__,
+                SavedJob.__table__,
+            ],
+        )
         SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
         self.db = SessionLocal()
         reset_rate_limit_state()
@@ -477,6 +486,161 @@ class AuthSecurityTests(unittest.TestCase):
 
         self.assertEqual(str(auth_error.exception), "email_not_verified")
 
+    def test_google_oauth_requires_prelinked_account(self):
+        with self.assertRaises(ValueError) as auth_error:
+            GoogleAuthService.get_or_create_user(
+                db=self.db,
+                google_id="unlinked-google-sub",
+                email="unlinked@example.com",
+                full_name="Unlinked User",
+                picture_url=None,
+                email_verified=True,
+            )
+
+        self.assertEqual(str(auth_error.exception), "google_not_linked")
+
+    def test_deleted_identity_blocks_reregistration(self):
+        deleted_user = self._create_user(
+            email="deleted-local@example.com",
+            username="deleted-local@example.com",
+            email_verified=True,
+        )
+        account_api.delete_account(response=Response(), db=self.db, current_user=deleted_user)
+
+        inviter = self._create_user(
+            email="inviter-2@example.com",
+            username="inviter-2@example.com",
+            email_verified=True,
+        )
+        invite = Invite(code="REREGISTER-BLOCK", created_by=inviter.id, is_active=True)
+        self.db.add(invite)
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as register_error:
+            auth_api.register(
+                payload=UserRegister(
+                    email="deleted-local@example.com",
+                    password="Password123!",
+                    first_name="Retry",
+                    last_name="User",
+                    invite_code="REREGISTER-BLOCK",
+                ),
+                request=_build_request(),
+                response=Response(),
+                db=self.db,
+            )
+
+        self.assertEqual(register_error.exception.status_code, 403)
+        self.assertEqual(register_error.exception.detail, "This identity was deleted and cannot be reused")
+
+    def test_deleted_google_identity_blocks_oauth_reentry(self):
+        oauth_user = self._create_user(
+            email="deleted-google@example.com",
+            username="deleted-google@example.com",
+            google_id="deleted-google-sub",
+            email_verified=True,
+        )
+
+        account_api.delete_account(response=Response(), db=self.db, current_user=oauth_user)
+
+        with self.assertRaises(ValueError) as auth_error:
+            GoogleAuthService.get_or_create_user(
+                db=self.db,
+                google_id="deleted-google-sub",
+                email="deleted-google@example.com",
+                full_name="Deleted Google",
+                picture_url=None,
+                email_verified=True,
+            )
+
+        self.assertEqual(str(auth_error.exception), "account_deleted")
+
+    def test_oauth_login_cleans_stale_tombstone_for_active_user(self):
+        user = self._create_user(
+            email="active-google@example.com",
+            username="active-google@example.com",
+            google_id="active-google-sub",
+            email_verified=True,
+        )
+        self.db.add(
+            DeletedIdentity(
+                email="active-google@example.com",
+                google_id="active-google-sub",
+                deleted_user_id=999,
+            )
+        )
+        self.db.commit()
+
+        resolved_user = GoogleAuthService.get_or_create_user(
+            db=self.db,
+            google_id="active-google-sub",
+            email="active-google@example.com",
+            full_name="Active User",
+            picture_url=None,
+            email_verified=True,
+        )
+
+        self.assertEqual(resolved_user.id, user.id)
+        stale_rows = (
+            self.db.query(DeletedIdentity)
+            .filter(DeletedIdentity.google_id == "active-google-sub")
+            .all()
+        )
+        self.assertEqual(stale_rows, [])
+
+    def test_send_verification_email_prefers_link_message(self):
+        user = self._create_user(
+            email="verify-link@example.com",
+            username="verify-link@example.com",
+            email_verified=False,
+        )
+
+        with patch.object(account_api.settings, "EMAILS_ENABLED", True), \
+             patch.object(account_api.settings, "PUBLIC_APP_URL", "https://dev.uahapp.com"), \
+             patch.object(account_api, "send_email") as mock_send:
+            result = account_api.send_verification_email(
+                request=_build_request(),
+                db=self.db,
+                current_user=user,
+            )
+
+        self.assertEqual(result.message, "Verification email sent")
+        self.assertTrue(mock_send.called)
+        text = mock_send.call_args.kwargs.get("text", "")
+        self.assertIn("/verify-email?token=", text)
+        self.assertNotIn("Verification token:", text)
+
+    def test_delete_account_records_tombstones_and_cleans_artifacts(self):
+        creator = self._create_user(
+            email="creator-cleanup@example.com",
+            username="creator-cleanup@example.com",
+            email_verified=True,
+        )
+        consumed = Invite(code="CONSUMED-INVITE", created_by=creator.id, used_by=creator.id, is_active=True)
+        created = Invite(code="CREATED-INVITE", created_by=creator.id, is_active=True)
+        self.db.add_all([consumed, created])
+        self.db.flush()
+        self.db.add(
+            SavedJob(
+                user_id=creator.id,
+                title="Software Engineer",
+                company="UAH",
+                url="https://example.com/job/1",
+            )
+        )
+        self.db.commit()
+
+        account_api.delete_account(response=Response(), db=self.db, current_user=creator)
+
+        self.assertIsNone(self.db.query(User).filter(User.id == creator.id).first())
+        email_tombstone = self.db.query(DeletedIdentity).filter(DeletedIdentity.email == "creator-cleanup@example.com").first()
+        self.assertIsNotNone(email_tombstone)
+        remaining_created_invite = self.db.query(Invite).filter(Invite.code == "CREATED-INVITE").first()
+        self.assertIsNone(remaining_created_invite)
+        consumed_after = self.db.query(Invite).filter(Invite.code == "CONSUMED-INVITE").first()
+        self.assertIsNone(consumed_after)
+        self.assertEqual(self.db.query(SavedJob).filter(SavedJob.user_id == creator.id).count(), 0)
+
     def test_extension_client_token_resolves_with_standard_auth_dependency(self):
         user = self._create_user(email="dependency@example.com", username="dependency@example.com")
 
@@ -494,7 +658,7 @@ class AuthSecurityTests(unittest.TestCase):
 class GoogleOAuthExtensionTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         engine = create_engine("sqlite:///:memory:")
-        Base.metadata.create_all(bind=engine, tables=[User.__table__])
+        Base.metadata.create_all(bind=engine, tables=[User.__table__, DeletedIdentity.__table__])
         SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
         self.db = SessionLocal()
 
@@ -502,6 +666,16 @@ class GoogleOAuthExtensionTests(unittest.IsolatedAsyncioTestCase):
         self.db.close()
 
     async def test_google_oauth_callback_extension_uses_extension_token_lifetime(self):
+        linked_user = User(
+            email="extension@example.com",
+            username="extension@example.com",
+            google_id="google-sub-123",
+            email_verified=True,
+            is_active=True,
+        )
+        self.db.add(linked_user)
+        self.db.commit()
+
         session = {
             "oauth_state": "state-123",
             "oauth_mode": "login",
@@ -542,6 +716,37 @@ class GoogleOAuthExtensionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_token_lifetime_seconds(token), 86400)
         self.assertIsNone(request.session.get("oauth_client"))
 
-        created_user = self.db.query(User).filter(User.email == "extension@example.com").first()
-        self.assertIsNotNone(created_user)
-        self.assertTrue(created_user.email_verified)
+        resolved_user = self.db.query(User).filter(User.email == "extension@example.com").first()
+        self.assertIsNotNone(resolved_user)
+        self.assertEqual(resolved_user.id, linked_user.id)
+
+    async def test_google_oauth_callback_rejects_unlinked_identity(self):
+        session = {
+            "oauth_state": "state-123",
+            "oauth_mode": "login",
+            "oauth_intent": "register",
+            "oauth_next": "/home",
+            "oauth_client": "web",
+        }
+        request = _build_request(
+            scheme="https",
+            path="/api/auth/google/callback",
+            session=session,
+        )
+
+        with patch.object(routes_api, "GOOGLE_CLIENT_ID", "google-client-id"), \
+             patch.object(routes_api, "GOOGLE_CLIENT_SECRET", "google-client-secret"), \
+             patch.object(routes_api, "GOOGLE_REDIRECT_URI", "https://dev.uahapp.com/api/auth/google/callback"), \
+             patch.object(routes_api.settings, "PUBLIC_APP_URL", "https://dev.uahapp.com"), \
+             patch.object(routes_api.httpx, "AsyncClient", _MockGoogleAsyncClient):
+            response = await routes_api.google_oauth_callback(
+                request=request,
+                code="google-code",
+                state="state-123",
+                db=self.db,
+            )
+
+        self.assertEqual(response.status_code, 307)
+        self.assertIn("/register", response.headers.get("location", ""))
+        self.assertIn("reason=google_not_linked", response.headers.get("location", ""))
+        self.assertIsNone(self.db.query(User).filter(User.email == "extension@example.com").first())

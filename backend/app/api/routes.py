@@ -51,6 +51,7 @@ from app.services.muse_location_index import (
     refresh_muse_location_index,
 )
 from app.services.resume_parser import get_pipeline_availability
+from app.services.deleted_identities import ensure_identity_not_blocked
 from app.core.config import settings
 from app.models.muse_location import MuseSupportedLocation
 
@@ -3209,6 +3210,12 @@ async def google_oauth_callback(
         if not user:
             _clear_google_oauth_session(request)
             return _oauth_settings_redirect("error", "user_not_found")
+
+        try:
+            ensure_identity_not_blocked(db, email=email, google_id=google_id)
+        except ValueError:
+            _clear_google_oauth_session(request)
+            return _oauth_settings_redirect("error", "account_deleted")
 
         google_owner = db.query(User).filter(User.google_id == google_id).first()
         if google_owner and google_owner.id != user.id:
