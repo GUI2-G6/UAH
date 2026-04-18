@@ -3968,13 +3968,132 @@ choose_environment_interactive() {
   esac
 }
 
+configure_audit_wizard_args() {
+  local mode_choice
+  local mode_value="full"
+  local fix_choice
+  local fail_choice
+  local json_choice
+  local json_path
+
+  EXTRA_ARGS=()
+
+  echo ""
+  echo "  Audit mode"
+  echo "    1) full"
+  echo "    2) repo"
+  echo "    3) docker"
+  echo "    4) host"
+  read -rp "  Choice [1-4, default 1]: " mode_choice
+
+  case "$mode_choice" in
+    2)
+      mode_value="repo"
+      ;;
+    3)
+      mode_value="docker"
+      ;;
+    4)
+      mode_value="host"
+      ;;
+    *)
+      mode_value="full"
+      ;;
+  esac
+  EXTRA_ARGS+=("--mode" "$mode_value")
+
+  read -rp "  Apply suggested fixes automatically? [y/N]: " fix_choice
+  if [[ "${fix_choice,,}" == "y" || "${fix_choice,,}" == "yes" ]]; then
+    EXTRA_ARGS+=("--fix")
+  fi
+
+  read -rp "  Fail build on warnings? [y/N]: " fail_choice
+  if [[ "${fail_choice,,}" == "y" || "${fail_choice,,}" == "yes" ]]; then
+    EXTRA_ARGS+=("--fail-on-warn")
+  fi
+
+  read -rp "  Emit JSON report? [y/N]: " json_choice
+  if [[ "${json_choice,,}" == "y" || "${json_choice,,}" == "yes" ]]; then
+    read -rp "  JSON output path (blank = default): " json_path
+    if [[ -n "$json_path" ]]; then
+      EXTRA_ARGS+=("--json" "$json_path")
+    else
+      EXTRA_ARGS+=("--json")
+    fi
+  fi
+}
+
+choose_tooling_action() {
+  local env_name="$1"
+  local choice
+
+  while true; do
+    startup_header "$env_name"
+    startup_quick_hud "$env_name"
+    echo ""
+    echo "  Tooling Center"
+    echo "    1) Launch debug console"
+    echo "    2) Invite management console"
+    echo "    3) Provider dashboard"
+    echo "    4) Security audit wizard"
+    echo "    5) Environment safety review"
+    echo "    6) Quick backend status snapshot"
+    echo "    0) Back"
+    read -rp "  Choice [1-6/0]: " choice
+
+    case "$choice" in
+      1)
+        build_mode_reset_selection
+        ACTION="debug"
+        EXTRA_ARGS=()
+        return 0
+        ;;
+      2)
+        build_mode_reset_selection
+        ACTION="debug"
+        EXTRA_ARGS=("invites" "menu")
+        return 0
+        ;;
+      3)
+        build_mode_reset_selection
+        ACTION="providers"
+        EXTRA_ARGS=()
+        return 0
+        ;;
+      4)
+        build_mode_reset_selection
+        ACTION="audit"
+        configure_audit_wizard_args
+        return 0
+        ;;
+      5)
+        ensure_env_confirmation "$env_name" "tooling env review" "preview" || true
+        debug_press_enter
+        ;;
+      6)
+        build_mode_reset_selection
+        ACTION="debug"
+        EXTRA_ARGS=("status")
+        return 0
+        ;;
+      0)
+        return 1
+        ;;
+      *)
+        debug_print_warn "Invalid action selection."
+        debug_press_enter
+        ;;
+    esac
+  done
+}
+
 choose_action() {
   local active_env="$1"
   local choice
   local selected_env
 
   if [[ ! -t 0 ]]; then
-    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync|audit|providers" >&2
+    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync|audit|providers|tools" >&2
     exit 1
   fi
 
@@ -3994,8 +4113,9 @@ choose_action() {
     echo "    9) review env values"
     echo "   10) switch environment"
     echo "   11) rebuild options"
+    echo "   12) tooling center"
     echo "    0) exit"
-    read -rp "  Choice [1-11/0]: " choice
+    read -rp "  Choice [1-12/0]: " choice
 
     case "$choice" in
       1)
@@ -4062,6 +4182,12 @@ choose_action() {
       11)
         configure_rebuild_ui_for_action "$active_env" "menu" || true
         ;;
+      12)
+        if choose_tooling_action "$active_env"; then
+          ENV_NAME="$active_env"
+          return
+        fi
+        ;;
       0)
         echo "Cancelled."
         exit 0
@@ -4094,7 +4220,10 @@ Environment selection:
   - If detection fails, pass environment explicitly.
 
 Actions:
-  start | stop | restart | debug | sync | cert-sync | audit | providers
+  start | stop | restart | debug | sync | cert-sync | audit | providers | tools
+
+Tooling center aliases:
+  tools | tooling | ui
 
 Debug:
   bash scripts/uah.sh <env> debug
@@ -4105,6 +4234,7 @@ Debug:
   bash scripts/uah.sh <env> debug queue [status|clear|clear-redis|clear-stuck|active|recent|failed|retry <id>|test-parse <local|cloud|rules>]
   bash scripts/uah.sh <env> debug database [isolation|user-count|resume-count|parse-stats|recent|raw <SQL>|size]
   bash scripts/uah.sh <env> debug users [list|show <email>|toggle-active <email> <true|false>|toggle-developer <email> <true|false>|reset-password <email> <password>]
+  bash scripts/uah.sh <env> debug invites [menu|ui|interactive|list [all|used|unused|active|inactive]|show <code>|create <count> [expires_at_iso8601]|revoke <code>|stats|audit [tail]]
   bash scripts/uah.sh <env> debug network [show-topology|show-routes|show-docker-user|show-vpn-iptables|apply-route|rollback-route|check-route]
   bash scripts/uah.sh beta debug network [apply-bridge|remove-bridge|full-reapply|rollback-all]
 
@@ -4883,6 +5013,7 @@ debug_invites() {
   local action="${2:-list}"
   local arg="${3:-}"
   local arg2="${4:-}"
+  local tail_lines="${arg:-120}"
   local escaped_code
   local filter_sql="1=1"
 
@@ -5002,9 +5133,16 @@ PY
     stats)
       docker exec "$DEBUG_DB_CONTAINER" psql -U uah -d "$DEBUG_DB_NAME" -c "SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE is_active) AS active, COUNT(*) FILTER (WHERE NOT is_active) AS inactive, COUNT(*) FILTER (WHERE used_by IS NOT NULL) AS used, COUNT(*) FILTER (WHERE used_by IS NULL) AS unused FROM invites;" 2>&1 | sed 's/^/  /'
       ;;
+    audit)
+      if ! [[ "$tail_lines" =~ ^[0-9]+$ ]] || ((tail_lines < 1 || tail_lines > 5000)); then
+        echo "Invite audit tail must be between 1 and 5000 lines." >&2
+        exit 1
+      fi
+      run_compose "$env_name" logs --tail="$tail_lines" backend 2>&1 | grep "invite_admin" | sed 's/^/  /' || true
+      ;;
     *)
       echo "Unknown invites action '$action'." >&2
-      echo "Supported: menu|ui|interactive, list [all|used|unused|active|inactive], show <code>, create <count> [expires_at_iso8601], revoke <code>, stats" >&2
+      echo "Supported: menu|ui|interactive, list [all|used|unused|active|inactive], show <code>, create <count> [expires_at_iso8601], revoke <code>, stats, audit [tail]" >&2
       exit 1
       ;;
   esac
@@ -5048,9 +5186,10 @@ debug_invites_menu() {
     echo "    4) Create invite(s)"
     echo "    5) Revoke invite"
     echo "    6) View stats"
+    echo "    7) View invite audit events"
     echo "    0) Back"
     echo ""
-    read -rp "  Choice [0-6]: " choice
+    read -rp "  Choice [0-7]: " choice
 
     case "$choice" in
       1)
@@ -5094,6 +5233,12 @@ debug_invites_menu() {
         ;;
       6)
         debug_invites "$env_name" stats
+        debug_press_enter
+        ;;
+      7)
+        read -rp "  Tail lines [120]: " count
+        count="${count:-120}"
+        debug_invites "$env_name" audit "$count"
         debug_press_enter
         ;;
       0)
@@ -5221,7 +5366,7 @@ Debug subcommands:
   bash scripts/uah.sh <env> debug queue [status|clear|clear-redis|clear-stuck|active|recent|failed|retry <id>|test-parse <local|cloud|rules>]
   bash scripts/uah.sh <env> debug database [isolation|user-count|resume-count|parse-stats|recent|raw <SQL>|size]
   bash scripts/uah.sh <env> debug users [list|show <email>|toggle-active <email> <true|false>|toggle-developer <email> <true|false>|reset-password <email> <password>]
-  bash scripts/uah.sh <env> debug invites [menu|ui|interactive|list [all|used|unused|active|inactive]|show <code>|create <count> [expires_at_iso8601]|revoke <code>|stats]
+  bash scripts/uah.sh <env> debug invites [menu|ui|interactive|list [all|used|unused|active|inactive]|show <code>|create <count> [expires_at_iso8601]|revoke <code>|stats|audit [tail]]
   bash scripts/uah.sh <env> debug network [show-topology|show-routes|show-docker-user|show-vpn-iptables|apply-route|rollback-route|check-route]
   bash scripts/uah.sh beta debug network [apply-bridge|remove-bridge|full-reapply|rollback-all]
 EOF
@@ -5323,7 +5468,7 @@ run_selected_action() {
 
   notify_discord "**uah.sh started** by \`$(whoami)\` on \`$(hostname)\` for action \`$action\` in \`$env_name\`" 16776960
 
-  if [[ "$env_name" == "prod" && "$action" != "audit" && "$action" != "providers" ]]; then
+  if [[ "$env_name" == "prod" && "$action" != "audit" && "$action" != "providers" && "$action" != "tools" && "$action" != "tooling" && "$action" != "ui" ]]; then
     prod_scaffold "$action"
     return $?
   fi
@@ -5400,6 +5545,15 @@ run_selected_action() {
       ;;
     providers)
       run_providers "$env_name" "${action_args[@]}"
+      ;;
+    tools|tooling|ui)
+      if [[ ! -t 0 ]]; then
+        echo "tools/tooling/ui requires an interactive terminal session." >&2
+        return 1
+      fi
+      if choose_tooling_action "$env_name"; then
+        run_selected_action "$env_name" "$ACTION" "${EXTRA_ARGS[@]}"
+      fi
       ;;
     *)
       echo "Unknown action '$action'." >&2
@@ -5478,7 +5632,7 @@ while (($#)); do
         EXTRA_ARGS+=("$1")
       fi
       ;;
-    start|stop|restart|debug|sync|cert-sync|audit|providers)
+    start|stop|restart|debug|sync|cert-sync|audit|providers|tools|tooling|ui)
       if [[ -z "$ACTION" ]]; then
         ACTION="$1"
       else
@@ -5523,7 +5677,7 @@ if [[ -z "$ACTION" ]]; then
   if [[ -t 0 ]]; then
     INTERACTIVE_CONTROL_CENTER=true
   else
-    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync|audit|providers" >&2
+    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync|audit|providers|tools" >&2
     exit 1
   fi
 fi
