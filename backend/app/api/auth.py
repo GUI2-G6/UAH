@@ -21,7 +21,6 @@ from app.core.config import settings
 from app.core.validation import normalize_email, require_valid_email
 from app.core.rate_limit import enforce_ip_rate_limit, enforce_subject_rate_limit
 from app.api.deps import get_current_user as get_authenticated_user
-from app.services.deleted_identities import ensure_identity_not_blocked
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -130,13 +129,6 @@ def register(
     )
 
     normalized_email = require_valid_email(payload.email)
-    try:
-        ensure_identity_not_blocked(db, email=normalized_email)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This identity was deleted and cannot be reused",
-        )
 
     if db.query(User).filter(func.lower(User.email) == normalized_email).first():
         raise HTTPException(

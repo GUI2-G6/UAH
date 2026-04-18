@@ -499,7 +499,7 @@ class AuthSecurityTests(unittest.TestCase):
 
         self.assertEqual(str(auth_error.exception), "google_not_linked")
 
-    def test_deleted_identity_blocks_reregistration(self):
+    def test_deleted_identity_allows_reregistration_with_valid_invite(self):
         deleted_user = self._create_user(
             email="deleted-local@example.com",
             username="deleted-local@example.com",
@@ -516,8 +516,8 @@ class AuthSecurityTests(unittest.TestCase):
         self.db.add(invite)
         self.db.commit()
 
-        with self.assertRaises(HTTPException) as register_error:
-            auth_api.register(
+        with patch.object(account_api.settings, "EMAILS_ENABLED", False):
+            result = auth_api.register(
                 payload=UserRegister(
                     email="deleted-local@example.com",
                     password="Password123!",
@@ -530,63 +530,9 @@ class AuthSecurityTests(unittest.TestCase):
                 db=self.db,
             )
 
-        self.assertEqual(register_error.exception.status_code, 403)
-        self.assertEqual(register_error.exception.detail, "This identity was deleted and cannot be reused")
-
-    def test_deleted_google_identity_blocks_oauth_reentry(self):
-        oauth_user = self._create_user(
-            email="deleted-google@example.com",
-            username="deleted-google@example.com",
-            google_id="deleted-google-sub",
-            email_verified=True,
-        )
-
-        account_api.delete_account(response=Response(), db=self.db, current_user=oauth_user)
-
-        with self.assertRaises(ValueError) as auth_error:
-            GoogleAuthService.get_or_create_user(
-                db=self.db,
-                google_id="deleted-google-sub",
-                email="deleted-google@example.com",
-                full_name="Deleted Google",
-                picture_url=None,
-                email_verified=True,
-            )
-
-        self.assertEqual(str(auth_error.exception), "account_deleted")
-
-    def test_oauth_login_cleans_stale_tombstone_for_active_user(self):
-        user = self._create_user(
-            email="active-google@example.com",
-            username="active-google@example.com",
-            google_id="active-google-sub",
-            email_verified=True,
-        )
-        self.db.add(
-            DeletedIdentity(
-                email="active-google@example.com",
-                google_id="active-google-sub",
-                deleted_user_id=999,
-            )
-        )
-        self.db.commit()
-
-        resolved_user = GoogleAuthService.get_or_create_user(
-            db=self.db,
-            google_id="active-google-sub",
-            email="active-google@example.com",
-            full_name="Active User",
-            picture_url=None,
-            email_verified=True,
-        )
-
-        self.assertEqual(resolved_user.id, user.id)
-        stale_rows = (
-            self.db.query(DeletedIdentity)
-            .filter(DeletedIdentity.google_id == "active-google-sub")
-            .all()
-        )
-        self.assertEqual(stale_rows, [])
+        recreated = self.db.query(User).filter(User.email == "deleted-local@example.com").first()
+        self.assertIsNotNone(recreated)
+        self.assertEqual(result.user.email, "deleted-local@example.com")
 
     def test_send_verification_email_prefers_link_message(self):
         user = self._create_user(
@@ -640,6 +586,30 @@ class AuthSecurityTests(unittest.TestCase):
         consumed_after = self.db.query(Invite).filter(Invite.code == "CONSUMED-INVITE").first()
         self.assertIsNone(consumed_after)
         self.assertEqual(self.db.query(SavedJob).filter(SavedJob.user_id == creator.id).count(), 0)
+
+        reinvite_creator = self._create_user(
+            email="reinvite@example.com",
+            username="reinvite@example.com",
+            email_verified=True,
+        )
+        reinvite = Invite(code="REENTRY-INVITE", created_by=reinvite_creator.id, is_active=True)
+        self.db.add(reinvite)
+        self.db.commit()
+
+        with patch.object(account_api.settings, "EMAILS_ENABLED", False):
+            reentry = auth_api.register(
+                payload=UserRegister(
+                    email="creator-cleanup@example.com",
+                    password="Password123!",
+                    first_name="Re",
+                    last_name="Entry",
+                    invite_code="REENTRY-INVITE",
+                ),
+                request=_build_request(),
+                response=Response(),
+                db=self.db,
+            )
+        self.assertEqual(reentry.user.email, "creator-cleanup@example.com")
 
     def test_extension_client_token_resolves_with_standard_auth_dependency(self):
         user = self._create_user(email="dependency@example.com", username="dependency@example.com")

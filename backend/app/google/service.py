@@ -2,7 +2,6 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.models.user import User
 from app.core.validation import normalize_email
-from app.services.deleted_identities import ensure_identity_not_blocked
 
 
 class GoogleAuthService:
@@ -19,8 +18,6 @@ class GoogleAuthService:
         normalized_email = normalize_email(email)
         if not normalized_email:
             raise ValueError("Google profile email is missing")
-
-        ensure_identity_not_blocked(db, email=normalized_email, google_id=google_id)
 
         if not email_verified:
             raise ValueError("email_not_verified")
