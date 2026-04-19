@@ -51,60 +51,13 @@
                         <option>Accepted</option>
                     </select>
                 </template>
-                <Card variant="minimal" class="home-application-card">
-                    <Application :application="{
-                    company: 'Google',
-                    role: 'Software Engineer',
-                    dateSent: '4/11/2026',
-                    statusStep: 4,
-                    maxStep: 4,
-                    statusText: 'Accepted!',
-                    noResponse: false
-                    }" />
-                </Card>
-                <Card variant="minimal" class="home-application-card">
-                    <Application :application="{
-                    company: 'IBM',
-                    role: 'Data Analyst',
-                    dateSent: '4/11/2026',
-                    statusStep: 3,
-                    maxStep: 4,
-                    statusText: 'Offer',
-                    noResponse: false
-                    }" />
-                </Card>
-                <Card variant="minimal" class="home-application-card">
-                    <Application :application="{
-                    company: 'Apple',
-                    role: 'Server Manager',
-                    dateSent: '4/14/2026',
-                    statusStep: 2,
-                    maxStep: 4,
-                    statusText: 'Interview',
-                    noResponse: false
-                    }" />
-                </Card>
-                <Card variant="minimal" class="home-application-card">
-                    <Application :application="{
-                    company: 'Microsoft',
-                    role: 'Quality Assurance',
-                    dateSent: '4/15/2026',
-                    statusStep: 1,
-                    maxStep: 4,
-                    statusText: 'Applied',
-                    noResponse: false
-                    }" />
-                </Card>
-                <Card variant="minimal" class="home-application-card">
-                    <Application :application="{
-                    company: 'Nvidia',
-                    role: 'CEO',
-                    dateSent: '4/1/2026',
-                    statusStep: 1,
-                    maxStep: 4,
-                    statusText: 'Applied',
-                    noResponse: true
-                    }" />
+                <Card 
+                    v-for="(app, index) in applications"
+                    :key="index"
+                    varient="minimal"
+                    class="home-application-card"
+                >
+                    <Application :application="app" />
                 </Card>
             </Card>
         </div>
@@ -115,6 +68,7 @@
     import Card from "../components/Card.vue"
     import Application from "../components/Application.vue"
     import { getCurrentUser } from "../lib/auth.js";
+    import { ref } from "vue"
 
     export default{
         data() {
@@ -126,7 +80,54 @@
                     offers: 3,
                     rejected: 4,
                     recent_applications: []
-                }
+                },
+                applications: [
+                    {
+                        company: "Google",
+                        role: "Software Engineer",
+                        dateSent: "4/11/2026",
+                        statusStep: 4,
+                        maxStep: 4,
+                        statusText: "Accepted!",
+                        noResponse: false
+                    },
+                    {
+                        company: "IBM",
+                        role: "Data Analyst",
+                        dateSent: "4/11/2026",
+                        statusStep: 3,
+                        maxStep: 4,
+                        statusText: "Offer",
+                        noResponse: false
+                    },
+                    {
+                        company: "Apple",
+                        role: "Server Manager",
+                        dateSent: "4/14/2026",
+                        statusStep: 2,
+                        maxStep: 4,
+                        statusText: "Interview",
+                        noResponse: false
+                    },
+                    {
+                        company: "Microsoft",
+                        role: "Quality Assurance",
+                        dateSent: "4/15/2026",
+                        statusStep: 1,
+                        maxStep: 4,
+                        statusText: "Applied",
+                        noResponse: false
+                    },
+                    {
+                        company: "Nvidia",
+                        role: "CEO",
+                        dateSent: "4/1/2026",
+                        statusStep: 1,
+                        maxStep: 4,
+                        statusText: "Applied",
+                        noResponse: true
+                    }
+                ]
             }
         },
         components: {
