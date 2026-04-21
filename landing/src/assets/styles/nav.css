@@ -8,8 +8,8 @@
 }
 
 .nav-shell {
-  width: min(calc(100% - 32px), var(--content-width));
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
   min-height: var(--nav-height);
   display: flex;
   align-items: center;
@@ -26,9 +26,23 @@
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 14px;
+  gap: 7px;
   text-decoration: none;
+  width:450px;
   min-width: 0;
+  margin:10px;
+  background-color:rgb(255, 243, 221);
+  border-radius:8px;
+}
+
+#title {
+  font-weight:bold;
+  font-size:21px;
+  color:rgba(63, 98, 236);
+}
+#subtitle {
+  font-style:italic;
+  font-size:16px;
 }
 
 .brand-chip {

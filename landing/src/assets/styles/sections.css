@@ -4,10 +4,6 @@
   margin: 0 auto;
 }
 
-.hero {
-  padding: clamp(42px, 8vw, 86px) 0 36px;
-}
-
 .hero-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);

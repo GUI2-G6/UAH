@@ -4,10 +4,10 @@
     <div class="nav-shell">
       <div class="nav-inner">
         <a class="brand" href="#top" @click="closeMenu">
-          <span class="brand-chip" aria-hidden="true">UAH</span>
+          <img src="../images/logo.png" width="75" height="75" title="To Top"/>
           <span class="brand-copy">
-            <strong>Unified Application Hub</strong>
-            <span>Job search infrastructure for people</span>
+            <strong id="title" title="Title">Unified Application Hub</strong>
+            <span id="subtitle" title="Subtitle">Job applications made easy</span>
           </span>
         </a>
 

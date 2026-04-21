@@ -4,33 +4,6 @@
     <div class="section-shell">
       <div class="hero-layout">
         <div class="hero-copy">
-          <ul class="hero-tags" aria-label="UAH facts">
-            <li>Open source</li>
-            <li>Free forever</li>
-            <li>Beta live now</li>
-          </ul>
-
-          <div class="hero-mark">
-            <svg viewBox="0 0 620 160" role="img" aria-labelledby="uah-logo-title uah-logo-desc">
-              <title id="uah-logo-title">UAH wordmark</title>
-              <desc id="uah-logo-desc">Unified Application Hub wordmark.</desc>
-              <defs>
-                <linearGradient id="uah-fill" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stop-color="#1F5C99"></stop>
-                  <stop offset="100%" stop-color="#2D77BC"></stop>
-                </linearGradient>
-              </defs>
-              <rect x="0" y="22" width="620" height="116" rx="34" fill="url(#uah-fill)"></rect>
-              <rect x="24" y="0" width="132" height="26" rx="13" fill="#FF5757" opacity="0.9"></rect>
-              <rect x="166" y="0" width="168" height="26" rx="13" fill="#9FD2F3" opacity="0.9"></rect>
-              <rect x="344" y="0" width="124" height="26" rx="13" fill="#F6D9A6" opacity="0.95"></rect>
-              <rect x="478" y="0" width="118" height="26" rx="13" fill="#F6C445" opacity="0.95"></rect>
-              <text x="310" y="104" text-anchor="middle" font-size="92" font-weight="800" letter-spacing="10"
-                fill="#FFFFFF" font-family="Inter, Arial, sans-serif">UAH</text>
-            </svg>
-          </div>
-
-          <p class="hero-subtitle">Unified Application Hub</p>
           <h1>Your entire job search. One clean tool. No cost.</h1>
           <p class="hero-description">
             UAH brings job discovery and application tracking into a single, focused workspace — pulling from multiple
