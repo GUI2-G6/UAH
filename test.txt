@@ -115,3 +115,5 @@ add easy report issue persistient thing in a spot of the ui that is always layer
 make things auto save upon clicking off box or whatever in review readyness pipeline
 
 make it so invites can have an amount of uses chosen before expiration.
+
+re add local bypass, frontend render

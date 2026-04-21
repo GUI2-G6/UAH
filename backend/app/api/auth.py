@@ -171,8 +171,6 @@ def register(
         invite.is_active = False
     user.invite_code_used = invite.code
 
-    db.commit()
-    db.refresh(user)
     trigger_verification_email_flow(db=db, user=user)
 
     auth_client = resolve_auth_client(request)
