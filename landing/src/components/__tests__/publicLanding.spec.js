@@ -49,7 +49,7 @@ describe('public landing mail routing', () => {
     expect(partners.get('.partner-cta .button').attributes('href')).toBe(
       'mailto:partners@uahapp.com?subject=UAH Partnership Inquiry'
     )
-    expect(wishlist.get('form').attributes('action')).toBe('mailto:feedback@uahapp.com')
+    expect(wishlist.get('form').attributes('action')).toBeUndefined()
     expect(footerMailtoLinks).toContain('mailto:team@uahapp.com')
     expect(footerMailtoLinks).toContain('mailto:press@uahapp.com')
   })

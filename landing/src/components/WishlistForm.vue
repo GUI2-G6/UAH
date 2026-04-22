@@ -25,8 +25,7 @@
           </div>
 
           <div class="form-card">
-            <form id="wishlist-form" action="mailto:feedback@uahapp.com" method="post" enctype="text/plain"
-              @submit.prevent="handleSubmit">
+            <form id="wishlist-form" @submit.prevent="handleSubmit">
               <div class="form-grid">
                 <div class="form-row">
                   <div class="field">
