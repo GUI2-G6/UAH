@@ -120,6 +120,7 @@ services:
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
       SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
       SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-20}
+      BETA_ACCESS_NOTIFY_EMAIL: ${BETA_ACCESS_NOTIFY_EMAIL:-beta@uahapp.com}
 
       # OAuth and integrations
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}

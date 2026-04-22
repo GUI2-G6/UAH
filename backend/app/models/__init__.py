@@ -22,3 +22,4 @@ from app.models.apply_session import ApplySession, ApplySessionEvent  # noqa: F4
 from app.models.job import Job, ProviderSyncLog, QuotaUsage  # noqa: F401
 from app.models.invite import Invite  # noqa: F401
 from app.models.deleted_identity import DeletedIdentity  # noqa: F401
+from app.models.beta_access_request import BetaAccessRequest  # noqa: F401

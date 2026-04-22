@@ -16,7 +16,7 @@
       </p>
       <p class="auth-note auth-note--soft">
         Need approval first?
-        <a :href="betaRequestUrl">Request beta access</a>
+        <a href="#" @click.prevent="showBetaRequestForm = true">Request beta access</a>
       </p>
       <form @submit.prevent="register">
         <label class="auth-label" for="register-invite-code">Invite Code</label>
@@ -57,13 +57,34 @@
 
       <p v-if="message" class="auth-feedback auth-feedback--success">{{ message }}</p>
       <p v-if="error" class="auth-feedback auth-feedback--error">{{ error }}</p>
+      <div v-if="showBetaRequestForm" class="auth-note auth-note--soft beta-request-panel">
+        <strong>Beta access request</strong>
+        <p>Share the email we should review for invite approval.</p>
+        <form class="beta-request-form" @submit.prevent="submitBetaRequest">
+          <input
+            id="register-beta-request-email"
+            class="email-input"
+            type="email"
+            v-model.trim="betaRequestEmail"
+            autocomplete="email"
+            placeholder="you@example.com"
+            :disabled="betaRequestSubmitting"
+            required
+          />
+          <button class="submit-btn" type="submit" :disabled="betaRequestSubmitting || !betaRequestEmail">
+            {{ betaRequestSubmitting ? 'Submitting…' : 'Submit beta request' }}
+          </button>
+        </form>
+        <p v-if="betaRequestMessage" class="auth-feedback auth-feedback--success">{{ betaRequestMessage }}</p>
+        <p v-if="betaRequestError" class="auth-feedback auth-feedback--error">{{ betaRequestError }}</p>
+      </div>
 
       <div class="signup-row">
         <span>Already have an account?</span>
         <a @click.prevent="goToLogin" href="#">Sign in</a>
       </div>
       <div class="signup-row">
-        <a :href="betaRequestUrl">Request beta access</a>
+        <a href="#" @click.prevent="showBetaRequestForm = true">Request beta access</a>
       </div>
     </div>
   </div>
@@ -81,7 +102,6 @@ export default {
   },
   data() {
     return {
-      betaRequestUrl: 'mailto:beta@uahapp.com?subject=UAH Beta Access Request',
       inviteCode: '',
       email: '',
       confirmEmail: '',
@@ -94,6 +114,11 @@ export default {
       inviteCodeError: null,
       message: null,
       error: null,
+      showBetaRequestForm: false,
+      betaRequestEmail: '',
+      betaRequestSubmitting: false,
+      betaRequestMessage: '',
+      betaRequestError: '',
     }
   },
   mounted() {
@@ -170,6 +195,31 @@ export default {
     },
     goToLanding() {
       this.$router.push('/landing')
+    },
+    async submitBetaRequest() {
+      this.betaRequestSubmitting = true
+      this.betaRequestMessage = null
+      this.betaRequestError = null
+      try {
+        const res = await fetch('/api/public/beta-access', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: this.betaRequestEmail,
+            source_surface: 'frontend_register',
+          }),
+        })
+        const payload = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          throw new Error(payload?.detail || payload?.message || `Request failed (HTTP ${res.status})`)
+        }
+        this.betaRequestMessage = payload?.message || 'Thanks - your beta access request has been received.'
+        this.betaRequestEmail = ''
+      } catch (error) {
+        this.betaRequestError = error?.message || 'Unable to submit beta request right now.'
+      } finally {
+        this.betaRequestSubmitting = false
+      }
     },
   },
 }

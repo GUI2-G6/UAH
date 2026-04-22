@@ -4482,6 +4482,7 @@ beta_start() {
   local beta_backend_running="false"
   local beta_backend_port_ok="false"
   local beta_ollama_ok="false"
+  local -a required_beta_services=(backend frontend db redis cloudflared landing)
   local beta_bridge
   local infra_bridge
   local beta_br
@@ -4499,6 +4500,9 @@ beta_start() {
 
   echo "[2/7] Starting containers ($(build_mode_label))..."
   run_compose_up_with_build_mode beta
+
+  echo "[2b/7] Ensuring required beta services are running..."
+  run_compose beta up -d "${required_beta_services[@]}"
 
   echo "[3/7] Applying Alembic migrations and refreshing runtime services..."
   if ! run_live_schema_reconcile beta true; then

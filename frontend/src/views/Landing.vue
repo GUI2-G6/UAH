@@ -30,7 +30,7 @@
           </p>
           <div class="actions">
             <router-link class="button secondary" to="/register">Create account</router-link>
-            <a class="button tertiary" :href="betaRequestUrl">Request beta access</a>
+            <button class="button tertiary" type="button" @click="showBetaRequestForm = true">Request beta access</button>
           </div>
         </article>
       </div>
@@ -49,9 +49,33 @@
             <a class="button tertiary" :href="marketingUrl" target="_blank" rel="noopener noreferrer">
               Open the public landing page
             </a>
-            <a class="button tertiary" :href="betaRequestUrl">Request beta access</a>
+            <button class="button tertiary" type="button" @click="showBetaRequestForm = true">Request beta access</button>
           </div>
         </div>
+      </article>
+
+      <article v-if="showBetaRequestForm" class="path-card path-card-request">
+        <p class="path-label">Access request</p>
+        <h2>Submit a beta request</h2>
+        <p class="path-copy">
+          Share the email we should contact for invite review. We will follow up if your request is selected.
+        </p>
+        <form class="request-form" @submit.prevent="submitBetaRequest">
+          <input
+            v-model.trim="betaRequestEmail"
+            class="request-input"
+            type="email"
+            autocomplete="email"
+            required
+            :disabled="betaRequestSubmitting"
+            placeholder="you@example.com"
+          />
+          <button class="button secondary" type="submit" :disabled="betaRequestSubmitting || !betaRequestEmail">
+            {{ betaRequestSubmitting ? 'Submitting…' : 'Submit request' }}
+          </button>
+        </form>
+        <p v-if="betaRequestMessage" class="request-feedback request-feedback--success">{{ betaRequestMessage }}</p>
+        <p v-if="betaRequestError" class="request-feedback request-feedback--error">{{ betaRequestError }}</p>
       </article>
 
       <p class="meta">
@@ -70,12 +94,43 @@ export default {
   data() {
     return {
       marketingUrl: DEFAULT_MARKETING_URL,
-      betaRequestUrl: 'mailto:beta@uahapp.com?subject=UAH Beta Access Request',
+      showBetaRequestForm: false,
+      betaRequestEmail: '',
+      betaRequestSubmitting: false,
+      betaRequestMessage: '',
+      betaRequestError: '',
     }
   },
   created() {
     const configured = String(import.meta.env.VITE_PUBLIC_LANDING_URL || '').trim()
     this.marketingUrl = configured || DEFAULT_MARKETING_URL
+  },
+  methods: {
+    async submitBetaRequest() {
+      this.betaRequestSubmitting = true
+      this.betaRequestMessage = ''
+      this.betaRequestError = ''
+      try {
+        const res = await fetch('/api/public/beta-access', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: this.betaRequestEmail,
+            source_surface: 'frontend_landing',
+          }),
+        })
+        const payload = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          throw new Error(payload?.detail || payload?.message || `Request failed (HTTP ${res.status})`)
+        }
+        this.betaRequestMessage = payload?.message || 'Thanks - your beta access request has been received.'
+        this.betaRequestEmail = ''
+      } catch (error) {
+        this.betaRequestError = error instanceof Error ? error.message : 'Unable to submit beta request.'
+      } finally {
+        this.betaRequestSubmitting = false
+      }
+    },
   },
 }
 </script>
@@ -149,6 +204,10 @@ h1 {
   margin-top: 1rem;
 }
 
+.path-card-request {
+  margin-top: 1rem;
+}
+
 .path-label {
   margin: 0;
   font-size: 0.76rem;
@@ -191,6 +250,8 @@ h2 {
   border-radius: 999px;
   font-weight: 700;
   text-decoration: none;
+  border: none;
+  cursor: pointer;
 }
 
 .button.primary {
@@ -214,6 +275,34 @@ h2 {
   grid-template-columns: minmax(0, 1.2fr) minmax(220px, 0.8fr);
   gap: 1rem;
   align-items: start;
+}
+
+.request-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.request-input {
+  flex: 1 1 280px;
+  min-height: 44px;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  border-radius: 12px;
+  padding: 0.65rem 0.8rem;
+  font: inherit;
+}
+
+.request-feedback {
+  margin: 0;
+  font-size: 0.94rem;
+}
+
+.request-feedback--success {
+  color: #166534;
+}
+
+.request-feedback--error {
+  color: #b91c1c;
 }
 
 .meta {

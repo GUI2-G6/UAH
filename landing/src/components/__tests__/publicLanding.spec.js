@@ -27,7 +27,7 @@ function mountHeader() {
 }
 
 describe('public landing mail routing', () => {
-  it('routes beta, partnership, feedback, and footer contact actions to the right inboxes', () => {
+  it('keeps direct mail routing for partnerships/footer while beta access uses internal submit', () => {
     const beta = mount(BetaAccess)
     const partners = mount(PartnersSection)
     const wishlist = mount(WishlistForm)
@@ -43,9 +43,8 @@ describe('public landing mail routing', () => {
     })
     const footerMailtoLinks = footer.findAll('.footer-links a[href^="mailto:"]').map((link) => link.attributes('href'))
 
-    expect(beta.get('.access-links .button').attributes('href')).toBe(
-      'mailto:beta@uahapp.com?subject=UAH Beta Access Request'
-    )
+    expect(beta.get('form.access-form').exists()).toBe(true)
+    expect(beta.get('button[type="submit"]').text()).toContain('Submit request')
     expect(partners.get('.partner-cta .button').attributes('href')).toBe(
       'mailto:partners@uahapp.com?subject=UAH Partnership Inquiry'
     )

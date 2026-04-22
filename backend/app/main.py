@@ -31,6 +31,7 @@ from app.api.applicant_profile import router as profile_router
 from app.api.apply_session import router as apply_session_router
 from app.api.integrations import router as integrations_router
 from app.api.gmail import router as gmail_router
+from app.api.beta_access import router as beta_access_router
 from app.core.config import settings
 from app.core.runtime_environment import (
     generated_docs_auth_required,
@@ -52,6 +53,7 @@ from app.models.applicant_profile import ApplicantProfile
 from app.models.muse_location import MuseSupportedLocation
 from app.models.apply_session import ApplySession, ApplySessionEvent
 from app.models.invite import Invite
+from app.models.beta_access_request import BetaAccessRequest
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,7 @@ LEGACY_STARTUP_TABLES = [
     ApplySession.__table__,
     ApplySessionEvent.__table__,
     Invite.__table__,
+    BetaAccessRequest.__table__,
 ]
 
 # Fail fast on missing critical secrets when running the backend.
@@ -564,6 +567,7 @@ app.include_router(profile_router)
 app.include_router(apply_session_router)
 app.include_router(integrations_router)
 app.include_router(gmail_router)
+app.include_router(beta_access_router)
 
 
 # ---------------------------------------------------------------------------
