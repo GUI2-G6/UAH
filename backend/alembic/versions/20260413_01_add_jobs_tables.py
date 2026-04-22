@@ -1,7 +1,7 @@
 """add jobs catalog tables
 
 Revision ID: 20260413_01
-Revises:
+Revises: 20260401_01
 Create Date: 2026-04-13 00:00:00.000000
 """
 
@@ -13,7 +13,7 @@ from sqlalchemy.dialects import postgresql
 
 
 revision = "20260413_01"
-down_revision = None
+down_revision = "20260401_01"
 branch_labels = None
 depends_on = None
 
