@@ -2,42 +2,61 @@
   <section class="landing-gateway">
     <div class="landing-card">
       <p class="eyebrow">Unified Application Hub</p>
-      <h1>Choose the right UAH starting point.</h1>
+      <h1>Beta access is invite-only.</h1>
       <p class="subtitle">
-        If you already have beta access, continue into the app here. If you are still learning what UAH
-        does, start with the public overview first.
+        Use the path that matches where you are right now: sign in if you already have an account, create
+        one if you were invited, or request beta access first if you still need approval.
       </p>
 
       <div class="path-grid">
         <article class="path-card path-card-primary">
-          <p class="path-label">Beta app</p>
-          <h2>Already invited to the beta?</h2>
+          <p class="path-label">Returning users</p>
+          <h2>Already have an account?</h2>
           <p class="path-copy">
-            Sign in to pick up where you left off, or create your account if your beta access has been
-            approved but you have not registered yet.
+            Sign in to the UAH beta with your email and password. If you already linked Google in Settings,
+            you can use Google from the sign-in page too.
           </p>
           <div class="actions">
             <router-link class="button primary" to="/login">Sign in</router-link>
-            <router-link class="button secondary" to="/register">Create account</router-link>
           </div>
         </article>
 
-        <article class="path-card">
-          <p class="path-label">Public overview</p>
-          <h2>Need the full overview first?</h2>
+        <article class="path-card path-card-invite">
+          <p class="path-label">Invited beta users</p>
+          <h2>Have an invite code?</h2>
           <p class="path-copy">
-            Read the public landing page for product details, current beta status, the wishlist form, and
-            the best route for requesting access.
+            Create your account here if your beta access was approved and you already have the invite code
+            you need for registration.
           </p>
-          <a class="button tertiary" :href="marketingUrl" target="_blank" rel="noopener noreferrer">
-            Open the public landing page
-          </a>
+          <div class="actions">
+            <router-link class="button secondary" to="/register">Create account</router-link>
+            <a class="button tertiary" :href="betaRequestUrl">Request beta access</a>
+          </div>
         </article>
       </div>
 
+      <article class="path-card path-card-support">
+        <p class="path-label">Still deciding?</p>
+        <div class="support-grid">
+          <div class="support-copy">
+            <h2>Need the full overview first?</h2>
+            <p class="path-copy">
+              Read the public landing page for product details, current beta status, the wishlist form, and
+              the best route for requesting access.
+            </p>
+          </div>
+          <div class="actions actions-vertical">
+            <a class="button tertiary" :href="marketingUrl" target="_blank" rel="noopener noreferrer">
+              Open the public landing page
+            </a>
+            <a class="button tertiary" :href="betaRequestUrl">Request beta access</a>
+          </div>
+        </div>
+      </article>
+
       <p class="meta">
-        Opening the app without an active session sends you here so returning beta users and first-time
-        visitors each get a clearer next step.
+        Opening the app without an active session sends you here first so returning users, invited beta
+        users, and new visitors each get a clear next step.
       </p>
     </div>
   </section>
@@ -51,6 +70,7 @@ export default {
   data() {
     return {
       marketingUrl: DEFAULT_MARKETING_URL,
+      betaRequestUrl: 'mailto:beta@uahapp.com?subject=UAH Beta Access Request',
     }
   },
   created() {
@@ -121,6 +141,14 @@ h1 {
   background: linear-gradient(180deg, rgba(15, 111, 143, 0.08) 0%, rgba(248, 250, 252, 0.92) 100%);
 }
 
+.path-card-invite {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.04) 0%, rgba(248, 250, 252, 0.94) 100%);
+}
+
+.path-card-support {
+  margin-top: 1rem;
+}
+
 .path-label {
   margin: 0;
   font-size: 0.76rem;
@@ -147,6 +175,11 @@ h2 {
   display: flex;
   flex-wrap: wrap;
   gap: 0.8rem;
+}
+
+.actions-vertical {
+  flex-direction: column;
+  align-items: stretch;
 }
 
 .button {
@@ -176,6 +209,13 @@ h2 {
   background: #ffffff;
 }
 
+.support-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(220px, 0.8fr);
+  gap: 1rem;
+  align-items: start;
+}
+
 .meta {
   margin-top: 1.2rem;
   color: #475569;
@@ -189,6 +229,10 @@ h2 {
   }
 
   .path-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .support-grid {
     grid-template-columns: 1fr;
   }
 

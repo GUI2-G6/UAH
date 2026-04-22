@@ -1,8 +1,23 @@
 <template>
   <div class="page">
     <div class="auth-card">
-      <h1>Create account</h1>
-      <p class="subtitle">Create an account to access UAH</p>
+      <button
+        type="button"
+        class="landing-btn landing-btn--back"
+        :disabled="loading || oauthRedirecting"
+        @click="goToLanding"
+      >
+        Back to access options
+      </button>
+      <h1>Create your beta account</h1>
+      <p class="subtitle">
+        This invite-only beta registration flow is for approved users only. You need a valid beta invite code
+        to create your account and start using UAH.
+      </p>
+      <p class="auth-note auth-note--soft">
+        Need approval first?
+        <a :href="betaRequestUrl">Request beta access</a>
+      </p>
       <form @submit.prevent="register">
         <label class="auth-label" for="register-invite-code">Invite Code</label>
         <input
@@ -34,19 +49,11 @@
           {{ loading ? 'Creating…' : 'Create account' }}
         </button>
       </form>
-
-      <div class="oauth-divider" aria-hidden="true">
-        <span>or</span>
+      <div class="auth-note">
+        <strong>Google sign-in comes later.</strong>
+        After you create your account and sign in normally, you can optionally link Google later from
+        Settings under <strong>Sign-in Methods</strong>.
       </div>
-
-      <button
-        type="button"
-        class="oauth-btn"
-        :disabled="loading || oauthRedirecting"
-        @click="startGoogleOAuth"
-      >
-        {{ oauthRedirecting ? 'Redirecting to Google…' : 'Continue with Google' }}
-      </button>
 
       <p v-if="message" class="auth-feedback auth-feedback--success">{{ message }}</p>
       <p v-if="error" class="auth-feedback auth-feedback--error">{{ error }}</p>
@@ -54,6 +61,9 @@
       <div class="signup-row">
         <span>Already have an account?</span>
         <a @click.prevent="goToLogin" href="#">Sign in</a>
+      </div>
+      <div class="signup-row">
+        <a :href="betaRequestUrl">Request beta access</a>
       </div>
     </div>
   </div>
@@ -71,6 +81,7 @@ export default {
   },
   data() {
     return {
+      betaRequestUrl: 'mailto:beta@uahapp.com?subject=UAH Beta Access Request',
       inviteCode: '',
       email: '',
       confirmEmail: '',
@@ -89,10 +100,16 @@ export default {
     const oauthError = this.$route?.query?.oauth
     const reason = this.$route?.query?.reason
     if (oauthError === 'error') {
-      this.error = `Google sign-in failed${reason ? ` (${String(reason).replaceAll('_', ' ')})` : ''}`
+      this.error = this.googleOAuthErrorMessage(reason)
     }
   },
   methods: {
+    googleOAuthErrorMessage(reason) {
+      if (reason === 'google_not_linked') {
+        return 'Google sign-in is only available after you create an account and link Google later from Settings.'
+      }
+      return `Google sign-in failed${reason ? ` (${String(reason).replaceAll('_', ' ')})` : ''}`
+    },
     async register() {
       this.loading = true
       this.inviteCodeError = null
@@ -151,13 +168,8 @@ export default {
     goToLogin() {
       this.$router.push('/login')
     },
-    startGoogleOAuth() {
-      this.error = null
-      this.oauthRedirecting = true
-      const next = typeof this.$route?.query?.next === 'string' ? this.$route.query.next : ''
-      const params = new URLSearchParams({ intent: 'register' })
-      if (next) params.set('next', next)
-      window.location.assign(`/api/auth/google?${params.toString()}`)
+    goToLanding() {
+      this.$router.push('/landing')
     },
   },
 }

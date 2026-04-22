@@ -31,7 +31,9 @@ describe('guest entry experience', () => {
   it('clearly separates beta access actions from the public product overview', () => {
     const wrapper = mount(Landing, globalMountOptions)
 
-    expect(wrapper.text()).toContain('Already invited to the beta?')
+    expect(wrapper.text()).toContain('Beta access is invite-only')
+    expect(wrapper.text()).toContain('Already have an account?')
+    expect(wrapper.text()).toContain('Request beta access')
     expect(wrapper.text()).toContain('Need the full overview first?')
     expect(wrapper.text()).toContain('Open the public landing page')
   })
