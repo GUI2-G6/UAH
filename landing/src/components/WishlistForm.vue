@@ -62,10 +62,29 @@
                   </label>
                 </div>
                 <div class="form-actions">
-                  <button class="button" type="submit">Send Feedback</button>
-                  <p class="small-note">Opens your email client with your responses pre-filled. We don't collect
-                    anything from this page directly.</p>
+                  <button
+                    class="button"
+                    type="submit"
+                    :disabled="sending"
+                    :aria-busy="sending"
+                  >
+                    {{ sending ? 'Opening email…' : 'Send feedback' }}
+                  </button>
+                  <p class="small-note">
+                    This opens your email app with a pre-filled message. We do not receive your answers on this page; they
+                    leave only if you send the email.
+                  </p>
                 </div>
+                <p
+                  v-if="feedback"
+                  id="wishlist-feedback"
+                  class="wishlist-feedback"
+                  :class="feedbackClass"
+                  role="status"
+                  aria-live="polite"
+                >
+                  {{ feedback }}
+                </p>
                 <p class="small-note">We read every message. Your email is never sold or shared.</p>
               </div>
             </form>
@@ -77,7 +96,7 @@
 </template>
 
 <script setup>
-import { reactive } from 'vue'
+import { computed, reactive, ref } from 'vue'
 
 const form = reactive({
   name: '',
@@ -88,6 +107,22 @@ const form = reactive({
   interested_beta: false,
 })
 
+const feedback = ref('')
+const feedbackKind = ref('idle')
+const sending = ref(false)
+const lastAttemptAt = ref(0)
+const MIN_MS_BETWEEN_ATTEMPTS = 5000
+
+const feedbackClass = computed(() => ({
+  'wishlist-feedback--success': feedbackKind.value === 'success',
+  'wishlist-feedback--warn': feedbackKind.value === 'warn',
+}))
+
+function setFeedback(kind, text) {
+  feedbackKind.value = kind
+  feedback.value = text
+}
+
 function valueOrFallback(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : 'Not provided'
 }
@@ -97,6 +132,18 @@ function yesOrNo(value) {
 }
 
 function handleSubmit() {
+  const now = Date.now()
+  if (now - lastAttemptAt.value < MIN_MS_BETWEEN_ATTEMPTS) {
+    setFeedback(
+      'warn',
+      'Please wait a few seconds before sending again. This limits repeated requests from scripts or double-clicks.'
+    )
+    return
+  }
+  lastAttemptAt.value = now
+  setFeedback('idle', '')
+  sending.value = true
+
   const lines = [
     'UAH Feature Request / Interest',
     '',
@@ -110,11 +157,47 @@ function handleSubmit() {
     valueOrFallback(form.features),
     '',
     'Notify when public access opens: ' + yesOrNo(form.notify_public),
-    'Interested in beta access: ' + yesOrNo(form.interested_beta)
+    'Interested in beta access: ' + yesOrNo(form.interested_beta),
   ]
 
-  window.location.href = 'mailto:feedback@uahapp.com'
-    + '?subject=' + encodeURIComponent('UAH Feature Request / Interest')
-    + '&body=' + encodeURIComponent(lines.join('\r\n'))
+  const href =
+    'mailto:feedback@uahapp.com' +
+    '?subject=' +
+    encodeURIComponent('UAH Feature Request / Interest') +
+    '&body=' +
+    encodeURIComponent(lines.join('\r\n'))
+
+  window.setTimeout(() => {
+    try {
+      window.location.href = href
+      setFeedback(
+        'success',
+        'We asked your system to open your email app with this feedback pre-filled. Send the message from there to reach us. If nothing opened, copy feedback@uahapp.com and paste your text manually.'
+      )
+    } catch {
+      setFeedback(
+        'warn',
+        'Your browser could not start the email handoff. You can still email feedback@uahapp.com and paste the same details.'
+      )
+    } finally {
+      sending.value = false
+    }
+  }, 0)
 }
 </script>
+
+<style scoped>
+.wishlist-feedback {
+  margin: 0.35rem 0 0;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.wishlist-feedback--success {
+  color: #137333;
+}
+
+.wishlist-feedback--warn {
+  color: #7a4e00;
+}
+</style>

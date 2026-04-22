@@ -17,7 +17,7 @@
               request below.
             </p>
             <div class="access-links">
-              <form class="access-form" @submit.prevent="submitRequest">
+              <form class="access-form" @submit.prevent="submitRequest" novalidate>
                 <label class="access-label" for="beta-request-email">Request beta access</label>
                 <div class="access-form-row">
                   <input
@@ -26,15 +26,32 @@
                     class="access-input"
                     type="email"
                     autocomplete="email"
+                    inputmode="email"
                     required
                     :disabled="submitting"
+                    :aria-invalid="feedbackKind === 'error' ? 'true' : 'false'"
+                    :aria-describedby="feedback ? 'beta-access-feedback' : undefined"
                     placeholder="you@example.com"
                   />
-                  <button class="button" type="submit" :disabled="submitting || !email">
+                  <button
+                    class="button"
+                    type="submit"
+                    :disabled="submitting || !email"
+                    :aria-busy="submitting"
+                  >
                     {{ submitting ? 'Sending...' : 'Submit request' }}
                   </button>
                 </div>
-                <p v-if="feedback" class="access-feedback" :class="{ 'access-feedback-error': feedbackIsError }">{{ feedback }}</p>
+                <p
+                  v-if="feedback"
+                  id="beta-access-feedback"
+                  class="access-feedback"
+                  :class="feedbackClass"
+                  role="status"
+                  aria-live="polite"
+                >
+                  {{ feedback }}
+                </p>
               </form>
               <a class="button-secondary" href="https://beta.uahapp.com" target="_blank"
                 rel="noopener noreferrer">Visit beta.uahapp.com</a>
@@ -58,16 +75,40 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { messageFromApiFailure } from '../lib/apiErrorMessage.js'
 
 const email = ref('')
 const feedback = ref('')
-const feedbackIsError = ref(false)
+const feedbackKind = ref('idle')
 const submitting = ref(false)
+const lastAttemptAt = ref(0)
+
+const MIN_MS_BETWEEN_ATTEMPTS = 3500
+
+const feedbackClass = computed(() => ({
+  'access-feedback--success': feedbackKind.value === 'success',
+  'access-feedback--warn': feedbackKind.value === 'warn',
+  'access-feedback--error': feedbackKind.value === 'error',
+}))
+
+function setFeedback(kind, text) {
+  feedbackKind.value = kind
+  feedback.value = text
+}
 
 async function submitRequest() {
-  feedback.value = ''
-  feedbackIsError.value = false
+  const now = Date.now()
+  if (now - lastAttemptAt.value < MIN_MS_BETWEEN_ATTEMPTS) {
+    setFeedback(
+      'warn',
+      'Please wait a few seconds between attempts. This slows down accidental double-clicks and automated abuse.'
+    )
+    return
+  }
+  lastAttemptAt.value = now
+
+  setFeedback('idle', '')
   submitting.value = true
 
   try {
@@ -82,15 +123,18 @@ async function submitRequest() {
 
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) {
-      const errorMessage = payload?.detail || payload?.message || `Request failed (HTTP ${response.status}).`
-      throw new Error(errorMessage)
+      if (response.status === 429) {
+        setFeedback('warn', messageFromApiFailure(response, payload))
+      } else {
+        setFeedback('error', messageFromApiFailure(response, payload))
+      }
+      return
     }
 
-    feedback.value = payload?.message || 'Thanks - your beta access request has been received.'
+    setFeedback('success', payload?.message || 'Thanks — we received your request. If you are selected for beta, we will follow up at the email you provided.')
     email.value = ''
   } catch (error) {
-    feedbackIsError.value = true
-    feedback.value = error instanceof Error ? error.message : 'Unable to submit request right now.'
+    setFeedback('error', error instanceof Error ? error.message : 'Could not reach the server. Check your connection and try again.')
   } finally {
     submitting.value = false
   }
@@ -126,11 +170,19 @@ async function submitRequest() {
 
 .access-feedback {
   margin: 0;
-  color: #137333;
   font-size: 0.92rem;
+  line-height: 1.45;
 }
 
-.access-feedback-error {
+.access-feedback--success {
+  color: #137333;
+}
+
+.access-feedback--warn {
+  color: #7a4e00;
+}
+
+.access-feedback--error {
   color: #b3261e;
 }
 </style>

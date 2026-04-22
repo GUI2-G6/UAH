@@ -40,8 +40,12 @@
           </article>
         </div>
 
+        <p v-if="refreshNote" class="status-refresh-note" role="status" aria-live="polite">
+          {{ refreshNote }}
+        </p>
+
         <div class="status-actions">
-          <button class="button-secondary" type="button" @click="loadStatus" :disabled="loading">
+          <button class="button-secondary" type="button" @click="loadStatus(true)" :disabled="loading">
             {{ loading ? 'Refreshing...' : 'Refresh status' }}
           </button>
           <RouterLink class="button-secondary" to="/provider-requests">Report provider concern</RouterLink>
@@ -54,9 +58,13 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import { messageFromApiFailure } from '../lib/apiErrorMessage.js'
 
 const loading = ref(true)
 const error = ref('')
+const refreshNote = ref('')
+const lastManualRefreshAt = ref(0)
+const MIN_MS_BETWEEN_MANUAL_REFRESH = 3500
 const statusPayload = ref({
   status: 'degraded',
   overall: 'degraded',
@@ -112,13 +120,25 @@ function formatTimestamp(value) {
   return parsed.toLocaleString()
 }
 
-async function loadStatus() {
+async function loadStatus(fromUser = false) {
+  if (fromUser) {
+    const now = Date.now()
+    if (now - lastManualRefreshAt.value < MIN_MS_BETWEEN_MANUAL_REFRESH) {
+      refreshNote.value =
+        'Please wait a few seconds between refreshes. This keeps the page gentle on the status service.'
+      return
+    }
+    lastManualRefreshAt.value = now
+  }
+  refreshNote.value = ''
   loading.value = true
   error.value = ''
   try {
     const response = await fetch('/api/status')
     if (!response.ok) {
-      throw new Error(`Status endpoint returned HTTP ${response.status}.`)
+      const payload = await response.json().catch(() => ({}))
+      const msg = messageFromApiFailure(response, payload)
+      throw new Error(msg || `Status endpoint returned HTTP ${response.status}.`)
     }
     const contentType = response.headers?.get?.('content-type') || ''
     if (contentType && !contentType.includes('application/json')) {
@@ -142,13 +162,26 @@ async function loadStatus() {
     }
     statusPayload.value = payload
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Unknown status error.'
+    if (err instanceof TypeError) {
+      error.value = messageFromApiFailure({ status: 0 }, null)
+    } else {
+      error.value = err instanceof Error ? err.message : 'Unknown status error.'
+    }
   } finally {
     loading.value = false
   }
 }
 
 onMounted(() => {
-  loadStatus()
+  loadStatus(false)
 })
 </script>
+
+<style scoped>
+.status-refresh-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: #7a4e00;
+}
+</style>

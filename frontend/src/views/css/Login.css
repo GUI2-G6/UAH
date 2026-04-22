@@ -114,6 +114,10 @@
   color: var(--color-danger-600);
 }
 
+.auth-feedback--warn {
+  color: #b45309;
+}
+
 .auth-feedback--success {
   color: var(--color-success-600);
 }

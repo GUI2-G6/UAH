@@ -74,8 +74,18 @@
             {{ betaRequestSubmitting ? 'Submitting…' : 'Submit request' }}
           </button>
         </form>
-        <p v-if="betaRequestMessage" class="request-feedback request-feedback--success">{{ betaRequestMessage }}</p>
-        <p v-if="betaRequestError" class="request-feedback request-feedback--error">{{ betaRequestError }}</p>
+        <p v-if="betaRequestMessage" class="request-feedback request-feedback--success" role="status" aria-live="polite">
+          {{ betaRequestMessage }}
+        </p>
+        <p
+          v-if="betaRequestError"
+          class="request-feedback"
+          :class="betaRequestErrorIsLimit ? 'request-feedback--warn' : 'request-feedback--error'"
+          role="status"
+          aria-live="polite"
+        >
+          {{ betaRequestError }}
+        </p>
       </article>
 
       <p class="meta">
@@ -87,7 +97,10 @@
 </template>
 
 <script>
+import { messageFromApiFailure } from '../lib/apiErrorMessage.js'
+
 const DEFAULT_MARKETING_URL = 'https://uahapp.com'
+const MIN_MS_BETWEEN_BETA_REQUESTS = 3500
 
 export default {
   name: 'Landing',
@@ -99,6 +112,8 @@ export default {
       betaRequestSubmitting: false,
       betaRequestMessage: '',
       betaRequestError: '',
+      betaRequestErrorIsLimit: false,
+      lastBetaRequestAttemptAt: 0,
     }
   },
   created() {
@@ -107,9 +122,18 @@ export default {
   },
   methods: {
     async submitBetaRequest() {
-      this.betaRequestSubmitting = true
       this.betaRequestMessage = ''
       this.betaRequestError = ''
+      this.betaRequestErrorIsLimit = false
+      const now = Date.now()
+      if (now - this.lastBetaRequestAttemptAt < MIN_MS_BETWEEN_BETA_REQUESTS) {
+        this.betaRequestError =
+          'Please wait a few seconds between attempts. This slows accidental double-clicks and automated abuse.'
+        this.betaRequestErrorIsLimit = true
+        return
+      }
+      this.lastBetaRequestAttemptAt = now
+      this.betaRequestSubmitting = true
       try {
         const res = await fetch('/api/public/beta-access', {
           method: 'POST',
@@ -121,12 +145,19 @@ export default {
         })
         const payload = await res.json().catch(() => ({}))
         if (!res.ok) {
-          throw new Error(payload?.detail || payload?.message || `Request failed (HTTP ${res.status})`)
+          this.betaRequestError = messageFromApiFailure(res, payload)
+          this.betaRequestErrorIsLimit = res.status === 429
+          return
         }
         this.betaRequestMessage = payload?.message || 'Thanks - your beta access request has been received.'
         this.betaRequestEmail = ''
       } catch (error) {
-        this.betaRequestError = error instanceof Error ? error.message : 'Unable to submit beta request.'
+        this.betaRequestError =
+          error instanceof TypeError
+            ? messageFromApiFailure({ status: 0 }, null)
+            : error instanceof Error
+              ? error.message
+              : 'Unable to submit beta request.'
       } finally {
         this.betaRequestSubmitting = false
       }
@@ -303,6 +334,10 @@ h2 {
 
 .request-feedback--error {
   color: #b91c1c;
+}
+
+.request-feedback--warn {
+  color: #b45309;
 }
 
 .meta {
