@@ -46,46 +46,18 @@ from app.services.geolocation import ensure_city_dataset
 from app.services.muse_location_index import ensure_muse_location_index
 from app.services.parse_queue import start_queue_worker, stop_queue_worker, reconcile_stale_parse_jobs
 import app.models  # noqa: F401 — ensure all models are registered
-from app.models.user import User, SavedJob
-from app.models.resume import Resume
-from app.models.parse_job import ParseJob
-from app.models.applicant_profile import ApplicantProfile
-from app.models.muse_location import MuseSupportedLocation
-from app.models.apply_session import ApplySession, ApplySessionEvent
-from app.models.invite import Invite
-from app.models.beta_access_request import BetaAccessRequest
 
 logger = logging.getLogger(__name__)
-
-# These tables still rely on startup-time `create_all()` support for local/dev
-# compatibility. The newer jobs catalog schema is tracked through Alembic.
-LEGACY_STARTUP_TABLES = [
-    User.__table__,
-    SavedJob.__table__,
-    Resume.__table__,
-    ParseJob.__table__,
-    ApplicantProfile.__table__,
-    MuseSupportedLocation.__table__,
-    ApplySession.__table__,
-    ApplySessionEvent.__table__,
-    Invite.__table__,
-    BetaAccessRequest.__table__,
-]
 
 # Fail fast on missing critical secrets when running the backend.
 settings.require_secrets()
 
 
 def _ensure_users_table_columns(engine) -> None:
-    """Dev safety net: add missing columns when DB schema lags behind models.
+    """Dev safety net: add missing user columns on very old DB volumes.
 
-    This project currently uses `Base.metadata.create_all()`, which does not
-    apply schema migrations to existing tables. If the `users` table already
-    exists (e.g. persisted Docker volume) but the model gained new columns,
-    SQLAlchemy will raise runtime errors like:
-      psycopg2.errors.UndefinedColumn: column users.<col> does not exist
-
-    Long-term fix: introduce Alembic migrations.
+    Core schema is delivered by Alembic. This only patches legacy volumes that predate
+    a migration, so ORM access does not fail with undefined column errors.
     """
 
     try:
@@ -434,9 +406,9 @@ async def lifespan(app: FastAPI):
     init_engine()
     engine = get_engine()
 
-    # Local/dev startup still carries a small compatibility layer for older
-    # volumes so contributors can keep moving even when their schema lags.
-    Base.metadata.create_all(bind=engine, tables=LEGACY_STARTUP_TABLES)
+    # Schema: apply with `alembic upgrade head` (e.g. uah sync, CI, deploy). Do not call
+    # `Base.metadata.create_all()` for app tables here—models reflect the full current
+    # ORM, which would pre-create columns that later migrations add and break upgrades.
     _ensure_users_table_columns(engine)
     _ensure_resumes_table_columns(engine)
     _ensure_saved_jobs_table_columns(engine)

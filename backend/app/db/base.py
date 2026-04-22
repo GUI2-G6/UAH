@@ -17,8 +17,8 @@ How to create a new model:
           id = Column(Integer, primary_key=True, index=True)
           email = Column(String, unique=True, nullable=False)
 
-  4. Import the model in app/models/__init__.py so Alembic
-     (or Base.metadata.create_all) can discover it.
+  4. Import the model in app/models/__init__.py and add a migration
+     (alembic revision) for production schema. Tests may use create_all.
 """
 
 from sqlalchemy.orm import declarative_base
