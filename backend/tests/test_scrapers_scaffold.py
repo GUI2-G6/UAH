@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from app.scrapers.base.BaseProviderAdapter import BaseProviderAdapter, ProviderOptedOutError
-from app.scrapers.providers.WhatJobs import WHATJOBS_PENDING_MESSAGE, WhatJobsAdapter
+from app.scrapers.providers import DUMMY_PENDING_MESSAGE, DummyProviderAdapter
 from app.scrapers import registry as scraper_registry
 
 
@@ -110,16 +110,16 @@ class BaseProviderAdapterTests(unittest.TestCase):
 
 
 class RegistryTests(unittest.TestCase):
-    def test_registry_is_seeded_with_whatjobs_and_excludes_inactive_adapter(self):
-        adapter = scraper_registry.get_provider("whatjobs")
+    def test_registry_is_seeded_with_dummy_provider_and_excludes_inactive_adapter(self):
+        adapter = scraper_registry.get_provider("dummy provider")
 
-        self.assertIsInstance(adapter, WhatJobsAdapter)
-        self.assertEqual([item.get_provider_name() for item in scraper_registry.get_all_providers()], ["WhatJobs"])
+        self.assertIsInstance(adapter, DummyProviderAdapter)
+        self.assertEqual([item.get_provider_name() for item in scraper_registry.get_all_providers()], ["Dummy Provider"])
         self.assertEqual(scraper_registry.get_active_providers(), [])
 
     def test_registry_returns_opted_out_adapters(self):
         with patch.dict(scraper_registry._REGISTERED_PROVIDERS, {}, clear=True):
-            scraper_registry.register_provider(WhatJobsAdapter())
+            scraper_registry.register_provider(DummyProviderAdapter())
             scraper_registry.register_provider(_OptedOutRegistryAdapter())
 
             opted_out = scraper_registry.get_opted_out_providers()
@@ -127,9 +127,9 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual([adapter.get_provider_name() for adapter in opted_out], ["Opted Out Provider"])
 
 
-class WhatJobsAdapterTests(unittest.TestCase):
+class DummyProviderAdapterTests(unittest.TestCase):
     def test_stub_is_inactive_and_raises_pending_message(self):
-        adapter = WhatJobsAdapter()
+        adapter = DummyProviderAdapter()
 
         self.assertFalse(adapter.is_active())
         with self.assertRaises(NotImplementedError) as fetch_error:
@@ -137,8 +137,8 @@ class WhatJobsAdapterTests(unittest.TestCase):
         with self.assertRaises(NotImplementedError) as normalize_error:
             adapter.normalize_listing({})
 
-        self.assertEqual(str(fetch_error.exception), WHATJOBS_PENDING_MESSAGE)
-        self.assertEqual(str(normalize_error.exception), WHATJOBS_PENDING_MESSAGE)
+        self.assertEqual(str(fetch_error.exception), DUMMY_PENDING_MESSAGE)
+        self.assertEqual(str(normalize_error.exception), DUMMY_PENDING_MESSAGE)
 
 
 class IgnoreRulesTests(unittest.TestCase):

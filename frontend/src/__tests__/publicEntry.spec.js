@@ -14,7 +14,6 @@ vi.mock('@/lib/auth', () => ({
 
 import Footer from '@/components/Footer.vue'
 import Landing from '@/views/Landing.vue'
-import OurCommitment from '@/views/Our-Commitment.vue'
 
 const globalMountOptions = {
   global: {
@@ -39,17 +38,15 @@ describe('guest entry experience', () => {
   })
 })
 
-describe('frontend mail routing', () => {
-  it('uses privacy, team, legal, accessibility, and support inboxes in the public-facing app pages', () => {
-    const commitment = mount(OurCommitment, globalMountOptions)
+describe('frontend footer public links', () => {
+  it('keeps support mail contact while surfacing landing transparency links', () => {
     const footer = mount(Footer, globalMountOptions)
 
-    const mailtoLinks = commitment.findAll('a[href^="mailto:"]').map((link) => link.attributes('href'))
-
-    expect(mailtoLinks).toContain('mailto:privacy@uahapp.com')
-    expect(mailtoLinks).toContain('mailto:team@uahapp.com')
-    expect(mailtoLinks).toContain('mailto:legal@uahapp.com')
-    expect(mailtoLinks).toContain('mailto:accessibility@uahapp.com')
     expect(footer.get('a[href^="mailto:"]').attributes('href')).toBe('mailto:support@uahapp.com')
+    expect(footer.text()).toContain('Status')
+    expect(footer.text()).toContain('Our Commitment')
+    expect(footer.text()).toContain('Contributors')
+    expect(footer.text()).toContain('Ecosystem')
+    expect(footer.text()).toContain('Provider Requests')
   })
 })

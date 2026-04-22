@@ -1,4 +1,4 @@
-"""Stub adapter for the pending WhatJobs integration."""
+"""Stub adapter for the pending dummy scaffold integration."""
 
 from __future__ import annotations
 
@@ -13,22 +13,22 @@ except ModuleNotFoundError as exc:  # pragma: no cover - repo-root module execut
     from backend.app.schemas.job import NormalizedJob
     from backend.app.scrapers.base.BaseProviderAdapter import BaseProviderAdapter
 
-WHATJOBS_PENDING_MESSAGE = (
-    "WhatJobs integration pending — FeedAPI partnership in progress. "
-    "See docs/WhatJobs-partnership.md when ready to implement."
+DUMMY_PENDING_MESSAGE = (
+    "Dummy provider integration pending for scaffold validation. "
+    "Implement adapter logic after provider review is complete."
 )
 
 
-class WhatJobsAdapter(BaseProviderAdapter):
-    """Stub scaffold for WhatJobs until the partnership workflow is ready."""
+class DummyProviderAdapter(BaseProviderAdapter):
+    """Stub scaffold adapter used as a neutral provider placeholder."""
 
     def get_provider_name(self) -> str:
         """Return the human-readable provider name."""
-        return "WhatJobs"
+        return "Dummy Provider"
 
     def get_base_url(self) -> str:
         """Return the base provider domain for robots and opt-out checks."""
-        return "https://www.whatjobs.com"
+        return "https://example.com"
 
     def get_user_agent(self) -> str:
         """Return UAH's descriptive scraper user agent."""
@@ -39,18 +39,18 @@ class WhatJobsAdapter(BaseProviderAdapter):
         return 2.0
 
     def fetch_listings(self, query: str | None, location: str | None, page: int) -> list[dict[str, Any]]:
-        """WhatJobs integration pending — FeedAPI partnership in progress. See docs/WhatJobs-partnership.md when ready to implement."""
+        """Raise pending status until this placeholder adapter is implemented."""
         del query, location, page
-        raise NotImplementedError(WHATJOBS_PENDING_MESSAGE)
+        raise NotImplementedError(DUMMY_PENDING_MESSAGE)
 
     def normalize_listing(self, raw: dict[str, Any]) -> NormalizedJob:
-        """WhatJobs integration pending — FeedAPI partnership in progress. See docs/WhatJobs-partnership.md when ready to implement."""
+        """Raise pending status until this placeholder adapter is implemented."""
         del raw
-        raise NotImplementedError(WHATJOBS_PENDING_MESSAGE)
+        raise NotImplementedError(DUMMY_PENDING_MESSAGE)
 
     def is_active(self) -> bool:
-        """Return False until the WhatJobs integration is implemented and reviewed."""
+        """Return False until the placeholder adapter is implemented and reviewed."""
         return False
 
 
-__all__ = ["WHATJOBS_PENDING_MESSAGE", "WhatJobsAdapter"]
+__all__ = ["DUMMY_PENDING_MESSAGE", "DummyProviderAdapter"]
