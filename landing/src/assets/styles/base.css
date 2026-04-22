@@ -20,6 +20,7 @@
   --radius-sm: 12px;
   --content-width: 1180px;
   --nav-height: 80px;
+  --nav-breakpoint: 1080px;
 }
 
 * {
@@ -118,13 +119,19 @@ section {
   border: 0;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 1080px) {
   :root {
     --nav-height: 72px;
   }
 
   .js-enabled body.nav-open {
     overflow: hidden;
+  }
+}
+
+@media (max-width: 860px) {
+  :root {
+    --nav-height: 68px;
   }
 }
 

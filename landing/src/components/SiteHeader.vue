@@ -16,7 +16,7 @@
           type="button"
           :aria-expanded="String(isMenuOpen)"
           aria-controls="site-nav-menu"
-          aria-label="Open navigation menu"
+          :aria-label="menuLabel"
           @click="toggleMenu"
         >
           <span class="nav-toggle-line" aria-hidden="true"></span>
@@ -38,10 +38,11 @@
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 const isMenuOpen = ref(false)
 const loginUrl = (import.meta.env.VITE_UAH_LOGIN_URL || 'https://beta.uahapp.com/login').trim()
+const mobileNavBreakpoint = 1080
 
 const navLinks = [
   { href: '#problem', label: 'The Problem' },
@@ -68,10 +69,12 @@ function handleKeydown(event) {
 }
 
 function handleResize() {
-  if (window.innerWidth > 860) {
+  if (window.innerWidth > mobileNavBreakpoint) {
     closeMenu()
   }
 }
+
+const menuLabel = computed(() => (isMenuOpen.value ? 'Close navigation menu' : 'Open navigation menu'))
 
 watch(isMenuOpen, (value) => {
   document.body.classList.toggle('nav-open', value)

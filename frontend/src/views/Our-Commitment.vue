@@ -177,7 +177,7 @@
       </ul>
       <p>
         Until then, this page is our commitment. If you have questions about how UAH handles your
-        data, email us at <a href="mailto:data@uahapp.com">data@uahapp.com</a> — we'll give you a
+        data, email us at <a href="mailto:privacy@uahapp.com">privacy@uahapp.com</a> — we'll give you a
         straight answer.
       </p>
 
@@ -186,9 +186,13 @@
       <h2>Contact</h2>
       <p>
         <strong>Data &amp; privacy questions:</strong>
-        <a href="mailto:data@uahapp.com">data@uahapp.com</a><br />
+        <a href="mailto:privacy@uahapp.com">privacy@uahapp.com</a><br />
         <strong>General:</strong>
-        <a href="mailto:admincontact@uahapp.com">admincontact@uahapp.com</a><br />
+        <a href="mailto:team@uahapp.com">team@uahapp.com</a><br />
+        <strong>Legal notices:</strong>
+        <a href="mailto:legal@uahapp.com">legal@uahapp.com</a><br />
+        <strong>Accessibility feedback:</strong>
+        <a href="mailto:accessibility@uahapp.com">accessibility@uahapp.com</a><br />
         <strong>Codebase:</strong>
         <a href="https://github.com/GUI2-G6/UAH" target="_blank" rel="noopener">
           github.com/GUI2-G6/UAH

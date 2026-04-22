@@ -36,7 +36,7 @@
         <div class="partner-cta">
           <p>Partnership conversations are early, but real. If you have job data, an integration idea, or a research
             angle that could make UAH more useful without compromising users, email us.</p>
-          <a class="button" href="mailto:admincontact@uahapp.com?subject=UAH Partnership Inquiry">Get in touch</a>
+          <a class="button" href="mailto:partners@uahapp.com?subject=UAH Partnership Inquiry">Get in touch</a>
         </div>
       </div>
     </div>

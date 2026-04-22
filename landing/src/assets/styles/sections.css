@@ -824,6 +824,11 @@ textarea:focus {
     width: min(calc(100% - 22px), var(--content-width));
   }
 
+  .section-card {
+    padding: 24px 20px;
+    border-radius: 28px;
+  }
+
   h1,
   h2 {
     max-width: 100%;
@@ -831,6 +836,18 @@ textarea:focus {
 
   .hero {
     padding-top: 28px;
+  }
+
+  .hero-layout {
+    gap: 20px;
+  }
+
+  .hero-description,
+  .section-intro,
+  .callout-text,
+  .value-copy p,
+  .build-copy p {
+    font-size: 1rem;
   }
 
   .hero-visual {
@@ -853,6 +870,34 @@ textarea:focus {
   .button,
   .button-secondary {
     width: 100%;
+  }
+
+  .problem-card,
+  .value-card,
+  .access-card,
+  .build-sheet,
+  .partner-card,
+  .form-card {
+    padding: 20px;
+  }
+
+  .quote {
+    padding: 18px 20px;
+  }
+
+  .checkbox {
+    padding: 12px 14px;
+  }
+
+  .visual-foot,
+  .footer-shell {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .footer-links {
+    width: 100%;
+    gap: 14px;
   }
 
   .problem-grid {
@@ -899,8 +944,23 @@ textarea:focus {
 }
 
 @media (max-width: 480px) {
+  .section-shell,
+  .footer-shell {
+    width: min(calc(100% - 16px), var(--content-width));
+  }
+
+  .section-card {
+    padding: 18px 16px;
+    border-radius: 24px;
+  }
+
   .hero-visual {
     min-height: 330px;
+  }
+
+  .visual-orbit {
+    inset: 10px;
+    border-radius: 30px;
   }
 
   .visual-card.secondary,
@@ -921,5 +981,23 @@ textarea:focus {
 
   .metric-row {
     grid-template-columns: 1fr;
+  }
+
+  .partner-card,
+  .problem-card,
+  .value-card,
+  .access-card,
+  .build-sheet,
+  .form-card {
+    padding: 18px 16px;
+  }
+
+  .quote {
+    padding: 16px;
+    font-size: 1rem;
+  }
+
+  .footer-links {
+    gap: 12px;
   }
 }

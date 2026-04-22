@@ -2,17 +2,42 @@
   <section class="landing-gateway">
     <div class="landing-card">
       <p class="eyebrow">Unified Application Hub</p>
-      <h1>Your job search workspace starts here.</h1>
+      <h1>Choose the right UAH starting point.</h1>
       <p class="subtitle">
-        Explore UAH first, then sign in when you are ready to continue.
+        If you already have beta access, continue into the app here. If you are still learning what UAH
+        does, start with the public overview first.
       </p>
-      <div class="actions">
-        <router-link class="button primary" to="/login">Sign in</router-link>
-        <router-link class="button secondary" to="/register">Create account</router-link>
+
+      <div class="path-grid">
+        <article class="path-card path-card-primary">
+          <p class="path-label">Beta app</p>
+          <h2>Already invited to the beta?</h2>
+          <p class="path-copy">
+            Sign in to pick up where you left off, or create your account if your beta access has been
+            approved but you have not registered yet.
+          </p>
+          <div class="actions">
+            <router-link class="button primary" to="/login">Sign in</router-link>
+            <router-link class="button secondary" to="/register">Create account</router-link>
+          </div>
+        </article>
+
+        <article class="path-card">
+          <p class="path-label">Public overview</p>
+          <h2>Need the full overview first?</h2>
+          <p class="path-copy">
+            Read the public landing page for product details, current beta status, the wishlist form, and
+            the best route for requesting access.
+          </p>
+          <a class="button tertiary" :href="marketingUrl" target="_blank" rel="noopener noreferrer">
+            Open the public landing page
+          </a>
+        </article>
       </div>
+
       <p class="meta">
-        Need full product details first?
-        <a :href="marketingUrl" target="_blank" rel="noopener noreferrer">Visit the public landing page</a>.
+        Opening the app without an active session sends you here so returning beta users and first-time
+        visitors each get a clearer next step.
       </p>
     </div>
   </section>
@@ -45,13 +70,12 @@ export default {
 }
 
 .landing-card {
-  width: min(720px, 100%);
+  width: min(860px, 100%);
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 20px;
+  border-radius: 24px;
   box-shadow: 0 24px 40px rgba(15, 23, 42, 0.08);
   padding: 2.5rem;
-  text-align: center;
 }
 
 .eyebrow {
@@ -71,17 +95,57 @@ h1 {
 }
 
 .subtitle {
-  margin: 1rem auto 0;
-  max-width: 52ch;
+  margin: 1rem 0 0;
+  max-width: 64ch;
+  color: #334155;
+  line-height: 1.6;
+}
+
+.path-grid {
+  margin-top: 1.8rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.path-card {
+  display: grid;
+  gap: 0.95rem;
+  padding: 1.35rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 18px;
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.path-card-primary {
+  background: linear-gradient(180deg, rgba(15, 111, 143, 0.08) 0%, rgba(248, 250, 252, 0.92) 100%);
+}
+
+.path-label {
+  margin: 0;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #0f6f8f;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.3rem;
+  line-height: 1.2;
+  color: #0f172a;
+}
+
+.path-copy {
+  margin: 0;
   color: #334155;
   line-height: 1.6;
 }
 
 .actions {
-  margin-top: 1.8rem;
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
   gap: 0.8rem;
 }
 
@@ -106,14 +170,16 @@ h1 {
   color: #0f172a;
 }
 
+.button.tertiary {
+  border: 1px solid rgba(15, 111, 143, 0.25);
+  color: #0f6f8f;
+  background: #ffffff;
+}
+
 .meta {
   margin-top: 1.2rem;
   color: #475569;
-}
-
-.meta a {
-  color: #0f6f8f;
-  font-weight: 700;
+  line-height: 1.6;
 }
 
 @media (max-width: 640px) {
@@ -122,8 +188,16 @@ h1 {
     border-radius: 16px;
   }
 
+  .path-grid {
+    grid-template-columns: 1fr;
+  }
+
   .button {
     width: 100%;
+  }
+
+  .actions {
+    flex-direction: column;
   }
 }
 </style>

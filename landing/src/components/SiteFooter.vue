@@ -11,7 +11,8 @@
       </div>
       <div class="footer-links" aria-label="Footer links">
         <a href="https://github.com/GUI2-G6/UAH" target="_blank" rel="noopener noreferrer">GitHub</a>
-        <a href="mailto:admincontact@uahapp.com">Contact</a>
+        <a href="mailto:team@uahapp.com">Contact</a>
+        <a href="mailto:press@uahapp.com">Press</a>
         <a href="#partners">Partner with us</a>
         <a href="#access">Beta Access</a>
       </div>

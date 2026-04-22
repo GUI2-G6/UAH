@@ -8,8 +8,8 @@
 }
 
 .nav-shell {
-  width: 100%;
-  margin: 0;
+  width: min(calc(100% - 32px), var(--content-width));
+  margin: 0 auto;
   min-height: var(--nav-height);
   display: flex;
   align-items: center;
@@ -190,6 +190,10 @@
 }
 
 @media (max-width: 1080px) {
+  .nav-inner {
+    gap: 10px;
+  }
+
   .js-enabled .nav-toggle {
     display: inline-flex;
   }
