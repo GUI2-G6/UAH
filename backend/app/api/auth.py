@@ -200,6 +200,8 @@ def login(
     - 200: Authentication succeeded and token issued.
     - 401: Invalid email/password combination.
     - 403: Account exists but is deactivated or email verification is still pending.
+           For unverified users, a fresh verification email is sent before returning 403.
+    - 500: Verification email could not be sent for an unverified account.
     - 422: Request validation failed.
     """
     enforce_ip_rate_limit(
@@ -230,6 +232,7 @@ def login(
             detail="Account is deactivated",
         )
     if not user.email_verified:
+        trigger_verification_email_flow(db=db, user=user)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=EMAIL_VERIFICATION_REQUIRED_MESSAGE,
@@ -262,6 +265,8 @@ def token_login(
     - 200: Token generated successfully.
     - 401: Invalid email/password.
     - 403: Account is deactivated or email verification is still pending.
+           For unverified users, a fresh verification email is sent before returning 403.
+    - 500: Verification email could not be sent for an unverified account.
     - 422: Invalid form payload.
     """
     enforce_ip_rate_limit(
@@ -295,6 +300,7 @@ def token_login(
             detail="Account is deactivated",
         )
     if not user.email_verified:
+        trigger_verification_email_flow(db=db, user=user)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=EMAIL_VERIFICATION_REQUIRED_MESSAGE,

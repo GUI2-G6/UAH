@@ -506,22 +506,29 @@ class AuthSecurityTests(unittest.TestCase):
         self.assertEqual(register_error.exception.detail, "Invalid or expired invite code")
 
     def test_login_rejects_unverified_email_accounts(self):
-        self._create_user(
+        pending_user = self._create_user(
             email="pending@example.com",
             username="pending@example.com",
             email_verified=False,
         )
 
-        with self.assertRaises(HTTPException) as login_error:
-            auth_api.login(
-                payload=UserLogin(email="pending@example.com", password="Password123!"),
-                request=_build_request(),
-                response=Response(),
-                db=self.db,
-            )
+        with patch.object(
+            auth_api,
+            "trigger_verification_email_flow",
+            return_value=auth_api.MessageResponse(message="Verification email sent"),
+        ) as mock_send:
+            with self.assertRaises(HTTPException) as login_error:
+                auth_api.login(
+                    payload=UserLogin(email="pending@example.com", password="Password123!"),
+                    request=_build_request(),
+                    response=Response(),
+                    db=self.db,
+                )
 
         self.assertEqual(login_error.exception.status_code, 403)
         self.assertEqual(login_error.exception.detail, auth_api.EMAIL_VERIFICATION_REQUIRED_MESSAGE)
+        self.assertEqual(mock_send.call_count, 1)
+        self.assertEqual(mock_send.call_args.kwargs.get("user").id, pending_user.id)
 
     def test_login_sets_http_only_auth_cookie(self):
         self._create_user(email="cookie@example.com", username="cookie@example.com", email_verified=True)
