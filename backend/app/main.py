@@ -36,6 +36,7 @@ from app.core.runtime_environment import (
     generated_docs_auth_required,
     generated_docs_authenticate_header,
     generated_docs_enabled,
+    internal_surface_auth_required,
 )
 from app.core.validation import normalize_email, require_valid_email
 from app.db.base import Base
@@ -526,6 +527,23 @@ async def beta_docs_basic_auth_gate(request: Request, call_next):
                 "WWW-Authenticate": generated_docs_authenticate_header(),
                 "Cache-Control": "no-store",
             },
+        )
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def internal_surface_api_key_gate(request: Request, call_next):
+    requires_internal_key = internal_surface_auth_required(
+        path=request.url.path,
+        raw_environment=os.getenv("ENVIRONMENT"),
+        provided_key=request.headers.get("X-Internal-Api-Key"),
+        expected_key=settings.INTERNAL_API_KEY,
+    )
+    if requires_internal_key:
+        return PlainTextResponse(
+            "Not found.",
+            status_code=404,
+            headers={"Cache-Control": "no-store"},
         )
     return await call_next(request)
 

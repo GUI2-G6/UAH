@@ -84,6 +84,7 @@ class Settings:
 
     # Environment
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    INTERNAL_API_KEY: str = os.getenv("INTERNAL_API_KEY", "")
     BETA_DOCS_USERNAME: str = os.getenv("BETA_DOCS_USERNAME", "dev")
     BETA_DOCS_PASSCODE: str = os.getenv("BETA_DOCS_PASSCODE", "")
     DEV_AUTH_TEST_ACCOUNT_ENABLED: bool = _env_bool("DEV_AUTH_TEST_ACCOUNT_ENABLED", "false")

@@ -8,6 +8,15 @@ import secrets
 
 _LOCAL_DOCS_ENVIRONMENTS = {"development", "dev", "local"}
 _BETA_DOCS_AUTH_REALM = 'Basic realm="UAH Beta API Docs"'
+_INTERNAL_SURFACE_ENVIRONMENTS = {"beta", "staging", "prod", "production"}
+_INTERNAL_SURFACE_PREFIXES = (
+    "/api/admin",
+    "/api/jobs/debug",
+)
+_INTERNAL_SURFACE_EXACT_PATHS = {
+    "/api/diagnostics",
+    "/api/geolocation/muse-supported-locations/refresh",
+}
 
 
 def normalize_runtime_environment(raw_environment: str | None) -> str:
@@ -98,4 +107,58 @@ def generated_docs_auth_required(
         authorization_header=authorization_header,
         expected_username=expected_username,
         expected_passcode=normalized_passcode,
+    )
+
+
+def internal_surface_auth_enabled(
+    raw_environment: str | None,
+    internal_api_key: str | None,
+) -> bool:
+    environment = normalize_runtime_environment(raw_environment)
+    return environment in _INTERNAL_SURFACE_ENVIRONMENTS and bool((internal_api_key or "").strip())
+
+
+def is_internal_surface_path(path: str | None) -> bool:
+    normalized_path = (path or "").split("?", 1)[0].strip()
+    if not normalized_path:
+        return False
+
+    if normalized_path in _INTERNAL_SURFACE_EXACT_PATHS:
+        return True
+
+    for prefix in _INTERNAL_SURFACE_PREFIXES:
+        if normalized_path == prefix or normalized_path.startswith(f"{prefix}/"):
+            return True
+
+    return False
+
+
+def internal_surface_api_key_authorized(
+    provided_key: str | None,
+    expected_key: str,
+) -> bool:
+    normalized_expected = (expected_key or "").strip()
+    normalized_provided = (provided_key or "").strip()
+    if not normalized_expected:
+        return False
+    if not normalized_provided:
+        return False
+    return secrets.compare_digest(normalized_provided, normalized_expected)
+
+
+def internal_surface_auth_required(
+    path: str | None,
+    raw_environment: str | None,
+    provided_key: str | None,
+    expected_key: str | None,
+) -> bool:
+    if not internal_surface_auth_enabled(raw_environment, expected_key):
+        return False
+
+    if not is_internal_surface_path(path):
+        return False
+
+    return not internal_surface_api_key_authorized(
+        provided_key=provided_key,
+        expected_key=(expected_key or "").strip(),
     )
