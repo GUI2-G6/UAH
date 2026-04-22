@@ -45,7 +45,7 @@ const viewRoutes = Object.keys(modules).map((path) => {
 const routes = [
   {
     path: '/',
-    redirect: () => (isAuthenticated() ? '/home' : '/login')
+    redirect: () => (isAuthenticated() ? '/home' : '/landing')
   },
   ...viewRoutes,
 ]
@@ -65,6 +65,7 @@ router.beforeEach(async (to) => {
   // These routes stay reachable without an existing session, but they may still
   // redirect signed-in users away from auth pages once identity is resolved.
   const publicPaths = new Set([
+    '/landing',
     '/login',
     '/register',
     '/status',

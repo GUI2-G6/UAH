@@ -33,6 +33,7 @@ from app.core.auth_session import (
     resolve_auth_client,
 )
 from app.core.auth_cookie import set_auth_cookie
+from app.core.rate_limit import enforce_ip_rate_limit, enforce_subject_rate_limit
 from typing import Optional, List, Any
 from app.services.geolocation import (
     geocode_query,
@@ -61,6 +62,15 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
 MUSE_API_KEY = os.getenv("MUSE_API_KEY")
+
+GEOLOOKUP_IP_LIMIT = 40
+GEOLOOKUP_IP_WINDOW_SECONDS = 300
+GEOLOOKUP_QUERY_LIMIT = 25
+GEOLOOKUP_QUERY_WINDOW_SECONDS = 300
+JOBS_LIVE_SEARCH_IP_LIMIT = 30
+JOBS_LIVE_SEARCH_IP_WINDOW_SECONDS = 300
+JOBS_LIVE_SEARCH_QUERY_LIMIT = 20
+JOBS_LIVE_SEARCH_QUERY_WINDOW_SECONDS = 300
 
 REMOTE_TEXT_PATTERN = re.compile(
     r"\b(remote|work\s*from\s*home|telecommute|telecommuting|distributed|anywhere)\b",
@@ -1738,6 +1748,12 @@ async def geolocation_by_ip(request: Request):
     - 200: IP geolocation resolved successfully.
     - 502: Upstream geolocation provider error.
     """
+    enforce_ip_rate_limit(
+        "geolocation:ip",
+        request,
+        limit=GEOLOOKUP_IP_LIMIT,
+        window_seconds=GEOLOOKUP_IP_WINDOW_SECONDS,
+    )
     client_ip = _extract_client_ip(request)
     try:
         payload = await resolve_ip_location(client_ip)
@@ -1790,6 +1806,7 @@ async def geolocation_by_ip(request: Request):
     },
 )
 async def geocode_location(
+    request: Request,
     q: str = Query(
         ...,
         min_length=2,
@@ -1813,6 +1830,18 @@ async def geocode_location(
     - 200: Location resolved successfully.
     - 404: No matching location found.
     """
+    enforce_ip_rate_limit(
+        "geolocation:geocode",
+        request,
+        limit=GEOLOOKUP_IP_LIMIT,
+        window_seconds=GEOLOOKUP_IP_WINDOW_SECONDS,
+    )
+    enforce_subject_rate_limit(
+        "geolocation:geocode:query",
+        q,
+        limit=GEOLOOKUP_QUERY_LIMIT,
+        window_seconds=GEOLOOKUP_QUERY_WINDOW_SECONDS,
+    )
     try:
         return await geocode_query(q, country_code=country_code)
     except Exception as exc:
@@ -2128,8 +2157,10 @@ async def muse_supported_locations(
     },
 )
 async def refresh_muse_supported_locations(
+    request: Request,
     force: bool = Query(False, description="When true, bypass freshness checks and force a full index refresh."),
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
 ):
     """
     Refresh cached Muse location support index.
@@ -2140,6 +2171,13 @@ async def refresh_muse_supported_locations(
     Response codes:
     - 200: Refresh completed or confirmed current index state.
     """
+    del current_user
+    enforce_ip_rate_limit(
+        "geolocation:muse-supported-locations:refresh",
+        request,
+        limit=GEOLOOKUP_IP_LIMIT,
+        window_seconds=GEOLOOKUP_IP_WINDOW_SECONDS,
+    )
     result = await refresh_muse_location_index(force=force)
     countries = list_supported_countries(db)
     return {
@@ -2207,6 +2245,7 @@ async def jobs_filter_metadata(db: Session = Depends(get_db)):
     },
 )
 async def search_jobs(
+    request: Request,
     page: int = Query(1, ge=1, description="UI page number (1-indexed)."),
     page_size: int = Query(
         settings.JOBS_DEFAULT_PAGE_SIZE,
@@ -2273,6 +2312,19 @@ async def search_jobs(
     - 200: Search completed successfully with filtered jobs and diagnostics.
     - 500: Muse API unavailable on first fetch or unexpected internal failure.
     """
+    enforce_ip_rate_limit(
+        "jobs:search-live-source",
+        request,
+        limit=JOBS_LIVE_SEARCH_IP_LIMIT,
+        window_seconds=JOBS_LIVE_SEARCH_IP_WINDOW_SECONDS,
+    )
+    enforce_subject_rate_limit(
+        "jobs:search-live-source:query",
+        q,
+        limit=JOBS_LIVE_SEARCH_QUERY_LIMIT,
+        window_seconds=JOBS_LIVE_SEARCH_QUERY_WINDOW_SECONDS,
+    )
+
     # Gets the list of jobs from The Muse API based on the provided query parameters 
     url = "https://www.themuse.com/api/public/jobs"
     params_base = []

@@ -31,6 +31,14 @@ npm run dev
 
 Vite serves the landing SPA locally at `http://localhost:5173`.
 
+To override the Sign in button target during local testing, set:
+
+```powershell
+$env:VITE_UAH_LOGIN_URL = "http://localhost:5173/login"
+```
+
+Default target is `https://beta.uahapp.com/login`.
+
 ## Build And Deploy
 
 Build the static production files:

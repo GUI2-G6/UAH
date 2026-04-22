@@ -20,29 +20,38 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: 12px;
 }
 
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 10px;
   text-decoration: none;
-  width:450px;
+  width: auto;
+  max-width: min(52vw, 520px);
   min-width: 0;
-  margin:10px;
-  background-color:rgb(255, 243, 221);
-  border-radius:8px;
+  margin: 0;
+  padding: 6px 10px;
+  background-color: rgb(255, 243, 221);
+  border-radius: 8px;
+}
+
+.brand img {
+  width: 56px;
+  height: 56px;
+  flex: none;
 }
 
 #title {
-  font-weight:bold;
-  font-size:21px;
-  color:rgba(63, 98, 236);
+  font-weight: bold;
+  font-size: clamp(0.98rem, 1.7vw, 1.24rem);
+  color: rgba(63, 98, 236);
 }
+
 #subtitle {
-  font-style:italic;
-  font-size:16px;
+  font-style: italic;
+  font-size: clamp(0.76rem, 1.15vw, 0.95rem);
 }
 
 .brand-chip {
@@ -82,13 +91,13 @@
 .nav-panel {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 }
 
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
@@ -106,6 +115,34 @@
 .nav-links a:focus-visible {
   color: var(--color-primary);
   background: rgba(31, 92, 153, 0.08);
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nav-signin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 999px;
+  text-decoration: none;
+  font-weight: 700;
+  color: #ffffff;
+  background: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  transition: transform 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.nav-signin:hover,
+.nav-signin:focus-visible {
+  transform: translateY(-1px);
+  background: var(--color-primary-deep);
+  border-color: var(--color-primary-deep);
 }
 
 .nav-toggle {
@@ -152,7 +189,7 @@
   display: none;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 1080px) {
   .js-enabled .nav-toggle {
     display: inline-flex;
   }
@@ -182,6 +219,14 @@
     align-items: stretch;
   }
 
+  .js-enabled .nav-actions {
+    margin-top: 10px;
+  }
+
+  .js-enabled .nav-signin {
+    width: 100%;
+  }
+
   .js-enabled .nav-links a {
     padding: 14px 16px;
   }
@@ -204,6 +249,16 @@
 }
 
 @media (max-width: 640px) {
+  .brand {
+    max-width: calc(100vw - 124px);
+    padding: 6px 8px;
+  }
+
+  .brand img {
+    width: 48px;
+    height: 48px;
+  }
+
   .nav-shell {
     width: min(calc(100% - 22px), var(--content-width));
   }

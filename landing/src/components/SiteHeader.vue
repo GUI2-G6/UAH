@@ -28,6 +28,9 @@
           <div class="nav-links">
             <a v-for="link in navLinks" :key="link.href" :href="link.href" @click="closeMenu">{{ link.label }}</a>
           </div>
+          <div class="nav-actions">
+            <a class="nav-signin" :href="loginUrl" @click="closeMenu">Sign in</a>
+          </div>
         </nav>
       </div>
     </div>
@@ -38,6 +41,7 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
 const isMenuOpen = ref(false)
+const loginUrl = (import.meta.env.VITE_UAH_LOGIN_URL || 'https://beta.uahapp.com/login').trim()
 
 const navLinks = [
   { href: '#problem', label: 'The Problem' },

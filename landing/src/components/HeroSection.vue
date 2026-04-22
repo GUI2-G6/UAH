@@ -14,6 +14,7 @@
 
           <div class="hero-actions">
             <a class="button" href="#access">Request Beta Access</a>
+            <a class="button-secondary" :href="loginUrl">Sign in to UAH</a>
             <a class="button-secondary" href="https://github.com/GUI2-G6/UAH" target="_blank"
               rel="noopener noreferrer">View on GitHub</a>
           </div>
@@ -81,3 +82,7 @@
     </div>
   </section>
 </template>
+
+<script setup>
+const loginUrl = (import.meta.env.VITE_UAH_LOGIN_URL || 'https://beta.uahapp.com/login').trim()
+</script>

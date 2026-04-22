@@ -163,6 +163,7 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
 }
 
 .visual-orbit {
@@ -204,6 +205,7 @@ h1 {
 .visual-card.primary {
   inset: 108px 38px 38px 92px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.96) 100%);
+  z-index: 4;
 }
 
 .visual-card.secondary {
@@ -212,6 +214,7 @@ h1 {
   width: 210px;
   background: rgba(246, 217, 166, 0.60);
   transform: rotate(-4deg);
+  z-index: 2;
 }
 
 .visual-card.tertiary {
@@ -220,6 +223,7 @@ h1 {
   width: 224px;
   background: rgba(159, 210, 243, 0.58);
   transform: rotate(4deg);
+  z-index: 3;
 }
 
 .visual-card.quad {
@@ -227,6 +231,7 @@ h1 {
   bottom: 84px;
   width: 190px;
   background: rgba(255, 87, 87, 0.08);
+  z-index: 1;
 }
 
 .visual-chip {
@@ -780,7 +785,11 @@ textarea:focus {
   }
 
   .hero-visual {
-    min-height: 460px;
+    min-height: 440px;
+  }
+
+  .visual-board {
+    width: min(100%, 500px);
   }
 }
 
@@ -797,9 +806,19 @@ textarea:focus {
   .form-row {
     grid-template-columns: 1fr;
   }
+
+  .hero-visual {
+    min-height: 410px;
+  }
+
+  .visual-card {
+    padding: 14px;
+    border-radius: 22px;
+  }
 }
 
 @media (max-width: 640px) {
+
   .section-shell,
   .footer-shell {
     width: min(calc(100% - 22px), var(--content-width));
@@ -812,6 +831,14 @@ textarea:focus {
 
   .hero {
     padding-top: 28px;
+  }
+
+  .hero-visual {
+    min-height: 370px;
+  }
+
+  .visual-board {
+    width: min(100%, 430px);
   }
 
   .hero-actions,
@@ -833,7 +860,7 @@ textarea:focus {
   }
 
   .visual-card.primary {
-    inset: 124px 14px 18px 24px;
+    inset: 120px 12px 12px 18px;
   }
 
   .visual-card.secondary,
@@ -855,9 +882,9 @@ textarea:focus {
   }
 
   .visual-card.quad {
-    left: 148px;
+    left: 134px;
     right: 0;
-    bottom: 70px;
+    bottom: 58px;
   }
 
   .partner-cta {
@@ -868,5 +895,31 @@ textarea:focus {
   .partner-cta .button {
     width: 100%;
     text-align: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero-visual {
+    min-height: 330px;
+  }
+
+  .visual-card.secondary,
+  .visual-card.tertiary {
+    display: none;
+  }
+
+  .visual-card.primary {
+    inset: 78px 8px 10px 8px;
+  }
+
+  .visual-card.quad {
+    left: auto;
+    right: 8px;
+    bottom: 54px;
+    width: 152px;
+  }
+
+  .metric-row {
+    grid-template-columns: 1fr;
   }
 }
