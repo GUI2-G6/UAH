@@ -60,6 +60,15 @@
             <div class="signup-row">
                 <a @click.prevent="goToForgotPassword" href="#">Forgot password?</a>
             </div>
+
+            <button
+                type="button"
+                class="landing-btn"
+                :disabled="loading || oauthRedirecting"
+                @click="goToLanding"
+            >
+                Go to landing
+            </button>
         </div>
     </div>
 </template>
@@ -137,6 +146,9 @@
             },
             goToForgotPassword() {
                 this.$router.push('/forgot-password')
+            },
+            goToLanding() {
+                this.$router.push('/landing')
             },
             startGoogleOAuth() {
                 this.error = null
