@@ -223,6 +223,18 @@ services:
       - ./backend:/app          # Hot-reload in dev
     networks:
       - uah-infra
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/status', timeout=8).read()",
+        ]
+      interval: 20s
+      timeout: 12s
+      retries: 5
+      start_period: 60s
     # NO ports exposed — frontend proxies /api → backend:8000
 
   celery_worker:
@@ -358,7 +370,8 @@ services:
     container_name: uah-dev-frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     environment:
       DEV_DOMAIN: ${DEV_DOMAIN:-dev.uahapp.com}
       DEV_TLS_ENABLED: ${DEV_TLS_ENABLED:-false}

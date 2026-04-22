@@ -2810,7 +2810,7 @@ import sys
 import urllib.request
 
 try:
-    with urllib.request.urlopen("http://localhost:8000/api/jobs/providers/attribution", timeout=5) as response:
+    with urllib.request.urlopen("http://localhost:8000/api/providers/attribution", timeout=5) as response:
         payload = json.load(response)
 except Exception:
     raise SystemExit(1)
