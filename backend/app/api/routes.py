@@ -3323,7 +3323,7 @@ async def google_oauth_callback(
 @router.get(
     "/status",
     tags=["status"],
-    response_description="Lightweight backend status payload.",
+    response_description="Public-safe backend status payload with service summaries.",
     responses={
         200: {
             "description": "Backend status returned.",
@@ -3333,26 +3333,160 @@ async def google_oauth_callback(
                         "status": "ok",
                         "environment": "dev",
                         "message": "UAH API is running",
+                        "overall": "healthy",
+                        "services": {
+                            "backend": {
+                                "status": "healthy",
+                                "summary": "API process responding.",
+                                "name": "UAH",
+                                "version": "0.1.0",
+                            },
+                            "database": {
+                                "status": "healthy",
+                                "summary": "Database connectivity is healthy.",
+                                "latency_ms": 5.2,
+                                "postgres_version": "PostgreSQL 16.4",
+                            },
+                            "resume_parsing": {
+                                "status": "healthy",
+                                "summary": "3 of 3 parsing methods available.",
+                                "available_methods": 3,
+                                "total_methods": 3,
+                            },
+                        },
                     }
                 }
             },
         }
     },
 )
-async def api_status():
+async def api_status(db: Session = Depends(get_db)):
     """
     Lightweight status endpoint for frontend connectivity checks.
 
-    Returns a minimal service health payload used by the frontend to confirm
-    `/api` proxy routing and basic backend availability.
+    Returns a dynamic, public-safe service health payload used by landing pages
+    and frontend connectivity checks. The response intentionally excludes
+    sensitive runtime details (for example hostnames, PIDs, DB user/name, and
+    internal exception traces).
 
     Response codes:
     - 200: Service is reachable.
     """
+    import platform
+    from sqlalchemy import text
+
+    backend_status = "healthy"
+    backend_summary = "API process responding."
+
+    db_started = time.monotonic()
+    db_status = "healthy"
+    db_summary = "Database connectivity is healthy."
+    db_latency_ms = None
+    postgres_version = "unknown"
+    try:
+        db.execute(text("SELECT 1"))
+        version_row = db.execute(text("SELECT version()")).fetchone()
+        if version_row and version_row[0]:
+            postgres_version = str(version_row[0])
+    except Exception:
+        db_status = "unhealthy"
+        db_summary = "Database connectivity check failed."
+    finally:
+        db_latency_ms = round((time.monotonic() - db_started) * 1000, 2)
+
+    parsing_method_statuses: list[str] = []
+    parsing_method_entries: dict[str, dict[str, Any]] = {}
+    parsing_total = 0
+    parsing_available = 0
+    parsing_status = "degraded"
+    parsing_summary = "Parsing availability is currently unknown."
+    try:
+        method_availability = await get_pipeline_availability()
+        for method_key in ("cloud", "local", "rules"):
+            method_info = method_availability.get(method_key) or {}
+            method_available = bool(method_info.get("available"))
+            method_degraded = bool(method_info.get("degraded")) or bool(method_info.get("unreliable"))
+            method_status = "healthy" if method_available and not method_degraded else "degraded"
+            parsing_method_statuses.append(method_status)
+            parsing_total += 1
+            if method_available:
+                parsing_available += 1
+            parsing_method_entries[method_key] = {
+                "status": method_status,
+                "available": method_available,
+                "reachable": bool(method_info.get("reachable")),
+            }
+        parsing_status = "healthy" if parsing_method_statuses and all(
+            status == "healthy" for status in parsing_method_statuses
+        ) else "degraded"
+        parsing_summary = f"{parsing_available} of {parsing_total} parsing methods available."
+    except Exception:
+        parsing_status = "degraded"
+        parsing_summary = "Parsing availability checks are temporarily unavailable."
+        parsing_total = 3
+        parsing_available = 0
+        parsing_method_entries = {
+            "cloud": {"status": "degraded", "available": False, "reachable": False},
+            "local": {"status": "degraded", "available": False, "reachable": False},
+            "rules": {"status": "degraded", "available": False, "reachable": False},
+        }
+
+    services = {
+        "backend": {
+            "status": backend_status,
+            "summary": backend_summary,
+            "name": settings.PROJECT_NAME,
+            "version": settings.VERSION,
+            "python_version": platform.python_version(),
+        },
+        "database": {
+            "status": db_status,
+            "summary": db_summary,
+            "latency_ms": db_latency_ms,
+            "postgres_version": postgres_version if db_status == "healthy" else "unavailable",
+        },
+        "resume_parsing": {
+            "status": parsing_status,
+            "summary": parsing_summary,
+            "available_methods": parsing_available,
+            "total_methods": parsing_total,
+            "methods": parsing_method_entries,
+        },
+    }
+
+    service_statuses = [item.get("status") for item in services.values()]
+    if all(item == "healthy" for item in service_statuses):
+        overall = "healthy"
+    elif any(item == "unhealthy" for item in service_statuses):
+        overall = "unhealthy"
+    else:
+        overall = "degraded"
+
+    if overall == "healthy":
+        public_status = "ok"
+        message = "UAH API is running"
+    elif overall == "degraded":
+        public_status = "degraded"
+        message = "UAH API is running with limited availability"
+    else:
+        public_status = "degraded"
+        message = "UAH API is experiencing service disruption"
+
     return {
-        "status": "ok",
-        "environment": "dev",
-        "message": "UAH API is running",
+        "status": public_status,
+        "environment": os.getenv("ENV", "dev"),
+        "message": message,
+        "overall": overall,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "services": services,
+        "service_summaries": [
+            {
+                "service": service_name,
+                "status": service_data.get("status"),
+                "summary": service_data.get("summary"),
+            }
+            for service_name, service_data in services.items()
+        ],
     }
 
 

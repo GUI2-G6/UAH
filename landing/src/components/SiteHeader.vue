@@ -3,20 +3,20 @@
   <header class="site-header">
     <div class="nav-shell">
       <div class="nav-inner">
-        <a class="brand" href="#top" @click="closeMenu">
+        <RouterLink class="brand" to="/" @click="closeMenu">
           <img src="../images/logo.png" width="75" height="75" title="To Top"/>
           <span class="brand-copy">
             <strong id="title" title="Title">Unified Application Hub</strong>
             <span id="subtitle" title="Subtitle">Job applications made easy</span>
           </span>
-        </a>
+        </RouterLink>
 
         <button
           class="nav-toggle"
           type="button"
           :aria-expanded="String(isMenuOpen)"
           aria-controls="site-nav-menu"
-          aria-label="Open navigation menu"
+          :aria-label="menuLabel"
           @click="toggleMenu"
         >
           <span class="nav-toggle-line" aria-hidden="true"></span>
@@ -26,7 +26,14 @@
 
         <nav class="nav-panel" id="site-nav-menu" aria-label="Primary" :class="{ 'is-open': isMenuOpen }">
           <div class="nav-links">
-            <a v-for="link in navLinks" :key="link.href" :href="link.href" @click="closeMenu">{{ link.label }}</a>
+            <RouterLink
+              v-for="link in navLinks"
+              :key="link.to"
+              :to="link.to"
+              @click="closeMenu"
+            >
+              {{ link.label }}
+            </RouterLink>
           </div>
           <div class="nav-actions">
             <a class="nav-signin" :href="loginUrl" @click="closeMenu">Sign in</a>
@@ -38,19 +45,20 @@
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
 
 const isMenuOpen = ref(false)
 const loginUrl = (import.meta.env.VITE_UAH_LOGIN_URL || 'https://beta.uahapp.com/login').trim()
+const mobileNavBreakpoint = 1080
 
 const navLinks = [
-  { href: '#problem', label: 'The Problem' },
-  { href: '#what-uah-does', label: 'What UAH Does' },
-  { href: '#built', label: "How It's Built" },
-  { href: '#values', label: 'Open Source' },
-  { href: '#partners', label: 'Partners' },
-  { href: '#access', label: 'Beta Access' },
-  { href: '#wishlist', label: 'Wishlist' },
+  { to: '/', label: 'Home' },
+  { to: '/status', label: 'Status' },
+  { to: '/our-commitment', label: 'Our Commitment' },
+  { to: '/contributors', label: 'Contributors' },
+  { to: '/ecosystem', label: 'Ecosystem' },
+  { to: '/provider-requests', label: 'Provider Requests' },
 ]
 
 function closeMenu() {
@@ -68,10 +76,12 @@ function handleKeydown(event) {
 }
 
 function handleResize() {
-  if (window.innerWidth > 860) {
+  if (window.innerWidth > mobileNavBreakpoint) {
     closeMenu()
   }
 }
+
+const menuLabel = computed(() => (isMenuOpen.value ? 'Close navigation menu' : 'Open navigation menu'))
 
 watch(isMenuOpen, (value) => {
   document.body.classList.toggle('nav-open', value)

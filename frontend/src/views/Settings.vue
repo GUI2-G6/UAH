@@ -143,7 +143,9 @@
                 </template>
                 <div class="settings-group connected-accounts-group">
                     <p class="connected-accounts-intro">
-                        Manage linked sign-in providers separately from optional platform services like Gmail updates.
+                        After you create your account, you can optionally connect Google here and use Google to
+                        sign in later. Manage linked sign-in providers separately from optional platform services
+                        like Gmail updates.
                     </p>
                     <p v-if="connectedAccountsError" class="account-error">{{ connectedAccountsError }}</p>
                     <div class="connected-accounts-list">

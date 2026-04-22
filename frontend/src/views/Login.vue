@@ -1,8 +1,19 @@
 <template>
     <div class="page">
         <div class="auth-card">
-            <h1>Login</h1>
-            <p class="subtitle">Track every application in one place</p>
+            <button
+                type="button"
+                class="landing-btn landing-btn--back"
+                :disabled="loading || oauthRedirecting"
+                @click="goToLanding"
+            >
+                Back to access options
+            </button>
+            <h1>Sign in to the UAH beta</h1>
+            <p class="subtitle">
+                Use this page if you already have a UAH account. Beta access is invite-only, and Google works
+                here only after you have linked it later in Settings.
+            </p>
 
             <form @submit.prevent="login" novalidate>
                 <input
@@ -48,6 +59,10 @@
             >
                 {{ oauthRedirecting ? 'Redirecting to Google…' : 'Continue with Google' }}
             </button>
+            <p class="oauth-help">
+                Use Google only for an existing UAH account that already linked Google from Settings. If you
+                have not linked it yet, sign in with your email and password first.
+            </p>
 
             <p v-if="message" class="auth-feedback auth-feedback--success">{{ message }}</p>
             <p v-if="error" class="auth-feedback auth-feedback--error">{{ error }}</p>
@@ -61,14 +76,6 @@
                 <a @click.prevent="goToForgotPassword" href="#">Forgot password?</a>
             </div>
 
-            <button
-                type="button"
-                class="landing-btn"
-                :disabled="loading || oauthRedirecting"
-                @click="goToLanding"
-            >
-                Go to landing
-            </button>
         </div>
     </div>
 </template>
@@ -101,10 +108,16 @@
             const oauthError = this.$route?.query?.oauth
             const reason = this.$route?.query?.reason
             if (oauthError === 'error') {
-                this.error = `Google sign-in failed${reason ? ` (${String(reason).replaceAll('_', ' ')})` : ''}`
+                this.error = this.googleOAuthErrorMessage(reason)
             }
         },
         methods: {
+            googleOAuthErrorMessage(reason) {
+                if (reason === 'google_not_linked') {
+                    return 'Google sign-in is only available after you link Google from Settings on an existing account.'
+                }
+                return `Google sign-in failed${reason ? ` (${String(reason).replaceAll('_', ' ')})` : ''}`
+            },
             storeAuth(data) {
                 setAuth(data)
             },

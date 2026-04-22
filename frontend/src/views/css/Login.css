@@ -48,6 +48,33 @@
   line-height: 1.6;
 }
 
+.auth-note {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(15, 111, 143, 0.08);
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+  line-height: 1.6;
+  text-align: left;
+}
+
+.auth-note--soft {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: center;
+}
+
+.auth-note a {
+  color: var(--color-primary-600);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.auth-note a:hover {
+  text-decoration: underline;
+}
+
 .auth-label {
   color: var(--color-text-primary);
   font-size: 0.85rem;
@@ -150,6 +177,13 @@
   cursor: not-allowed;
 }
 
+.oauth-help {
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  text-align: left;
+}
+
 .landing-btn {
   width: 100%;
   padding: 11px 14px;
@@ -162,6 +196,12 @@
   cursor: pointer;
   transition: background var(--transition-fast), border-color var(--transition-fast);
   margin-top: 2px;
+}
+
+.landing-btn--back {
+  width: auto;
+  align-self: flex-start;
+  margin-top: 0;
 }
 
 .landing-btn:hover {

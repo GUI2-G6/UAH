@@ -13,6 +13,7 @@ Use it to answer two questions quickly:
 | --- | --- |
 | Repo overview, local development, and stack entrypoints | [../README.md](../README.md) |
 | System architecture and subsystem boundaries | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| Text-only architecture diagram for writeups/forms | [ARCHITECTURE_TEXT_DIAGRAM.md](ARCHITECTURE_TEXT_DIAGRAM.md) |
 | Backend local development and runtime notes | [backend/README.md](backend/README.md) |
 | Frontend local development and active UI/runtime behavior | [frontend/README.md](frontend/README.md) |
 | Browser extension architecture, build, and testing | [../uah-browser-extension/README.md](../uah-browser-extension/README.md) |

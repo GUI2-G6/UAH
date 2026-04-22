@@ -68,6 +68,7 @@ router.beforeEach(async (to) => {
     '/landing',
     '/login',
     '/register',
+    '/signup',
     '/status',
     '/forgot-password',
     '/reset-password',
@@ -83,8 +84,8 @@ router.beforeEach(async (to) => {
   }
 
   if (publicPaths.has(to.path)) {
-    const authedUser = await resolveAuthenticatedUser(to.path === '/login' || to.path === '/register')
-    if (authedUser && (to.path === '/login' || to.path === '/register')) {
+    const authedUser = await resolveAuthenticatedUser(to.path === '/login' || to.path === '/register' || to.path === '/signup')
+    if (authedUser && (to.path === '/login' || to.path === '/register' || to.path === '/signup')) {
       return '/home'
     }
     return true

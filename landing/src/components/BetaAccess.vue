@@ -16,7 +16,7 @@
               on that process — not a polished product, but the process of building something worth using — reach out.
             </p>
             <div class="access-links">
-              <a class="button" href="mailto:admincontact@uahapp.com?subject=UAH Beta Access Request">Request access
+              <a class="button" href="mailto:beta@uahapp.com?subject=UAH Beta Access Request">Request access
                 by email</a>
               <a class="button-secondary" href="https://beta.uahapp.com" target="_blank"
                 rel="noopener noreferrer">Visit beta.uahapp.com</a>

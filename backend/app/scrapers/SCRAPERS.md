@@ -60,7 +60,7 @@ The status table below is a planning aid, not a live-service guarantee.
 | Jooble | `https://jooble.org` | `1.5s/request` default | Dormant | Legacy / pending rerun |
 | Adzuna | `https://www.adzuna.co.uk` | `1500 req/hour` plus `200/day` default budget | Dormant | Legacy / pending rerun |
 | Careerjet | `https://www.careerjet.com` | Disabled stub | Dormant | Legacy / pending rerun |
-| WhatJobs | `https://www.whatjobs.com` | `2.0s/request` scaffold default | Inactive | Pending |
+| Dummy Provider | `https://example.com` | `2.0s/request` scaffold default | Inactive | Pending |
 
 ## Adding A New Provider
 

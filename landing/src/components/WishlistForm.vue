@@ -25,7 +25,7 @@
           </div>
 
           <div class="form-card">
-            <form id="wishlist-form" action="mailto:admincontact@uahapp.com" method="post" enctype="text/plain"
+            <form id="wishlist-form" action="mailto:feedback@uahapp.com" method="post" enctype="text/plain"
               @submit.prevent="handleSubmit">
               <div class="form-grid">
                 <div class="form-row">
@@ -114,7 +114,7 @@ function handleSubmit() {
     'Interested in beta access: ' + yesOrNo(form.interested_beta)
   ]
 
-  window.location.href = 'mailto:admincontact@uahapp.com'
+  window.location.href = 'mailto:feedback@uahapp.com'
     + '?subject=' + encodeURIComponent('UAH Feature Request / Interest')
     + '&body=' + encodeURIComponent(lines.join('\r\n'))
 }

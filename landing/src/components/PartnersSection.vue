@@ -7,7 +7,7 @@
         <h2>Built to integrate. Open to partners.</h2>
         <p class="section-intro">
           UAH is already built around a multi-provider architecture, but the current active/default-enabled provider set
-          is intentionally small: The Muse and Arbeitnow. More provider adapters exist in the codebase in dormant form,
+          is intentionally small. More provider adapters exist in the codebase in dormant form,
           and we're evaluating what should be activated next. We do not have a giant partnership roster to point to yet.
           We are early, and the outreach is early too.
         </p>
@@ -36,7 +36,7 @@
         <div class="partner-cta">
           <p>Partnership conversations are early, but real. If you have job data, an integration idea, or a research
             angle that could make UAH more useful without compromising users, email us.</p>
-          <a class="button" href="mailto:admincontact@uahapp.com?subject=UAH Partnership Inquiry">Get in touch</a>
+          <a class="button" href="mailto:partners@uahapp.com?subject=UAH Partnership Inquiry">Get in touch</a>
         </div>
       </div>
     </div>
