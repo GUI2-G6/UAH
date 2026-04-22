@@ -64,6 +64,13 @@ menu_connectivity() {
         echo -e "${CYAN}  → Container Status${NC}"
         $COMPOSE ps
         echo ""
+        echo -e "${CYAN}  → Frontend nginx → backend (public ingress path)${NC}"
+        if docker exec uah-beta-frontend wget -q -O /dev/null --timeout=8 http://127.0.0.1/api/status 2>/dev/null; then
+          echo -e "  ${GREEN}✓ http://127.0.0.1/api/status via nginx → backend (HTTP 200)${NC}"
+        else
+          echo -e "  ${RED}✗ nginx could not proxy to backend (common after backend-only restart: rebuild frontend or refresh nginx upstream DNS)${NC}"
+        fi
+        echo ""
         echo -e "${CYAN}  → Backend → Ollama${NC}"
         docker exec uah-beta-backend python3 -c "
 import httpx
