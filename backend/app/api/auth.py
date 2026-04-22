@@ -45,24 +45,12 @@ EMAIL_VERIFICATION_REQUIRED_MESSAGE = (
 
 
 def _ensure_admin_user(db: Session) -> User:
-    admin_password = os.getenv("ADMIN_BOOTSTRAP_PASSWORD")
-    admin_first_name = os.getenv("ADMIN_BOOTSTRAP_FIRST_NAME")
-    admin_last_name = os.getenv("ADMIN_BOOTSTRAP_LAST_NAME")
+    admin_password = (os.getenv("ADMIN_BOOTSTRAP_PASSWORD") or "").strip()
+    admin_first_name = (os.getenv("ADMIN_BOOTSTRAP_FIRST_NAME") or "").strip() or "Admin"
+    admin_last_name = (os.getenv("ADMIN_BOOTSTRAP_LAST_NAME") or "").strip() or "UAH"
 
-    missing = [
-        name
-        for name, value in {
-            "ADMIN_BOOTSTRAP_PASSWORD": admin_password,
-            "ADMIN_BOOTSTRAP_FIRST_NAME": admin_first_name,
-            "ADMIN_BOOTSTRAP_LAST_NAME": admin_last_name,
-        }.items()
-        if not value
-    ]
-    if missing:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Admin bootstrap env vars missing: {', '.join(missing)}",
-        )
+    if not admin_password:
+        raise ValueError("ADMIN_BOOTSTRAP_PASSWORD is required to create or repair the admin contact account.")
 
     normalized_admin_email = normalize_email(ADMIN_EMAIL)
     user = db.query(User).filter(func.lower(User.email) == normalized_admin_email).first()

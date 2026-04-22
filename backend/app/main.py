@@ -253,9 +253,50 @@ def _bootstrap_admin_user_if_enabled() -> None:
     db = SessionLocal()
     try:
         _ensure_admin_user(db)
-        logger.warning("Admin bootstrap ensured for %s", "admincontact@uahapp.com")
+        logger.warning("Admin bootstrap ensured for admincontact@uahapp.com")
     except Exception as exc:
         logger.exception("Admin bootstrap failed: %s", exc)
+    finally:
+        db.close()
+
+
+def _ensure_live_admin_if_absent() -> None:
+    """On beta/staging/prod, create admincontact@uahapp.com when no admin exists (invites, ops).
+
+    Uses ADMIN_BOOTSTRAP_PASSWORD (and optional ADMIN_BOOTSTRAP_FIRST_NAME / _LAST_NAME).
+    Does not run in development/local so local DBs are not auto-seeded.
+    """
+    env_slug = (settings.ENVIRONMENT or "").strip().lower()
+    if env_slug not in {"beta", "staging", "production", "prod"}:
+        return
+
+    try:
+        from app.db.session import SessionLocal
+        from app.api.auth import _ensure_admin_user
+        from app.models.user import User
+    except Exception as exc:
+        logger.exception("Live admin seed import failed: %s", exc)
+        return
+
+    db = SessionLocal()
+    try:
+        admin_exists = db.query(User).filter(User.is_admin.is_(True)).order_by(User.id.asc()).first()
+        if admin_exists:
+            return
+        if not (os.getenv("ADMIN_BOOTSTRAP_PASSWORD") or "").strip():
+            logger.warning(
+                "No admin users in the database. Set ADMIN_BOOTSTRAP_PASSWORD to auto-create "
+                "admincontact@uahapp.com on startup (ENVIRONMENT=%s).",
+                settings.ENVIRONMENT,
+            )
+            return
+        _ensure_admin_user(db)
+        logger.warning(
+            "Seeded default live admin admincontact@uahapp.com (no prior admin users; ENVIRONMENT=%s).",
+            settings.ENVIRONMENT,
+        )
+    except Exception as exc:
+        logger.exception("Live admin seed failed: %s", exc)
     finally:
         db.close()
 
@@ -416,6 +457,7 @@ async def lifespan(app: FastAPI):
     # First normalize whatever already exists in the database.
     _enforce_email_first_identity_mirror()
     _bootstrap_admin_user_if_enabled()
+    _ensure_live_admin_if_absent()
     _ensure_dev_test_user_if_enabled()
     # Then normalize any bootstrap-created rows using the same invariant.
     _enforce_email_first_identity_mirror()
