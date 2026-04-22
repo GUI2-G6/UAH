@@ -2,9 +2,9 @@
   <section class="landing-gateway">
     <div class="landing-card">
       <p class="eyebrow">Unified Application Hub</p>
-      <h1>Your AI job-search workspace starts here.</h1>
+      <h1>Your job search workspace starts here.</h1>
       <p class="subtitle">
-        Explore UAH first, then sign in when you are ready to continue into your workspace.
+        Explore UAH first, then sign in when you are ready to continue.
       </p>
       <div class="actions">
         <router-link class="button primary" to="/login">Sign in</router-link>
