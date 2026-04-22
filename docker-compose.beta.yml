@@ -107,6 +107,15 @@ services:
       - ./volumes/certs/beta:/etc/nginx/certs:ro
     network_mode: "service:cloudflared"
 
+  landing:
+    container_name: uah-landing
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: landing/Dockerfile
+    networks:
+      uah-beta-infra: {}
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: uah-beta-cloudflared

@@ -355,7 +355,7 @@ build_mode_default_service_list() {
 
   case "$env_name" in
     beta)
-      echo "backend frontend db redis cloudflared"
+      echo "backend frontend db redis cloudflared landing"
       ;;
     *)
       echo "backend frontend db redis"
@@ -377,7 +377,7 @@ build_mode_service_supported_for_env() {
       ;;
     beta)
       case "$service_name" in
-        backend|frontend|db|redis|cloudflared)
+        backend|frontend|db|redis|cloudflared|landing)
           return 0
           ;;
       esac
@@ -395,7 +395,7 @@ build_mode_supported_services_label() {
       echo "backend frontend db redis"
       ;;
     beta)
-      echo "backend frontend db redis cloudflared"
+      echo "backend frontend db redis cloudflared landing"
       ;;
     *)
       echo "<none>"
@@ -4244,7 +4244,7 @@ Debug:
   bash scripts/uah.sh <env> debug help
   bash scripts/uah.sh <env> debug status
   bash scripts/uah.sh <env> debug connectivity [full|ollama|redis|db|vpn-ping|host-ollama|containers|env|wireguard|cert]
-  bash scripts/uah.sh <env> debug logs [backend|frontend|cloudflared|redis|db] [--tail N] [--follow] [--raw|--errors|--filtered]
+  bash scripts/uah.sh <env> debug logs [backend|frontend|landing|cloudflared|redis|db] [--tail N] [--follow] [--raw|--errors|--filtered]
   bash scripts/uah.sh <env> debug queue [status|clear|clear-redis|clear-stuck|active|recent|failed|retry <id>|test-parse <local|cloud|rules>]
   bash scripts/uah.sh <env> debug database [isolation|user-count|resume-count|parse-stats|recent|raw <SQL>|size]
   bash scripts/uah.sh <env> debug users [list|show <email>|toggle-active <email> <true|false>|toggle-developer <email> <true|false>|reset-password <email> <password>]
@@ -4261,6 +4261,7 @@ Build options (for start, restart, sync only):
   --build-db
   --build-redis
   --build-cloudflared (beta only)
+  --build-landing (beta only)
   --build-service <name>
   --build-service=<name>
 
@@ -4776,7 +4777,7 @@ debug_logs() {
 
   while (($#)); do
     case "$1" in
-      backend|frontend|cloudflared|redis|db)
+      backend|frontend|landing|cloudflared|redis|db)
         service="$1"
         ;;
       --tail)
@@ -4809,6 +4810,11 @@ debug_logs() {
 
   if [[ "$env_name" == "dev" && "$service" == "cloudflared" ]]; then
     echo "cloudflared logs are beta-specific." >&2
+    exit 1
+  fi
+
+  if [[ "$env_name" == "dev" && "$service" == "landing" ]]; then
+    echo "landing logs are beta-specific." >&2
     exit 1
   fi
 
@@ -5519,7 +5525,7 @@ Debug subcommands:
   bash scripts/uah.sh <env> debug
   bash scripts/uah.sh <env> debug status
   bash scripts/uah.sh <env> debug connectivity [full|ollama|redis|db|vpn-ping|host-ollama|containers|env|wireguard|cert]
-  bash scripts/uah.sh <env> debug logs [backend|frontend|cloudflared|redis|db] [--tail N] [--follow] [--raw|--errors|--filtered]
+  bash scripts/uah.sh <env> debug logs [backend|frontend|landing|cloudflared|redis|db] [--tail N] [--follow] [--raw|--errors|--filtered]
   bash scripts/uah.sh <env> debug queue [status|clear|clear-redis|clear-stuck|active|recent|failed|retry <id>|test-parse <local|cloud|rules>]
   bash scripts/uah.sh <env> debug database [isolation|user-count|resume-count|parse-stats|recent|raw <SQL>|size]
   bash scripts/uah.sh <env> debug users [list|show <email>|toggle-active <email> <true|false>|toggle-developer <email> <true|false>|reset-password <email> <password>]
@@ -5766,6 +5772,9 @@ while (($#)); do
       ;;
     --build-cloudflared)
       validate_and_add_build_service "cloudflared"
+      ;;
+    --build-landing)
+      validate_and_add_build_service "landing"
       ;;
     --build-service)
       shift

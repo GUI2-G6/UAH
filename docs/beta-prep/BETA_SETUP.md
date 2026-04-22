@@ -63,7 +63,7 @@ From the repo root on the beta host:
 docker compose -f docker-compose.yml -f docker-compose.beta.yml up -d --build
 ```
 
-This launches the normal app stack plus beta overrides, including the `cloudflared` service.
+This launches the normal app stack plus beta overrides, including `cloudflared` and the public `landing` service.
 
 ## 4. Verify The Expected Containers
 
@@ -76,6 +76,7 @@ The beta stack should include environment-scoped names such as:
 - `uah-beta-celery-worker`
 - `uah-beta-celery-beat`
 - `uah-beta-cloudflared`
+- `uah-landing`
 
 ## 5. Current Runtime Expectations
 

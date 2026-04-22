@@ -2,7 +2,7 @@
 
 This directory contains the standalone public landing page for `uahapp.com`.
 
-It is intentionally separate from the main UAH app stack:
+It is intentionally separate from the main UAH frontend codebase:
 
 - its own Vue 3 + Vite app
 - no shared components or tooling from `/frontend`
@@ -11,13 +11,20 @@ It is intentionally separate from the main UAH app stack:
 - built to static files in `dist/`
 - served by a lightweight `nginx:alpine` container named `uah-landing`
 
+Operationally, the landing container is now integrated into the beta stack:
+
+- compose service: `landing` in `docker-compose.beta.yml`
+- lifecycle start/stop via `bash scripts/uah.sh beta start|stop|restart`
+
 ## Files
 
 - `index.html` - Vite entry shell
 - `package.json` - standalone landing app dependencies and scripts
 - `vite.config.js` - static build config
 - `src/` - the landing page Vue app, components, and global styles
-- `docker-compose.yml` - isolated Nginx container definition for the landing site
+- `docker-compose.yml` - optional standalone local compose for landing-only workflows
+- `Dockerfile` - production image build used by beta compose
+- `nginx.conf` - SPA-safe static serving config
 
 ## Local Development
 
@@ -50,7 +57,7 @@ npm run build
 
 That writes the deployable site to `landing/dist/`.
 
-If `uah-landing` is already running:
+If `uah-landing` is already running in standalone mode:
 
 ```powershell
 docker compose restart uah-landing
@@ -60,6 +67,12 @@ If the container is not running yet:
 
 ```powershell
 docker compose up -d
+```
+
+For beta-stack-integrated operations, use:
+
+```bash
+bash scripts/uah.sh beta start
 ```
 
 ## Cloudflare Tunnel Routing
