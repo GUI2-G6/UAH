@@ -120,7 +120,26 @@ async function loadStatus() {
     if (!response.ok) {
       throw new Error(`Status endpoint returned HTTP ${response.status}.`)
     }
-    const payload = await response.json()
+    const contentType = response.headers?.get?.('content-type') || ''
+    if (contentType && !contentType.includes('application/json')) {
+      const bodyPreview =
+        typeof response.text === 'function' ? (await response.text()).slice(0, 120).trim() : ''
+      const looksLikeHtml = bodyPreview.startsWith('<')
+      if (looksLikeHtml) {
+        throw new Error(
+          `Status endpoint returned HTML instead of JSON (HTTP ${response.status}). Check /api proxy configuration.`
+        )
+      }
+      throw new Error(
+        `Status endpoint did not return JSON (HTTP ${response.status}, content-type: ${contentType}).`
+      )
+    }
+    let payload
+    try {
+      payload = await response.json()
+    } catch {
+      throw new Error(`Status endpoint returned invalid JSON (HTTP ${response.status}).`)
+    }
     statusPayload.value = payload
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Unknown status error.'

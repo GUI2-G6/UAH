@@ -91,23 +91,24 @@
 .nav-panel {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
 }
 
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 4px;
+  flex-wrap: nowrap;
   justify-content: flex-end;
 }
 
 .nav-links a {
-  padding: 10px 14px;
+  padding: 9px 11px;
   border-radius: 999px;
   text-decoration: none;
   color: var(--color-muted);
   font-weight: 600;
+  white-space: nowrap;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
@@ -125,21 +126,25 @@
 .nav-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  margin-left: 6px;
+  flex: none;
 }
 
 .nav-signin {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 42px;
-  padding: 0 16px;
+  min-height: 40px;
+  min-width: 96px;
+  padding: 0 20px;
   border-radius: 999px;
   text-decoration: none;
   font-weight: 700;
   color: #ffffff;
   background: var(--color-primary);
   border: 1px solid var(--color-primary);
+  white-space: nowrap;
   transition: transform 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
 }
 
