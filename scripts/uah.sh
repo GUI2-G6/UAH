@@ -5572,9 +5572,30 @@ debug_extension() {
   local used_builder_label="host npm"
   local extension_env_file
   local extension_env_example
+  local default_app_origin
+  local default_api_origin
+  local default_auth_namespace
 
   extension_env_file="$extension_dir/.env"
   extension_env_example="$extension_dir/.env.example"
+
+  case "$env_name" in
+    dev)
+      default_app_origin="https://dev.uahapp.com"
+      default_api_origin="https://dev.uahapp.com"
+      default_auth_namespace="dev"
+      ;;
+    beta)
+      default_app_origin="https://beta.uahapp.com"
+      default_api_origin="https://beta.uahapp.com"
+      default_auth_namespace="beta"
+      ;;
+    *)
+      default_app_origin="https://uahapp.com"
+      default_api_origin="https://uahapp.com"
+      default_auth_namespace="prod"
+      ;;
+  esac
 
   zip_target="$(extension_zip_target_file)"
   note_file="$(extension_zip_note_file)"
@@ -5602,44 +5623,105 @@ debug_extension() {
           cp "$extension_env_example" "$extension_env_file"
         else
           cat > "$extension_env_file" <<'EOF'
-VITE_EXTENSION_APP_ORIGIN=https://beta.uahapp.com
-VITE_EXTENSION_API_ORIGIN=https://beta.uahapp.com
-VITE_EXTENSION_AUTH_NAMESPACE=beta
+VITE_EXTENSION_APP_ORIGIN=
+VITE_EXTENSION_API_ORIGIN=
+VITE_EXTENSION_AUTH_NAMESPACE=
 EOF
         fi
-        # Ensure required values are present even if example file had placeholders.
-        python3 - "$extension_env_file" <<'PY'
+      fi
+
+      debug_print_section "Safe target profile"
+      echo "  app origin: $default_app_origin"
+      echo "  api origin: $default_api_origin"
+      echo "  auth namespace: $default_auth_namespace"
+
+      # Enforce safe per-environment extension env and reject risky keys.
+      if ! python3 - "$extension_env_file" "$env_name" "$default_app_origin" "$default_api_origin" "$default_auth_namespace" <<'PY'
 from pathlib import Path
 import re
 import sys
 
 env_path = Path(sys.argv[1])
+env_name = sys.argv[2]
+safe_app_origin = sys.argv[3]
+safe_api_origin = sys.argv[4]
+safe_auth_namespace = sys.argv[5]
 raw = env_path.read_text(encoding="utf-8")
 lines = raw.splitlines()
 required = {
-    "VITE_EXTENSION_APP_ORIGIN": "https://beta.uahapp.com",
-    "VITE_EXTENSION_API_ORIGIN": "https://beta.uahapp.com",
-    "VITE_EXTENSION_AUTH_NAMESPACE": "beta",
+    "VITE_EXTENSION_APP_ORIGIN": safe_app_origin,
+    "VITE_EXTENSION_API_ORIGIN": safe_api_origin,
+    "VITE_EXTENSION_AUTH_NAMESPACE": safe_auth_namespace,
 }
+allowed_vite = set(required.keys()) | {"VITE_EXTENSION_AUTH_COOKIE_NAME"}
+forbidden_fragments = (
+    "API_KEY",
+    "SECRET",
+    "TOKEN",
+    "PASSWORD",
+    "PRIVATE_KEY",
+    "ACCESS_KEY",
+    "OPENAI",
+    "ANTHROPIC",
+    "GEMINI",
+    "AWS_",
+    "CLOUDFLARE_",
+)
 
 present = {}
+kv = {}
 for idx, line in enumerate(lines):
     m = re.match(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$", line)
     if not m:
         continue
-    present[m.group(1)] = idx
+    key = m.group(1)
+    present[key] = idx
+    value = m.group(2).strip().strip('"').strip("'")
+    kv[key] = value
+
+violations = []
+for key, value in kv.items():
+    key_upper = key.upper()
+    if key.startswith("VITE_") and key not in allowed_vite:
+        violations.append(f"Unexpected VITE key in extension env: {key}")
+    if value and any(fragment in key_upper for fragment in forbidden_fragments):
+        violations.append(f"Potential secret-like key is not allowed in extension env: {key}")
+
+if violations:
+    print("Unsafe extension env detected; refusing repack:", file=sys.stderr)
+    for item in violations:
+        print(f"- {item}", file=sys.stderr)
+    raise SystemExit(1)
 
 for key, default in required.items():
     if key in present:
-        idx = present[key]
-        value = lines[idx].split("=", 1)[1].strip().strip('"').strip("'")
-        if not value:
-            lines[idx] = f"{key}={default}"
+        # Always force safe profile values during repack.
+        lines[present[key]] = f"{key}={default}"
     else:
         lines.append(f"{key}={default}")
 
+# Optional cookie override can remain if present and non-empty.
+if "VITE_EXTENSION_AUTH_COOKIE_NAME" in present:
+    idx = present["VITE_EXTENSION_AUTH_COOKIE_NAME"]
+    current_value = lines[idx].split("=", 1)[1].strip().strip('"').strip("'")
+    if not current_value:
+        lines[idx] = f"VITE_EXTENSION_AUTH_COOKIE_NAME=uah_auth_{safe_auth_namespace}"
+
+# Safety guard: enforce approved live hosts for each environment profile.
+allowed_hosts = {
+    "dev": {"https://dev.uahapp.com"},
+    "beta": {"https://beta.uahapp.com"},
+    "prod": {"https://uahapp.com", "https://www.uahapp.com"},
+}.get(env_name, {"https://uahapp.com"})
+
+if required["VITE_EXTENSION_APP_ORIGIN"] not in allowed_hosts or required["VITE_EXTENSION_API_ORIGIN"] not in allowed_hosts:
+    raise SystemExit("Configured extension origins are not allowed for this environment profile.")
+
 env_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 PY
+      then
+        debug_print_error "Unsafe extension .env detected. Repack aborted."
+        exit 1
       fi
       if ! command -v python3 >/dev/null 2>&1; then
         debug_print_error "python3 is required for zip packaging but was not found in PATH."
@@ -5671,8 +5753,8 @@ PY
           --user "$(id -u):$(id -g)" \
           -e HOME=/tmp \
           -e npm_config_cache=/tmp/.npm \
-          -v "$extension_dir:/work" \
-          -w /work \
+          -v "$ROOT_DIR:/repo" \
+          -w /repo/uah-browser-extension \
           node:22-bookworm \
           bash -lc "set -euo pipefail; npm ci --include=optional || npm ci; if ! node -e \"require('@rollup/rollup-linux-x64-gnu')\" >/dev/null 2>&1; then npm install --no-save --include=optional @rollup/rollup-linux-x64-gnu; fi; npm run build"; then
           debug_print_error "Dockerized extension build failed. Zip was not updated."
