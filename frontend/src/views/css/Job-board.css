@@ -711,3 +711,78 @@
 .pagination-bottom {
   padding-top: 6px;
 }
+
+html[data-theme="dark"] .greeting p,
+html[data-theme="dark"] .hero-copy p {
+  color: var(--color-text-secondary);
+}
+
+html[data-theme="dark"] .active-filters-bar,
+html[data-theme="dark"] .filter-group,
+html[data-theme="dark"] .advanced-filters-panel,
+html[data-theme="dark"] .city-preview,
+html[data-theme="dark"] .city-modal-dialog,
+html[data-theme="dark"] .empty-state,
+html[data-theme="dark"] .results-state-item,
+html[data-theme="dark"] .category-suggestions {
+  background: var(--color-surface);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .city-modal-scroll,
+html[data-theme="dark"] .city-sort-row {
+  background: var(--color-surface-muted);
+  border-color: var(--border-color);
+}
+
+html[data-theme="dark"] .active-filter-chip,
+html[data-theme="dark"] .mode-button,
+html[data-theme="dark"] .advanced-toggle,
+html[data-theme="dark"] .city-sort-btn,
+html[data-theme="dark"] .city-preview-more,
+html[data-theme="dark"] .custom-input-row button,
+html[data-theme="dark"] .filter-actions button,
+html[data-theme="dark"] .secondary-action,
+html[data-theme="dark"] .chip,
+html[data-theme="dark"] .empty-state-actions button {
+  background: var(--color-surface-muted);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .filter-actions .secondary,
+html[data-theme="dark"] .active-filters-actions .secondary {
+  background: var(--color-surface);
+}
+
+html[data-theme="dark"] .category-option {
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .category-option:hover,
+html[data-theme="dark"] .category-option.active {
+  background: rgba(59, 130, 246, 0.24);
+}
+
+html[data-theme="dark"] .advanced-eyebrow,
+html[data-theme="dark"] .active-filters-label,
+html[data-theme="dark"] .results-state-label,
+html[data-theme="dark"] .city-distance,
+html[data-theme="dark"] .active-filters-empty,
+html[data-theme="dark"] .helper-text,
+html[data-theme="dark"] .hint-text {
+  color: var(--color-text-muted);
+}
+
+html[data-theme="dark"] .advanced-filters-header h2,
+html[data-theme="dark"] .jobs-meta,
+html[data-theme="dark"] .city-modal-header h2,
+html[data-theme="dark"] .city-preview-list li {
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .advanced-filters-header p,
+html[data-theme="dark"] .city-modal-subtitle {
+  color: var(--color-text-secondary);
+}

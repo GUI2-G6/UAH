@@ -161,6 +161,20 @@ html[data-theme="dark"] .nav-links a.is-active {
   flex: none;
 }
 
+.nav-theme-control {
+  align-self: center;
+}
+
+.nav-theme-control.uah-theme-segment {
+  border-radius: 999px;
+}
+
+.nav-theme-control .uah-theme-segment__btn {
+  min-height: 30px;
+  padding: 4px 8px;
+  font-size: 0.68rem;
+}
+
 .nav-signin {
   display: inline-flex;
   align-items: center;
@@ -265,6 +279,10 @@ html[data-theme="dark"] .nav-links a.is-active {
 
   .js-enabled .nav-actions {
     margin-top: 10px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    width: 100%;
   }
 
   .js-enabled .nav-signin {

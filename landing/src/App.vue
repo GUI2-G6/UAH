@@ -1,11 +1,13 @@
 <!-- Renders the full standalone landing page and owns app-wide anchor-scroll enhancement. -->
 <template>
-  <a class="skip-link" href="#main-content">Skip to content</a>
-  <SiteHeader />
+  <div class="app-shell">
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <SiteHeader />
 
-  <router-view />
+    <router-view />
 
-  <SiteFooter />
+    <SiteFooter />
+  </div>
 </template>
 
 <script setup>
@@ -56,3 +58,15 @@ onUnmounted(() => {
   document.removeEventListener('click', handleAnchorClick)
 })
 </script>
+
+<style>
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-shell > main {
+  flex: 1;
+}
+</style>

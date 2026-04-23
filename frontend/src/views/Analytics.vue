@@ -2,22 +2,23 @@
     <div class="greeting">
         <h1>Analytics</h1>
     </div>
-    <!--Example Chart-->
-    <Card>
-        <Line :data="lineData" :options="lineOptions" />
-    </Card>
-    <Card>
-        <Bar :data="barData" />
-    </Card>
-    <Card>
-        <Pie :data="pieData" />
-    </Card>
-    <Card>
-        <Doughnut :data="doughnutData" />
-    </Card>
-    <Card>
-        <Radar :data="radarData" />
-    </Card>
+    <div class="analytics-grid">
+        <Card class="analytics-card">
+            <Line :data="lineData" :options="lineOptions" />
+        </Card>
+        <Card class="analytics-card">
+            <Bar :data="barData" :options="chartOptions" />
+        </Card>
+        <Card class="analytics-card">
+            <Pie :data="pieData" :options="chartOptions" />
+        </Card>
+        <Card class="analytics-card">
+            <Doughnut :data="doughnutData" :options="chartOptions" />
+        </Card>
+        <Card class="analytics-card">
+            <Radar :data="radarData" :options="radarOptions" />
+        </Card>
+    </div>
 </template>
 
 <script>
@@ -61,6 +62,10 @@
             Radar,
         },
         data() {
+            const css = getComputedStyle(document.documentElement)
+            const text = css.getPropertyValue('--color-text-primary').trim() || '#e2e8f0'
+            const muted = css.getPropertyValue('--color-text-muted').trim() || '#94a3b8'
+            const grid = 'rgba(148, 163, 184, 0.22)'
             return {
                 lineData: {
                     labels: ['Jan', 'Feb', 'Mar', 'Apr'],
@@ -68,13 +73,35 @@
                         {
                             label: 'Users',
                             data: [10, 25, 18, 40],
-                            borderColor: '#F7A8A8'
+                            borderColor: '#7cb6ff'
                         }
                     ]
                 },
                 lineOptions: {
                     responsive: true,
-                    maintainAspectRatio: false
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: text,
+                            },
+                        },
+                    },
+                    scales: {
+                        x: { ticks: { color: muted }, grid: { color: grid } },
+                        y: { ticks: { color: muted }, grid: { color: grid } },
+                    },
+                },
+                chartOptions: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: text,
+                            },
+                        },
+                    },
                 },
                 barData: {
                     labels: ['Jan', 'Feb', 'Mar'],
@@ -82,7 +109,7 @@
                     {
                         label: 'Sales',
                         data: [30, 50, 20],
-                        backgroundColor: ['#F7A8A8', '#A8C5F7', '#A8F7C5'],
+                        backgroundColor: ['#fda4af', '#7cb6ff', '#86efac'],
 
                         borderRadius: {
                             topLeft: 10,
@@ -99,9 +126,9 @@
                         {
                         data: [30, 50, 20],
                         backgroundColor: [
-                            '#FCA5A5',
-                            '#93C5FD',
-                            '#86EFAC'
+                            '#fda4af',
+                            '#7cb6ff',
+                            '#86efac'
                         ]
                         }
                     ]
@@ -112,9 +139,9 @@
                         {
                         data: [30, 50, 20],
                         backgroundColor: [
-                            '#FCA5A5',
-                            '#93C5FD',
-                            '#86EFAC'
+                            '#fda4af',
+                            '#7cb6ff',
+                            '#86efac'
                         ],
                         borderWidth: 0
                         }
@@ -126,11 +153,26 @@
                         {
                         label: 'Player 1',
                         data: [80, 60, 70, 90, 75],
-                        backgroundColor: 'rgba(99, 102, 241, 0.2)',
-                        borderColor: '#6366F1',
-                        pointBackgroundColor: '#6366F1'
+                        backgroundColor: 'rgba(124, 182, 255, 0.25)',
+                        borderColor: '#7cb6ff',
+                        pointBackgroundColor: '#7cb6ff'
                         }
                     ]
+                },
+                radarOptions: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { color: text } },
+                    },
+                    scales: {
+                        r: {
+                            angleLines: { color: grid },
+                            grid: { color: grid },
+                            pointLabels: { color: muted },
+                            ticks: { color: muted, backdropColor: 'transparent' },
+                        },
+                    },
                 },
             }
         }

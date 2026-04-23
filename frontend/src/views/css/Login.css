@@ -269,3 +269,35 @@
   color: var(--color-text-muted);
   font-size: 0.85rem;
 }
+
+html[data-theme="dark"] .auth-card {
+  background: var(--color-surface);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme="dark"] .auth-note {
+  background: rgba(59, 130, 246, 0.14);
+  color: var(--color-text-secondary);
+}
+
+html[data-theme="dark"] .email-input,
+html[data-theme="dark"] .oauth-btn,
+html[data-theme="dark"] .landing-btn {
+  background: var(--color-surface-muted);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .oauth-divider::before,
+html[data-theme="dark"] .oauth-divider::after,
+html[data-theme="dark"] .bypass-section {
+  border-color: var(--border-color);
+  background: var(--border-color);
+}
+
+html[data-theme="dark"] .landing-btn:hover,
+html[data-theme="dark"] .oauth-btn:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--border-color);
+}

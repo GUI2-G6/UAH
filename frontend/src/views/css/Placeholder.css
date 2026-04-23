@@ -28,6 +28,43 @@
     line-height: 1.45;
 }
 
+.analytics-grid {
+    padding: 16px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.analytics-card {
+    --ui-card-bg: var(--color-surface);
+    --ui-card-border: 1px solid var(--border-color);
+    --ui-card-shadow: var(--shadow-card);
+    --ui-card-padding: 14px;
+    min-height: 280px;
+}
+
+.analytics-card :deep(canvas) {
+    width: 100% !important;
+    height: 240px !important;
+}
+
+html[data-theme="dark"] .placeholder-page {
+    background: var(--app-page-background);
+}
+
+html[data-theme="dark"] .placeholder-card {
+    background: var(--color-surface);
+    border-color: var(--border-color);
+}
+
+html[data-theme="dark"] .placeholder-card h1 {
+    color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .placeholder-card p {
+    color: var(--color-text-secondary);
+}
+
 @media (max-width: 600px) {
     .placeholder-page {
         padding: 12px;

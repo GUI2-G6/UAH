@@ -691,3 +691,26 @@ html[data-theme="dark"] .dashboard select {
   color: var(--color-text-primary);
   border-color: var(--border-color);
 }
+
+html[data-theme="dark"] .settings-card,
+html[data-theme="dark"] .applicant-card {
+  --ui-card-bg: var(--color-surface);
+}
+
+html[data-theme="dark"] .action-feedback,
+html[data-theme="dark"] .account-message,
+html[data-theme="dark"] .account-error {
+  background: var(--color-surface-muted);
+  border-color: var(--border-color);
+  color: var(--color-text-secondary);
+}
+
+html[data-theme="dark"] .dashboard button.danger {
+  border-color: rgba(248, 113, 113, 0.6);
+  color: #fca5a5;
+}
+
+html[data-theme="dark"] .dashboard button.danger:hover {
+  background: rgba(239, 68, 68, 0.24);
+  color: #fee2e2;
+}

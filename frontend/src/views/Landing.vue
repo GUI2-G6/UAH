@@ -368,4 +368,39 @@ h2 {
     flex-direction: column;
   }
 }
+
+html[data-theme="dark"] .landing-card {
+  background: var(--color-surface);
+  border-color: var(--border-color);
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme="dark"] .path-card {
+  background: var(--color-surface-muted);
+  border-color: var(--border-color);
+}
+
+html[data-theme="dark"] h1,
+html[data-theme="dark"] h2 {
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .subtitle,
+html[data-theme="dark"] .path-copy,
+html[data-theme="dark"] .meta {
+  color: var(--color-text-secondary);
+}
+
+html[data-theme="dark"] .button.primary {
+  background: var(--color-primary-600);
+  color: #fff;
+}
+
+html[data-theme="dark"] .button.secondary,
+html[data-theme="dark"] .button.tertiary,
+html[data-theme="dark"] .request-input {
+  background: var(--color-surface);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
 </style>

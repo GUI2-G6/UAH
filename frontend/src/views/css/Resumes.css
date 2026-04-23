@@ -3220,3 +3220,90 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+html[data-theme="dark"] .resumes-page .resume-nav,
+html[data-theme="dark"] .resumes-page .resume-list-card,
+html[data-theme="dark"] .resumes-page .appinfo-card,
+html[data-theme="dark"] .resumes-page .eeo-card,
+html[data-theme="dark"] .resumes-page .queue-panel-card,
+html[data-theme="dark"] .resumes-page .modal-box,
+html[data-theme="dark"] .resumes-page .pipeline-card,
+html[data-theme="dark"] .resumes-page .profile-switcher,
+html[data-theme="dark"] .resumes-page .stat-card,
+html[data-theme="dark"] .resumes-page .queue-metric-card {
+  background: var(--color-surface);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .resumes-page .resume-card {
+  --ui-card-bg: var(--color-surface);
+  --ui-card-border: 1px solid var(--border-color);
+  --ui-card-shadow: var(--shadow-card);
+}
+
+html[data-theme="dark"] .resumes-page .resume-list-item,
+html[data-theme="dark"] .resumes-page .file-preview-row,
+html[data-theme="dark"] .resumes-page .queue-details,
+html[data-theme="dark"] .resumes-page .queue-global-entry,
+html[data-theme="dark"] .resumes-page .option-row,
+html[data-theme="dark"] .resumes-page .drop-zone {
+  background: var(--color-surface-muted);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .resumes-page .resume-list-item:hover,
+html[data-theme="dark"] .resumes-page .option-row:hover,
+html[data-theme="dark"] .resumes-page .drop-zone:hover,
+html[data-theme="dark"] .resumes-page .drop-zone.drag-over {
+  background: var(--color-surface-hover);
+}
+
+html[data-theme="dark"] .resumes-page .resume-meta .resume-name,
+html[data-theme="dark"] .resumes-page .queue-panel-header h4,
+html[data-theme="dark"] .resumes-page .pipeline-card h4,
+html[data-theme="dark"] .resumes-page .view-field p,
+html[data-theme="dark"] .resumes-page .exp-entry .exp-title,
+html[data-theme="dark"] .resumes-page .parse-progress-header,
+html[data-theme="dark"] .resumes-page .modal-box h2 {
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .resumes-page .resume-meta .resume-date,
+html[data-theme="dark"] .resumes-page .panel-copy,
+html[data-theme="dark"] .resumes-page .task-mode-note,
+html[data-theme="dark"] .resumes-page .queue-panel-header p,
+html[data-theme="dark"] .resumes-page .queue-metric-label,
+html[data-theme="dark"] .resumes-page .queue-metric-sub,
+html[data-theme="dark"] .resumes-page .queue-details-line,
+html[data-theme="dark"] .resumes-page .entry-method,
+html[data-theme="dark"] .resumes-page .entry-status,
+html[data-theme="dark"] .resumes-page .pipeline-card p,
+html[data-theme="dark"] .resumes-page .view-section h4,
+html[data-theme="dark"] .resumes-page .view-field label,
+html[data-theme="dark"] .resumes-page .exp-entry .exp-sub,
+html[data-theme="dark"] .resumes-page .portal-fill-caption,
+html[data-theme="dark"] .resumes-page .loading-row,
+html[data-theme="dark"] .resumes-page .not-parsed-message {
+  color: var(--color-text-muted);
+}
+
+html[data-theme="dark"] .resumes-page .resume-actions button,
+html[data-theme="dark"] .resumes-page .btn-secondary,
+html[data-theme="dark"] .resumes-page .method-toggle button,
+html[data-theme="dark"] .resumes-page .queue-scope-toggle button {
+  background: var(--color-surface);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .resumes-page .field-group input,
+html[data-theme="dark"] .resumes-page .field-group select,
+html[data-theme="dark"] .resumes-page .field-group textarea,
+html[data-theme="dark"] .resumes-page .profile-select,
+html[data-theme="dark"] .resumes-page .new-profile-input {
+  background: var(--color-surface);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
