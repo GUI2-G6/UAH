@@ -53,8 +53,9 @@
     font-weight: 600;
 }
 
-.footer-theme-toggle {
-    font-weight: 600;
+.footer-theme-control {
+    flex-shrink: 0;
+    margin: 0 4px 0 0;
 }
 
 .footer a:hover {

@@ -105,6 +105,10 @@
   min-width: 0;
 }
 
+.settings-group .uah-theme-segment {
+  max-width: 100%;
+}
+
 .account-security-form {
   width: 100%;
   max-width: 420px;

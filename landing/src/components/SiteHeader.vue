@@ -36,6 +36,7 @@
             </RouterLink>
           </div>
           <div class="nav-actions">
+            <ThemeModeControl class="nav-theme-control" group-label="Site color theme" />
             <a class="nav-signin" :href="loginUrl" @click="closeMenu">Sign in</a>
           </div>
         </nav>
@@ -47,6 +48,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
+import ThemeModeControl from './ThemeModeControl.vue'
 
 const isMenuOpen = ref(false)
 const loginUrl = (import.meta.env.VITE_UAH_LOGIN_URL || 'https://beta.uahapp.com/login').trim()

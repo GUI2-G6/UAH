@@ -1209,17 +1209,3 @@ html[data-theme="dark"] textarea:focus {
     gap: 12px;
   }
 }
-
-html[data-theme="dark"] .footer-shell {
-  border-top-color: rgba(126, 184, 234, 0.18);
-}
-
-html[data-theme="dark"] label {
-  color: var(--color-primary-deep);
-}
-
-html[data-theme="dark"] .checkbox {
-  background: var(--color-surface-muted);
-  border-color: rgba(126, 184, 234, 0.14);
-  color: var(--color-muted);
-}

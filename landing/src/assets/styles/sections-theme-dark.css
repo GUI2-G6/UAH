@@ -1,0 +1,262 @@
+/* Landing marketing sections — dark mode surfaces and type (see sections.css) */
+/* Loaded after sections.css; relies on html[data-theme="dark"] tokens in base.css */
+
+html[data-theme="dark"] h1,
+html[data-theme="dark"] h2,
+html[data-theme="dark"] h3,
+html[data-theme="dark"] .page-title {
+  color: var(--color-text);
+}
+
+html[data-theme="dark"] .section-label,
+html[data-theme="dark"] .hero-subtitle {
+  color: var(--color-primary);
+}
+
+html[data-theme="dark"] .hero-description,
+html[data-theme="dark"] .section-intro,
+html[data-theme="dark"] .callout-text,
+html[data-theme="dark"] .value-copy p,
+html[data-theme="dark"] .build-copy p,
+html[data-theme="dark"] .hero-note,
+html[data-theme="dark"] .scroll-cue {
+  color: var(--color-muted);
+}
+
+/* Tags and pills */
+html[data-theme="dark"] .hero-tags li,
+html[data-theme="dark"] .tech-badge,
+html[data-theme="dark"] .signal-list li {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-muted);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+/* Hero illustration stack */
+html[data-theme="dark"] .visual-orbit {
+  background:
+    radial-gradient(circle at top left, rgba(80, 140, 220, 0.18), transparent 28%),
+    radial-gradient(circle at 78% 18%, rgba(200, 160, 60, 0.12), transparent 18%),
+    linear-gradient(180deg, #151c2a 0%, #1a2332 100%);
+  border-color: var(--color-border);
+}
+
+html[data-theme="dark"] .visual-card {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text);
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.35);
+}
+
+html[data-theme="dark"] .visual-card::after {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="dark"] .visual-card.primary {
+  background: linear-gradient(180deg, #1c2638 0%, #1a2332 100%);
+}
+
+html[data-theme="dark"] .visual-card.secondary {
+  background: linear-gradient(180deg, rgba(200, 150, 50, 0.22), rgba(30, 28, 20, 0.95));
+  color: #f5e6c8;
+  border: 1px solid rgba(220, 180, 80, 0.25);
+}
+
+html[data-theme="dark"] .visual-card.tertiary {
+  background: linear-gradient(180deg, rgba(60, 120, 200, 0.28), rgba(18, 32, 52, 0.96));
+  color: #dbeafe;
+  border: 1px solid rgba(100, 160, 240, 0.25);
+}
+
+html[data-theme="dark"] .visual-card.quad {
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.22);
+  color: #fecaca;
+}
+
+html[data-theme="dark"] .visual-title {
+  color: var(--color-text);
+}
+
+html[data-theme="dark"] .scroll-cue-mark {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-primary);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.3);
+}
+
+/* Primary CTAs: keep strong fill */
+html[data-theme="dark"] .button {
+  color: #0a1628;
+  background: var(--color-primary);
+  box-shadow: 0 12px 28px rgba(90, 160, 255, 0.25);
+}
+
+html[data-theme="dark"] .button:hover,
+html[data-theme="dark"] .button:focus-visible {
+  background: var(--color-primary-deep);
+  color: #0a1628;
+}
+
+html[data-theme="dark"] .button-secondary {
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+}
+
+html[data-theme="dark"] .button-secondary:hover,
+html[data-theme="dark"] .button-secondary:focus-visible {
+  background: var(--color-surface-strong);
+  border-color: var(--color-primary);
+}
+
+/* Section / problem / value cards */
+html[data-theme="dark"] .section-card {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+html[data-theme="dark"] .section-card::before {
+  background: radial-gradient(circle, rgba(100, 160, 240, 0.15), transparent 72%);
+}
+
+html[data-theme="dark"] .problem-card,
+html[data-theme="dark"] .value-card,
+html[data-theme="dark"] .access-card,
+html[data-theme="dark"] .build-sheet {
+  background: #151d2c;
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+html[data-theme="dark"] .problem-card p,
+html[data-theme="dark"] .value-card p,
+html[data-theme="dark"] .access-card p,
+html[data-theme="dark"] .build-sheet p,
+html[data-theme="dark"] .pillar p {
+  color: var(--color-muted);
+}
+
+html[data-theme="dark"] .pillar {
+  background: linear-gradient(180deg, #182030 0%, #141b28 100%);
+  border-color: var(--color-border);
+}
+
+html[data-theme="dark"] .pillar::before {
+  background: rgba(100, 150, 220, 0.12);
+}
+
+html[data-theme="dark"] .pillar h3 {
+  color: var(--color-text);
+}
+
+html[data-theme="dark"] .access-card.primary {
+  background: linear-gradient(180deg, rgba(60, 100, 160, 0.25) 0%, #151d2c 100%);
+  border-color: var(--color-border);
+}
+
+/* Tech badges row */
+html[data-theme="dark"] .tech-badge {
+  background: var(--color-surface) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text) !important;
+}
+
+/* Wishlist + forms */
+html[data-theme="dark"] .form-card {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+html[data-theme="dark"] .quote {
+  background: rgba(100, 150, 220, 0.12);
+  color: #dbe8ff;
+  border-left-color: var(--color-primary);
+}
+
+/* Partners and policy grids */
+html[data-theme="dark"] .partner-card,
+html[data-theme="dark"] .page-link-card,
+html[data-theme="dark"] .policy-card,
+html[data-theme="dark"] .contributor-card,
+html[data-theme="dark"] .status-card {
+  background: #151d2c;
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme="dark"] .partner-cta {
+  background: rgba(100, 150, 220, 0.12);
+  border-color: var(--color-border);
+}
+
+html[data-theme="dark"] .partner-cta p {
+  color: var(--color-text);
+}
+
+html[data-theme="dark"] .metric {
+  background: #121a24;
+  border-color: var(--color-border);
+}
+
+/* Status */
+html[data-theme="dark"] .status-banner-neutral,
+html[data-theme="dark"] .status-banner {
+  background: rgba(100, 150, 220, 0.1);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+html[data-theme="dark"] .status-banner p {
+  color: var(--color-muted);
+}
+
+html[data-theme="dark"] .status-chip-good {
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.2);
+}
+
+html[data-theme="dark"] .status-chip-warn {
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.18);
+}
+
+html[data-theme="dark"] .status-chip-danger {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.2);
+}
+
+html[data-theme="dark"] .policy-card h2,
+html[data-theme="dark"] .status-card h2,
+html[data-theme="dark"] .contributor-card h2,
+html[data-theme="dark"] .page-link-card h2,
+html[data-theme="dark"] .page-link-card strong {
+  color: var(--color-text);
+}
+
+html[data-theme="dark"] label {
+  color: var(--color-text);
+}
+
+html[data-theme="dark"] .checkbox {
+  background: #121a24;
+  border-color: var(--color-border);
+  color: var(--color-muted);
+}
+
+html[data-theme="dark"] .footer-shell {
+  border-top-color: var(--color-border);
+}
+
+/* Footer (duplicate fine-tune) */
+html[data-theme="dark"] .site-footer .footer-brand strong,
+html[data-theme="dark"] .footer-brand span,
+html[data-theme="dark"] .footer-note {
+  color: var(--color-muted);
+}
+
+html[data-theme="dark"] .footer-brand strong {
+  color: var(--color-text);
+}

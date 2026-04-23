@@ -1,4 +1,24 @@
 @import "../../shared/theme/uah-theme.css";
+@import "../../shared/theme/theme-mode-control.css";
+
+/* Sidebar (Burger) — theming; see components/css/Burger.css */
+:root {
+  --nav-sidebar-bg: #fff7ec;
+  --nav-sidebar-border: rgb(249, 246, 246);
+  --nav-sidebar-hover: rgb(194, 255, 251);
+  --nav-sidebar-label: rgb(63, 132, 236);
+  --nav-sidebar-bar: rgba(63, 98, 236);
+  --nav-mobile-footer-border: #d1d5db;
+}
+
+html[data-theme="dark"] {
+  --nav-sidebar-bg: #0c1118;
+  --nav-sidebar-border: rgba(130, 160, 200, 0.28);
+  --nav-sidebar-hover: rgba(59, 130, 246, 0.18);
+  --nav-sidebar-label: #93c5fd;
+  --nav-sidebar-bar: #60a5fa;
+  --nav-mobile-footer-border: rgba(100, 130, 180, 0.35);
+}
 
 * {
   margin: 0;

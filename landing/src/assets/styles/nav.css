@@ -16,6 +16,16 @@ html[data-theme="dark"] .brand {
   background-color: rgba(45, 38, 24, 0.9);
 }
 
+html[data-theme="dark"] .nav-toggle {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+html[data-theme="dark"] .nav-theme-control {
+  flex-shrink: 0;
+}
+
 .nav-shell {
   width: min(calc(100% - 32px), var(--content-width));
   margin: 0 auto;
@@ -130,6 +140,17 @@ html[data-theme="dark"] .brand {
 .nav-links a.is-active {
   color: var(--color-primary);
   background: rgba(31, 92, 153, 0.12);
+}
+
+html[data-theme="dark"] .nav-links a {
+  color: #cbd5e1;
+}
+
+html[data-theme="dark"] .nav-links a:hover,
+html[data-theme="dark"] .nav-links a:focus-visible,
+html[data-theme="dark"] .nav-links a.is-active {
+  color: var(--color-text);
+  background: rgba(100, 160, 240, 0.14);
 }
 
 .nav-actions {

@@ -16,6 +16,7 @@ Use it to answer two questions quickly:
 | Text-only architecture diagram for writeups/forms | [ARCHITECTURE_TEXT_DIAGRAM.md](ARCHITECTURE_TEXT_DIAGRAM.md) |
 | Backend local development and runtime notes | [backend/README.md](backend/README.md) |
 | Frontend local development and active UI/runtime behavior | [frontend/README.md](frontend/README.md) |
+| Theme tokens, appearance modes, and theme-pack roadmap | [../shared/theme/README.md](../shared/theme/README.md) |
 | Browser extension architecture, build, and testing | [../uah-browser-extension/README.md](../uah-browser-extension/README.md) |
 | Environment templates and runtime `.env` rules | [env-examples/README.md](env-examples/README.md) |
 | Server-side env requirements and operational checklist | [SERVER_ENV_CHECKLIST.md](SERVER_ENV_CHECKLIST.md) |

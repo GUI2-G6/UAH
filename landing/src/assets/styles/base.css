@@ -150,25 +150,25 @@ section {
 
 /* Dark theme (data-theme set by shared themePreference + inline boot script) */
 html[data-theme="dark"] {
-  --color-primary: #7eb8ea;
-  --color-primary-deep: #a8d0f5;
-  --color-text: #e8edf4;
+  --color-primary: #7cb6ff;
+  --color-primary-deep: #9dc6ff;
+  --color-text: #f1f5f9;
   --color-surface: #1a2332;
-  --color-surface-muted: #121a24;
+  --color-surface-muted: #0b1018;
   --color-surface-strong: #243044;
-  --color-muted: #9aa5b8;
-  --color-border: rgba(126, 184, 234, 0.22);
-  --color-border-strong: rgba(126, 184, 234, 0.38);
-  --shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.45);
-  --shadow-card: 0 10px 24px rgba(0, 0, 0, 0.35);
+  --color-muted: #a8b3c3;
+  --color-border: rgba(130, 170, 220, 0.32);
+  --color-border-strong: rgba(150, 190, 240, 0.45);
+  --shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 html[data-theme="dark"] body {
   color: var(--color-text);
   background:
-    radial-gradient(circle at top right, rgba(126, 184, 234, 0.1), transparent 28%),
-    radial-gradient(circle at 12% 18%, rgba(255, 87, 87, 0.06), transparent 16%),
-    linear-gradient(180deg, #0f1419 0%, #1a2332 48%, #0f1419 100%);
+    radial-gradient(circle at top right, rgba(100, 160, 240, 0.12), transparent 30%),
+    radial-gradient(circle at 12% 18%, rgba(255, 100, 100, 0.06), transparent 16%),
+    linear-gradient(180deg, #080c12 0%, #0f1520 45%, #080c12 100%);
 }
 
 html[data-theme="dark"] body::before {
