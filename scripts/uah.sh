@@ -3938,7 +3938,7 @@ startup_quick_hud() {
 }
 
 extension_zip_note_file() {
-  echo "$ROOT_DIR/landing/public/downloads/uah-browser-extension-alpha.last-repacked.txt"
+  echo "$ROOT_DIR/.ops-state/uah-browser-extension-alpha.last-repacked.txt"
 }
 
 extension_zip_target_file() {
@@ -5547,6 +5547,7 @@ debug_extension() {
   local landing_downloads_dir="$ROOT_DIR/landing/public/downloads"
   local zip_target
   local note_file
+  local legacy_note_file
   local timestamp_utc
   local timestamp_iso
   local commit_sha
@@ -5554,6 +5555,7 @@ debug_extension() {
 
   zip_target="$(extension_zip_target_file)"
   note_file="$(extension_zip_note_file)"
+  legacy_note_file="$ROOT_DIR/landing/public/downloads/uah-browser-extension-alpha.last-repacked.txt"
 
   case "$action" in
     repack|repack-zip|refresh-zip)
@@ -5573,6 +5575,8 @@ debug_extension() {
       fi
 
       mkdir -p "$landing_downloads_dir"
+      mkdir -p "$(dirname "$note_file")"
+      rm -f "$legacy_note_file"
 
       debug_print_section "Build extension"
       (
@@ -5639,6 +5643,9 @@ EOF
       if [[ -f "$(extension_zip_note_file)" ]]; then
         debug_print_ok "Found last repacked note."
         sed 's/^/  /' "$(extension_zip_note_file)"
+      elif [[ -f "$legacy_note_file" ]]; then
+        debug_print_warn "Found legacy note path; it no longer blocks sync and can be removed."
+        echo "  legacy note: $legacy_note_file"
       else
         debug_print_warn "No repack note found yet."
       fi

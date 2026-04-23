@@ -59,6 +59,10 @@ backend/app/scrapers/checklist/checklist_log/*
 !backend/app/scrapers/checklist/checklist_log/.gitkeep
 mobile-friendliness-audit-2026-04-22.md
 
+# Ops runtime state (generated from scripts/uah.sh)
+.ops-state/
+landing/public/downloads/uah-browser-extension-alpha.last-repacked.txt
+
 # Celery Beat runtime scheduler file
 celerybeat-schedule
 celerybeat.pid
