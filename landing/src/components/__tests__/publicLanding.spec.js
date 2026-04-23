@@ -140,6 +140,26 @@ describe('public landing mobile navigation', () => {
     const openHeight = document.documentElement.style.getPropertyValue('--site-header-height').trim()
     expect(openHeight).toMatch(/^\d+px$/)
   })
+
+  it('applies inert only when the mobile drawer is hidden', async () => {
+    window.innerWidth = 1400
+
+    const wrapper = mountHeader()
+    const nav = wrapper.get('#site-nav-menu')
+    expect(nav.attributes('aria-hidden')).toBe('false')
+    expect(nav.attributes('inert')).toBeUndefined()
+
+    window.innerWidth = 800
+    window.dispatchEvent(new Event('resize'))
+    await nextTick()
+    expect(nav.attributes('aria-hidden')).toBe('true')
+    expect(nav.attributes('inert')).toBe('')
+
+    await wrapper.get('.nav-toggle').trigger('click')
+    await nextTick()
+    expect(nav.attributes('aria-hidden')).toBe('false')
+    expect(nav.attributes('inert')).toBeUndefined()
+  })
 })
 
 describe('public landing route architecture', () => {

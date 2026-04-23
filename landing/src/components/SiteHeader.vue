@@ -31,7 +31,7 @@
           id="site-nav-menu"
           aria-label="Primary"
           :aria-hidden="shouldHidePanel ? 'true' : 'false'"
-          :inert="shouldHidePanel"
+          :inert="shouldHidePanel ? '' : null"
           :class="{ 'is-open': isMenuOpen }"
         >
           <div class="nav-links">
