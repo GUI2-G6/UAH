@@ -6,7 +6,7 @@
 }
 
 .greeting {
-  border-bottom: solid 2px rgba(246, 247, 249);
+  border-bottom: solid 2px var(--border-color-light);
   padding: 16px 24px;
 }
 
@@ -58,17 +58,17 @@
 }
 
 .settings-card {
-  --ui-card-bg: #f5f5f5;
-  --ui-card-border: 1px solid rgba(15, 23, 42, 0.08);
-  --ui-card-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  --ui-card-bg: var(--color-surface-muted);
+  --ui-card-border: 1px solid var(--border-color);
+  --ui-card-shadow: var(--shadow-card);
   --ui-card-padding: 24px;
   font-size: 0.95rem;
 }
 
 .applicant-card {
-  --ui-card-bg: #f5f5f5;
-  --ui-card-border: 1px solid rgba(15, 23, 42, 0.08);
-  --ui-card-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  --ui-card-bg: var(--color-surface-muted);
+  --ui-card-border: 1px solid var(--border-color);
+  --ui-card-shadow: var(--shadow-card);
   --ui-card-padding: 24px;
 }
 
@@ -137,7 +137,7 @@
 .settings-group+.settings-group {
   margin-top: 16px;
   padding-top: 16px;
-  border-top: solid 1px rgb(226, 227, 230);
+  border-top: solid 1px var(--border-color-light);
 }
 
 .dashboard h4 {
@@ -153,7 +153,7 @@
 }
 
 .title {
-  border-bottom: solid 2px rgb(226, 227, 230);
+  border-bottom: solid 2px var(--border-color-light);
 }
 
 .signed-in {
@@ -162,24 +162,26 @@
 
 .email-status {
   font-size: 0.9rem;
-  color: #8a94a6;
+  color: var(--color-text-muted);
 }
 
 .email-status.is-verified {
-  color: #1a1a2e;
+  color: var(--color-text-primary);
 }
 
 .current-value {
   font-size: 0.9rem;
-  color: #8a94a6;
+  color: var(--color-text-muted);
 }
 
 .dashboard input {
   width: 100%;
   box-sizing: border-box;
   padding: 10px 12px;
-  border: 1px solid rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
 }
 
 .dashboard button {
@@ -623,4 +625,65 @@
   .service-action-button {
     width: 100%;
   }
+}
+
+/* Dark mode: rows that hardcode light surfaces */
+html[data-theme="dark"] .connected-accounts-intro,
+html[data-theme="dark"] .service-connections-intro {
+  color: var(--color-text-secondary);
+}
+
+html[data-theme="dark"] .connected-account-row {
+  background: var(--color-surface-muted);
+  border-color: var(--border-color);
+}
+
+html[data-theme="dark"] .connected-account-title {
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .connected-account-detail {
+  color: var(--color-text-muted);
+}
+
+html[data-theme="dark"] .developer-tools-toggle {
+  background: var(--color-surface-muted);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .service-connection-row {
+  background: var(--color-surface-muted);
+  border-color: var(--border-color);
+}
+
+html[data-theme="dark"] .service-connection-title {
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .service-connection-summary,
+html[data-theme="dark"] .service-connection-detail {
+  color: var(--color-text-secondary);
+}
+
+html[data-theme="dark"] .service-action-button {
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  border-color: var(--border-color);
+}
+
+html[data-theme="dark"] .service-action-button.is-primary {
+  background: var(--color-primary-600);
+  color: #fff;
+  border-color: var(--color-primary-600);
+}
+
+html[data-theme="dark"] .service-action-button.is-secondary {
+  background: var(--color-surface-hover);
+}
+
+html[data-theme="dark"] .dashboard select {
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  border-color: var(--border-color);
 }

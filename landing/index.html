@@ -3,6 +3,21 @@
 
 <head>
   <meta charset="UTF-8">
+  <script>
+    (function () {
+      try {
+        var k = 'uah-theme-preference';
+        var v = localStorage.getItem(k);
+        var dark = false;
+        if (v === 'dark') dark = true;
+        else if (v === 'light') dark = false;
+        else dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      } catch (e) {
+        document.documentElement.dataset.theme = 'light';
+      }
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <!-- Search engine ownership verification tags live in the static landing document head.
        Add future provider tags (Google, Bing, etc.) here and keep them after verification succeeds. -->

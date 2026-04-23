@@ -31,3 +31,25 @@
     radial-gradient(circle at top right, rgba(14, 165, 233, 0.08), transparent 28%),
     linear-gradient(180deg, #f8fafc 0%, #eef4f8 100%);
 }
+
+html[data-theme="dark"] {
+  --color-primary-500: #60a5fa;
+  --color-primary-600: #3b82f6;
+  --color-primary-700: #2563eb;
+  --color-success-600: #4ade80;
+  --color-danger-600: #f87171;
+  --color-warning-600: #fbbf24;
+  --color-text-primary: #e2e8f0;
+  --color-text-secondary: #cbd5e1;
+  --color-text-muted: #94a3b8;
+  --color-surface: #1e293b;
+  --color-surface-muted: #0f172a;
+  --color-surface-hover: #334155;
+  --border-color: rgba(148, 163, 184, 0.35);
+  --border-color-light: rgba(148, 163, 184, 0.22);
+  --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --app-page-background:
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 30%),
+    linear-gradient(180deg, #0f172a 0%, #1e293b 55%, #0f172a 100%);
+}

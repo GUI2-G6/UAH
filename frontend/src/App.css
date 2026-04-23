@@ -22,6 +22,10 @@ button:hover {
   background-color: rgba(0, 0, 0, 0.05);
 }
 
+html[data-theme="dark"] button:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
 #uah-app {
   width: 100%;
   max-width: 100%;

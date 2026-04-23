@@ -648,6 +648,14 @@ textarea:focus {
   outline: none;
 }
 
+html[data-theme="dark"] input[type="text"]:focus,
+html[data-theme="dark"] input[type="email"]:focus,
+html[data-theme="dark"] textarea:focus {
+  border-color: rgba(126, 184, 234, 0.5);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 4px rgba(126, 184, 234, 0.12);
+}
+
 .checklist {
   display: grid;
   gap: 12px;
@@ -1200,4 +1208,18 @@ textarea:focus {
   .footer-links {
     gap: 12px;
   }
+}
+
+html[data-theme="dark"] .footer-shell {
+  border-top-color: rgba(126, 184, 234, 0.18);
+}
+
+html[data-theme="dark"] label {
+  color: var(--color-primary-deep);
+}
+
+html[data-theme="dark"] .checkbox {
+  background: var(--color-surface-muted);
+  border-color: rgba(126, 184, 234, 0.14);
+  color: var(--color-muted);
 }

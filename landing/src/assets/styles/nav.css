@@ -7,6 +7,15 @@
   border-bottom: 1px solid rgba(31, 92, 153, 0.10);
 }
 
+html[data-theme="dark"] .site-header {
+  background: rgba(15, 20, 28, 0.92);
+  border-bottom-color: rgba(126, 184, 234, 0.14);
+}
+
+html[data-theme="dark"] .brand {
+  background-color: rgba(45, 38, 24, 0.9);
+}
+
 .nav-shell {
   width: min(calc(100% - 32px), var(--content-width));
   margin: 0 auto;

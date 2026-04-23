@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
+import { applyThemeFromStorage, initThemeListeners } from '@shared/js/themePreference.js'
 import { draggableModalDirective } from './lib/draggableModalDirective'
 import { installDebugFetchTracker } from './lib/debugDiagnostics'
 import { assertSafeLocalModeConfig, initializeLocalMockApi } from './lib/localMockApi'
@@ -44,6 +45,9 @@ try {
 
 initializeLocalMockApi()
 installDebugFetchTracker()
+
+applyThemeFromStorage()
+initThemeListeners()
 
 const app = createApp(App)
 app.directive('draggable-modal', draggableModalDirective)

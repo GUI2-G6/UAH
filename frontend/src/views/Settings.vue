@@ -28,6 +28,22 @@
                     </div>
                 </div>
                 <div class="settings-group">
+                    <h4>Appearance</h4>
+                    <p class="current-value">Theme applies to this browser only. “System” follows your OS light or dark mode.</p>
+                    <p>Color mode</p>
+                    <select
+                        v-model="themePreference"
+                        id="settings-theme"
+                        name="theme"
+                        autocomplete="off"
+                        @change="onThemePreferenceChange"
+                    >
+                        <option value="system">Use system setting</option>
+                        <option value="light">Light</option>
+                        <option value="dark">Dark</option>
+                    </select>
+                </div>
+                <div class="settings-group">
                     <h4>Notifications & Preferences</h4>
                     <p class="current-value">These preferences are currently local to this browser session and are organized here for future account-level settings support.</p>
                     <p>Email Notifications</p>
@@ -309,6 +325,7 @@ import { authedFetch, clearAuth, getCurrentUser, setCurrentUser, syncCurrentUser
 import { setDebugToolsPreference, subscribeDebugTools } from "../lib/debugTools.js";
 import { assertValidEmail } from "../lib/validation.js";
 import { showToast } from '@/services/toastService.js';
+import { getStoredPreference, setPreferenceAndApply } from '@shared/js/themePreference.js';
 
 const SERVICE_STATUS_LABELS = {
     connected: 'Connected',
@@ -381,10 +398,15 @@ export default {
             language: 'en',
             timezone: 'EST',
 
+            themePreference: 'system',
+
             canAccessDebugTools: false,
             showDebugTools: false,
             debugToolsUnsubscribe: null,
         }
+    },
+    created() {
+        this.themePreference = getStoredPreference() ?? 'system'
     },
     async mounted() {
         await this.loadUser()
@@ -399,8 +421,15 @@ export default {
             this.canAccessDebugTools = state.canAccessDebugTools === true
             this.showDebugTools = state.showDebugTools === true
         })
+        this._themeChangedHandler = () => {
+            this.themePreference = getStoredPreference() ?? 'system'
+        }
+        window.addEventListener('uah-theme-changed', this._themeChangedHandler)
     },
     beforeUnmount() {
+        if (this._themeChangedHandler) {
+            window.removeEventListener('uah-theme-changed', this._themeChangedHandler)
+        }
         if (typeof this.debugToolsUnsubscribe === 'function') {
             this.debugToolsUnsubscribe()
         }
@@ -413,6 +442,9 @@ export default {
         }
     },
     methods: {
+        onThemePreferenceChange() {
+            setPreferenceAndApply(this.themePreference)
+        },
         setActionStatus(key, state, message) {
             if (this._actionTimers[key]) {
                 clearTimeout(this._actionTimers[key])
