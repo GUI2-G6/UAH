@@ -50,7 +50,7 @@ html[data-theme="dark"] .nav-theme-control {
   gap: 8px;
   text-decoration: none;
   width: auto;
-  max-width: min(42vw, 700px);
+  max-width: min(60vw, 800px);
   min-width: 0;
   margin: 10px;
   padding: 4px 8px;
@@ -66,14 +66,14 @@ html[data-theme="dark"] .nav-theme-control {
 
 #title {
   font-weight: bold;
-  font-size: clamp(0.86rem, 1.2vw, 2rem);
+  font-size: clamp(0.86rem, 2vw, 3rem);
   line-height: 1.1;
   color: rgba(63, 98, 236);
 }
 
 #subtitle {
   font-style: italic;
-  font-size: clamp(0.68rem, 0.95vw, 1.5rem);
+  font-size: clamp(0.68rem, 1.5vw, 3rem);
   line-height: 1.2;
 }
 

@@ -37,7 +37,9 @@
               <span class="visual-chip"><span class="chip-dot"></span> Job discovery</span>
               <div class="visual-title">Normalized listings</div>
               <div class="fake-list">
-                <span></span><span></span><span></span>
+                <span></span>
+                <span></span>
+                <span></span>
               </div>
             </div>
             <div class="visual-card tertiary">
