@@ -586,4 +586,83 @@ export default {
     text-align: center;
   }
 }
+
+:global(html[data-theme="dark"]) .primary-filters-card {
+  border-color: var(--border-color);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-surface-muted) 90%, black),
+    var(--color-surface)
+  );
+  color: var(--color-text-primary);
+}
+
+:global(html[data-theme="dark"]) .inline-select {
+  color: var(--color-text-secondary);
+}
+
+:global(html[data-theme="dark"]) .inline-select select,
+:global(html[data-theme="dark"]) .primary-group input,
+:global(html[data-theme="dark"]) .primary-group select,
+:global(html[data-theme="dark"]) .stacked-control input,
+:global(html[data-theme="dark"]) .stacked-control select {
+  background: var(--color-surface-muted);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
+
+:global(html[data-theme="dark"]) .primary-group input:focus,
+:global(html[data-theme="dark"]) .primary-group select:focus,
+:global(html[data-theme="dark"]) .stacked-control input:focus,
+:global(html[data-theme="dark"]) .stacked-control select:focus,
+:global(html[data-theme="dark"]) .inline-select select:focus {
+  outline: 2px solid rgba(96, 165, 250, 0.45);
+  border-color: rgba(96, 165, 250, 0.72);
+}
+
+:global(html[data-theme="dark"]) .primary-group input::placeholder,
+:global(html[data-theme="dark"]) .stacked-control input::placeholder {
+  color: var(--color-text-muted);
+}
+
+:global(html[data-theme="dark"]) .primary-group label,
+:global(html[data-theme="dark"]) .stacked-control label {
+  color: var(--color-text-secondary);
+}
+
+:global(html[data-theme="dark"]) .company-suggestions {
+  background: var(--color-surface);
+  border-color: var(--border-color);
+}
+
+:global(html[data-theme="dark"]) .company-option {
+  color: var(--color-text-primary);
+}
+
+:global(html[data-theme="dark"]) .company-option:hover,
+:global(html[data-theme="dark"]) .company-option.active {
+  background: rgba(59, 130, 246, 0.24);
+}
+
+:global(html[data-theme="dark"]) .company-count {
+  color: var(--color-text-secondary);
+}
+
+:global(html[data-theme="dark"]) .mode-button,
+:global(html[data-theme="dark"]) .secondary-action,
+:global(html[data-theme="dark"]) .chip {
+  background: var(--color-surface);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
+
+:global(html[data-theme="dark"]) .saved-mode-panel {
+  border-top-color: var(--border-color);
+}
+
+:global(html[data-theme="dark"]) .location-caption,
+:global(html[data-theme="dark"]) .info-text,
+:global(html[data-theme="dark"]) .saved-mode-copy {
+  color: var(--color-text-secondary);
+}
 </style>
