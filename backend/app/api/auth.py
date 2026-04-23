@@ -45,6 +45,12 @@ EMAIL_VERIFICATION_REQUIRED_MESSAGE = (
 
 
 def _ensure_admin_user(db: Session) -> User:
+    """Create or reconcile the fixed admin contact row (ADMIN_EMAIL only).
+
+    Credential login always uses that email address; ADMIN_BOOTSTRAP_USERNAME is not
+    consulted here. When ADMIN_BOOTSTRAP_PASSWORD is set, the stored hash is updated
+    to match so deploy-time password rotation applies to this account only.
+    """
     admin_password = (os.getenv("ADMIN_BOOTSTRAP_PASSWORD") or "").strip()
     admin_first_name = (os.getenv("ADMIN_BOOTSTRAP_FIRST_NAME") or "").strip() or "Admin"
     admin_last_name = (os.getenv("ADMIN_BOOTSTRAP_LAST_NAME") or "").strip() or "UAH"
@@ -55,13 +61,18 @@ def _ensure_admin_user(db: Session) -> User:
     normalized_admin_email = normalize_email(ADMIN_EMAIL)
     user = db.query(User).filter(func.lower(User.email) == normalized_admin_email).first()
     if user:
-        if not user.hashed_password:
-            user.hashed_password = hash_password(admin_password)
+        user.hashed_password = hash_password(admin_password)
         if user.username != normalized_admin_email:
             user.username = normalized_admin_email
         if user.email != normalized_admin_email:
             user.email = normalized_admin_email
         user.is_admin = True
+        user.is_active = True
+        user.email_verified = True
+        if user.first_name is None or not str(user.first_name).strip():
+            user.first_name = admin_first_name
+        if user.last_name is None or not str(user.last_name).strip():
+            user.last_name = admin_last_name
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -75,6 +86,7 @@ def _ensure_admin_user(db: Session) -> User:
         last_name=admin_last_name,
         is_active=True,
         is_admin=True,
+        email_verified=True,
     )
     db.add(user)
     db.commit()

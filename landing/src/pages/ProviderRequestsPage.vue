@@ -20,6 +20,10 @@
                 partners@uahapp.com
               </a>
             </p>
+            <p class="email-fallback-note">
+              If the link does not open your mail client, copy <strong>partners@uahapp.com</strong> and send your
+              inquiry with subject &quot;UAH Partnership or Integration Inquiry&quot;.
+            </p>
             <p>
               Include organization name, your role, and the best follow-up channel so we can route quickly.
             </p>
@@ -35,7 +39,7 @@
               Send requests to
               <a href="mailto:partners@uahapp.com?subject=UAH Provider Removal Request">partners@uahapp.com</a>
               with supporting evidence (for example domain-email verification, business ownership proof, or
-              equivalent authorization).
+              equivalent authorization). Same address if mailto fails: <strong>partners@uahapp.com</strong>.
             </p>
           </article>
         </div>

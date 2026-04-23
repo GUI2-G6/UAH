@@ -32,6 +32,7 @@ from app.api.apply_session import router as apply_session_router
 from app.api.integrations import router as integrations_router
 from app.api.gmail import router as gmail_router
 from app.api.beta_access import router as beta_access_router
+from app.api.landing_feedback import router as landing_feedback_router
 from app.core.config import settings
 from app.core.runtime_environment import (
     generated_docs_auth_required,
@@ -261,38 +262,36 @@ def _bootstrap_admin_user_if_enabled() -> None:
 
 
 def _ensure_live_admin_if_absent() -> None:
-    """On beta/staging/prod, create admincontact@uahapp.com when no admin exists (invites, ops).
+    """On beta/staging/prod, reconcile admincontact@uahapp.com when ADMIN_BOOTSTRAP_PASSWORD is set.
 
-    Uses ADMIN_BOOTSTRAP_PASSWORD (and optional ADMIN_BOOTSTRAP_FIRST_NAME / _LAST_NAME).
-    Does not run in development/local so local DBs are not auto-seeded.
+    Runs even if other admin users already exist so the ops inbox account is always
+    created or repaired (password hash, email_verified, is_active). Does not run in
+    development/local so local DBs are not auto-seeded.
     """
     env_slug = (settings.ENVIRONMENT or "").strip().lower()
     if env_slug not in {"beta", "staging", "production", "prod"}:
         return
 
+    if not (os.getenv("ADMIN_BOOTSTRAP_PASSWORD") or "").strip():
+        logger.warning(
+            "Live admin contact not reconciled: set ADMIN_BOOTSTRAP_PASSWORD to create or "
+            "repair admincontact@uahapp.com on startup (ENVIRONMENT=%s).",
+            settings.ENVIRONMENT,
+        )
+        return
+
     try:
         from app.db.session import SessionLocal
         from app.api.auth import _ensure_admin_user
-        from app.models.user import User
     except Exception as exc:
         logger.exception("Live admin seed import failed: %s", exc)
         return
 
     db = SessionLocal()
     try:
-        admin_exists = db.query(User).filter(User.is_admin.is_(True)).order_by(User.id.asc()).first()
-        if admin_exists:
-            return
-        if not (os.getenv("ADMIN_BOOTSTRAP_PASSWORD") or "").strip():
-            logger.warning(
-                "No admin users in the database. Set ADMIN_BOOTSTRAP_PASSWORD to auto-create "
-                "admincontact@uahapp.com on startup (ENVIRONMENT=%s).",
-                settings.ENVIRONMENT,
-            )
-            return
         _ensure_admin_user(db)
         logger.warning(
-            "Seeded default live admin admincontact@uahapp.com (no prior admin users; ENVIRONMENT=%s).",
+            "Live admin contact reconciled for admincontact@uahapp.com (ENVIRONMENT=%s).",
             settings.ENVIRONMENT,
         )
     except Exception as exc:
@@ -582,6 +581,7 @@ app.include_router(apply_session_router)
 app.include_router(integrations_router)
 app.include_router(gmail_router)
 app.include_router(beta_access_router)
+app.include_router(landing_feedback_router)
 
 
 # ---------------------------------------------------------------------------

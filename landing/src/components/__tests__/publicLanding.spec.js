@@ -27,7 +27,7 @@ function mountHeader() {
 }
 
 describe('public landing mail routing', () => {
-  it('keeps direct mail routing for partnerships/footer while beta access uses internal submit', () => {
+  it('keeps direct mail routing for partnerships/footer while beta access and wishlist use internal submit', () => {
     const beta = mount(BetaAccess)
     const partners = mount(PartnersSection)
     const wishlist = mount(WishlistForm)
@@ -48,9 +48,37 @@ describe('public landing mail routing', () => {
     expect(partners.get('.partner-cta .button').attributes('href')).toBe(
       'mailto:partners@uahapp.com?subject=UAH Partnership Inquiry'
     )
+    expect(partners.text()).toContain('partners@uahapp.com')
     expect(wishlist.get('form').attributes('action')).toBeUndefined()
     expect(footerMailtoLinks).toContain('mailto:team@uahapp.com')
     expect(footerMailtoLinks).toContain('mailto:press@uahapp.com')
+  })
+
+  it('submits wishlist feedback through the public landing-feedback API', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ message: 'Thanks — we received your feedback.' }),
+      })
+    )
+
+    const wishlist = mount(WishlistForm)
+    await wishlist.get('#email').setValue('visitor@example.com')
+    await wishlist.get('form').trigger('submit.prevent')
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/public/landing-feedback',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+    )
+    const rawBody = global.fetch.mock.calls[0][1].body
+    const body = JSON.parse(rawBody)
+    expect(body.email).toBe('visitor@example.com')
+    expect(body.source_surface).toBe('landing_wishlist')
+    vi.unstubAllGlobals()
   })
 })
 
