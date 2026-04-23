@@ -1,5 +1,6 @@
 import { requestBackground } from '../lib/messages.js'
 import { enableFloatingDrag } from '../lib/floatingDrag.js'
+import { normalizeThemePreference, resolveEffectiveTheme } from '../lib/themeMode.js'
 import {
   buildLockedPanelSize,
   buildDefaultFloatingPosition,
@@ -23,6 +24,20 @@ function ensureStyles(doc = document) {
   style.id = STYLE_ID
   style.textContent = `
     #${PANEL_ID} {
+      --panel-surface: rgba(248, 250, 252, 0.96);
+      --panel-surface-muted: rgba(248, 250, 252, 0.98);
+      --panel-border: rgba(191, 219, 254, 0.92);
+      --panel-shadow: rgba(15, 23, 42, 0.28);
+      --panel-title: #0f172a;
+      --panel-kicker: #1d4ed8;
+      --panel-header-bg-start: rgba(239, 246, 255, 0.98);
+      --panel-header-bg-end: rgba(255, 255, 255, 0.96);
+      --panel-header-border: rgba(226, 232, 240, 0.9);
+      --panel-button-bg: #ffffff;
+      --panel-button-text: #1d4ed8;
+      --panel-button-border: rgba(191, 219, 254, 1);
+      --panel-button-active-bg: #1d4ed8;
+      --panel-button-active-text: #ffffff;
       position: fixed;
       z-index: 2147483645;
       width: ${PINNED_PANEL_WIDTH}px;
@@ -32,12 +47,28 @@ function ensureStyles(doc = document) {
       max-width: min(${PINNED_PANEL_MAX_WIDTH}px, calc(100vw - 32px));
       max-height: calc(100vh - 32px);
       border-radius: 18px;
-      border: 1px solid rgba(191, 219, 254, 0.92);
-      box-shadow: 0 24px 64px rgba(15, 23, 42, 0.28);
+      border: 1px solid var(--panel-border);
+      box-shadow: 0 24px 64px var(--panel-shadow);
       overflow: hidden;
-      background: rgba(248, 250, 252, 0.96);
+      background: var(--panel-surface);
       backdrop-filter: blur(16px);
       resize: none;
+    }
+    #${PANEL_ID}[data-theme="dark"] {
+      --panel-surface: rgba(15, 23, 42, 0.96);
+      --panel-surface-muted: rgba(30, 41, 59, 0.98);
+      --panel-border: rgba(71, 85, 105, 0.78);
+      --panel-shadow: rgba(2, 6, 23, 0.62);
+      --panel-title: #f1f5f9;
+      --panel-kicker: #7cb6ff;
+      --panel-header-bg-start: rgba(15, 23, 42, 0.96);
+      --panel-header-bg-end: rgba(30, 41, 59, 0.96);
+      --panel-header-border: rgba(71, 85, 105, 0.72);
+      --panel-button-bg: rgba(15, 23, 42, 0.92);
+      --panel-button-text: #cfe3ff;
+      --panel-button-border: rgba(100, 116, 139, 0.72);
+      --panel-button-active-bg: #7cb6ff;
+      --panel-button-active-text: #0f172a;
     }
     #${PANEL_ID}::after {
       content: "";
@@ -46,7 +77,7 @@ function ensureStyles(doc = document) {
       bottom: 0;
       width: 18px;
       height: 18px;
-      background: rgba(248, 250, 252, 0.98);
+      background: var(--panel-surface-muted);
       pointer-events: none;
     }
     #${PANEL_ID}.uah-pinned-panel--resize-unlocked {
@@ -61,21 +92,21 @@ function ensureStyles(doc = document) {
       justify-content: space-between;
       gap: 12px;
       padding: 12px 14px;
-      background: linear-gradient(135deg, rgba(239, 246, 255, 0.98), rgba(255, 255, 255, 0.96));
-      border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+      background: linear-gradient(135deg, var(--panel-header-bg-start), var(--panel-header-bg-end));
+      border-bottom: 1px solid var(--panel-header-border);
       cursor: move;
       user-select: none;
     }
     #${PANEL_ID} .uah-pinned-panel__eyebrow {
       margin: 0 0 4px;
-      color: #1d4ed8;
+      color: var(--panel-kicker);
       font: 700 11px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       letter-spacing: 0.08em;
       text-transform: uppercase;
     }
     #${PANEL_ID} .uah-pinned-panel__title {
       margin: 0;
-      color: #0f172a;
+      color: var(--panel-title);
       font: 700 15px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
     #${PANEL_ID} .uah-pinned-panel__actions {
@@ -85,18 +116,18 @@ function ensureStyles(doc = document) {
       flex-shrink: 0;
     }
     #${PANEL_ID} .uah-pinned-panel__button {
-      border: 1px solid rgba(191, 219, 254, 1);
+      border: 1px solid var(--panel-button-border);
       border-radius: 999px;
-      background: white;
-      color: #1d4ed8;
+      background: var(--panel-button-bg);
+      color: var(--panel-button-text);
       padding: 7px 11px;
       font: 700 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       cursor: pointer;
     }
     #${PANEL_ID} .uah-pinned-panel__button--active {
-      background: #1d4ed8;
-      border-color: #1d4ed8;
-      color: white;
+      background: var(--panel-button-active-bg);
+      border-color: var(--panel-button-active-bg);
+      color: var(--panel-button-active-text);
     }
     #${PANEL_ID} iframe {
       display: block;
@@ -141,6 +172,8 @@ export function registerPinnedPanelRuntime(win = window, doc = document) {
 
   const state = {
     uiState: { ...DEFAULT_PINNED_UI_STATE },
+    themeMediaQuery: null,
+    handleThemeMediaChange: null,
     drag: null,
     resizeHandler: null,
     panelResizeObserver: null,
@@ -149,6 +182,38 @@ export function registerPinnedPanelRuntime(win = window, doc = document) {
   function cleanupDrag() {
     state.drag?.destroy?.()
     state.drag = null
+  }
+
+  function cleanupThemeListener() {
+    if (!state.themeMediaQuery || !state.handleThemeMediaChange) return
+    if (typeof state.themeMediaQuery.removeEventListener === 'function') {
+      state.themeMediaQuery.removeEventListener('change', state.handleThemeMediaChange)
+    } else if (typeof state.themeMediaQuery.removeListener === 'function') {
+      state.themeMediaQuery.removeListener(state.handleThemeMediaChange)
+    }
+    state.themeMediaQuery = null
+    state.handleThemeMediaChange = null
+  }
+
+  function applyTheme(root) {
+    if (!root) return
+    const preference = normalizeThemePreference(state.uiState.themePreference)
+    const effective = resolveEffectiveTheme(preference, win)
+    root.dataset.theme = effective
+    cleanupThemeListener()
+    if (preference !== 'system') return
+    const mediaQuery = win.matchMedia?.('(prefers-color-scheme: dark)')
+    if (!mediaQuery) return
+    const onThemeChange = () => {
+      root.dataset.theme = resolveEffectiveTheme('system', win)
+    }
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', onThemeChange)
+    } else if (typeof mediaQuery.addListener === 'function') {
+      mediaQuery.addListener(onThemeChange)
+    }
+    state.themeMediaQuery = mediaQuery
+    state.handleThemeMediaChange = onThemeChange
   }
 
   function resolvePanelSize() {
@@ -279,6 +344,7 @@ export function registerPinnedPanelRuntime(win = window, doc = document) {
     root.style.top = `${initialPanelPosition.top}px`
     root.style.display = 'none'
     root.classList.toggle('uah-pinned-panel--compact', initialPanelSize.width < 340)
+    applyTheme(root)
     root.innerHTML = `
       <div class="uah-pinned-panel__header">
         <div>
@@ -354,11 +420,13 @@ export function registerPinnedPanelRuntime(win = window, doc = document) {
       ensureStyles(doc)
       state.uiState = { ...state.uiState, ...nextUiState }
       const root = ensurePanel()
+      applyTheme(root)
       updatePosition(root, state.uiState.panelPosition)
       root.style.display = 'block'
       return { ok: true }
     },
     hide() {
+      cleanupThemeListener()
       cleanupDrag()
       removePanel(doc)
       state.panelResizeObserver?.disconnect?.()

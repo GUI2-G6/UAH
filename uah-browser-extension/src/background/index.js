@@ -555,6 +555,7 @@ async function showPinnedPanelOnTab(tab, options = {}) {
     await ensurePinnedPanelRuntime(tab.id)
     await invokePinnedPanelRuntime(tab.id, 'show', {
       pinEnabled: uiState.pinEnabled,
+      themePreference: uiState.themePreference,
       panelPosition: uiState.panelPosition,
       panelSize: uiState.panelSize,
       panelResizeUnlocked: uiState.panelResizeUnlocked,

@@ -17,6 +17,23 @@
       </div>
     </header>
 
+    <section class="theme-strip" aria-label="Extension color theme">
+      <p class="theme-label">Theme</p>
+      <div class="uah-theme-segment" role="group" aria-label="Extension color theme">
+        <button
+          v-for="option in themeOptions"
+          :key="option.value"
+          type="button"
+          class="uah-theme-segment__btn"
+          :class="{ 'is-active': themePreference === option.value }"
+          :aria-pressed="String(themePreference === option.value)"
+          @click="chooseTheme(option.value)"
+        >
+          {{ option.label }}
+        </button>
+      </div>
+    </section>
+
     <section v-if="booting" class="state-card">
       <h2>Checking your session</h2>
       <p>Confirming whether your saved UAH extension session is still valid.</p>
@@ -395,7 +412,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { buildProfileAutofillSource } from '@/autofill/source'
 import { requestBackground } from '@/lib/messages'
@@ -411,11 +428,16 @@ import {
   summarizeEducation,
   summarizeWork,
 } from '@/lib/formatters'
+import { applyDocumentTheme, normalizeThemePreference, resolveEffectiveTheme } from '@/lib/themeMode'
 
 const props = defineProps({
   surface: {
     type: String,
     default: 'popup',
+  },
+  initialThemePreference: {
+    type: String,
+    default: 'system',
   },
 })
 
@@ -423,6 +445,11 @@ const tabs = [
   { key: 'profiles', label: 'Profiles' },
   { key: 'resumes', label: 'Resumes' },
   { key: 'account', label: 'Account' },
+]
+const themeOptions = [
+  { value: 'system', label: 'Auto' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
 ]
 
 const booting = ref(true)
@@ -461,6 +488,12 @@ const accountLoading = ref(false)
 const accountError = ref('')
 const pinEnabled = ref(false)
 const pinBusy = ref(false)
+const themePreference = ref(normalizeThemePreference(props.initialThemePreference))
+let removeSystemThemeListener = () => {}
+
+function applyCurrentTheme() {
+  applyDocumentTheme(resolveEffectiveTheme(themePreference.value))
+}
 
 function setFeedback(message = '', type = 'success') {
   feedbackMessage.value = message
@@ -511,8 +544,23 @@ async function hydratePinnedUiState() {
   try {
     const state = await requestBackground('getPinnedUiState')
     pinEnabled.value = Boolean(state?.pinEnabled)
+    themePreference.value = normalizeThemePreference(state?.themePreference)
+    applyCurrentTheme()
   } catch {
     pinEnabled.value = false
+    themePreference.value = 'system'
+    applyCurrentTheme()
+  }
+}
+
+async function chooseTheme(nextPreference) {
+  const normalized = normalizeThemePreference(nextPreference)
+  themePreference.value = normalized
+  applyCurrentTheme()
+  try {
+    await requestBackground('setPinnedUiState', { themePreference: normalized })
+  } catch (error) {
+    setFeedback(String(error?.message || error), 'error')
   }
 }
 
@@ -867,10 +915,28 @@ const resumeBlocks = computed(() => {
 })
 
 onMounted(async () => {
+  applyCurrentTheme()
+  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+  const handleSystemThemeChange = () => {
+    if (themePreference.value !== 'system') return
+    applyCurrentTheme()
+  }
+  if (typeof mediaQuery.addEventListener === 'function') {
+    mediaQuery.addEventListener('change', handleSystemThemeChange)
+    removeSystemThemeListener = () => mediaQuery.removeEventListener('change', handleSystemThemeChange)
+  } else if (typeof mediaQuery.addListener === 'function') {
+    mediaQuery.addListener(handleSystemThemeChange)
+    removeSystemThemeListener = () => mediaQuery.removeListener(handleSystemThemeChange)
+  }
+
   await hydratePinnedUiState()
   await bootstrap()
   if (authenticated.value) {
     await loadProfiles()
   }
+})
+
+onUnmounted(() => {
+  removeSystemThemeListener()
 })
 </script>

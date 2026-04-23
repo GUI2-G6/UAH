@@ -46,7 +46,7 @@
             </p>
             <p>
               <a
-                href="https://github.com/GUI2-G6/UAH/blob/main/docs/BROWSER_EXTENSION_CHROME_INSTALL.md"
+                href="https://github.com/GUI2-G6/UAH/blob/dev/docs/BROWSER_EXTENSION_CHROME_INSTALL.md"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -73,7 +73,7 @@
           </p>
           <p>
             <a
-              href="https://github.com/GUI2-G6/UAH/blob/main/uah-browser-extension/SECURITY.md"
+              href="https://github.com/GUI2-G6/UAH/blob/dev/uah-browser-extension/SECURITY.md"
               target="_blank"
               rel="noopener noreferrer"
             >

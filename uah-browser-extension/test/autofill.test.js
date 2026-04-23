@@ -12,6 +12,7 @@ import {
   mergePinnedUiState,
   normalizeFloatingPosition,
 } from '../src/lib/pinnedUiState.js'
+import { applyDocumentTheme, normalizeThemePreference, resolveEffectiveTheme } from '../src/lib/themeMode.js'
 
 function createDispatchingElement(overrides = {}) {
   const events = []
@@ -226,6 +227,7 @@ test('fillPlan fills current checkboxes first and skips end date tokens when cur
 test('mergePinnedUiState normalizes persisted pin state and positions', () => {
   const state = mergePinnedUiState(undefined, {
     pinEnabled: true,
+    themePreference: 'dark',
     panelPosition: { top: '24', left: 18.2 },
     panelSize: { width: '480', height: 620.4 },
     panelResizeUnlocked: true,
@@ -233,10 +235,36 @@ test('mergePinnedUiState normalizes persisted pin state and positions', () => {
   })
 
   assert.equal(state.pinEnabled, true)
+  assert.equal(state.themePreference, 'dark')
   assert.deepEqual(state.panelPosition, { top: 24, left: 18 })
   assert.deepEqual(state.panelSize, { width: 480, height: 620 })
   assert.equal(state.panelResizeUnlocked, true)
   assert.equal(state.debugPosition, null)
+})
+
+test('mergePinnedUiState defaults invalid theme preference to system', () => {
+  const state = mergePinnedUiState(
+    { pinEnabled: true, themePreference: 'invalid-value' },
+    { themePreference: 'wat' },
+  )
+  assert.equal(state.themePreference, 'system')
+})
+
+test('theme helpers normalize preference and resolve effective mode', () => {
+  assert.equal(normalizeThemePreference('Dark'), 'dark')
+  assert.equal(normalizeThemePreference('unknown'), 'system')
+  assert.equal(resolveEffectiveTheme('light', null), 'light')
+  assert.equal(resolveEffectiveTheme('dark', null), 'dark')
+  assert.equal(
+    resolveEffectiveTheme('system', { matchMedia: () => ({ matches: true }) }),
+    'dark',
+  )
+})
+
+test('applyDocumentTheme sets html data-theme', () => {
+  const fakeDoc = { documentElement: { dataset: {} } }
+  applyDocumentTheme('dark', fakeDoc)
+  assert.equal(fakeDoc.documentElement.dataset.theme, 'dark')
 })
 
 test('locked panel size helper returns the default pinned footprint', async () => {
