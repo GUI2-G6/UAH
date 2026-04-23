@@ -51,7 +51,7 @@
               </div>
             </div>
             <div class="visual-card primary">
-              <span class="visual-chip"><span class="chip-dot" style="background:#1F5C99;"></span> Unified
+              <span class="visual-chip"><span class="chip-dot" style="background:black;"></span> Unified
                 workspace</span>
               <div class="visual-title">Search it. Track it. Follow up.</div>
               <div class="metric-row">
@@ -69,7 +69,7 @@
               </div>
             </div>
             <div class="visual-card quad">
-              <span class="visual-chip"><span class="chip-dot" style="background:#FF5757;"></span> Application
+              <span class="visual-chip"><span class="chip-dot" style="background:#2cc758;"></span> App.
                 tracking</span>
               <div class="visual-title">Full history. Zero spreadsheets.</div>
               <div class="fake-list">

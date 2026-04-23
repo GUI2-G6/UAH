@@ -272,7 +272,7 @@ h1 {
   gap: 8px;
   border-radius: 999px;
   background: rgba(31, 92, 153, 0.08);
-  color: var(--color-primary);
+  color: black;
   padding: 7px 11px;
   font-size: 0.86rem;
   font-weight: 700;
