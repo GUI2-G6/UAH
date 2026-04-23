@@ -5570,6 +5570,11 @@ debug_extension() {
   local source_count
   local source_count_trimmed
   local used_builder_label="host npm"
+  local extension_env_file
+  local extension_env_example
+
+  extension_env_file="$extension_dir/.env"
+  extension_env_example="$extension_dir/.env.example"
 
   zip_target="$(extension_zip_target_file)"
   note_file="$(extension_zip_note_file)"
@@ -5590,6 +5595,51 @@ debug_extension() {
       if [[ ! -d "$ROOT_DIR/landing" ]]; then
         debug_print_error "Missing landing directory: $ROOT_DIR/landing"
         exit 1
+      fi
+      if [[ ! -f "$extension_env_file" ]]; then
+        debug_print_warn "Missing $extension_env_file. Creating one for extension build."
+        if [[ -f "$extension_env_example" ]]; then
+          cp "$extension_env_example" "$extension_env_file"
+        else
+          cat > "$extension_env_file" <<'EOF'
+VITE_EXTENSION_APP_ORIGIN=https://beta.uahapp.com
+VITE_EXTENSION_API_ORIGIN=https://beta.uahapp.com
+VITE_EXTENSION_AUTH_NAMESPACE=beta
+EOF
+        fi
+        # Ensure required values are present even if example file had placeholders.
+        python3 - "$extension_env_file" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+env_path = Path(sys.argv[1])
+raw = env_path.read_text(encoding="utf-8")
+lines = raw.splitlines()
+required = {
+    "VITE_EXTENSION_APP_ORIGIN": "https://beta.uahapp.com",
+    "VITE_EXTENSION_API_ORIGIN": "https://beta.uahapp.com",
+    "VITE_EXTENSION_AUTH_NAMESPACE": "beta",
+}
+
+present = {}
+for idx, line in enumerate(lines):
+    m = re.match(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$", line)
+    if not m:
+        continue
+    present[m.group(1)] = idx
+
+for key, default in required.items():
+    if key in present:
+        idx = present[key]
+        value = lines[idx].split("=", 1)[1].strip().strip('"').strip("'")
+        if not value:
+            lines[idx] = f"{key}={default}"
+    else:
+        lines.append(f"{key}={default}")
+
+env_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+PY
       fi
       if ! command -v python3 >/dev/null 2>&1; then
         debug_print_error "python3 is required for zip packaging but was not found in PATH."
