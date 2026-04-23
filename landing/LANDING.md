@@ -92,3 +92,4 @@ Cloudflare handles TLS termination, so no TLS configuration is needed inside Ngi
 - There are no analytics scripts, cookies, local storage writes, or backend integrations on this site.
 - The landing app remains operationally independent from the main UAH frontend in `/frontend`.
 - The closed beta remains separate at `https://beta.uahapp.com`.
+- The public route `/browser-extension` now hosts the extension alpha notice, download link (`/downloads/uah-browser-extension-alpha.zip`), and Chrome install guide link.

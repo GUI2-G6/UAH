@@ -76,6 +76,7 @@ const navLinks = [
   { to: '/our-commitment', label: 'Our Commitment' },
   { to: '/contributors', label: 'Contributors' },
   { to: '/ecosystem', label: 'Ecosystem' },
+  { to: '/browser-extension', label: 'Extension (alpha)' },
   { to: '/provider-requests', label: 'Provider Requests' },
 ]
 

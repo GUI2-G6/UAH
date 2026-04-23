@@ -34,6 +34,10 @@
             <strong>Ecosystem</strong>
             <p>Official partners, integrated providers, and framework guardrails.</p>
           </RouterLink>
+          <RouterLink class="page-link-card" to="/browser-extension">
+            <strong>Extension (alpha)</strong>
+            <p>Download link, Chrome install guide, and current alpha capability scope.</p>
+          </RouterLink>
           <RouterLink class="page-link-card" to="/provider-requests">
             <strong>Provider Requests</strong>
             <p>Partnership interest and provider removal workflows with proof requirements.</p>

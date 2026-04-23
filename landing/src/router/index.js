@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
+import BrowserExtensionPage from '../pages/BrowserExtensionPage.vue'
 import ContributorsPage from '../pages/ContributorsPage.vue'
 import EcosystemPage from '../pages/EcosystemPage.vue'
 import HomePage from '../pages/HomePage.vue'
@@ -39,6 +40,11 @@ const router = createRouter({
       path: '/provider-requests',
       name: 'provider-requests',
       component: ProviderRequestsPage,
+    },
+    {
+      path: '/browser-extension',
+      name: 'browser-extension',
+      component: BrowserExtensionPage,
     },
     {
       path: '/:pathMatch(.*)*',

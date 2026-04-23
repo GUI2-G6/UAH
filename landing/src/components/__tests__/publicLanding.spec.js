@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 
 import BetaAccess from '../BetaAccess.vue'
+import BrowserExtensionPage from '../../pages/BrowserExtensionPage.vue'
 import PartnersSection from '../PartnersSection.vue'
 import SiteFooter from '../SiteFooter.vue'
 import SiteHeader from '../SiteHeader.vue'
@@ -131,6 +132,7 @@ describe('public landing route architecture', () => {
     expect(paths).toContain('/our-commitment')
     expect(paths).toContain('/contributors')
     expect(paths).toContain('/ecosystem')
+    expect(paths).toContain('/browser-extension')
     expect(paths).toContain('/provider-requests')
   })
 
@@ -150,6 +152,7 @@ describe('public landing route architecture', () => {
       'Our Commitment',
       'Contributors',
       'Ecosystem',
+      'Extension (alpha)',
       'Provider Requests',
     ])
   })
@@ -200,5 +203,17 @@ describe('public landing status page', () => {
     expect(global.fetch).toHaveBeenCalledWith('/api/status')
     expect(wrapper.text()).toContain('Public status overview')
     expect(wrapper.text()).toContain('API process responding.')
+  })
+})
+
+describe('public extension page', () => {
+  it('states alpha limitations and links to install guidance', () => {
+    const wrapper = mount(BrowserExtensionPage)
+    const links = wrapper.findAll('a').map((item) => item.attributes('href'))
+
+    expect(wrapper.text()).toContain('highly alpha state')
+    expect(wrapper.text()).toContain('very limited functionality')
+    expect(links).toContain('/downloads/uah-browser-extension-alpha.zip')
+    expect(links).toContain('https://github.com/GUI2-G6/UAH/blob/main/docs/BROWSER_EXTENSION_CHROME_INSTALL.md')
   })
 })

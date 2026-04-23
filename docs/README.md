@@ -18,6 +18,7 @@ Use it to answer two questions quickly:
 | Frontend local development and active UI/runtime behavior | [frontend/README.md](frontend/README.md) |
 | Theme tokens, appearance modes, and theme-pack roadmap | [../shared/theme/README.md](../shared/theme/README.md) |
 | Browser extension architecture, build, and testing | [../uah-browser-extension/README.md](../uah-browser-extension/README.md) |
+| Browser extension build/repack/install in Chrome | [BROWSER_EXTENSION_CHROME_INSTALL.md](BROWSER_EXTENSION_CHROME_INSTALL.md) |
 | Environment templates and runtime `.env` rules | [env-examples/README.md](env-examples/README.md) |
 | Server-side env requirements and operational checklist | [SERVER_ENV_CHECKLIST.md](SERVER_ENV_CHECKLIST.md) |
 | Contribution policy | [../CONTRIBUTING.md](../CONTRIBUTING.md) |
