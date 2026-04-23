@@ -3891,9 +3891,13 @@ startup_quick_hud() {
   local backend_container
   local network_name
   local provider_summary
+  local extension_dir
+  local landing_dir
 
   backend_container="$(startup_backend_container_name "$env_name")"
   network_name="$(startup_network_name "$env_name")"
+  extension_dir="$ROOT_DIR/uah-browser-extension"
+  landing_dir="$ROOT_DIR/landing"
 
   debug_print_section "Quick HUD"
   startup_status_chip "ok" "Environment: $env_name (source: $DETECTED_ENV_SOURCE)"
@@ -3934,6 +3938,18 @@ startup_quick_hud() {
   provider_summary="$(provider_summary_label "$env_name" "auto" 2>/dev/null || provider_summary_label "$env_name" "env" 2>/dev/null || true)"
   if [[ -n "$provider_summary" ]]; then
     startup_status_chip "ok" "$provider_summary"
+  fi
+
+  if [[ -d "$extension_dir" && -d "$landing_dir" ]]; then
+    if command -v npm >/dev/null 2>&1; then
+      startup_status_chip "ok" "Extension repack readiness: host npm available"
+    elif command -v docker >/dev/null 2>&1; then
+      startup_status_chip "warn" "Extension repack readiness: host npm missing, Docker fallback available"
+    else
+      startup_status_chip "error" "Extension repack readiness: blocked (need npm or docker)"
+    fi
+  else
+    startup_status_chip "warn" "Extension repack readiness: missing extension or landing directory"
   fi
 }
 
