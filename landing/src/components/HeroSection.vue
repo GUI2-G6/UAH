@@ -35,7 +35,7 @@
             <div class="visual-orbit"></div>
             <div class="visual-card secondary">
               <span class="visual-chip"><span class="chip-dot"></span> Job discovery</span>
-              <div class="visual-title">Normalized listings</div>
+              <div class="visual-title">Discover jobs in your area.</div>
               <div class="fake-list">
                 <span></span>
                 <span></span>
@@ -43,11 +43,10 @@
               </div>
             </div>
             <div class="visual-card tertiary">
-              <span class="visual-chip"><span class="chip-dot" style="background:#F6C445;"></span> Freshness
-                checks</span>
+              <span class="visual-chip"><span class="chip-dot" style="background:#F6C445;"></span>Resume scanning</span>
               <div class="metric-row">
-                <div class="metric"><strong>Dead links</strong><span>Auto-removed</span></div>
-                <div class="metric"><strong>Stale posts</strong><span>Auto-flagged</span></div>
+                <div class="metric"><strong>Scan</strong><span>your resume.</span></div>
+                <div class="metric"><strong>Fill</strong><span>your apps.</span></div>
               </div>
             </div>
             <div class="visual-card primary">
@@ -69,9 +68,8 @@
               </div>
             </div>
             <div class="visual-card quad">
-              <span class="visual-chip"><span class="chip-dot" style="background:#2cc758;"></span> App.
-                tracking</span>
-              <div class="visual-title">Full history. Zero spreadsheets.</div>
+              <span class="visual-chip"><span class="chip-dot" style="background:#2cc758;"></span> App. tracking</span>
+              <div class="visual-title">View your applications, all in 1 place.</div>
               <div class="fake-list">
                 <span style="width:100%;"></span>
                 <span style="width:72%;"></span>
