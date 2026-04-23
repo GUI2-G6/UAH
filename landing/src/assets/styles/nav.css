@@ -50,23 +50,23 @@ html[data-theme="dark"] .nav-theme-control {
   gap: 8px;
   text-decoration: none;
   width: auto;
-  max-width: min(42vw, 400px);
+  max-width: min(42vw, 700px);
   min-width: 0;
-  margin: 0;
+  margin: 10px;
   padding: 4px 8px;
   background-color: rgb(255, 243, 221);
-  border-radius: 8px;
+  border-radius: 16px;
 }
 
 .brand img {
-  width: 42px;
-  height: 42px;
+  width: 150px;
+  height: 150px;
   flex: none;
 }
 
 #title {
   font-weight: bold;
-  font-size: clamp(0.86rem, 1.2vw, 1.04rem);
+  font-size: clamp(0.86rem, 1.2vw, 2rem);
   line-height: 1.1;
   color: rgba(63, 98, 236);
 }
@@ -219,8 +219,8 @@ html[data-theme="dark"] .nav-links a.router-link-exact-active {
   z-index: 130;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: 100px;
+  height: 100px;
   border: 1px solid rgba(31, 92, 153, 0.16);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.84);
@@ -229,8 +229,8 @@ html[data-theme="dark"] .nav-links a.router-link-exact-active {
 }
 
 .nav-toggle-line {
-  width: 20px;
-  height: 2px;
+  width: 70px;
+  height: 8px;
   border-radius: 999px;
   background: currentColor;
   position: relative;
@@ -241,18 +241,18 @@ html[data-theme="dark"] .nav-links a.router-link-exact-active {
   content: "";
   position: absolute;
   left: 0;
-  width: 20px;
-  height: 2px;
+  width: 70px;
+  height: 8px;
   border-radius: 999px;
   background: currentColor;
 }
 
 .nav-toggle-line::before {
-  top: -6px;
+  top: -20px;
 }
 
 .nav-toggle-line::after {
-  top: 6px;
+  top: 20px;
 }
 
 .nav-overlay {
