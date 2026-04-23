@@ -110,6 +110,7 @@ class Settings:
     SMTP_USE_SSL: bool = _env_bool("SMTP_USE_SSL", "false")
     SMTP_TIMEOUT_SECONDS: int = int(os.getenv("SMTP_TIMEOUT_SECONDS", "20"))
     BETA_ACCESS_NOTIFY_EMAIL: str = os.getenv("BETA_ACCESS_NOTIFY_EMAIL", "beta@uahapp.com")
+    LANDING_FEEDBACK_NOTIFY_EMAIL: str = os.getenv("LANDING_FEEDBACK_NOTIFY_EMAIL", "feedback@uahapp.com")
 
     GMAIL_CLIENT_ID: str = os.getenv("GMAIL_CLIENT_ID", "")
     GMAIL_CLIENT_SECRET: str = os.getenv("GMAIL_CLIENT_SECRET", "")

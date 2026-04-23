@@ -47,6 +47,7 @@ services:
       PARSE_QUEUE_NAME_LOCAL: ${BETA_PARSE_QUEUE_NAME_LOCAL:-uah:beta:parse_jobs:local}
       PARSE_QUEUE_NAME_RULES: ${BETA_PARSE_QUEUE_NAME_RULES:-uah:beta:parse_jobs:rules}
       BETA_ACCESS_NOTIFY_EMAIL: ${BETA_ACCESS_NOTIFY_EMAIL:-beta@uahapp.com}
+      LANDING_FEEDBACK_NOTIFY_EMAIL: ${LANDING_FEEDBACK_NOTIFY_EMAIL:-feedback@uahapp.com}
     networks:
       uah-beta-infra: {}
       uah-infra: null

@@ -81,9 +81,9 @@ class LandingFeedbackIntakeTests(unittest.TestCase):
     def test_submit_sends_notification_when_configured(self):
         payload = LandingFeedbackCreate(email="notify-feedback@example.com", frustration="x")
 
-        with patch.object(landing_feedback_api.settings, "BETA_ACCESS_NOTIFY_EMAIL", "ops@uahapp.com"), patch.object(
-            landing_feedback_api, "send_email"
-        ) as send_email:
+        with patch.object(
+            landing_feedback_api.settings, "LANDING_FEEDBACK_NOTIFY_EMAIL", "ops-feedback@example.com"
+        ), patch.object(landing_feedback_api, "send_email") as send_email:
             landing_feedback_api.submit_landing_feedback(
                 payload=payload,
                 request=self._build_request(),
@@ -92,16 +92,16 @@ class LandingFeedbackIntakeTests(unittest.TestCase):
 
         self.assertEqual(send_email.call_count, 1)
         kwargs = send_email.call_args.kwargs
-        self.assertEqual(kwargs["to"], "ops@uahapp.com")
+        self.assertEqual(kwargs["to"], "ops-feedback@example.com")
         self.assertEqual(kwargs["subject"], "UAH landing feedback")
         self.assertIn("notify-feedback@example.com", kwargs["text"])
 
     def test_submit_survives_email_send_failures(self):
         payload = LandingFeedbackCreate(email="survive-fb@example.com")
 
-        with patch.object(landing_feedback_api.settings, "BETA_ACCESS_NOTIFY_EMAIL", "ops@uahapp.com"), patch.object(
-            landing_feedback_api, "send_email", side_effect=RuntimeError("smtp down")
-        ):
+        with patch.object(
+            landing_feedback_api.settings, "LANDING_FEEDBACK_NOTIFY_EMAIL", "ops-feedback@example.com"
+        ), patch.object(landing_feedback_api, "send_email", side_effect=RuntimeError("smtp down")):
             landing_feedback_api.submit_landing_feedback(
                 payload=payload,
                 request=self._build_request(),

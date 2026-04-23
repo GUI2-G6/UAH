@@ -19,7 +19,7 @@ LANDING_FEEDBACK_IP_LIMIT = 8
 LANDING_FEEDBACK_IP_WINDOW_SECONDS = 900
 LANDING_FEEDBACK_EMAIL_LIMIT = 3
 LANDING_FEEDBACK_EMAIL_WINDOW_SECONDS = 3600
-DEFAULT_FEEDBACK_NOTIFY_EMAIL = "beta@uahapp.com"
+DEFAULT_LANDING_FEEDBACK_NOTIFY_EMAIL = "feedback@uahapp.com"
 
 
 def _build_notification_body(payload: LandingFeedbackCreate, request: Request) -> str:
@@ -73,7 +73,9 @@ def submit_landing_feedback(
     db.commit()
     db.refresh(row)
 
-    notify_target = (settings.BETA_ACCESS_NOTIFY_EMAIL or DEFAULT_FEEDBACK_NOTIFY_EMAIL).strip()
+    notify_target = (
+        settings.LANDING_FEEDBACK_NOTIFY_EMAIL or DEFAULT_LANDING_FEEDBACK_NOTIFY_EMAIL
+    ).strip()
     if notify_target:
         try:
             send_email(
