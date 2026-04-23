@@ -33,7 +33,16 @@
           <article class="policy-card">
             <h2>Install and repack guide</h2>
             <p>
-              Follow the repo guide for building, repacking, and loading the extension in Chrome.
+              Follow the guide for building, repacking, and loading the extension in Chrome.
+            </p>
+            <p>
+              <a
+                href="/docs/BROWSER_EXTENSION_CHROME_INSTALL.md"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open Chrome install guide (site-hosted)
+              </a>
             </p>
             <p>
               <a
@@ -41,7 +50,7 @@
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Open Chrome install guide
+                Open Chrome install guide on GitHub
               </a>
             </p>
           </article>
@@ -55,11 +64,20 @@
           </p>
           <p>
             <a
+              href="/docs/UAH_BROWSER_EXTENSION_SECURITY.md"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Read extension security model (site-hosted)
+            </a>
+          </p>
+          <p>
+            <a
               href="https://github.com/GUI2-G6/UAH/blob/main/uah-browser-extension/SECURITY.md"
               target="_blank"
               rel="noopener noreferrer"
             >
-              Read extension security model
+              Read extension security model on GitHub
             </a>
           </p>
         </article>
