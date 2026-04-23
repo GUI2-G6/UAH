@@ -10,6 +10,7 @@ describe('browser extension page docs links', () => {
     const hrefs = anchors.map((anchor) => anchor.attributes('href'))
 
     expect(hrefs).toContain('/docs/BROWSER_EXTENSION_CHROME_INSTALL.md')
+    expect(hrefs).toContain('/docs/BROWSER_EXTENSION_EASY_INSTALL.md')
     expect(hrefs).toContain('/docs/UAH_BROWSER_EXTENSION_SECURITY.md')
   })
 })

@@ -29,6 +29,19 @@
             <p>
               <a href="/downloads/uah-browser-extension-alpha.zip" download>Download uah-browser-extension-alpha.zip</a>
             </p>
+            <p>
+              After download: unzip it first, then in Chrome use <strong>Load unpacked</strong> and pick the extracted
+              folder. Do not upload the zip file directly.
+            </p>
+            <p>
+              <a
+                href="/docs/BROWSER_EXTENSION_EASY_INSTALL.md"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open simple install guide (non-technical)
+              </a>
+            </p>
           </article>
           <article class="policy-card">
             <h2>Install and repack guide</h2>

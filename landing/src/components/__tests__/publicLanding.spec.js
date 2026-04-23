@@ -95,6 +95,7 @@ describe('public landing search verification metadata', () => {
 describe('public landing mobile navigation', () => {
   afterEach(() => {
     document.body.className = ''
+    document.documentElement.style.removeProperty('--site-header-height')
   })
 
   it('keeps the drawer open while the viewport is still within the mobile breakpoint', async () => {
@@ -120,6 +121,24 @@ describe('public landing mobile navigation', () => {
 
     expect(wrapper.get('.nav-toggle').attributes('aria-expanded')).toBe('false')
     expect(document.body.classList.contains('nav-open')).toBe(false)
+  })
+
+  it('publishes a dynamic site header height CSS variable for mobile drawer offsets', async () => {
+    window.innerWidth = 800
+
+    const wrapper = mountHeader()
+    const header = wrapper.get('.site-header').element
+    header.getBoundingClientRect = () => ({ width: 360, height: 86, top: 0, left: 0, right: 360, bottom: 86 })
+    window.dispatchEvent(new Event('resize'))
+    await nextTick()
+
+    const measuredHeight = document.documentElement.style.getPropertyValue('--site-header-height').trim()
+    expect(measuredHeight).toMatch(/^\d+px$/)
+
+    await wrapper.get('.nav-toggle').trigger('click')
+    await nextTick()
+    const openHeight = document.documentElement.style.getPropertyValue('--site-header-height').trim()
+    expect(openHeight).toMatch(/^\d+px$/)
   })
 })
 
@@ -155,6 +174,20 @@ describe('public landing route architecture', () => {
       'Extension (alpha)',
       'Provider Requests',
     ])
+  })
+
+  it('enters compact desktop nav state in intermediate widths', async () => {
+    window.innerWidth = 1180
+    const wrapper = mountHeader()
+    await nextTick()
+
+    expect(wrapper.get('.nav-inner').classes()).toContain('is-compact-desktop')
+
+    window.innerWidth = 1400
+    window.dispatchEvent(new Event('resize'))
+    await nextTick()
+
+    expect(wrapper.get('.nav-inner').classes()).not.toContain('is-compact-desktop')
   })
 })
 
@@ -214,6 +247,6 @@ describe('public extension page', () => {
     expect(wrapper.text()).toContain('highly alpha state')
     expect(wrapper.text()).toContain('very limited functionality')
     expect(links).toContain('/downloads/uah-browser-extension-alpha.zip')
-    expect(links).toContain('https://github.com/GUI2-G6/UAH/blob/main/docs/BROWSER_EXTENSION_CHROME_INSTALL.md')
+    expect(links).toContain('https://github.com/GUI2-G6/UAH/blob/dev/docs/BROWSER_EXTENSION_CHROME_INSTALL.md')
   })
 })

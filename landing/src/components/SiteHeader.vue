@@ -1,8 +1,8 @@
 <!-- Renders the sticky landing header and owns the mobile drawer state and lifecycle listeners. -->
 <template>
-  <header class="site-header">
+  <header ref="headerRef" class="site-header">
     <div class="nav-shell">
-      <div class="nav-inner">
+      <div class="nav-inner" :class="{ 'is-compact-desktop': isCompactDesktop }">
         <RouterLink class="brand" to="/" @click="closeMenu">
           <img src="../images/logo.png" width="75" height="75" title="To Top" alt="Unified Application Hub home" />
           <span class="brand-copy">
@@ -63,10 +63,13 @@ import ThemeModeControl from './ThemeModeControl.vue'
 
 const isMenuOpen = ref(false)
 const isMobileViewport = ref(false)
+const isCompactDesktop = ref(false)
 const loginUrl = (import.meta.env.VITE_UAH_LOGIN_URL || 'https://beta.uahapp.com/login').trim()
 const mobileNavBreakpoint = 1080
+const compactDesktopBreakpoint = 1260
 const navPanelRef = ref(null)
 const toggleRef = ref(null)
+const headerRef = ref(null)
 const lastFocusedElement = ref(null)
 const route = useRoute()
 
@@ -82,6 +85,17 @@ const navLinks = [
 
 function closeMenu() {
   isMenuOpen.value = false
+}
+
+function updateHeaderHeightVar() {
+  const header = headerRef.value
+  if (!(header instanceof HTMLElement)) {
+    return
+  }
+  const measured = Math.ceil(header.getBoundingClientRect().height)
+  if (measured > 0) {
+    document.documentElement.style.setProperty('--site-header-height', `${measured}px`)
+  }
 }
 
 function setBackgroundInteractivity(blocked) {
@@ -120,6 +134,7 @@ async function openMenu() {
   if (isMenuOpen.value) return
   lastFocusedElement.value = document.activeElement instanceof HTMLElement ? document.activeElement : null
   isMenuOpen.value = true
+  updateHeaderHeightVar()
   await focusFirstNavItem()
 }
 
@@ -157,7 +172,10 @@ function handleKeydown(event) {
 }
 
 function handleResize() {
-  isMobileViewport.value = window.innerWidth <= mobileNavBreakpoint
+  const width = window.innerWidth
+  isMobileViewport.value = width <= mobileNavBreakpoint
+  isCompactDesktop.value = width > mobileNavBreakpoint && width <= compactDesktopBreakpoint
+  updateHeaderHeightVar()
   if (window.innerWidth > mobileNavBreakpoint) {
     closeMenu()
   }
@@ -169,6 +187,7 @@ const shouldHidePanel = computed(() => isMobileViewport.value && !isMenuOpen.val
 watch(isMenuOpen, (value) => {
   document.body.classList.toggle('nav-open', value)
   setBackgroundInteractivity(value && isMobileViewport.value)
+  updateHeaderHeightVar()
   if (!value) {
     const previous = lastFocusedElement.value
     if (previous instanceof HTMLElement) {
@@ -184,6 +203,7 @@ if (route && typeof route === 'object' && 'fullPath' in route) {
     () => route.fullPath,
     () => {
       closeMenu()
+      updateHeaderHeightVar()
     }
   )
 }
@@ -194,12 +214,14 @@ watch(isMobileViewport, (value) => {
 
 onMounted(() => {
   handleResize()
+  updateHeaderHeightVar()
   document.addEventListener('keydown', handleKeydown)
   window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
   document.body.classList.remove('nav-open')
+  document.documentElement.style.removeProperty('--site-header-height')
   setBackgroundInteractivity(false)
   document.removeEventListener('keydown', handleKeydown)
   window.removeEventListener('resize', handleResize)
