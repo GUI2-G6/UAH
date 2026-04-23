@@ -206,8 +206,9 @@ h1 {
   top: 108px;
   bottom: 38px;
 
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+  margin: 0 auto;
 
   width: calc(100% - 130px); /* optional: control width */
 
@@ -226,6 +227,13 @@ h1 {
   background: rgba(246, 217, 166);
   transform: rotate(-4deg);
   z-index: 2;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.visual-card.secondary:hover {
+  transform: rotate(0deg) scale(1.05);
+  z-index:10;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.2);
 }
 
 .visual-card.tertiary {
@@ -234,15 +242,28 @@ h1 {
   width: 224px;
   background: rgba(159, 210, 243);
   transform: rotate(4deg);
-  z-index: 3;
+  z-index: 4;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
 }
-
+.visual-card.tertiary:hover {
+  transform: rotate(0deg) scale(1.05);
+  z-index:10;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+}
 .visual-card.quad {
-  top: 84px;
-  left: 84px;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  top:35px;
   width: 190px;
-  background: rgba(255, 87, 87, 0.08);
-  z-index: 1;
+  background: rgba(255, 87, 87);
+  z-index: 3;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.visual-card.quad:hover {
+  transform: rotate(0deg) scale(1.05);
+  z-index:10;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.2);
 }
 
 .visual-chip {
