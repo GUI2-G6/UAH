@@ -130,8 +130,9 @@ export default {
 }
 
 .confirm-btn.cancel {
-  background: #f0f4f8;
-  color: #1a1a2e;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  border: 1px solid var(--border-color);
 }
 
 .confirm-btn.danger {
@@ -141,5 +142,29 @@ export default {
 
 .confirm-btn.danger:hover:enabled {
   background: #dc2626;
+}
+
+html[data-theme="dark"] .confirm-dialog {
+  background: var(--color-surface);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 20px 40px rgba(2, 6, 23, 0.55);
+}
+
+html[data-theme="dark"] .confirm-title {
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .confirm-message {
+  color: var(--color-text-secondary);
+}
+
+html[data-theme="dark"] .confirm-btn.cancel {
+  background: var(--color-surface);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .confirm-btn.cancel:hover:enabled {
+  background: var(--color-surface-hover);
 }
 </style>

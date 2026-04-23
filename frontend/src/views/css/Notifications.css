@@ -5,7 +5,7 @@
 }
 
 .greeting {
-  border-bottom: solid 2px rgba(246, 247, 249);
+  border-bottom: solid 2px var(--border-color-light);
   padding: 20px;
 }
 
@@ -22,9 +22,9 @@
 }
 
 .notifications-card {
-  --ui-card-bg: #f5f5f5;
-  --ui-card-border: 1px solid rgba(15, 23, 42, 0.08);
-  --ui-card-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  --ui-card-bg: var(--color-surface-muted);
+  --ui-card-border: 1px solid var(--border-color);
+  --ui-card-shadow: var(--shadow-card);
   --ui-card-padding: 24px;
   width: 100%;
   min-width: 0;
@@ -55,4 +55,10 @@
   .dashboard {
     grid-template-columns: 1fr;
   }
+}
+
+html[data-theme="dark"] .notifications-card {
+  --ui-card-bg: var(--color-surface);
+  --ui-card-border: 1px solid var(--border-color);
+  --ui-card-shadow: var(--shadow-card);
 }

@@ -956,6 +956,10 @@
 
 .task-mode-note {
   margin: 8px 4px 0 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(248, 250, 252, 0.92);
   font-size: 0.8rem;
   color: #64748b;
 }
@@ -3324,6 +3328,11 @@ html[data-theme="dark"] .resumes-page .parse-method-note,
 html[data-theme="dark"] .resumes-page .task-mode-note,
 html[data-theme="dark"] .resumes-page .gpa-text {
   color: var(--color-text-secondary);
+}
+
+html[data-theme="dark"] .resumes-page .task-mode-note {
+  border-color: var(--border-color);
+  background: var(--color-surface-muted);
 }
 
 html[data-theme="dark"] .resumes-page .pipeline-ordering-note {

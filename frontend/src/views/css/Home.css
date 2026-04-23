@@ -5,7 +5,7 @@
 }
 
 .greeting {
-  border-bottom: solid 2px rgba(246, 247, 249);
+  border-bottom: solid 2px var(--border-color-light);
   padding: 20px;
 }
 
@@ -54,7 +54,7 @@
 }
 
 .home-application-card {
-  --ui-card-bg: rgba(255, 255, 255, 0.96);
+  --ui-card-bg: var(--color-surface);
   --ui-card-padding: 12px;
   margin-top: 4px;
 }
@@ -73,18 +73,18 @@
 }
 
 #applied, #interviews {
-  color:rgba(63, 98, 236);
-  background-color:rgb(231, 235, 255);
+  color: var(--color-primary-600);
+  background-color: rgba(37, 99, 235, 0.14);
 }
 
 #offers {
-  color:rgb(112, 228, 58);
-  background-color:rgb(231, 255, 220);
+  color: var(--color-success-600);
+  background-color: rgba(34, 197, 94, 0.14);
 }
 
 #rejected {
-  color:rgb(255, 72, 72);
-  background-color:rgb(255, 227, 227);
+  color: var(--color-danger-600);
+  background-color: rgba(239, 68, 68, 0.14);
 }
 
 #tracked-applications {
@@ -110,4 +110,24 @@
   .home-card--wide {
     min-height: 180px;
   }
+}
+
+html[data-theme="dark"] .home-application-card {
+  --ui-card-bg: var(--color-surface);
+}
+
+html[data-theme="dark"] #applied,
+html[data-theme="dark"] #interviews {
+  color: #bfdbfe;
+  background-color: rgba(37, 99, 235, 0.24);
+}
+
+html[data-theme="dark"] #offers {
+  color: #bbf7d0;
+  background-color: rgba(22, 163, 74, 0.24);
+}
+
+html[data-theme="dark"] #rejected {
+  color: #fecaca;
+  background-color: rgba(220, 38, 38, 0.24);
 }
