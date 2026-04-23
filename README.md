@@ -126,6 +126,8 @@ bash scripts/uah.sh dev sync
 bash scripts/uah.sh beta restart --build-all
 ```
 
+Run `bash scripts/uah.sh <dev|beta>` with no action to open the **Control Center** (grouped lifecycle, deploy, governance, observability, data access, and advanced ops). Non-interactive `bash scripts/uah.sh <env> debug …` subcommands are unchanged. The legacy `tools` / `tooling` / `ui` action names are deprecated in favor of the Control Center; they print a short hint and exit non-zero.
+
 Wrapper scripts under `scripts/dev/lifecycle/` and `scripts/beta/lifecycle/` remain supported aliases, but they pass through to `scripts/uah.sh`.
 
 ## Repository Layout

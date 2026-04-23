@@ -4023,91 +4023,18 @@ configure_audit_wizard_args() {
   fi
 }
 
-choose_tooling_action() {
-  local env_name="$1"
-  local choice
-
-  while true; do
-    startup_header "$env_name"
-    startup_quick_hud "$env_name"
-    echo ""
-    echo "  Tooling Center"
-    echo "    1) Launch debug console"
-    echo "    2) Invite management console"
-    echo "    3) Provider dashboard"
-    echo "    4) Security audit wizard"
-    echo "    5) Environment safety review"
-    echo "    6) Quick backend status snapshot"
-    echo "    7) Script doctor audit"
-    echo "    8) Script doctor fix CRLF"
-    echo "    0) Back"
-    read -rp "  Choice [1-8/0]: " choice
-
-    case "$choice" in
-      1)
-        build_mode_reset_selection
-        ACTION="debug"
-        EXTRA_ARGS=()
-        return 0
-        ;;
-      2)
-        build_mode_reset_selection
-        ACTION="debug"
-        EXTRA_ARGS=("invites" "menu")
-        return 0
-        ;;
-      3)
-        build_mode_reset_selection
-        ACTION="providers"
-        EXTRA_ARGS=()
-        return 0
-        ;;
-      4)
-        build_mode_reset_selection
-        ACTION="audit"
-        configure_audit_wizard_args
-        return 0
-        ;;
-      5)
-        ensure_env_confirmation "$env_name" "tooling env review" "preview" || true
-        debug_press_enter
-        ;;
-      6)
-        build_mode_reset_selection
-        ACTION="debug"
-        EXTRA_ARGS=("status")
-        return 0
-        ;;
-      7)
-        build_mode_reset_selection
-        ACTION="debug"
-        EXTRA_ARGS=("scripts" "audit")
-        return 0
-        ;;
-      8)
-        build_mode_reset_selection
-        ACTION="debug"
-        EXTRA_ARGS=("scripts" "fix")
-        return 0
-        ;;
-      0)
-        return 1
-        ;;
-      *)
-        debug_print_warn "Invalid action selection."
-        debug_press_enter
-        ;;
-    esac
-  done
-}
-
 choose_action() {
   local active_env="$1"
   local choice
   local selected_env
+  local audit_mode
+  local script_doctor_choice
+
+  # shellcheck disable=SC1091
+  source "$ROOT_DIR/scripts/lib/ops_console_menus.sh"
 
   if [[ ! -t 0 ]]; then
-    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync|audit|providers|tools" >&2
+    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync|audit|providers|…" >&2
     exit 1
   fi
 
@@ -4115,21 +4042,30 @@ choose_action() {
     startup_header "$active_env"
     startup_quick_hud "$active_env"
     echo ""
-    echo "  Actions"
-    echo "    1) start"
-    echo "    2) stop"
-    echo "    3) restart"
-    echo "    4) debug"
-    echo "    5) sync"
-    echo "    6) cert-sync"
-    echo "    7) audit"
-    echo "    8) providers"
-    echo "    9) review env values"
-    echo "   10) switch environment"
-    echo "   11) rebuild options"
-    echo "   12) tooling center"
+    echo "  Lifecycle"
+    echo "    1) start          2) stop          3) restart"
+    echo ""
+    echo "  Deploy"
+    echo "    4) sync            5) cert-sync (dev only)"
+    echo ""
+    echo "  Governance"
+    echo "    6) security audit  7) providers      8) env safety review"
+    echo ""
+    echo "  Observability (opens ops submenu; return with 0 to Control Center)"
+    echo "    9) connectivity   10) logs          11) queue"
+    echo ""
+    echo "  Data and access"
+    echo "   12) database        13) users         14) invites"
+    echo "   15) networking"
+    echo ""
+    echo "  Advanced"
+    echo "   16) script doctor   17) backend status snapshot"
+    echo "   18) open full ops console (classic menu)"
+    echo ""
+    echo "  Session"
+    echo "   19) switch environment   20) rebuild options"
     echo "    0) exit"
-    read -rp "  Choice [1-12/0]: " choice
+    read -rp "  Choice [0-20]: " choice
 
     case "$choice" in
       1)
@@ -4155,12 +4091,6 @@ choose_action() {
         return
         ;;
       4)
-        build_mode_reset_selection
-        ACTION="debug"
-        ENV_NAME="$active_env"
-        return
-        ;;
-      5)
         if ! configure_rebuild_ui_for_action "$active_env" "sync"; then
           continue
         fi
@@ -4168,39 +4098,96 @@ choose_action() {
         ENV_NAME="$active_env"
         return
         ;;
-      6)
+      5)
+        if [[ "$active_env" != "dev" ]]; then
+          debug_print_warn "cert-sync is only supported for dev."
+          debug_press_enter
+          continue
+        fi
         build_mode_reset_selection
         ACTION="cert-sync"
         ENV_NAME="$active_env"
         return
         ;;
-      7)
+      6)
+        echo ""
+        echo "  Security audit:"
+        echo "    1) Run with default options"
+        echo "    2) Configure wizard (mode, --fix, JSON, …)"
+        read -rp "  Choice [1/2, default 1]: " audit_mode
         build_mode_reset_selection
-        ACTION="audit"
         ENV_NAME="$active_env"
+        if [[ "${audit_mode:-1}" == "2" ]]; then
+          configure_audit_wizard_args
+        fi
+        ACTION="audit"
         return
         ;;
-      8)
+      7)
         build_mode_reset_selection
         ACTION="providers"
         ENV_NAME="$active_env"
         return
         ;;
+      8)
+        ensure_env_confirmation "$active_env" "env safety review" "preview" || true
+        ;;
       9)
-        ensure_env_confirmation "$active_env" "preflight review" "preview" || true
+        OPS_ROOT_DIR="$ROOT_DIR" uah_ops_dispatch_submenu "$active_env" menu_connectivity || true
         ;;
       10)
+        OPS_ROOT_DIR="$ROOT_DIR" uah_ops_dispatch_submenu "$active_env" menu_logs || true
+        ;;
+      11)
+        OPS_ROOT_DIR="$ROOT_DIR" uah_ops_dispatch_submenu "$active_env" menu_queue || true
+        ;;
+      12)
+        OPS_ROOT_DIR="$ROOT_DIR" uah_ops_dispatch_submenu "$active_env" menu_database || true
+        ;;
+      13)
+        OPS_ROOT_DIR="$ROOT_DIR" uah_ops_dispatch_submenu "$active_env" menu_users || true
+        ;;
+      14)
+        build_mode_reset_selection
+        ACTION="debug"
+        EXTRA_ARGS=("invites" "menu")
+        ENV_NAME="$active_env"
+        return
+        ;;
+      15)
+        OPS_ROOT_DIR="$ROOT_DIR" uah_ops_dispatch_submenu "$active_env" menu_network || true
+        ;;
+      16)
+        echo ""
+        read -rp "  Script doctor: 1) audit  2) fix CRLF  [1/2]: " script_doctor_choice
+        build_mode_reset_selection
+        ENV_NAME="$active_env"
+        if [[ "$script_doctor_choice" == "2" ]]; then
+          ACTION="debug"
+          EXTRA_ARGS=("scripts" "fix")
+        else
+          ACTION="debug"
+          EXTRA_ARGS=("scripts" "audit")
+        fi
+        return
+        ;;
+      17)
+        run_debug "$active_env" status
+        debug_press_enter
+        ;;
+      18)
+        build_mode_reset_selection
+        ACTION="debug"
+        EXTRA_ARGS=()
+        ENV_NAME="$active_env"
+        return
+        ;;
+      19)
         selected_env="$(choose_environment_interactive "$active_env")"
         active_env="$selected_env"
         ;;
-      11)
+      20)
         configure_rebuild_ui_for_action "$active_env" "menu" || true
-        ;;
-      12)
-        if choose_tooling_action "$active_env"; then
-          ENV_NAME="$active_env"
-          return
-        fi
         ;;
       0)
         echo "Cancelled."
@@ -4234,9 +4221,9 @@ Environment selection:
   - If detection fails, pass environment explicitly.
 
 Actions:
-  start | stop | restart | debug | sync | cert-sync | audit | providers | tools
+  start | stop | restart | debug | sync | cert-sync | audit | providers
 
-Tooling center aliases:
+Deprecated (prints a hint; use interactive Control Center instead):
   tools | tooling | ui
 
 Debug:
@@ -5639,7 +5626,7 @@ run_selected_action() {
 
   notify_discord "**uah.sh started** by \`$(whoami)\` on \`$(hostname)\` for action \`$action\` in \`$env_name\`" 16776960
 
-  if [[ "$env_name" == "prod" && "$action" != "audit" && "$action" != "providers" && "$action" != "tools" && "$action" != "tooling" && "$action" != "ui" ]]; then
+  if [[ "$env_name" == "prod" && "$action" != "audit" && "$action" != "providers" ]]; then
     prod_scaffold "$action"
     return $?
   fi
@@ -5718,13 +5705,9 @@ run_selected_action() {
       run_providers "$env_name" "${action_args[@]}"
       ;;
     tools|tooling|ui)
-      if [[ ! -t 0 ]]; then
-        echo "tools/tooling/ui requires an interactive terminal session." >&2
-        return 1
-      fi
-      if choose_tooling_action "$env_name"; then
-        run_selected_action "$env_name" "$ACTION" "${EXTRA_ARGS[@]}"
-      fi
+      echo "The tools / tooling / ui aliases are deprecated. Run the same command with no action to open the Control Center." >&2
+      echo "Example: bash scripts/uah.sh ${env_name}" >&2
+      return 1
       ;;
     *)
       echo "Unknown action '$action'." >&2
@@ -5851,7 +5834,7 @@ if [[ -z "$ACTION" ]]; then
   if [[ -t 0 ]]; then
     INTERACTIVE_CONTROL_CENTER=true
   else
-    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync|audit|providers|tools" >&2
+    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync|audit|providers" >&2
     exit 1
   fi
 fi
