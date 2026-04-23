@@ -206,34 +206,19 @@ function handleKeydown(event) {
 }
 
 async function handleResize() {
-  const runId = ++resizeRunId
   const width = window.innerWidth
   isMobileViewport.value = width <= mobileNavBreakpoint
   isCompactDesktop.value = width > mobileNavBreakpoint && width <= compactDesktopBreakpoint
-  if (isMobileViewport.value) {
-    isDesktopOverflowing.value = false
-    updateHeaderHeightVar()
-    return
-  }
-
-  // Measure overflow in desktop layout mode to avoid stale measurements from drawer-mode CSS.
-  if (isDesktopOverflowing.value) {
-    isDesktopOverflowing.value = false
-    await nextTick()
-    if (runId !== resizeRunId) {
-      return
-    }
-  }
-  isDesktopOverflowing.value = navContentOverflowsDesktop()
+  isDesktopOverflowing.value = false
   updateHeaderHeightVar()
 
-  if (!isDrawerMode.value) {
+  if (width > mobileNavBreakpoint) {
     closeMenu()
   }
 }
 
 const menuLabel = computed(() => (isMenuOpen.value ? 'Close navigation menu' : 'Open navigation menu'))
-const isDrawerMode = computed(() => isMobileViewport.value || isDesktopOverflowing.value)
+const isDrawerMode = computed(() => true)
 const shouldHidePanel = computed(() => isDrawerMode.value && !isMenuOpen.value)
 
 watch(isMenuOpen, (value) => {

@@ -149,13 +149,13 @@ describe('public landing mobile navigation', () => {
     expect(openHeight).toMatch(/^\d+px$/)
   })
 
-  it('applies inert only when the mobile drawer is hidden', async () => {
+  it('applies inert while the drawer menu is closed and removes it when opened', async () => {
     window.innerWidth = 1400
 
     const wrapper = mountHeader()
     const nav = wrapper.get('#site-nav-menu')
-    expect(nav.attributes('aria-hidden')).toBe('false')
-    expect(nav.attributes('inert')).toBeUndefined()
+    expect(nav.attributes('aria-hidden')).toBe('true')
+    expect(nav.attributes('inert')).toBe('')
 
     window.innerWidth = 800
     window.dispatchEvent(new Event('resize'))
