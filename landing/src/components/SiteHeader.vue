@@ -100,7 +100,25 @@ function navContentOverflowsDesktop() {
   if (!(navInner instanceof HTMLElement)) {
     return false
   }
-  return navInner.scrollWidth > navInner.clientWidth + 1
+  if (navInner.scrollWidth > navInner.clientWidth + 1) {
+    return true
+  }
+
+  // Some desktop layouts can visually collide before scrollWidth reports overflow.
+  const brand = navInner.querySelector('.brand')
+  const panel = navInner.querySelector('.nav-panel')
+  if (!(brand instanceof HTMLElement) || !(panel instanceof HTMLElement)) {
+    return false
+  }
+
+  const brandRect = brand.getBoundingClientRect()
+  const panelRect = panel.getBoundingClientRect()
+  if (brandRect.width <= 0 || panelRect.width <= 0) {
+    return false
+  }
+  const collisionGap = 8
+
+  return brandRect.right + collisionGap > panelRect.left
 }
 
 function updateHeaderHeightVar() {
