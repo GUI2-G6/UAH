@@ -6,8 +6,12 @@
         <div class="hero-copy">
           <h1>Your entire job search. One clean tool. No cost.</h1>
           <p class="hero-description">
-            UAH brings job discovery and application tracking into a single, focused workspace — pulling from multiple
-            job data sources, stripping out dead listings, and keeping your whole search organized in one place. We
+            UAH unifies the fragmented process of job searching & applying. There are <strong>hundreds</strong> of different sites
+            for finding job postings, and even more for applying. This makes keeping track of your active applications can be
+            a nightmare, a nightmare our site aims to address.<br><br>
+
+            UAH brings job discovery and application tracking into a single workspace — pulling from multiple
+            job data sources, tracking applications made through our site, and keeping your whole search organized in one place. We
             built what we needed and we're building it in the open. The beta is real and running, but it still has rough
             edges and a long way to go. If that sounds like something worth being part of, we want to hear from you.
           </p>
@@ -52,7 +56,7 @@
             <div class="visual-card primary">
               <span class="visual-chip"><span class="chip-dot" style="background:black;"></span> Unified
                 workspace</span>
-              <div class="visual-title">Search it. Track it. Follow up.</div>
+              <div class="visual-title">Search. Scan. Fill. Apply.</div>
               <div class="metric-row">
                 <div class="metric"><strong>Search</strong><span>DB-backed filters</span></div>
                 <div class="metric"><strong>Track</strong><span>Status, dates, notes</span></div>

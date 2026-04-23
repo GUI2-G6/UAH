@@ -164,6 +164,7 @@ h1 {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  border-radius:36px;
 }
 
 .visual-orbit {
