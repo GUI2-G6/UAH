@@ -1,0 +1,12 @@
+# UAH public marketing site crawler policy
+# Domain: https://uahapp.com
+
+User-agent: *
+Allow: /
+
+# Keep API/internal-style endpoints out of search indexing for this host.
+Disallow: /api/
+Disallow: /internal/
+Disallow: /admin/
+
+Sitemap: https://uahapp.com/sitemap.xml

@@ -51,6 +51,10 @@ Use these buckets when deciding what can be publicly reachable versus still behi
   - `/api/status`
   - `/api/auth/*`
   - `/api/public/*`
+- backend account recovery / verification routes that must remain reachable for non-authenticated users:
+  - `/api/account/forgot-password`
+  - `/api/account/reset-password`
+  - `/api/account/verify-email`
 
 ### Authenticated App Surface (internet reachable, app auth enforced)
 
@@ -67,25 +71,25 @@ Use these buckets when deciding what can be publicly reachable versus still behi
 
 - `/api/admin/*` (admin only)
 - `/api/jobs/debug/*` (admin/developer only)
+- `/api/diagnostics` (privileged operational data)
+- `/api/geolocation/muse-supported-locations/refresh` (internal refresh endpoint)
 - `/docs`, `/redoc`, `/openapi.json`
 - `/dev` frontend route
-- any explicit internal-only path such as `/api/internal/*` if present in the deployed environment
 
 ## Cloudflare Access Policy Set
 
 When removing the full "all-site" Access wall, keep these Access applications/policies in place:
 
 1. `uah-beta-privileged-admin`
-   - include paths: `/api/admin/*`, `/docs`, `/redoc`, `/openapi.json`
+   - include paths: `/api/admin/*`, `/api/diagnostics`, `/api/geolocation/muse-supported-locations/refresh`, `/docs`, `/redoc`, `/openapi.json`
    - allow: admin identity group only
 2. `uah-beta-privileged-devtools`
    - include paths: `/api/jobs/debug/*`, `/dev`
    - allow: admin and developer groups
-3. `uah-beta-internal`
-   - include paths: `/api/internal/*` (if any)
-   - allow: internal operators/service identities only
 
 If your team uses one Access app per hostname, use policy path filters. If your team uses separate Access apps, map each path set into its own app.
+
+In addition to Access, configure a request-header transform on the privileged path set so Cloudflare injects `X-Internal-Api-Key` with the same value configured in the backend environment.
 
 ## Edge Protection Requirements
 
@@ -95,10 +99,13 @@ Keep Cloudflare WAF/rate controls active even after relaxing the global Access w
 - Bot Management/Super Bot Fight Mode enabled.
 - Rate limit rules for auth-sensitive endpoints:
   - `/api/auth/login`
+  - `/api/auth/token`
   - `/api/auth/register`
-  - `/api/auth/forgot-password`
-  - `/api/auth/reset-password*`
-  - `/api/auth/google/*`
+  - `/api/account/forgot-password`
+  - `/api/account/reset-password`
+  - `/api/account/verify-email`
+  - `/api/public/beta-access`
+  - `/api/public/landing-feedback`
 - Add challenge/managed challenge rule for abusive bursts on the auth endpoints above.
 
 ## 72-Hour Observation Window
@@ -126,4 +133,5 @@ Rollback action:
 
 - [BETA_SETUP.md](BETA_SETUP.md)
 - [SECURITY_CHECKLIST.md](SECURITY_CHECKLIST.md)
+- [ZERO_TRUST_REMOVAL_CHECKLIST.md](ZERO_TRUST_REMOVAL_CHECKLIST.md)
 - [../SECURITY_AUDIT_GUIDE.md](../SECURITY_AUDIT_GUIDE.md)

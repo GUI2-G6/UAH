@@ -66,3 +66,4 @@ landing/public/downloads/uah-browser-extension-alpha.last-repacked.txt
 # Celery Beat runtime scheduler file
 celerybeat-schedule
 celerybeat.pid
+/.audit-venv
