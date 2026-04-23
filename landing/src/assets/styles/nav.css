@@ -73,7 +73,7 @@ html[data-theme="dark"] .nav-theme-control {
 
 #subtitle {
   font-style: italic;
-  font-size: clamp(0.68rem, 0.95vw, 0.84rem);
+  font-size: clamp(0.68rem, 0.95vw, 1.5rem);
   line-height: 1.2;
 }
 
