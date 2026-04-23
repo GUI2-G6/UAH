@@ -3307,3 +3307,82 @@ html[data-theme="dark"] .resumes-page .new-profile-input {
   border-color: var(--border-color);
   color: var(--color-text-primary);
 }
+
+html[data-theme="dark"] .resumes-page .file-preview-row .file-info .file-size,
+html[data-theme="dark"] .resumes-page .file-preview-row .clear-btn,
+html[data-theme="dark"] .resumes-page .pipeline-guardrails h4,
+html[data-theme="dark"] .resumes-page .pipeline-guardrails summary,
+html[data-theme="dark"] .resumes-page .pipeline-guarantee-item strong,
+html[data-theme="dark"] .resumes-page .parse-method-label,
+html[data-theme="dark"] .resumes-page .parse-method-row label {
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .resumes-page .pipeline-guarantee-item span,
+html[data-theme="dark"] .resumes-page .parse-method-summary,
+html[data-theme="dark"] .resumes-page .parse-method-note,
+html[data-theme="dark"] .resumes-page .task-mode-note,
+html[data-theme="dark"] .resumes-page .gpa-text {
+  color: var(--color-text-secondary);
+}
+
+html[data-theme="dark"] .resumes-page .pipeline-ordering-note {
+  color: #bfdbfe;
+  background: rgba(37, 99, 235, 0.18);
+  border-color: rgba(96, 165, 250, 0.4);
+}
+
+html[data-theme="dark"] .resumes-page .stage-pill {
+  background: var(--color-surface);
+  border-color: var(--border-color);
+  color: var(--color-text-secondary);
+}
+
+html[data-theme="dark"] .resumes-page .stage-pill.active {
+  background: rgba(59, 130, 246, 0.22);
+  border-color: rgba(96, 165, 250, 0.56);
+  color: #dbeafe;
+}
+
+html[data-theme="dark"] .resumes-page .pipeline-guarantee-item {
+  border-bottom-color: rgba(148, 163, 184, 0.28);
+}
+
+html[data-theme="dark"] .resumes-page .method-toggle button {
+  background: var(--color-surface);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .resumes-page .method-toggle button:hover {
+  background: var(--color-surface-hover);
+  border-color: rgba(96, 165, 250, 0.55);
+  color: #dbeafe;
+}
+
+html[data-theme="dark"] .resumes-page .method-toggle button.active {
+  background: rgba(59, 130, 246, 0.24);
+  border-color: rgba(96, 165, 250, 0.62);
+  color: #dbeafe;
+}
+
+html[data-theme="dark"] .resumes-page .method-toggle button:disabled {
+  background: rgba(15, 23, 42, 0.45);
+  border-color: rgba(100, 116, 139, 0.4);
+  color: #94a3b8;
+}
+
+html[data-theme="dark"] .resumes-page .btn-secondary,
+html[data-theme="dark"] .resumes-page .btn-primary,
+html[data-theme="dark"] .resumes-page .resume-actions button {
+  background: var(--color-surface);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .resumes-page .btn-secondary:hover,
+html[data-theme="dark"] .resumes-page .btn-primary:hover,
+html[data-theme="dark"] .resumes-page .resume-actions button:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--border-color);
+}
