@@ -159,6 +159,20 @@ npm install
 npm run dev:backend
 ```
 
+### Standard local dev test admin account
+
+For local/dev workflows, the standard bypass account uses `DEV_AUTH_TEST_*` settings
+(not `ADMIN_BOOTSTRAP_*`).
+
+Default local template values in `env-examples/local/.env.example`:
+
+- `DEV_AUTH_TEST_ACCOUNT_ENABLED=true`
+- `DEV_AUTH_TEST_EMAIL=local.admin@uah.local`
+- `DEV_AUTH_TEST_PASSWORD=LocalAdmin123!`
+- `DEV_AUTH_TEST_IS_ADMIN=true`
+
+This account is local/dev-only and should remain disabled in beta/prod.
+
 ## Optional: Queue And Job Sync
 
 Resume parsing and local job-sync maintenance can run with Redis and Celery.

@@ -45,6 +45,32 @@ npm run dev
 
 This is the fastest path for UI work. It uses the in-browser mock API layer and does not require backend services.
 
+### One-command local stack (backend + frontend mock + landing)
+
+From repo root:
+
+```bash
+npm run dev:local
+```
+
+What this does:
+
+- starts `db-local` and `backend-local` using `docker-compose.local.yml`
+- starts `frontend` in mock mode on `http://localhost:5173`
+- starts `landing` on `http://localhost:5174` (avoids Vite port collision)
+
+Standard local dev credentials:
+
+- email: `local.admin@uah.local`
+- password: `LocalAdmin123!`
+
+Useful helpers:
+
+```bash
+npm run dev:local:logs
+npm run dev:local:down
+```
+
 ### Local backend + frontend
 
 ```bash
