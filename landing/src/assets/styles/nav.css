@@ -2,6 +2,7 @@
   position: sticky;
   top: 0;
   z-index: 100;
+  overflow: visible;
   backdrop-filter: blur(18px);
   background: rgba(248, 250, 252, 0.86);
   border-bottom: 1px solid rgba(31, 92, 153, 0.10);
@@ -40,6 +41,7 @@ html[data-theme="dark"] .nav-theme-control {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  position: relative;
 }
 
 .brand {
@@ -267,22 +269,24 @@ html[data-theme="dark"] .nav-links a.router-link-exact-active {
   }
 
   .js-enabled .nav-panel {
-    position: fixed;
-    top: calc(var(--site-header-height, var(--nav-height)) + 8px);
-    right: 16px;
-    bottom: 16px;
-    max-height: calc(100svh - var(--site-header-height, var(--nav-height)) - 24px);
-    width: min(340px, calc(100vw - 32px));
-    padding: 88px 20px calc(24px + env(safe-area-inset-bottom));
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    max-height: min(calc(100dvh - var(--site-header-height, var(--nav-height)) - 16px), 620px);
+    width: min(340px, calc(100vw - 22px));
+    padding: 16px 16px calc(20px + env(safe-area-inset-bottom));
     border-radius: 28px;
     background: color-mix(in srgb, var(--color-surface) 96%, transparent);
     border: 1px solid var(--color-border);
     box-shadow: 0 28px 58px rgba(20, 46, 78, 0.22);
-    transform: translateX(calc(100% + 24px));
-    transition: transform 0.22s ease;
+    transform: translateY(-10px);
+    opacity: 0;
+    transition: transform 0.22s ease, opacity 0.2s ease;
     z-index: 120;
     overflow-y: auto;
+    overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
     visibility: hidden;
     pointer-events: none;
     display: flex;
@@ -293,7 +297,8 @@ html[data-theme="dark"] .nav-links a.router-link-exact-active {
   }
 
   .js-enabled .nav-panel.is-open {
-    transform: translateX(0);
+    transform: translateY(0);
+    opacity: 1;
     visibility: visible;
     pointer-events: auto;
   }
@@ -301,10 +306,14 @@ html[data-theme="dark"] .nav-links a.router-link-exact-active {
   .js-enabled .nav-links {
     flex-direction: column;
     align-items: stretch;
+    gap: 6px;
+    flex: none;
   }
 
   .js-enabled .nav-actions {
     margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
     display: grid;
     grid-template-columns: 1fr;
     gap: 10px;
@@ -323,7 +332,7 @@ html[data-theme="dark"] .nav-links a.router-link-exact-active {
   .js-enabled .nav-overlay {
     display: block;
     position: fixed;
-    top: var(--site-header-height, var(--nav-height));
+    top: 0;
     right: 0;
     bottom: 0;
     left: 0;

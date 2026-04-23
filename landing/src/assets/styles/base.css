@@ -126,7 +126,6 @@ section {
 
   .js-enabled body.nav-open {
     overflow: hidden;
-    touch-action: none;
   }
 }
 

@@ -5619,6 +5619,8 @@ debug_extension() {
         fi
         if ! docker run --rm \
           --user "$(id -u):$(id -g)" \
+          -e HOME=/tmp \
+          -e npm_config_cache=/tmp/.npm \
           -v "$extension_dir:/work" \
           -w /work \
           node:22-bookworm \
