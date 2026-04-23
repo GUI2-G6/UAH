@@ -115,6 +115,21 @@ Then manually confirm:
 - resume upload / parse
 - any enabled extension flow against the beta origin
 
+## 8. Cloudflare Access Rollout Sequence
+
+If you are removing a broad "all-users behind Access" wall, do it in stages:
+
+1. Keep privileged paths behind Access:
+   - `/api/admin/*`
+   - `/api/jobs/debug/*`
+   - `/docs`, `/redoc`, `/openapi.json`
+   - `/dev`
+2. Keep WAF, bot mitigation, and auth endpoint rate limits enabled.
+3. Expose only public + normal authenticated app paths to the internet.
+4. Observe for 48-72 hours before any additional policy loosening.
+
+See [CLOUDFLARE_SECURITY.md](CLOUDFLARE_SECURITY.md) for the path buckets, policy targets, and rollback criteria.
+
 ## Related Docs
 
 - [SECURITY_CHECKLIST.md](SECURITY_CHECKLIST.md)

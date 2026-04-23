@@ -19,7 +19,13 @@ This file describes the current beta shape. Historical findings and one-time gap
 - [ ] `CLOUDFLARE_BETA_TUNNEL_TOKEN` is set
 - [ ] `uah-beta-cloudflared` is running
 - [ ] `beta.uahapp.com` resolves through the intended Cloudflare/tunnel setup
-- [ ] Access policy, WAF, and rate limiting have been reviewed outside the repo-managed audit
+- [ ] Public vs privileged route bucket review completed (see `CLOUDFLARE_SECURITY.md`)
+- [ ] Access policy keeps `/api/admin/*`, `/api/jobs/debug/*`, `/docs`, `/redoc`, `/openapi.json`, and `/dev` restricted
+- [ ] Access identity groups are mapped correctly (admin vs admin/developer)
+- [ ] WAF managed rules are enabled on beta hostname
+- [ ] Bot mitigation is enabled on beta hostname
+- [ ] Cloudflare rate limits exist for auth-sensitive routes (`/api/auth/login`, `/api/auth/register`, `/api/auth/forgot-password`, OAuth paths)
+- [ ] 48-72h post-change observation window is planned (or completed) with rollback criteria
 
 ## Backend
 

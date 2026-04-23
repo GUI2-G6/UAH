@@ -40,6 +40,88 @@ Those should be reviewed alongside the repo-managed audit before inviting extern
 - Confirm beta access control is intentional for the audience you are inviting.
 - Confirm Cloudflare-side rate limiting covers auth-sensitive routes.
 
+## Route Buckets For Rollout
+
+Use these buckets when deciding what can be publicly reachable versus still behind Cloudflare Access.
+
+### Public (Internet reachable)
+
+- frontend public pages: `/landing`, `/login`, `/register`, `/signup`, `/status`, `/forgot-password`, `/reset-password`, `/oauth-callback`, `/verify-email`, `/our-commitment`, `/contributors`
+- backend public/identity routes needed for user auth and onboarding:
+  - `/api/status`
+  - `/api/auth/*`
+  - `/api/public/*`
+
+### Authenticated App Surface (internet reachable, app auth enforced)
+
+- frontend authenticated pages such as `/home`, `/job-board`, `/resumes`, `/application`, `/settings`, `/notifications`, `/analytics`, `/timeline`
+- backend user routes guarded by app auth:
+  - `/api/account/*`
+  - `/api/resume/*`
+  - `/api/applicant-profile/*`
+  - `/api/apply-sessions/*`
+  - `/api/integrations/*`
+  - `/api/integrations/gmail/*`
+
+### Privileged/Internal (keep behind Cloudflare Access)
+
+- `/api/admin/*` (admin only)
+- `/api/jobs/debug/*` (admin/developer only)
+- `/docs`, `/redoc`, `/openapi.json`
+- `/dev` frontend route
+- any explicit internal-only path such as `/api/internal/*` if present in the deployed environment
+
+## Cloudflare Access Policy Set
+
+When removing the full "all-site" Access wall, keep these Access applications/policies in place:
+
+1. `uah-beta-privileged-admin`
+   - include paths: `/api/admin/*`, `/docs`, `/redoc`, `/openapi.json`
+   - allow: admin identity group only
+2. `uah-beta-privileged-devtools`
+   - include paths: `/api/jobs/debug/*`, `/dev`
+   - allow: admin and developer groups
+3. `uah-beta-internal`
+   - include paths: `/api/internal/*` (if any)
+   - allow: internal operators/service identities only
+
+If your team uses one Access app per hostname, use policy path filters. If your team uses separate Access apps, map each path set into its own app.
+
+## Edge Protection Requirements
+
+Keep Cloudflare WAF/rate controls active even after relaxing the global Access wall.
+
+- WAF managed ruleset enabled for the beta hostname.
+- Bot Management/Super Bot Fight Mode enabled.
+- Rate limit rules for auth-sensitive endpoints:
+  - `/api/auth/login`
+  - `/api/auth/register`
+  - `/api/auth/forgot-password`
+  - `/api/auth/reset-password*`
+  - `/api/auth/google/*`
+- Add challenge/managed challenge rule for abusive bursts on the auth endpoints above.
+
+## 72-Hour Observation Window
+
+After rollout, hold for 48-72 hours before further loosening.
+
+Monitor at minimum:
+
+- request spikes and block/challenge events by path
+- `401`, `403`, and `429` trends
+- probes against privileged paths (`/api/admin/*`, `/api/jobs/debug/*`, docs routes)
+- auth failure bursts from a single IP/ASN/country
+
+Rollback triggers:
+
+- repeated privileged-path probes getting through Access
+- sustained auth attack traffic not contained by edge controls
+- user-facing auth degradation caused by new edge rules
+
+Rollback action:
+
+- re-enable prior broad Access posture for the hostname and investigate before retrying.
+
 ## Related Docs
 
 - [BETA_SETUP.md](BETA_SETUP.md)
