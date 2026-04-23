@@ -5624,7 +5624,7 @@ debug_extension() {
           -v "$extension_dir:/work" \
           -w /work \
           node:22-bookworm \
-          bash -lc "npm ci && npm run build"; then
+          bash -lc "set -euo pipefail; npm ci --include=optional || npm ci; if ! node -e \"require('@rollup/rollup-linux-x64-gnu')\" >/dev/null 2>&1; then npm install --no-save --include=optional @rollup/rollup-linux-x64-gnu; fi; npm run build"; then
           debug_print_error "Dockerized extension build failed. Zip was not updated."
           exit 1
         fi
