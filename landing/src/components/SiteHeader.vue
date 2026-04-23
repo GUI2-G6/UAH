@@ -2,7 +2,11 @@
 <template>
   <header ref="headerRef" class="site-header">
     <div class="nav-shell">
-      <div class="nav-inner" :class="{ 'is-compact-desktop': isCompactDesktop }">
+      <div
+        ref="navInnerRef"
+        class="nav-inner"
+        :class="{ 'is-compact-desktop': isCompactDesktop, 'is-drawer-mode': isDrawerMode }"
+      >
         <RouterLink class="brand" to="/" @click="closeMenu">
           <img src="../images/logo.png" width="75" height="75" title="To Top" alt="Unified Application Hub home" />
           <span class="brand-copy">
@@ -64,13 +68,17 @@ import ThemeModeControl from './ThemeModeControl.vue'
 const isMenuOpen = ref(false)
 const isMobileViewport = ref(false)
 const isCompactDesktop = ref(false)
+const isDesktopOverflowing = ref(false)
 const loginUrl = (import.meta.env.VITE_UAH_LOGIN_URL || 'https://beta.uahapp.com/login').trim()
 const mobileNavBreakpoint = 1080
 const compactDesktopBreakpoint = 1320
+const navInnerRef = ref(null)
 const navPanelRef = ref(null)
 const toggleRef = ref(null)
 const headerRef = ref(null)
 const lastFocusedElement = ref(null)
+let resizeRunId = 0
+let postMountRafId = 0
 const route = useRoute()
 
 const navLinks = [
@@ -85,6 +93,14 @@ const navLinks = [
 
 function closeMenu() {
   isMenuOpen.value = false
+}
+
+function navContentOverflowsDesktop() {
+  const navInner = navInnerRef.value
+  if (!(navInner instanceof HTMLElement)) {
+    return false
+  }
+  return navInner.scrollWidth > navInner.clientWidth + 1
 }
 
 function updateHeaderHeightVar() {
@@ -152,7 +168,7 @@ function handleKeydown(event) {
     closeMenu()
     return
   }
-  if (event.key !== 'Tab' || !isMenuOpen.value || !isMobileViewport.value) {
+  if (event.key !== 'Tab' || !isMenuOpen.value || !isDrawerMode.value) {
     return
   }
   const focusables = getFocusableNavItems()
@@ -171,22 +187,40 @@ function handleKeydown(event) {
   }
 }
 
-function handleResize() {
+async function handleResize() {
+  const runId = ++resizeRunId
   const width = window.innerWidth
   isMobileViewport.value = width <= mobileNavBreakpoint
   isCompactDesktop.value = width > mobileNavBreakpoint && width <= compactDesktopBreakpoint
+  if (isMobileViewport.value) {
+    isDesktopOverflowing.value = false
+    updateHeaderHeightVar()
+    return
+  }
+
+  // Measure overflow in desktop layout mode to avoid stale measurements from drawer-mode CSS.
+  if (isDesktopOverflowing.value) {
+    isDesktopOverflowing.value = false
+    await nextTick()
+    if (runId !== resizeRunId) {
+      return
+    }
+  }
+  isDesktopOverflowing.value = navContentOverflowsDesktop()
   updateHeaderHeightVar()
-  if (window.innerWidth > mobileNavBreakpoint) {
+
+  if (!isDrawerMode.value) {
     closeMenu()
   }
 }
 
 const menuLabel = computed(() => (isMenuOpen.value ? 'Close navigation menu' : 'Open navigation menu'))
-const shouldHidePanel = computed(() => isMobileViewport.value && !isMenuOpen.value)
+const isDrawerMode = computed(() => isMobileViewport.value || isDesktopOverflowing.value)
+const shouldHidePanel = computed(() => isDrawerMode.value && !isMenuOpen.value)
 
 watch(isMenuOpen, (value) => {
   document.body.classList.toggle('nav-open', value)
-  setBackgroundInteractivity(value && isMobileViewport.value)
+  setBackgroundInteractivity(value && isDrawerMode.value)
   updateHeaderHeightVar()
   if (!value) {
     const previous = lastFocusedElement.value
@@ -203,27 +237,33 @@ if (route && typeof route === 'object' && 'fullPath' in route) {
     () => route.fullPath,
     () => {
       closeMenu()
-      updateHeaderHeightVar()
+      void handleResize()
     }
   )
 }
 
-watch(isMobileViewport, (value) => {
+watch(isDrawerMode, (value) => {
   setBackgroundInteractivity(value && isMenuOpen.value)
 })
 
 onMounted(() => {
-  handleResize()
+  void handleResize()
+  postMountRafId = requestAnimationFrame(() => {
+    void handleResize()
+  })
   updateHeaderHeightVar()
   document.addEventListener('keydown', handleKeydown)
   window.addEventListener('resize', handleResize)
+  window.addEventListener('uah-theme-changed', handleResize)
 })
 
 onUnmounted(() => {
+  cancelAnimationFrame(postMountRafId)
   document.body.classList.remove('nav-open')
   document.documentElement.style.removeProperty('--site-header-height')
   setBackgroundInteractivity(false)
   document.removeEventListener('keydown', handleKeydown)
   window.removeEventListener('resize', handleResize)
+  window.removeEventListener('uah-theme-changed', handleResize)
 })
 </script>

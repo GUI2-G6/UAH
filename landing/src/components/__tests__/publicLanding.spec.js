@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { mount } from '@vue/test-utils'
+import { enableAutoUnmount, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 
@@ -17,6 +17,8 @@ const routerLinkStub = {
   template: '<a :href="typeof to === \'string\' ? to : String(to)"><slot /></a>',
 }
 
+enableAutoUnmount(afterEach)
+
 function mountHeader() {
   return mount(SiteHeader, {
     global: {
@@ -25,6 +27,12 @@ function mountHeader() {
       },
     },
   })
+}
+
+async function flushHeaderLayout() {
+  await nextTick()
+  await Promise.resolve()
+  await nextTick()
 }
 
 describe('public landing mail routing', () => {
@@ -103,21 +111,21 @@ describe('public landing mobile navigation', () => {
 
     const wrapper = mountHeader()
     await wrapper.get('.nav-toggle').trigger('click')
-    await nextTick()
+    await flushHeaderLayout()
 
     expect(wrapper.get('.nav-toggle').attributes('aria-expanded')).toBe('true')
     expect(document.body.classList.contains('nav-open')).toBe(true)
 
     window.innerWidth = 900
     window.dispatchEvent(new Event('resize'))
-    await nextTick()
+    await flushHeaderLayout()
 
     expect(wrapper.get('.nav-toggle').attributes('aria-expanded')).toBe('true')
     expect(document.body.classList.contains('nav-open')).toBe(true)
 
     window.innerWidth = 1280
     window.dispatchEvent(new Event('resize'))
-    await nextTick()
+    await flushHeaderLayout()
 
     expect(wrapper.get('.nav-toggle').attributes('aria-expanded')).toBe('false')
     expect(document.body.classList.contains('nav-open')).toBe(false)
@@ -130,13 +138,13 @@ describe('public landing mobile navigation', () => {
     const header = wrapper.get('.site-header').element
     header.getBoundingClientRect = () => ({ width: 360, height: 86, top: 0, left: 0, right: 360, bottom: 86 })
     window.dispatchEvent(new Event('resize'))
-    await nextTick()
+    await flushHeaderLayout()
 
     const measuredHeight = document.documentElement.style.getPropertyValue('--site-header-height').trim()
     expect(measuredHeight).toMatch(/^\d+px$/)
 
     await wrapper.get('.nav-toggle').trigger('click')
-    await nextTick()
+    await flushHeaderLayout()
     const openHeight = document.documentElement.style.getPropertyValue('--site-header-height').trim()
     expect(openHeight).toMatch(/^\d+px$/)
   })
@@ -151,12 +159,40 @@ describe('public landing mobile navigation', () => {
 
     window.innerWidth = 800
     window.dispatchEvent(new Event('resize'))
-    await nextTick()
+    await flushHeaderLayout()
     expect(nav.attributes('aria-hidden')).toBe('true')
     expect(nav.attributes('inert')).toBe('')
 
     await wrapper.get('.nav-toggle').trigger('click')
-    await nextTick()
+    await flushHeaderLayout()
+    expect(nav.attributes('aria-hidden')).toBe('false')
+    expect(nav.attributes('inert')).toBeUndefined()
+  })
+
+  it('switches to drawer mode on desktop when nav content overflows', async () => {
+    window.innerWidth = 1360
+
+    const wrapper = mountHeader()
+    const navInner = wrapper.get('.nav-inner').element
+    Object.defineProperty(navInner, 'clientWidth', {
+      configurable: true,
+      get: () => 780,
+    })
+    Object.defineProperty(navInner, 'scrollWidth', {
+      configurable: true,
+      get: () => 1080,
+    })
+
+    window.dispatchEvent(new Event('resize'))
+    await flushHeaderLayout()
+
+    expect(wrapper.get('.nav-inner').classes()).toContain('is-drawer-mode')
+    const nav = wrapper.get('#site-nav-menu')
+    expect(nav.attributes('aria-hidden')).toBe('true')
+    expect(nav.attributes('inert')).toBe('')
+
+    await wrapper.get('.nav-toggle').trigger('click')
+    await flushHeaderLayout()
     expect(nav.attributes('aria-hidden')).toBe('false')
     expect(nav.attributes('inert')).toBeUndefined()
   })
@@ -199,19 +235,19 @@ describe('public landing route architecture', () => {
   it('enters compact desktop nav state in intermediate widths', async () => {
     window.innerWidth = 1180
     const wrapper = mountHeader()
-    await nextTick()
+    await flushHeaderLayout()
 
     expect(wrapper.get('.nav-inner').classes()).toContain('is-compact-desktop')
 
     window.innerWidth = 1300
     window.dispatchEvent(new Event('resize'))
-    await nextTick()
+    await flushHeaderLayout()
 
     expect(wrapper.get('.nav-inner').classes()).toContain('is-compact-desktop')
 
     window.innerWidth = 1400
     window.dispatchEvent(new Event('resize'))
-    await nextTick()
+    await flushHeaderLayout()
 
     expect(wrapper.get('.nav-inner').classes()).not.toContain('is-compact-desktop')
   })

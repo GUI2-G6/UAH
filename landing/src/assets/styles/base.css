@@ -103,6 +103,10 @@ main {
   overflow: clip;
 }
 
+.js-enabled body.nav-open {
+  overflow: hidden;
+}
+
 section {
   scroll-margin-top: calc(var(--nav-height) + 20px);
 }
@@ -122,10 +126,6 @@ section {
 @media (max-width: 1080px) {
   :root {
     --nav-height: 72px;
-  }
-
-  .js-enabled body.nav-open {
-    overflow: hidden;
   }
 }
 
