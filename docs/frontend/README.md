@@ -88,6 +88,13 @@ Document those views as partial, not complete.
 npm run dev
 ```
 
+Default local mock credentials:
+
+- email: `local.admin@uah.local`
+- password: `LocalAdmin123!`
+
+Mock mode now auto-logins by default on localhost (set `VITE_LOCAL_AUTO_LOGIN=false` to opt out).
+
 Use this for:
 
 - layout work
@@ -106,6 +113,20 @@ Important behavior:
 - defaults to `http://localhost:8000` unless overridden
 - refuses non-loopback backend targets unless `VITE_ALLOW_REMOTE_API=true`
 - can optionally serve over HTTPS when the local HTTPS env vars are configured
+
+### One command for backend + frontend + landing
+
+From repo root:
+
+```bash
+npm run dev:local
+```
+
+This starts:
+
+- local backend profile (`db-local` + `backend-local`)
+- frontend mock dev server (`5173`)
+- landing dev server (`5174`)
 
 ## Shared Card Contract
 

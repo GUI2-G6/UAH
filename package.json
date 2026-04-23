@@ -1,4 +1,11 @@
 {
+  "private": true,
+  "scripts": {
+    "dev:local": "node scripts/local/lifecycle/local-dev-stack.mjs",
+    "dev:local:up": "docker compose -f docker-compose.local.yml --profile backend up -d db-local backend-local",
+    "dev:local:down": "docker compose -f docker-compose.local.yml --profile backend down",
+    "dev:local:logs": "docker compose -f docker-compose.local.yml --profile backend logs -f backend-local db-local"
+  },
   "dependencies": {
     "chart.js": "^4.5.1",
     "vue-chart.js": "^0.2.0",

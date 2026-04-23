@@ -518,8 +518,11 @@ export function assertSafeLocalModeConfig() {
   }
 }
 
+const DEFAULT_LOCAL_ADMIN_EMAIL = 'local.admin@uah.local'
+const DEFAULT_LOCAL_ADMIN_PASSWORD = 'LocalAdmin123!'
+
 function createDefaultUser(overrides = {}) {
-  const defaultEmail = 'localdev@uah.local'
+  const defaultEmail = DEFAULT_LOCAL_ADMIN_EMAIL
   return {
     id: 1,
     username: defaultEmail,
@@ -532,7 +535,7 @@ function createDefaultUser(overrides = {}) {
     gmail_refresh_token: null,
     gmail_email: null,
     first_name: 'Local',
-    last_name: 'Developer',
+    last_name: 'Admin',
     phone: '',
     linkedin: '',
     portfolio: '',
@@ -815,23 +818,23 @@ function flattenCanonicalData(canonical) {
     if (cleanProfileString(value)) tokens[`personal_info.${key}`] = value
   })
   if (cleanProfileString(normalized.summary)) tokens.summary = normalized.summary
-  ;['education', 'work_experience', 'projects', 'certifications'].forEach((sectionKey) => {
-    ;(normalized[sectionKey] || []).forEach((entry, index) => {
-      Object.entries(entry || {}).forEach(([key, value]) => {
-        if (Array.isArray(value) && value.length) {
-          tokens[`${sectionKey}[${index}].${key}`] = value.join(key === 'bullets' ? '\n' : ', ')
-        } else if (!Array.isArray(value) && cleanProfileString(String(value || ''))) {
-          tokens[`${sectionKey}[${index}].${key}`] = value
-        }
+    ;['education', 'work_experience', 'projects', 'certifications'].forEach((sectionKey) => {
+      ; (normalized[sectionKey] || []).forEach((entry, index) => {
+        Object.entries(entry || {}).forEach(([key, value]) => {
+          if (Array.isArray(value) && value.length) {
+            tokens[`${sectionKey}[${index}].${key}`] = value.join(key === 'bullets' ? '\n' : ', ')
+          } else if (!Array.isArray(value) && cleanProfileString(String(value || ''))) {
+            tokens[`${sectionKey}[${index}].${key}`] = value
+          }
+        })
       })
     })
-  })
   Object.entries(normalized.skills || {}).forEach(([key, value]) => {
     if (Array.isArray(value) && value.length) tokens[`skills.${key}`] = value.join(', ')
   })
-  ;['awards', 'activities', 'volunteer'].forEach((key) => {
-    if (normalized[key]?.length) tokens[key] = normalized[key].join('\n')
-  })
+    ;['awards', 'activities', 'volunteer'].forEach((key) => {
+      if (normalized[key]?.length) tokens[key] = normalized[key].join('\n')
+    })
   return tokens
 }
 
@@ -1063,7 +1066,7 @@ function setAuthStorage(user) {
 }
 
 function maybeBootstrapAutoLogin(state) {
-  const autoLogin = parseBoolean(import.meta.env.VITE_LOCAL_AUTO_LOGIN, false)
+  const autoLogin = parseBoolean(import.meta.env.VITE_LOCAL_AUTO_LOGIN, true)
   if (!autoLogin) return
 
   if (!getAccessToken()) {
@@ -1480,7 +1483,7 @@ function buildQueueSnapshot(state, focusMethod = 'local', includeGlobalQueue = t
     job_id: job.job_id,
     method: job.method,
     status: job.status,
-    user_display: 'Local Developer',
+    user_display: 'Local Admin',
     queue_position: index + 1,
     queue_total: activeJobs.length,
     created_at: job.created_at,
@@ -1957,21 +1960,21 @@ function buildMockServiceDetail(state, serviceKey) {
       ],
       readiness: connected
         ? {
-            title: 'Ready for mailbox-powered updates',
-            description: 'UAH can use this mailbox connection for future job-update scanning, status inference, and timeline enrichment without asking you to reconnect.',
-            tone: 'positive',
-          }
+          title: 'Ready for mailbox-powered updates',
+          description: 'UAH can use this mailbox connection for future job-update scanning, status inference, and timeline enrichment without asking you to reconnect.',
+          tone: 'positive',
+        }
         : (gmailConfigured
-            ? {
-                title: 'Available to connect',
-                description: 'Connect Gmail when you want UAH ready for inbox-based job update features. Nothing is scanned automatically in this phase.',
-                tone: 'neutral',
-              }
-            : {
-                title: 'Needs environment setup',
-                description: 'An administrator still needs to configure Gmail OAuth credentials for this environment before users can opt in.',
-                tone: 'warning',
-              }),
+          ? {
+            title: 'Available to connect',
+            description: 'Connect Gmail when you want UAH ready for inbox-based job update features. Nothing is scanned automatically in this phase.',
+            tone: 'neutral',
+          }
+          : {
+            title: 'Needs environment setup',
+            description: 'An administrator still needs to configure Gmail OAuth credentials for this environment before users can opt in.',
+            tone: 'warning',
+          }),
       planned_features: [
         'Inbox-powered application status detection',
         'Timeline enrichment from recruiter communications',
@@ -1980,8 +1983,8 @@ function buildMockServiceDetail(state, serviceKey) {
       actions: connected
         ? [buildMockServiceAction({ key: 'disconnect', label: 'Disconnect', style: 'secondary', method: 'DELETE', href: '/api/integrations/gmail/disconnect' })]
         : [gmailConfigured
-            ? buildMockServiceAction({ key: 'connect', label: 'Connect', style: 'primary', method: 'POST', href: '/api/integrations/gmail/connect/start' })
-            : buildMockServiceAction({ key: 'unavailable', label: 'Unavailable', enabled: false, style: 'muted' })],
+          ? buildMockServiceAction({ key: 'connect', label: 'Connect', style: 'primary', method: 'POST', href: '/api/integrations/gmail/connect/start' })
+          : buildMockServiceAction({ key: 'unavailable', label: 'Unavailable', enabled: false, style: 'muted' })],
     }
   }
 
@@ -2068,8 +2071,8 @@ function listMockServiceSummaries(state) {
       summary: gmailDetail.connected
         ? 'Mailbox ready for future job-update scanning and timeline enrichment.'
         : (mockGmailConfigured()
-            ? 'Opt in to read-only inbox access so UAH can prepare for job update workflows.'
-            : 'Gmail support exists, but this environment still needs OAuth configuration before users can connect.'),
+          ? 'Opt in to read-only inbox access so UAH can prepare for job update workflows.'
+          : 'Gmail support exists, but this environment still needs OAuth configuration before users can connect.'),
       account_label: gmailDetail.account_label,
       primary_action: gmailDetail.actions[0],
       can_view_details: true,
@@ -2525,7 +2528,12 @@ async function handleMockApiRequest(request, requestUrl, state) {
 
   if (pathname === '/api/auth/login' && method === 'POST') {
     const body = await parseJsonBody(request)
-    const email = normalizeTextLower(body.email || body.username) || 'localdev@uah.local'
+    const email = normalizeTextLower(body.email || body.username) || DEFAULT_LOCAL_ADMIN_EMAIL
+    const password = normalizeText(body.password)
+
+    if (password !== DEFAULT_LOCAL_ADMIN_PASSWORD) {
+      return toJsonResponse({ detail: 'Invalid credentials' }, 401)
+    }
 
     if (!state.user.email_verified) {
       return toJsonResponse(
@@ -2554,7 +2562,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
   if (pathname === '/api/auth/register' && method === 'POST') {
     const body = await parseJsonBody(request)
     const inviteCode = normalizeText(body.invite_code)
-    const email = normalizeTextLower(body.email) || 'localdev@uah.local'
+    const email = normalizeTextLower(body.email) || DEFAULT_LOCAL_ADMIN_EMAIL
 
     if (!inviteCode) {
       return toJsonResponse({ detail: 'Invalid or expired invite code' }, 400)
