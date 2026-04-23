@@ -3937,6 +3937,28 @@ startup_quick_hud() {
   fi
 }
 
+extension_zip_note_file() {
+  echo "$ROOT_DIR/landing/public/downloads/uah-browser-extension-alpha.last-repacked.txt"
+}
+
+extension_zip_target_file() {
+  echo "$ROOT_DIR/landing/public/downloads/uah-browser-extension-alpha.zip"
+}
+
+extension_zip_last_repacked_label() {
+  local note_file
+  note_file="$(extension_zip_note_file)"
+  if [[ -f "$note_file" ]]; then
+    local line
+    line="$(sed -n '1p' "$note_file" 2>/dev/null || true)"
+    if [[ -n "$line" ]]; then
+      echo "$line"
+      return
+    fi
+  fi
+  echo "not yet repacked"
+}
+
 choose_environment_interactive() {
   local current_env="$1"
   local choice
@@ -4047,6 +4069,8 @@ choose_action() {
     echo ""
     echo "  Deploy"
     printf '    %2d)  %s\n' 4 "sync" 5 "cert-sync (dev only)"
+    printf '    %2d)  %s\n' 21 "repack extension zip (landing download)"
+    echo "        last repacked: $(extension_zip_last_repacked_label)"
     echo ""
     echo "  Governance"
     printf '    %2d)  %s\n' 6 "security audit" 7 "providers" 8 "env safety review"
@@ -4064,7 +4088,7 @@ choose_action() {
     echo "  Session"
     printf '    %2d)  %s\n' 19 "switch environment" 20 "rebuild options" 0 "exit"
     echo ""
-    read -rp "  Choice [0-20]: " choice
+    read -rp "  Choice [0-21]: " choice
 
     case "$choice" in
       1)
@@ -4187,6 +4211,13 @@ choose_action() {
         ;;
       20)
         configure_rebuild_ui_for_action "$active_env" "menu" || true
+        ;;
+      21)
+        build_mode_reset_selection
+        ACTION="debug"
+        EXTRA_ARGS=("extension" "repack")
+        ENV_NAME="$active_env"
+        return
         ;;
       0)
         echo "Cancelled."
@@ -5509,6 +5540,117 @@ debug_scripts() {
   fi
 }
 
+debug_extension() {
+  local env_name="$1"
+  local action="${2:-status}"
+  local extension_dir="$ROOT_DIR/uah-browser-extension"
+  local landing_downloads_dir="$ROOT_DIR/landing/public/downloads"
+  local zip_target
+  local note_file
+  local timestamp_utc
+  local timestamp_iso
+  local commit_sha
+  local source_count
+
+  zip_target="$(extension_zip_target_file)"
+  note_file="$(extension_zip_note_file)"
+
+  case "$action" in
+    repack|repack-zip|refresh-zip)
+      debug_header "$env_name" "Extension ZIP Repack"
+      debug_print_section "Target"
+      echo "  Extension source: $extension_dir"
+      echo "  Landing zip path: $zip_target"
+      echo ""
+
+      if [[ ! -d "$extension_dir" ]]; then
+        debug_print_error "Missing extension directory: $extension_dir"
+        exit 1
+      fi
+      if [[ ! -d "$ROOT_DIR/landing" ]]; then
+        debug_print_error "Missing landing directory: $ROOT_DIR/landing"
+        exit 1
+      fi
+
+      mkdir -p "$landing_downloads_dir"
+
+      debug_print_section "Build extension"
+      (
+        cd "$extension_dir"
+        npm run build
+      )
+      echo ""
+
+      debug_print_section "Repack zip"
+      python3 - "$extension_dir/dist" "$zip_target" <<'PY'
+import pathlib
+import sys
+import zipfile
+
+dist_dir = pathlib.Path(sys.argv[1])
+zip_path = pathlib.Path(sys.argv[2])
+if not dist_dir.exists():
+    raise SystemExit(f"dist directory missing: {dist_dir}")
+
+files = [p for p in dist_dir.rglob("*") if p.is_file()]
+if not files:
+    raise SystemExit(f"no files found under: {dist_dir}")
+
+zip_path.parent.mkdir(parents=True, exist_ok=True)
+if zip_path.exists():
+    zip_path.unlink()
+
+with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+    for file_path in files:
+        zf.write(file_path, file_path.relative_to(dist_dir).as_posix())
+PY
+
+      source_count="$(python3 - "$extension_dir/dist" <<'PY'
+import pathlib, sys
+dist_dir = pathlib.Path(sys.argv[1])
+print(sum(1 for p in dist_dir.rglob("*") if p.is_file()))
+PY
+)"
+
+      timestamp_utc="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+      timestamp_iso="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+      commit_sha="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+
+      cat > "$note_file" <<EOF
+last repacked: $timestamp_utc
+iso: $timestamp_iso
+commit: $commit_sha
+artifact: /downloads/uah-browser-extension-alpha.zip
+source_files: $source_count
+EOF
+
+      debug_print_ok "Extension zip refreshed."
+      echo "  -> $zip_target"
+      echo ""
+      debug_print_section "Last repacked note"
+      sed 's/^/  /' "$note_file"
+      ;;
+    status|show|note)
+      debug_header "$env_name" "Extension ZIP Repack Status"
+      debug_print_section "Artifact"
+      echo "  zip: $(extension_zip_target_file)"
+      echo "  note: $(extension_zip_note_file)"
+      echo ""
+      if [[ -f "$(extension_zip_note_file)" ]]; then
+        debug_print_ok "Found last repacked note."
+        sed 's/^/  /' "$(extension_zip_note_file)"
+      else
+        debug_print_warn "No repack note found yet."
+      fi
+      ;;
+    *)
+      echo "Unknown extension action '$action'." >&2
+      echo "Supported: repack, status" >&2
+      exit 1
+      ;;
+  esac
+}
+
 print_debug_usage() {
   cat <<'EOF'
 Debug subcommands:
@@ -5522,6 +5664,7 @@ Debug subcommands:
   bash scripts/uah.sh <env> debug invites [menu|ui|interactive|list [all|used|unused|active|inactive]|show <code>|create <count> [max_uses] [expires_in_or_iso] [name]|revoke <code>|stats|audit [tail]]
   bash scripts/uah.sh <env> debug network [show-topology|show-routes|show-docker-user|show-vpn-iptables|apply-route|rollback-route|check-route]
   bash scripts/uah.sh <env> debug scripts [audit|fix]
+  bash scripts/uah.sh <env> debug extension [repack|status]
   bash scripts/uah.sh beta debug network [apply-bridge|remove-bridge|full-reapply|rollback-all]
 EOF
 }
@@ -5572,6 +5715,9 @@ run_debug() {
       ;;
     scripts)
       debug_scripts "$env_name" "${1:-audit}"
+      ;;
+    extension)
+      debug_extension "$env_name" "${1:-status}"
       ;;
     route-check)
       debug_network "$env_name" check-route
