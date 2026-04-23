@@ -271,8 +271,8 @@ html[data-theme="dark"] .nav-links a.router-link-exact-active {
     width: min(340px, calc(100vw - 32px));
     padding: 88px 20px calc(24px + env(safe-area-inset-bottom));
     border-radius: 28px;
-    background: rgba(255, 255, 255, 0.98);
-    border: 1px solid rgba(31, 92, 153, 0.12);
+    background: color-mix(in srgb, var(--color-surface) 96%, transparent);
+    border: 1px solid var(--color-border);
     box-shadow: 0 28px 58px rgba(20, 46, 78, 0.22);
     transform: translateX(calc(100% + 24px));
     transition: transform 0.22s ease;
@@ -313,6 +313,7 @@ html[data-theme="dark"] .nav-links a.router-link-exact-active {
 
   .js-enabled .nav-links a {
     padding: 14px 16px;
+    color: var(--color-text);
   }
 
   .js-enabled .nav-overlay {
@@ -331,13 +332,13 @@ html[data-theme="dark"] .nav-links a.router-link-exact-active {
     pointer-events: auto;
   }
 
-  html[data-theme="dark"] .js-enabled .nav-panel {
+  html[data-theme="dark"].js-enabled .nav-panel {
     background: rgba(15, 20, 28, 0.98);
     border-color: rgba(126, 184, 234, 0.2);
     box-shadow: 0 28px 58px rgba(3, 9, 17, 0.66);
   }
 
-  html[data-theme="dark"] .js-enabled .nav-overlay {
+  html[data-theme="dark"].js-enabled .nav-overlay {
     background: rgba(2, 6, 12, 0.56);
   }
 }
