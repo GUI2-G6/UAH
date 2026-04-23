@@ -212,6 +212,8 @@ html[data-theme="dark"] .nav-links a.router-link-exact-active {
 
 .nav-toggle {
   display: none;
+  position: relative;
+  z-index: 130;
   align-items: center;
   justify-content: center;
   width: 48px;
@@ -265,7 +267,7 @@ html[data-theme="dark"] .nav-links a.router-link-exact-active {
 
   .js-enabled .nav-panel {
     position: fixed;
-    top: 16px;
+    top: calc(var(--nav-height) + 8px);
     right: 16px;
     bottom: 16px;
     width: min(340px, calc(100vw - 32px));
@@ -319,7 +321,10 @@ html[data-theme="dark"] .nav-links a.router-link-exact-active {
   .js-enabled .nav-overlay {
     display: block;
     position: fixed;
-    inset: 0;
+    top: var(--nav-height);
+    right: 0;
+    bottom: 0;
+    left: 0;
     background: rgba(17, 24, 39, 0.32);
     opacity: 0;
     pointer-events: none;
