@@ -5575,9 +5575,11 @@ debug_extension() {
   local default_app_origin
   local default_api_origin
   local default_auth_namespace
+  local public_note_file
 
   extension_env_file="$extension_dir/.env"
   extension_env_example="$extension_dir/.env.example"
+  public_note_file="$ROOT_DIR/landing/public/downloads/uah-browser-extension-alpha.last-repacked.txt"
 
   case "$env_name" in
     dev)
@@ -5730,6 +5732,7 @@ PY
 
       mkdir -p "$landing_downloads_dir"
       mkdir -p "$(dirname "$note_file")"
+      mkdir -p "$(dirname "$public_note_file")"
       rm -f "$legacy_note_file"
 
       debug_print_section "Build extension"
@@ -5818,10 +5821,12 @@ commit: $commit_sha
 artifact: /downloads/uah-browser-extension-alpha.zip
 source_files: $source_count_trimmed
 EOF
+      cp "$note_file" "$public_note_file"
 
       debug_print_ok "Extension zip refreshed."
       echo "  build path: $used_builder_label"
       echo "  -> $zip_target"
+      echo "  metadata: $public_note_file"
       echo ""
       debug_print_section "Last repacked note"
       sed 's/^/  /' "$note_file"

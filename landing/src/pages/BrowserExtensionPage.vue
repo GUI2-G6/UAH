@@ -35,12 +35,15 @@
             </p>
             <p>
               <a
-                href="/docs/BROWSER_EXTENSION_EASY_INSTALL.md"
+                href="https://github.com/GUI2-G6/UAH/blob/dev/landing/public/docs/BROWSER_EXTENSION_EASY_INSTALL.md"
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Open simple install guide (non-technical)
+                Open simple install guide (non-technical, GitHub markdown)
               </a>
+            </p>
+            <p>
+              <strong>Last packed:</strong> {{ lastPackedLabel }}
             </p>
           </article>
           <article class="policy-card">
@@ -98,3 +101,28 @@
     </section>
   </main>
 </template>
+
+<script setup>
+import { onMounted, ref } from 'vue'
+
+const lastPackedLabel = ref('Not available yet')
+
+onMounted(async () => {
+  try {
+    const response = await fetch('/downloads/uah-browser-extension-alpha.last-repacked.txt', {
+      cache: 'no-store',
+    })
+    if (!response.ok) return
+    const text = await response.text()
+    const firstLine = text.split(/\r?\n/, 1)[0] || ''
+    if (firstLine.toLowerCase().startsWith('last repacked:')) {
+      const value = firstLine.split(':').slice(1).join(':').trim()
+      if (value) {
+        lastPackedLabel.value = value
+      }
+    }
+  } catch {
+    // Keep fallback label when repack metadata file is missing.
+  }
+})
+</script>
