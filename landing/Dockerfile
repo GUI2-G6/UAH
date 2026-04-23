@@ -6,6 +6,8 @@ COPY landing/package.json landing/package-lock.json* ./
 RUN npm ci
 
 COPY landing/ ./
+# Same layout as local Vite: @shared -> ../shared (themePreference.js, etc.)
+COPY shared/ ../shared/
 RUN npm run build
 
 FROM nginx:alpine
