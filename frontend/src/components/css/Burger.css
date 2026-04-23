@@ -246,6 +246,10 @@
     border-top: 1px solid var(--nav-mobile-footer-border);
   }
 
+  #burger.active .burger-bottom {
+    display: flex;
+  }
+
   .user-summary {
     text-align: center;
   }
@@ -253,5 +257,6 @@
   .logout-button {
     max-width: 220px;
     margin: 0 auto;
+    min-height: 44px;
   }
 }

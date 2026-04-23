@@ -6,7 +6,7 @@
       <p>
         Contributors and public acknowledgments are now maintained on the dedicated landing contributor page.
       </p>
-      <p>We are redirecting you now, but you can choose your path below.</p>
+      <p>Choose how you want to continue.</p>
       <div class="legacy-actions">
         <button class="submit-btn" type="button" @click="openInNewTab">Open contributors in new tab</button>
         <button class="landing-btn" type="button" @click="openHere">Open contributors here</button>
@@ -24,7 +24,6 @@ export default {
   name: 'ContributorsBridge',
   data() {
     return {
-      redirectTimer: null,
       destination: `${DEFAULT_PUBLIC_LANDING_URL}/contributors`,
     }
   },
@@ -32,16 +31,6 @@ export default {
     const configuredBase = String(import.meta.env.VITE_PUBLIC_LANDING_URL || '').trim()
     const base = (configuredBase || DEFAULT_PUBLIC_LANDING_URL).replace(/\/+$/, '')
     this.destination = `${base}/contributors`
-  },
-  mounted() {
-    this.redirectTimer = window.setTimeout(() => {
-      this.openHere()
-    }, 1400)
-  },
-  beforeUnmount() {
-    if (this.redirectTimer) {
-      window.clearTimeout(this.redirectTimer)
-    }
   },
   methods: {
     openInNewTab() {

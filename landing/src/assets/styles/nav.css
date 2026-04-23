@@ -139,7 +139,9 @@ html[data-theme="dark"] .nav-theme-control {
   background: rgba(31, 92, 153, 0.08);
 }
 
-.nav-links a.is-active {
+.nav-links a.is-active,
+.nav-links a.router-link-active,
+.nav-links a.router-link-exact-active {
   color: var(--color-primary);
   background: rgba(31, 92, 153, 0.12);
 }
@@ -150,7 +152,9 @@ html[data-theme="dark"] .nav-links a {
 
 html[data-theme="dark"] .nav-links a:hover,
 html[data-theme="dark"] .nav-links a:focus-visible,
-html[data-theme="dark"] .nav-links a.is-active {
+html[data-theme="dark"] .nav-links a.is-active,
+html[data-theme="dark"] .nav-links a.router-link-active,
+html[data-theme="dark"] .nav-links a.router-link-exact-active {
   color: var(--color-text);
   background: rgba(100, 160, 240, 0.14);
 }
@@ -260,7 +264,7 @@ html[data-theme="dark"] .nav-links a.is-active {
     right: 16px;
     bottom: 16px;
     width: min(340px, calc(100vw - 32px));
-    padding: 88px 20px 24px;
+    padding: 88px 20px calc(24px + env(safe-area-inset-bottom));
     border-radius: 28px;
     background: rgba(255, 255, 255, 0.98);
     border: 1px solid rgba(31, 92, 153, 0.12);
@@ -268,10 +272,16 @@ html[data-theme="dark"] .nav-links a.is-active {
     transform: translateX(calc(100% + 24px));
     transition: transform 0.22s ease;
     z-index: 120;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    visibility: hidden;
+    pointer-events: none;
   }
 
   .js-enabled .nav-panel.is-open {
     transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
   }
 
   .js-enabled .nav-links {

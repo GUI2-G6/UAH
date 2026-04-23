@@ -40,6 +40,10 @@ const router = createRouter({
       name: 'provider-requests',
       component: ProviderRequestsPage,
     },
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: '/',
+    },
   ],
   scrollBehavior(to, from, savedPosition) {
     if (savedPosition) {
@@ -50,6 +54,15 @@ const router = createRouter({
     }
     return { top: 0 }
   },
+})
+
+router.afterEach(() => {
+  requestAnimationFrame(() => {
+    const mainContent = document.querySelector('#main-content')
+    if (mainContent instanceof HTMLElement) {
+      mainContent.focus({ preventScroll: true })
+    }
+  })
 })
 
 export default router

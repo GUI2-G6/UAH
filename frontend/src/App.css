@@ -115,7 +115,7 @@ html[data-theme="dark"] button:hover {
   min-width: 0;
   background: var(--app-page-background);
   overflow: auto;
-  overflow-x: clip;
+  overflow-x: auto;
 }
 
 .page {

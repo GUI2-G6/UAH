@@ -57,6 +57,7 @@ endpoint_utilization_matrix_2026-04-11.tsv
 /frontend/node_modules/.vite/deps
 backend/app/scrapers/checklist/checklist_log/*
 !backend/app/scrapers/checklist/checklist_log/.gitkeep
+mobile-friendliness-audit-2026-04-22.md
 
 # Celery Beat runtime scheduler file
 celerybeat-schedule

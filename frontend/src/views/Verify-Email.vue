@@ -62,17 +62,16 @@ export default {
       } catch (e) {
         this.loading = false
         this.error = e?.message ?? 'Verification failed.'
-        this.$router.replace({
-          path: '/settings',
-          query: {
-            verify_email: 'error',
-            verify_reason: toReasonCode(e?.message),
-          },
-        })
       }
     },
     goToSettings() {
-      this.$router.push('/settings')
+      this.$router.push({
+        path: '/settings',
+        query: {
+          verify_email: 'error',
+          verify_reason: toReasonCode(this.error),
+        },
+      })
     },
   },
 }
