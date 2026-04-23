@@ -5552,6 +5552,7 @@ debug_extension() {
   local timestamp_iso
   local commit_sha
   local source_count
+  local source_count_trimmed
 
   zip_target="$(extension_zip_target_file)"
   note_file="$(extension_zip_note_file)"
@@ -5573,20 +5574,36 @@ debug_extension() {
         debug_print_error "Missing landing directory: $ROOT_DIR/landing"
         exit 1
       fi
+      if ! command -v npm >/dev/null 2>&1; then
+        debug_print_error "npm is required but was not found in PATH."
+        debug_print_warn "Install Node.js/npm on this host (or run repack from a host that has it)."
+        exit 1
+      fi
+      if ! command -v python3 >/dev/null 2>&1; then
+        debug_print_error "python3 is required for zip packaging but was not found in PATH."
+        exit 1
+      fi
 
       mkdir -p "$landing_downloads_dir"
       mkdir -p "$(dirname "$note_file")"
       rm -f "$legacy_note_file"
 
       debug_print_section "Build extension"
-      (
+      if ! (
         cd "$extension_dir"
         npm run build
-      )
+      ); then
+        debug_print_error "Extension build failed. Zip was not updated."
+        exit 1
+      fi
+      if [[ ! -f "$extension_dir/dist/manifest.json" ]]; then
+        debug_print_error "Build did not produce dist/manifest.json. Zip was not updated."
+        exit 1
+      fi
       echo ""
 
       debug_print_section "Repack zip"
-      python3 - "$extension_dir/dist" "$zip_target" <<'PY'
+      if ! python3 - "$extension_dir/dist" "$zip_target" <<'PY'
 import pathlib
 import sys
 import zipfile
@@ -5608,6 +5625,10 @@ with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
     for file_path in files:
         zf.write(file_path, file_path.relative_to(dist_dir).as_posix())
 PY
+      then
+        debug_print_error "Zip repack failed. Existing artifact was left unchanged."
+        exit 1
+      fi
 
       source_count="$(python3 - "$extension_dir/dist" <<'PY'
 import pathlib, sys
@@ -5615,6 +5636,11 @@ dist_dir = pathlib.Path(sys.argv[1])
 print(sum(1 for p in dist_dir.rglob("*") if p.is_file()))
 PY
 )"
+      source_count_trimmed="$(printf '%s' "$source_count" | tr -d '[:space:]')"
+      if [[ -z "$source_count_trimmed" || ! "$source_count_trimmed" =~ ^[0-9]+$ || "$source_count_trimmed" == "0" ]]; then
+        debug_print_error "Source file count was invalid ($source_count). Refusing to mark repack successful."
+        exit 1
+      fi
 
       timestamp_utc="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
       timestamp_iso="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -5625,7 +5651,7 @@ last repacked: $timestamp_utc
 iso: $timestamp_iso
 commit: $commit_sha
 artifact: /downloads/uah-browser-extension-alpha.zip
-source_files: $source_count
+source_files: $source_count_trimmed
 EOF
 
       debug_print_ok "Extension zip refreshed."
@@ -5637,12 +5663,12 @@ EOF
     status|show|note)
       debug_header "$env_name" "Extension ZIP Repack Status"
       debug_print_section "Artifact"
-      echo "  zip: $(extension_zip_target_file)"
-      echo "  note: $(extension_zip_note_file)"
+      echo "  zip: $zip_target"
+      echo "  note: $note_file"
       echo ""
-      if [[ -f "$(extension_zip_note_file)" ]]; then
+      if [[ -f "$note_file" ]]; then
         debug_print_ok "Found last repacked note."
-        sed 's/^/  /' "$(extension_zip_note_file)"
+        sed 's/^/  /' "$note_file"
       elif [[ -f "$legacy_note_file" ]]; then
         debug_print_warn "Found legacy note path; it no longer blocks sync and can be removed."
         echo "  legacy note: $legacy_note_file"
