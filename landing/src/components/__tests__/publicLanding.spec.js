@@ -183,6 +183,12 @@ describe('public landing route architecture', () => {
 
     expect(wrapper.get('.nav-inner').classes()).toContain('is-compact-desktop')
 
+    window.innerWidth = 1300
+    window.dispatchEvent(new Event('resize'))
+    await nextTick()
+
+    expect(wrapper.get('.nav-inner').classes()).toContain('is-compact-desktop')
+
     window.innerWidth = 1400
     window.dispatchEvent(new Event('resize'))
     await nextTick()
