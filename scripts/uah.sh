@@ -5553,6 +5553,7 @@ debug_extension() {
   local commit_sha
   local source_count
   local source_count_trimmed
+  local used_builder_label="host npm"
 
   zip_target="$(extension_zip_target_file)"
   note_file="$(extension_zip_note_file)"
@@ -5574,11 +5575,6 @@ debug_extension() {
         debug_print_error "Missing landing directory: $ROOT_DIR/landing"
         exit 1
       fi
-      if ! command -v npm >/dev/null 2>&1; then
-        debug_print_error "npm is required but was not found in PATH."
-        debug_print_warn "Install Node.js/npm on this host (or run repack from a host that has it)."
-        exit 1
-      fi
       if ! command -v python3 >/dev/null 2>&1; then
         debug_print_error "python3 is required for zip packaging but was not found in PATH."
         exit 1
@@ -5589,12 +5585,31 @@ debug_extension() {
       rm -f "$legacy_note_file"
 
       debug_print_section "Build extension"
-      if ! (
-        cd "$extension_dir"
-        npm run build
-      ); then
-        debug_print_error "Extension build failed. Zip was not updated."
-        exit 1
+      if command -v npm >/dev/null 2>&1; then
+        if ! (
+          cd "$extension_dir"
+          npm run build
+        ); then
+          debug_print_error "Extension build failed with host npm. Zip was not updated."
+          exit 1
+        fi
+      else
+        used_builder_label="docker node"
+        debug_print_warn "Host npm not found. Falling back to Dockerized Node build."
+        if ! command -v docker >/dev/null 2>&1; then
+          debug_print_error "docker is not available, and host npm is missing."
+          debug_print_warn "Install npm or docker on this host before running repack."
+          exit 1
+        fi
+        if ! docker run --rm \
+          --user "$(id -u):$(id -g)" \
+          -v "$extension_dir:/work" \
+          -w /work \
+          node:22-bookworm \
+          bash -lc "npm ci && npm run build"; then
+          debug_print_error "Dockerized extension build failed. Zip was not updated."
+          exit 1
+        fi
       fi
       if [[ ! -f "$extension_dir/dist/manifest.json" ]]; then
         debug_print_error "Build did not produce dist/manifest.json. Zip was not updated."
@@ -5655,6 +5670,7 @@ source_files: $source_count_trimmed
 EOF
 
       debug_print_ok "Extension zip refreshed."
+      echo "  build path: $used_builder_label"
       echo "  -> $zip_target"
       echo ""
       debug_print_section "Last repacked note"
