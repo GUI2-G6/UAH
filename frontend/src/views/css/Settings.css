@@ -238,13 +238,15 @@
 }
 
 .dashboard button.danger {
-  border: 1px solid rgba(0, 0, 0, 0.5);
-  color: #ff5757; 
+  border: 1px solid var(--border-color);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
 }
 
 .dashboard button.danger:hover {
   background: #ff5757;
-  color: white
+  border-color: #ff5757;
+  color: #fff;
 }
 
 .connected-accounts-group {
@@ -706,11 +708,13 @@ html[data-theme="dark"] .account-error {
 }
 
 html[data-theme="dark"] .dashboard button.danger {
-  border-color: rgba(248, 113, 113, 0.6);
-  color: #fca5a5;
+  border-color: var(--border-color);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
 }
 
 html[data-theme="dark"] .dashboard button.danger:hover {
   background: rgba(239, 68, 68, 0.24);
+  border-color: rgba(248, 113, 113, 0.8);
   color: #fee2e2;
 }
