@@ -1045,8 +1045,28 @@ prepare_sync_branch() {
 refresh_sync_blocker_snapshot() {
   local ahead_count
   local behind_count
+  local line
+  local ignored_count=0
+  local filtered_status=""
 
   SYNC_BLOCKER_STATUS="$(git -C "$ROOT_DIR" status --porcelain --untracked-files=all || true)"
+  SYNC_BLOCKER_STATUS_FILTERED=""
+  SYNC_BLOCKER_IGNORED_COUNT=0
+
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    if [[ "$line" =~ landing/public/downloads/uah-browser-extension-alpha\.zip$ ]]; then
+      ignored_count=$((ignored_count + 1))
+      continue
+    fi
+    if [[ -n "$filtered_status" ]]; then
+      filtered_status+=$'\n'
+    fi
+    filtered_status+="$line"
+  done <<< "$SYNC_BLOCKER_STATUS"
+
+  SYNC_BLOCKER_STATUS_FILTERED="$filtered_status"
+  SYNC_BLOCKER_IGNORED_COUNT="$ignored_count"
 
   ahead_count="$(git -C "$ROOT_DIR" rev-list --count origin/dev..dev 2>/dev/null || echo 0)"
   behind_count="$(git -C "$ROOT_DIR" rev-list --count dev..origin/dev 2>/dev/null || echo 0)"
@@ -1073,7 +1093,7 @@ refresh_sync_blocker_snapshot() {
 sync_blockers_detected() {
   refresh_sync_blocker_snapshot
 
-  if [[ -n "$SYNC_BLOCKER_STATUS" ]]; then
+  if [[ -n "$SYNC_BLOCKER_STATUS_FILTERED" ]]; then
     return 0
   fi
 
@@ -1093,13 +1113,19 @@ print_sync_blocker_report() {
   echo "Repository: $ROOT_DIR"
   echo ""
 
-  if [[ -n "$SYNC_BLOCKER_STATUS" ]]; then
-    total_lines=$(printf '%s\n' "$SYNC_BLOCKER_STATUS" | sed '/^$/d' | wc -l | tr -d ' ')
+  if [[ -n "$SYNC_BLOCKER_STATUS_FILTERED" ]]; then
+    total_lines=$(printf '%s\n' "$SYNC_BLOCKER_STATUS_FILTERED" | sed '/^$/d' | wc -l | tr -d ' ')
     echo "Local changes ($total_lines):"
-    printf '%s\n' "$SYNC_BLOCKER_STATUS" | sed -n "1,${preview_limit}p" | sed 's/^/  /'
+    printf '%s\n' "$SYNC_BLOCKER_STATUS_FILTERED" | sed -n "1,${preview_limit}p" | sed 's/^/  /'
     if ((total_lines > preview_limit)); then
       echo "  ... and $((total_lines - preview_limit)) more"
     fi
+    echo ""
+  fi
+
+  if ((SYNC_BLOCKER_IGNORED_COUNT > 0)); then
+    echo "Ignored local changes ($SYNC_BLOCKER_IGNORED_COUNT):"
+    echo "  landing/public/downloads/uah-browser-extension-alpha.zip"
     echo ""
   fi
 
