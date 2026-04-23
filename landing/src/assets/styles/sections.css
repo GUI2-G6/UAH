@@ -203,8 +203,19 @@ h1 {
 }
 
 .visual-card.primary {
-  inset: 108px 38px 38px 92px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.96) 100%);
+  top: 108px;
+  bottom: 38px;
+
+  left: 50%;
+  transform: translateX(-50%);
+
+  width: calc(100% - 130px); /* optional: control width */
+
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(248, 250, 252, 0.96) 100%
+  );
   z-index: 4;
 }
 
@@ -212,7 +223,7 @@ h1 {
   top: 56px;
   left: 16px;
   width: 210px;
-  background: rgba(246, 217, 166, 0.60);
+  background: rgba(246, 217, 166);
   transform: rotate(-4deg);
   z-index: 2;
 }
@@ -221,14 +232,14 @@ h1 {
   top: 20px;
   right: 18px;
   width: 224px;
-  background: rgba(159, 210, 243, 0.58);
+  background: rgba(159, 210, 243);
   transform: rotate(4deg);
   z-index: 3;
 }
 
 .visual-card.quad {
-  right: 0;
-  bottom: 84px;
+  top: 84px;
+  left: 84px;
   width: 190px;
   background: rgba(255, 87, 87, 0.08);
   z-index: 1;
