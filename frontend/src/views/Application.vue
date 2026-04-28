@@ -77,6 +77,7 @@
                 >
                     <Application :application="app" />
                     <div class="suppression-actions">
+                        <button type="button" class="submit-btn" @click="openMostRecentEmail(app)">Open email</button>
                         <button type="button" class="submit-btn" @click="suppressMessage(app)">Hide this update</button>
                         <button type="button" class="submit-btn" @click="suppressThread(app)">Hide this chain</button>
                     </div>
@@ -151,6 +152,12 @@
                 subject: item.subject || '',
                 source_id: item.source_id || '',
                 company_hint: item.company_hint || '',
+                sender_domain: item.sender_domain || '',
+                subject_key: item.subject_key || '',
+                company_key: item.company_key || '',
+                thread_key: item.thread_key || '',
+                gmail_open_url_direct: item.gmail_open_url_direct || '',
+                gmail_open_url_fallback: item.gmail_open_url_fallback || '',
                 tracking_source: item.tracking_source || 'matched',
                 confidence: item.confidence || 'high',
             }))
@@ -219,6 +226,8 @@
             if (this.suppressionsOpen) this.loadSuppressions()
         },
         async suppressMessage(item) {
+            const snapshot = [...this.applications]
+            this.removeApplicationBySourceId(item.source_id)
             try {
                 await createGmailSuppression({
                     scope: 'message',
@@ -228,10 +237,13 @@
                 showToast('Update hidden from future scans.', 'success')
                 await this.loadSuppressions()
             } catch (error) {
+                this.applications = snapshot
                 showToast(error?.message || 'Could not hide this update.', 'error')
             }
         },
         async suppressThread(item) {
+            const snapshot = [...this.applications]
+            this.removeApplicationsByThread(item)
             try {
                 await createGmailSuppression({
                     scope: 'thread',
@@ -243,6 +255,7 @@
                 showToast('Apply chain hidden from future scans.', 'success')
                 await this.loadSuppressions()
             } catch (error) {
+                this.applications = snapshot
                 showToast(error?.message || 'Could not hide this chain.', 'error')
             }
         },
@@ -253,6 +266,39 @@
                 await this.loadSuppressions()
             } catch (error) {
                 showToast(error?.message || 'Could not remove suppression.', 'error')
+            }
+        },
+        removeApplicationBySourceId(sourceId) {
+            const id = String(sourceId || '').trim()
+            if (!id) return
+            this.applications = (this.applications || []).filter((row) => String(row.source_id || '').trim() !== id)
+        },
+        removeApplicationsByThread(item) {
+            const senderDomain = String(item.sender_domain || '').trim()
+            const subjectKey = String(item.subject_key || '').trim()
+            const companyKey = String(item.company_key || '').trim()
+            if (!senderDomain || !subjectKey) return
+            this.applications = (this.applications || []).filter((row) => (
+                String(row.sender_domain || '').trim() !== senderDomain
+                || String(row.subject_key || '').trim() !== subjectKey
+                || String(row.company_key || '').trim() !== companyKey
+            ))
+        },
+        openMostRecentEmail(item) {
+            const direct = String(item.gmail_open_url_direct || '').trim()
+            const fallback = String(item.gmail_open_url_fallback || '').trim()
+            const target = direct || fallback
+            if (!target) {
+                showToast('No email link available for this update yet.', 'error')
+                return
+            }
+            try {
+                const opened = window.open(target, '_blank', 'noopener')
+                if (!opened && fallback && fallback !== target) {
+                    window.open(fallback, '_blank', 'noopener')
+                }
+            } catch {
+                if (fallback) window.open(fallback, '_blank', 'noopener')
             }
         },
     },

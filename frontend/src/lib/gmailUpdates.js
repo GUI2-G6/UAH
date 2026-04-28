@@ -45,6 +45,7 @@ function normalizeResult(item = {}) {
   const trackingSource = sanitizeText(item.tracking_source, 40) || (item.matched_applied_job ? 'matched' : 'gmail_provisional')
   const confidence = sanitizeText(item.confidence, 24) || (trackingSource === 'matched' ? 'high' : 'medium')
   return {
+    source_id: sanitizeText(item.source_id, 255),
     subject: sanitizeText(item.subject, 260),
     from: sanitizeText(item.from, 260),
     date: normalizeDate(item.date),
@@ -56,6 +57,12 @@ function normalizeResult(item = {}) {
     matched_applied_job: item.matched_applied_job === true,
     tracking_source: trackingSource,
     confidence,
+    sender_domain: sanitizeText(item.sender_domain, 255),
+    subject_key: sanitizeText(item.subject_key, 160),
+    company_key: sanitizeText(item.company_key, 120),
+    thread_key: sanitizeText(item.thread_key, 380),
+    gmail_open_url_direct: sanitizeText(item.gmail_open_url_direct, 500),
+    gmail_open_url_fallback: sanitizeText(item.gmail_open_url_fallback, 500),
   }
 }
 

@@ -23,6 +23,7 @@ from app.services.gmail_scan import (
     normalize_subject_key,
     parse_sender_domain,
 )
+from urllib.parse import quote_plus
 
 router = APIRouter(prefix="/api/integrations/gmail", tags=["gmail"])
 
@@ -265,6 +266,19 @@ def _normalize_scan_query(query: str | None) -> str:
     return clean[:280]
 
 
+def _build_open_urls(*, source_id: str, from_header: str, subject: str, date: str) -> tuple[str, str]:
+    direct = f"https://mail.google.com/mail/u/0/#inbox/{source_id}"
+    sender_domain = parse_sender_domain(from_header)
+    search_query = " ".join(
+        part for part in [
+            f"from:{sender_domain}" if sender_domain else "",
+            f"subject:\"{subject}\"" if subject else "",
+        ] if part
+    ).strip()
+    fallback = f"https://mail.google.com/mail/u/0/#search/{quote_plus(search_query or subject or from_header or source_id)}"
+    return direct, fallback
+
+
 def _suppression_matches(evaluated: dict, suppression: GmailSuppression) -> bool:
     scope = (suppression.scope or "").strip().lower()
     if scope == "message":
@@ -434,6 +448,9 @@ async def gmail_scan(
         included_results = []
         provisional_results = []
         excluded_count = 0
+        suppressed_message_hits = 0
+        suppressed_chain_hits = 0
+        suppression_miss_reasons: dict[str, int] = {"missing_source_id": 0, "missing_thread_signature": 0}
 
         for msg_id in message_ids[: int(payload.max_results)]:
             msg_resp = await client.get(
@@ -463,6 +480,7 @@ async def gmail_scan(
                 require_ats=True,
             )
             base_result = {
+                "source_id": evaluated["source_id"],
                 "subject": evaluated["subject"],
                 "from": evaluated["from"],
                 "date": evaluated["date"],
@@ -472,8 +490,38 @@ async def gmail_scan(
                 "ats_detected": evaluated["ats_detected"],
                 "matched_applied_job": evaluated["matched_applied_job"],
             }
+            sender_domain, subject_key, company_key = build_thread_signature(
+                from_header=evaluated["from"],
+                subject=evaluated["subject"],
+                company_hint=evaluated.get("company_hint"),
+            )
+            thread_key = f"{sender_domain}|{subject_key}|{company_key}"
+            direct_url, fallback_url = _build_open_urls(
+                source_id=str(evaluated["source_id"] or ""),
+                from_header=evaluated["from"],
+                subject=evaluated["subject"],
+                date=evaluated["date"],
+            )
+            base_result = {
+                **base_result,
+                "sender_domain": sender_domain,
+                "subject_key": subject_key,
+                "company_key": company_key,
+                "thread_key": thread_key,
+                "gmail_open_url_direct": direct_url,
+                "gmail_open_url_fallback": fallback_url,
+            }
+            matched_suppression = next((row for row in suppressions if _suppression_matches(evaluated, row)), None)
             if evaluated.get("include"):
-                if any(_suppression_matches(evaluated, row) for row in suppressions):
+                if matched_suppression:
+                    if (matched_suppression.scope or "").lower() == "message":
+                        suppressed_message_hits += 1
+                        if not evaluated.get("source_id"):
+                            suppression_miss_reasons["missing_source_id"] += 1
+                    else:
+                        suppressed_chain_hits += 1
+                        if not sender_domain or not subject_key:
+                            suppression_miss_reasons["missing_thread_signature"] += 1
                     excluded_count += 1
                     continue
                 included_results.append({
@@ -482,7 +530,15 @@ async def gmail_scan(
                     "confidence": "high",
                 })
             elif evaluated.get("ats_detected") and bool(payload.include_provisional):
-                if any(_suppression_matches(evaluated, row) for row in suppressions):
+                if matched_suppression:
+                    if (matched_suppression.scope or "").lower() == "message":
+                        suppressed_message_hits += 1
+                        if not evaluated.get("source_id"):
+                            suppression_miss_reasons["missing_source_id"] += 1
+                    else:
+                        suppressed_chain_hits += 1
+                        if not sender_domain or not subject_key:
+                            suppression_miss_reasons["missing_thread_signature"] += 1
                     excluded_count += 1
                     continue
                 provisional_results.append({
@@ -512,6 +568,9 @@ async def gmail_scan(
             "max_results": int(payload.max_results),
             "include_provisional": bool(payload.include_provisional),
             "suppression_count": len(suppressions),
+            "suppressed_message_hits": suppressed_message_hits,
+            "suppressed_chain_hits": suppressed_chain_hits,
+            "suppression_miss_reasons": suppression_miss_reasons,
         },
     }
 

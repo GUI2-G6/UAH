@@ -2565,6 +2565,9 @@ function buildMockGmailScanPayload(state, options = {}) {
     const senderDomain = senderDomainFromFromHeader(from)
     const subjectKey = normalizeSubjectKey(subject)
     const companyKey = normalizeCompanyKey(companyHint)
+    const threadKey = `${senderDomain}|${subjectKey}|${companyKey}`
+    const directOpenUrl = `https://mail.google.com/mail/u/0/#inbox/${encodeURIComponent(String(candidate.source_id || ''))}`
+    const fallbackOpenUrl = `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(`from:${senderDomain} subject:\"${subject}\"`)}` 
     const suppressed = suppressions.some((entry) => (
       (entry.scope === 'message' && entry.source_id && entry.source_id === candidate.source_id)
       || (entry.scope === 'thread'
@@ -2584,6 +2587,12 @@ function buildMockGmailScanPayload(state, options = {}) {
       matched_applied_job,
       include,
       suppressed,
+      sender_domain: senderDomain,
+      subject_key: subjectKey,
+      company_key: companyKey,
+      thread_key: threadKey,
+      gmail_open_url_direct: directOpenUrl,
+      gmail_open_url_fallback: fallbackOpenUrl,
       exclude_reason: include ? null : (!ats_detected ? 'non_ats_sender' : 'no_applied_job_match'),
     }
   })
@@ -2614,6 +2623,9 @@ function buildMockGmailScanPayload(state, options = {}) {
         max_results: maxResults,
         include_provisional: includeProvisional,
         suppression_count: suppressions.length,
+        suppressed_message_hits: 0,
+        suppressed_chain_hits: 0,
+        suppression_miss_reasons: { missing_source_id: 0, missing_thread_signature: 0 },
         scenario_profile: scenario.profile,
       },
     },
