@@ -8,6 +8,7 @@ from fastapi import UploadFile
 
 from app.api import resume as resume_api
 from app.services import resume_parser
+from app.services.rule_parser import parse_resume_markdown
 
 
 class _FakeUploadQuery:
@@ -107,6 +108,51 @@ class _FakeResumeByIdDb:
 
 
 class ResumePipelineContractTests(unittest.IsolatedAsyncioTestCase):
+    def test_rules_parser_defaults_high_school_field_of_study(self):
+        markdown = """
+## Education
+## Lynn English High School
+High School Diploma
+GPA: 3.63/4.00
+September 2019 - May 2023
+Honors: Class Executive Officer, Guidance Aide
+Relevant Coursework: Python, Info Systems
+"""
+        parsed = parse_resume_markdown(markdown)
+        education = parsed.get("education", [])
+
+        self.assertTrue(education)
+        first = education[0]
+        self.assertEqual(first.get("institution"), "Lynn English High School")
+        self.assertEqual(first.get("degree"), "High School Diploma")
+        self.assertEqual(first.get("field_of_study"), "General Studies")
+
+    def test_rules_parser_splits_honors_line_items(self):
+        markdown = """
+## Education
+## Lynn English High School
+High School Diploma
+Honors: Class Executive Officer, Guidance Aide
+"""
+        parsed = parse_resume_markdown(markdown)
+        education = parsed.get("education", [])
+        self.assertTrue(education)
+        honors = education[0].get("honors", [])
+        self.assertEqual(honors, ["Class Executive Officer", "Guidance Aide"])
+
+    def test_rules_parser_extracts_website_from_raw_bare_domain(self):
+        markdown = """
+Trent Brown
+tgbrown450@gmail.com
+Portfolio: trentbrown.dev
+LinkedIn: linkedin.com/in/trent-brown
+"""
+        parsed = parse_resume_markdown(markdown)
+        personal = parsed.get("personal_info", {})
+
+        self.assertEqual(personal.get("linkedin"), "https://linkedin.com/in/trent-brown")
+        self.assertEqual(personal.get("website"), "https://trentbrown.dev")
+
     def test_skill_supplement_reclassifies_with_priority_chain(self):
         structured = {
             "skills": {

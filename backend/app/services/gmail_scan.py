@@ -170,6 +170,13 @@ def parse_sender_domain(from_header: str | None) -> str:
     return email_addr.split("@", 1)[-1].strip().lower()
 
 
+def _sender_localpart(from_header: str | None) -> str:
+    _, email_addr = parseaddr(str(from_header or ""))
+    if "@" not in email_addr:
+        return ""
+    return email_addr.split("@", 1)[0].strip().lower()
+
+
 def normalize_subject_key(subject: str | None) -> str:
     raw = sanitize_preview_text(subject, max_len=220).lower()
     raw = re.sub(r"\b(re|fwd?)\s*:\s*", "", raw)
@@ -214,7 +221,40 @@ def _clean_company_capture(value: str | None) -> str | None:
         maxsplit=1,
         flags=re.IGNORECASE,
     )[0]
+    trimmed = re.sub(r"^\s*the\s+", "", trimmed, flags=re.IGNORECASE)
+    lowered = trimmed.lower()
+    if "interest in" in lowered:
+        return None
+    if any(token in lowered for token in ("your ", " this ", " our ")):
+        return None
     return _format_company_name(trimmed)
+
+
+def _company_from_sender_localpart(from_header: str | None) -> str | None:
+    localpart = _sender_localpart(from_header)
+    if not localpart:
+        return None
+    common = {
+        "no-reply",
+        "noreply",
+        "donotreply",
+        "do-not-reply",
+        "notifications",
+        "notification",
+        "jobs",
+        "careers",
+        "recruiting",
+        "workday",
+    }
+    if localpart in common:
+        return None
+    cleaned = re.sub(r"[^a-z0-9]+", " ", localpart).strip()
+    if not cleaned or len(cleaned) < 2:
+        return None
+    parts = [part for part in cleaned.split() if part]
+    if len(parts) == 1 and parts[0].isalpha() and len(parts[0]) <= 5:
+        return parts[0].upper()
+    return _format_company_name(cleaned)
 
 
 def extract_company_hint(from_header: str, subject: str, snippet: str = "", body: str = "") -> str | None:
@@ -232,23 +272,31 @@ def extract_company_hint(from_header: str, subject: str, snippet: str = "", body
         subject_patterns = [
             r"\bposition update from\s+([A-Za-z0-9&.\- ]{2,60})$",
             r"\bupdate from\s+([A-Za-z0-9&.\- ]{2,60})$",
+            r"\b(?:application|position|role)\s+(?:with|at|for)\s+([A-Za-z0-9&.\- ]{2,60})$",
         ]
         for pattern in subject_patterns:
             subject_match = re.search(pattern, subject or "", flags=re.IGNORECASE)
             if subject_match:
-                return _clean_company_capture(subject_match.group(1))
+                captured = _clean_company_capture(subject_match.group(1))
+                if captured:
+                    return captured
 
         content = " ".join(part for part in [subject or "", snippet or "", body or ""] if part)
         patterns = [
             r"\bposition update from\s+([A-Za-z0-9&.\- ]{2,60})",
             r"\bupdate from\s+([A-Za-z0-9&.\- ]{2,60})",
-            r"\bapplication (?:with|at|for)\s+([A-Za-z0-9&.\- ]{2,60})",
+            r"\b(?:application|position|role)\s+(?:with|at|for)\s+([A-Za-z0-9&.\- ]{2,60})",
             r"\b(?:at|for|with)\s+([A-Za-z0-9&.\- ]{2,60})\s+(?:position|role|opportunity)\b",
         ]
         for pattern in patterns:
             match = re.search(pattern, content, flags=re.IGNORECASE)
             if match:
-                return _clean_company_capture(match.group(1))
+                captured = _clean_company_capture(match.group(1))
+                if captured:
+                    return captured
+        localpart_hint = _company_from_sender_localpart(from_header)
+        if localpart_hint:
+            return localpart_hint
         return None
     return _format_company_name(candidate)
 

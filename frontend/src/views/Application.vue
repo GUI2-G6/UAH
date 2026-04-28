@@ -117,6 +117,7 @@
 
         <div class="results-toolbar section-block">
           <select id="app-filter" v-model="selectedStatusFilter">
+            <option value="all">All statuses</option>
             <option value="interview">Interview</option>
             <option value="offer">Offer</option>
             <option value="rejection">Not moving forward</option>
@@ -210,7 +211,7 @@
                 lastRefreshed: '',
                 gmailConnected: Boolean(getCurrentUser()?.gmail_refresh_token),
                 unsubscribeUpdates: null,
-                selectedStatusFilter: 'unknown',
+                selectedStatusFilter: 'all',
                 applications: [],
                 submittedSessionCount: null,
                 scanDiagnostics: null,
@@ -265,6 +266,7 @@
                 tracking_source: item.tracking_source || 'matched',
                 confidence: item.confidence || 'high',
             }))
+            if (this.selectedStatusFilter === 'all') return mapped
             return mapped.filter((item) => String(item.status).toLowerCase() === this.selectedStatusFilter)
         },
         selectedVisibleCount() {

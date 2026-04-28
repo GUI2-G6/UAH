@@ -110,7 +110,7 @@ describe('Application tracking page updates', () => {
     expect(runGmailScan).toHaveBeenCalledWith(expect.objectContaining({ scan_mode: 'saved' }))
   })
 
-  it('does not show generic all statuses option in filter', async () => {
+  it('shows all statuses option and defaults to it', async () => {
     const wrapper = mount(ApplicationView, {
       global: {
         stubs: {
@@ -125,6 +125,7 @@ describe('Application tracking page updates', () => {
     await flushPromises()
 
     const options = wrapper.findAll('#app-filter option').map((node) => node.text())
-    expect(options).not.toContain('All statuses')
+    expect(options).toContain('All statuses')
+    expect(wrapper.vm.selectedStatusFilter).toBe('all')
   })
 })

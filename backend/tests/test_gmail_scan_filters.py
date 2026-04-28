@@ -351,6 +351,36 @@ class GmailScanFilterTests(unittest.TestCase):
         self.assertEqual(evaluated["exclude_reason"], "noncareer_source")
         self.assertTrue(evaluated["negative_intent_detected"])
 
+    def test_extracts_company_from_workday_localpart_when_subject_is_generic(self):
+        message = ScanMessage(
+            subject="Application status update",
+            from_header="caci@myworkday.com",
+            date="Sun, 23 Feb 2026 09:39:52 -0500",
+            snippet="Thank you for your interest in this role.",
+        )
+        evaluated = evaluate_message(
+            message,
+            apply_sessions=[],
+            allowed_statuses={"submitted"},
+            require_ats=True,
+        )
+        self.assertEqual(evaluated["company_hint"], "CACI")
+
+    def test_extracts_company_from_position_at_subject_phrase(self):
+        message = ScanMessage(
+            subject="Thank you for your interest in the Software Development Intern position at CACI",
+            from_header="caci@myworkday.com",
+            date="Sun, 23 Feb 2026 09:39:52 -0500",
+            snippet="After careful consideration, we are not moving forward.",
+        )
+        evaluated = evaluate_message(
+            message,
+            apply_sessions=[],
+            allowed_statuses={"submitted"},
+            require_ats=True,
+        )
+        self.assertEqual(evaluated["company_hint"], "CACI")
+
 
 if __name__ == "__main__":
     unittest.main()
