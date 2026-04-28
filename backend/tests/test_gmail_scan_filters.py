@@ -332,6 +332,31 @@ class GmailScanFilterTests(unittest.TestCase):
         self.assertEqual(evaluated["detected_status"], "offer")
         self.assertTrue(evaluated["include"])
 
+    def test_detects_action_required_missing_info_language(self):
+        message = ScanMessage(
+            subject="Additional Information Needed for the Position of 25-798",
+            from_header="Granite Telecommunications Career Opportunities <do-not-reply@candidatecare.com>",
+            date="Tue, 3 Mar 2026 20:49:00 -0500",
+            snippet=(
+                "Some information appears to be missing from your Job Application. "
+                "Please follow the below steps and complete our Job Application."
+            ),
+            body=(
+                "Our recruiting team would like to review your application. "
+                "Check your email inbox to retrieve the temporary password and "
+                "proceed until you see a thank you message."
+            ),
+        )
+        evaluated = evaluate_message(
+            message,
+            apply_sessions=[],
+            allowed_statuses={"submitted"},
+            require_ats=True,
+            source_strictness="strict_career_domains",
+        )
+        self.assertEqual(evaluated["detected_status"], "action_required")
+        self.assertTrue(evaluated["include"])
+
     def test_excludes_newsletter_with_offer_language_boundary_case(self):
         message = ScanMessage(
             subject="Limited time offer from our newsletter",

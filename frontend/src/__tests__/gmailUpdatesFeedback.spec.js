@@ -30,6 +30,19 @@ describe('gmailUpdates feedback utilities', () => {
     expect(record.results[0].body_preview).toBe('Body with extra context')
   })
 
+  it('maps action_required status bucket in cached scan results', () => {
+    const record = writeGmailScanCache({
+      results: [
+        {
+          source_id: 'needs-action-1',
+          detected_status: 'action_required',
+        },
+      ],
+    })
+    expect(record.results[0].status_bucket).toBe('action_required')
+    expect(record.summary.action_required).toBe(1)
+  })
+
   it('posts feedback payload to backend endpoint', async () => {
     authMocks.authedFetch.mockResolvedValueOnce({
       ok: true,

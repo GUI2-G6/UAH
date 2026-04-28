@@ -77,6 +77,7 @@ describe('Application tracking page updates', () => {
     gmailMocks.resolveGmailConnectionStatus.mockResolvedValue(true)
     gmailMocks.subscribeGmailUpdates.mockReturnValue(() => {})
     gmailMocks.summarizeGmailResults.mockReturnValue({
+      action_required: 0,
       applied: 0,
       interview: 0,
       offer: 0,
@@ -130,6 +131,7 @@ describe('Application tracking page updates', () => {
 
     const options = wrapper.findAll('#app-filter option').map((node) => node.text())
     expect(options).toContain('All statuses')
+    expect(options).toContain('Action Required')
     expect(wrapper.vm.selectedStatusFilter).toBe('all')
   })
 
@@ -169,5 +171,36 @@ describe('Application tracking page updates', () => {
     expect(wrapper.vm.applications[0].detected_status).toBe('offer')
     expect(wrapper.vm.applications[0].status_bucket).toBe('offer')
     expect(wrapper.vm.applications[0].manual_override_applied).toBe(true)
+  })
+
+  it('shows high-priority section for action required updates', async () => {
+    const wrapper = mount(ApplicationView, {
+      global: {
+        stubs: {
+          Card: cardStub,
+          Application: applicationStub,
+        },
+        mocks: {
+          $router: { push: vi.fn() },
+        },
+      },
+    })
+    await flushPromises()
+    wrapper.vm.applications = [{
+      source_id: 'gmail-action-1',
+      subject: 'Additional Information Needed',
+      from: 'Careers <do-not-reply@candidatecare.com>',
+      detected_status: 'action_required',
+      status_bucket: 'action_required',
+      company_hint: 'Granite Telecommunications',
+      sender_domain: 'candidatecare.com',
+      subject_key: 'additional information needed',
+      company_key: 'granite telecommunications',
+      thread_key: 'candidatecare.com|additional information needed|granite telecommunications',
+    }]
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('High Priority: Action Required')
+    expect(wrapper.find('#action-required').exists()).toBe(true)
   })
 })

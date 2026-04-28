@@ -24,6 +24,7 @@ function safeParse(value) {
 
 function normalizeStatus(status) {
   const normalized = String(status || '').trim().toLowerCase()
+  if (normalized === 'action_required') return 'action_required'
   if (normalized === 'application_received') return 'applied'
   if (normalized === 'interview_invite') return 'interview'
   if (normalized === 'offer') return 'offer'
@@ -101,7 +102,7 @@ export function summarizeGmailResults(results = []) {
     summary.total += 1
     summary[item.status_bucket] = Number(summary[item.status_bucket] || 0) + 1
   }
-  summary.action_required = summary.interview + summary.offer
+  summary.action_required = Number(summary.action_required || 0)
   summary.upcoming = summary.interview
   return summary
 }

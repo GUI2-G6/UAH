@@ -21,6 +21,17 @@ ATS_DOMAIN_HINTS = (
 
 CONSUMER_EMAIL_DOMAINS = {"gmail", "yahoo", "outlook", "hotmail", "icloud", "protonmail"}
 STATUS_KEYWORDS = {
+    "action_required": [
+        "additional information needed",
+        "information appears to be missing",
+        "missing from your job application",
+        "complete your job application",
+        "complete our job application",
+        "please follow the below steps",
+        "check your email inbox to retrieve the temporary password",
+        "confirm your contact information",
+        "proceed until you see a thank you message",
+    ],
     "rejection": [
         "unfortunately",
         "regret",
@@ -52,6 +63,14 @@ STATUS_KEYWORDS = {
     "application_received": ["received your application", "application received", "thank you for applying", "we have received"],
 }
 STATUS_PATTERNS = {
+    "action_required": [
+        re.compile(r"\badditional information needed\b", flags=re.IGNORECASE),
+        re.compile(r"\binformation appears to be missing\b", flags=re.IGNORECASE),
+        re.compile(r"\bmissing from your job application\b", flags=re.IGNORECASE),
+        re.compile(r"\bcomplete (?:your|our)\s+job application\b", flags=re.IGNORECASE),
+        re.compile(r"\bplease follow (?:the|these)\s+below steps\b", flags=re.IGNORECASE),
+        re.compile(r"\bretrieve the temporary password\b", flags=re.IGNORECASE),
+    ],
     "rejection": [
         re.compile(r"\bregret to inform you\b", flags=re.IGNORECASE),
         re.compile(r"\bunable to consider you further\b", flags=re.IGNORECASE),
@@ -83,6 +102,9 @@ STATUS_PATTERNS = {
 }
 JOB_UPDATE_KEYWORDS = (
     "application",
+    "additional information needed",
+    "missing information",
+    "complete your application",
     "position",
     "interview",
     "offer",
@@ -304,7 +326,7 @@ def extract_company_hint(from_header: str, subject: str, snippet: str = "", body
 def _score_status_for_text(text: str) -> dict[str, int]:
     normalized = str(text or "").lower()
     scores: dict[str, int] = {}
-    for status in ("rejection", "interview_invite", "offer", "application_received"):
+    for status in ("rejection", "action_required", "interview_invite", "offer", "application_received"):
         score = 0
         score += sum(1 for keyword in STATUS_KEYWORDS[status] if keyword in normalized)
         score += 2 * sum(1 for pattern in STATUS_PATTERNS[status] if pattern.search(normalized))
@@ -315,13 +337,14 @@ def _score_status_for_text(text: str) -> dict[str, int]:
 def classify_message_status(subject: str, snippet: str, body: str = "") -> str:
     min_score = {
         "rejection": 2,
+        "action_required": 2,
         "interview_invite": 2,
         "offer": 2,
         "application_received": 1,
     }
     for content in (body, subject, snippet):
         scores = _score_status_for_text(content)
-        for status in ("rejection", "interview_invite", "offer", "application_received"):
+        for status in ("rejection", "action_required", "interview_invite", "offer", "application_received"):
             if scores.get(status, 0) >= min_score[status]:
                 return status
     return "unknown"
@@ -378,7 +401,7 @@ def _has_strong_job_signal(
     snippet: str,
     body: str,
 ) -> bool:
-    if status in {"offer", "interview_invite", "rejection"}:
+    if status in {"offer", "interview_invite", "rejection", "action_required"}:
         return True
     if matched_applied_job and job_update_detected:
         return True

@@ -2600,6 +2600,13 @@ function isAtsSender(fromValue) {
 
 function classifyMockStatus(subject, snippet) {
   const combined = `${normalizeTextLower(subject)} ${normalizeTextLower(snippet)}`
+  if (
+    combined.includes('additional information needed')
+    || combined.includes('information appears to be missing')
+    || combined.includes('missing from your job application')
+    || combined.includes('complete your job application')
+    || combined.includes('please follow the below steps')
+  ) return 'action_required'
   if (combined.includes('unfortunately') || combined.includes('regret')) return 'rejection'
   if (combined.includes('interview') || combined.includes('schedule')) return 'interview_invite'
   if (combined.includes('offer') || combined.includes('congratulations')) return 'offer'

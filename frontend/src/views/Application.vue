@@ -11,6 +11,10 @@
     </div>
 
     <div class="dashboard">
+      <Card class="home-card home-stat-card action-required-stat-card">
+        <template #header><h2>Action Required</h2></template>
+        <p id="action-required" class="kpi-value">{{ summary.action_required }}</p>
+      </Card>
       <Card class="home-card home-stat-card">
         <template #header><h2>Applied</h2></template>
         <p id="applied" class="kpi-value">{{ summary.applied }}</p>
@@ -115,9 +119,44 @@
           <p class="scan-meta">{{ feedItems.length }} update{{ feedItems.length === 1 ? '' : 's' }} in this view</p>
         </template>
 
+        <section v-if="actionRequiredItems.length" class="action-required-section section-block">
+          <h3 class="action-required-title">High Priority: Action Required</h3>
+          <p class="scan-meta">These updates require immediate follow-up steps.</p>
+          <Card
+            v-for="(app, index) in actionRequiredItems"
+            :key="`action-required-${app.source_id || app.thread_key || index}`"
+            variant="minimal"
+            class="home-application-card action-required-card"
+          >
+            <p v-if="app.manual_override_applied" class="scan-meta">Manual override</p>
+            <label class="candidate-checkbox">
+              <input type="checkbox" :checked="isSelected(app.selection_key)" @change="toggleSelection(app.selection_key)">
+              <span>Select for tracking</span>
+            </label>
+            <Application :application="app" />
+            <div class="suppression-actions">
+              <button type="button" class="submit-btn is-primary" @click="openMostRecentEmail(app)">Open email</button>
+              <button type="button" class="submit-btn" @click="suppressMessage(app)">Hide this update</button>
+              <button type="button" class="submit-btn" @click="suppressThread(app)">Hide similar emails</button>
+              <label class="manual-status-label">
+                <span>Set status</span>
+                <select class="manual-status-select" :value="manualStatusFor(app)" @change="setManualStatus(app, $event?.target?.value)">
+                  <option value="action_required">Action Required</option>
+                  <option value="applied">Applied</option>
+                  <option value="interview">Interview</option>
+                  <option value="offer">Offer</option>
+                  <option value="rejection">Not moving forward</option>
+                  <option value="unknown">Needs review</option>
+                </select>
+              </label>
+            </div>
+          </Card>
+        </section>
+
         <div class="results-toolbar section-block">
           <select id="app-filter" v-model="selectedStatusFilter">
             <option value="all">All statuses</option>
+            <option value="action_required">Action Required</option>
             <option value="interview">Interview</option>
             <option value="offer">Offer</option>
             <option value="rejection">Not moving forward</option>
@@ -152,6 +191,7 @@
             <label class="manual-status-label">
               <span>Set status</span>
               <select class="manual-status-select" :value="manualStatusFor(app)" @change="setManualStatus(app, $event?.target?.value)">
+                <option value="action_required">Action Required</option>
                 <option value="applied">Applied</option>
                 <option value="interview">Interview</option>
                 <option value="offer">Offer</option>
@@ -280,6 +320,9 @@
             }))
             if (this.selectedStatusFilter === 'all') return mapped
             return mapped.filter((item) => String(item.status).toLowerCase() === this.selectedStatusFilter)
+        },
+        actionRequiredItems() {
+            return this.feedItems.filter((item) => String(item.status).toLowerCase() === 'action_required')
         },
         selectedVisibleCount() {
             return this.feedItems.filter((row) => this.isSelected(row.selection_key)).length
@@ -566,6 +609,7 @@
         },
         manualStatusFor(item) {
             const status = String(item?.status || item?.detected_status || 'unknown').trim().toLowerCase()
+            if (status === 'action_required') return 'action_required'
             if (status === 'application_received' || status === 'applied') return 'applied'
             if (status === 'interview_invite' || status === 'interview') return 'interview'
             if (status === 'offer') return 'offer'
@@ -575,6 +619,7 @@
         async setManualStatus(item, selectedStatus) {
             const normalized = String(selectedStatus || '').trim().toLowerCase()
             const statusMap = {
+                action_required: 'action_required',
                 applied: 'application_received',
                 interview: 'interview_invite',
                 offer: 'offer',

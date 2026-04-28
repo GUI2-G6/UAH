@@ -565,7 +565,14 @@ async def gmail_create_feedback(
     if triage_label not in {"relevant", "not_relevant", "unsure"}:
         raise HTTPException(status_code=400, detail="triage_label must be 'relevant', 'not_relevant', or 'unsure'")
     override_status = (payload.override_status or "").strip().lower() or None
-    if override_status and override_status not in {"application_received", "interview_invite", "offer", "rejection", "unknown"}:
+    if override_status and override_status not in {
+        "application_received",
+        "interview_invite",
+        "offer",
+        "rejection",
+        "action_required",
+        "unknown",
+    }:
         raise HTTPException(status_code=400, detail="override_status is invalid")
 
     sender_domain, subject_key, company_key = build_thread_signature(
