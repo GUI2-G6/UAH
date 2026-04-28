@@ -21,6 +21,7 @@ Usage:
 import re
 import json
 from html.parser import HTMLParser
+from app.services.skill_classifier import normalize_and_classify_skills
 
 # ============================================================
 # Section header patterns — order matters (first match wins)
@@ -1276,7 +1277,7 @@ def extract_skills(section_text):
                 deduped.append(item)
         skills[cat] = deduped
 
-    return skills
+    return normalize_and_classify_skills(skills)
 
 
 def extract_simple_list(section_text):

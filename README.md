@@ -156,6 +156,11 @@ Run `bash scripts/uah.sh <dev|beta>` with no action to open the **Control Center
 
 Wrapper scripts under `scripts/dev/lifecycle/` and `scripts/beta/lifecycle/` remain supported aliases, but they pass through to `scripts/uah.sh`.
 
+`start`, `restart`, and post-`sync` rebuild paths in `scripts/uah.sh` run a live Alembic reconcile (`alembic upgrade head`) against the running backend container:
+
+- `dev`: migration/reconcile failures are logged as warnings and lifecycle flow continues.
+- `beta`: migration/reconcile failures are treated as fatal and the lifecycle command exits non-zero.
+
 ## Repository Layout
 
 ```text
