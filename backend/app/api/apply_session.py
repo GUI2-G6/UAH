@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from app.db.session import get_db
 from app.models.user import User
-from app.models.apply_session import ApplySession, ApplySessionEvent
+from app.models.apply_session import ApplySession, ApplySessionEvent, TrackedApplication
 from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/api/apply-sessions", tags=["apply-sessions"])
@@ -31,6 +31,12 @@ class FinalizeSessionRequest(BaseModel):
     fields_matched: Optional[int] = None
     fields_filled: Optional[int] = None
     notes: Optional[str] = None
+
+
+class AnalyticsEventRequest(BaseModel):
+    event_type: str
+    payload: Optional[dict] = None
+    session_id: Optional[int] = None
 
 
 @router.post("/start", status_code=201)
@@ -137,6 +143,110 @@ def list_sessions(
         }
         for s in sessions
     ]
+
+
+@router.post("/analytics/events")
+def add_analytics_event(
+    payload: AnalyticsEventRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    event_type = (payload.event_type or "").strip()
+    if not event_type:
+        raise HTTPException(status_code=400, detail="event_type is required")
+
+    session_id = payload.session_id
+    if session_id is not None:
+        session = db.query(ApplySession).filter(
+            ApplySession.id == session_id,
+            ApplySession.user_id == current_user.id
+        ).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+    else:
+        session = db.query(ApplySession).filter(
+            ApplySession.user_id == current_user.id
+        ).order_by(
+            ApplySession.started_at.desc().nullslast(),
+            ApplySession.id.desc()
+        ).first()
+        if not session:
+            raise HTTPException(status_code=400, detail="No apply session available to attach analytics event")
+
+    event = ApplySessionEvent(
+        session_id=session.id,
+        event_type=event_type,
+        payload=payload.payload if isinstance(payload.payload, dict) else {},
+    )
+    db.add(event)
+    db.commit()
+    return {"ok": True, "session_id": session.id, "event_type": event_type}
+
+
+@router.get("/analytics/summary")
+def get_analytics_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    sessions = db.query(ApplySession).filter(
+        ApplySession.user_id == current_user.id
+    ).order_by(ApplySession.started_at.desc().nullslast()).all()
+    tracked_rows = db.query(TrackedApplication).filter(
+        TrackedApplication.user_id == current_user.id,
+        TrackedApplication.selection_state == "active",
+    ).all()
+
+    now = datetime.now(timezone.utc)
+    seven_days_ago = now.timestamp() - (7 * 24 * 60 * 60)
+
+    status_counts = {
+        "started": 0,
+        "in_progress": 0,
+        "submitted": 0,
+        "abandoned": 0,
+    }
+    for row in sessions:
+        key = (row.status or "").strip().lower()
+        if key in status_counts:
+            status_counts[key] += 1
+
+    tracked_with_updates = sum(1 for row in tracked_rows if row.has_new_update is True)
+    stale_submissions = 0
+    for row in sessions:
+        if (row.status or "").strip().lower() != "submitted":
+            continue
+        ts = (row.updated_at or row.finalized_at or row.started_at)
+        if ts is None:
+            stale_submissions += 1
+            continue
+        if ts.timestamp() < seven_days_ago:
+            stale_submissions += 1
+
+    recent_events = db.query(ApplySessionEvent).join(
+        ApplySession, ApplySession.id == ApplySessionEvent.session_id
+    ).filter(
+        ApplySession.user_id == current_user.id
+    ).order_by(
+        ApplySessionEvent.created_at.desc().nullslast(),
+        ApplySessionEvent.id.desc()
+    ).limit(8).all()
+
+    return {
+        "status_counts": status_counts,
+        "tracked_active_count": len(tracked_rows),
+        "tracked_updates_count": tracked_with_updates,
+        "stale_submissions_count": stale_submissions,
+        "recent_events": [
+            {
+                "id": event.id,
+                "event_type": event.event_type,
+                "created_at": event.created_at,
+                "payload": event.payload if isinstance(event.payload, dict) else {},
+            }
+            for event in recent_events
+        ],
+        "generated_at": now,
+    }
 
 
 @router.get("/{session_id}")

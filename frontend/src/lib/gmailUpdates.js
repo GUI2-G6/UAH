@@ -171,7 +171,11 @@ export async function runGmailScan(options = {}) {
   })
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
-    throw new Error(payload?.detail || `HTTP ${response.status}`)
+    const detail = String(payload?.detail || '')
+    if (detail.toLowerCase().includes('gmail not connected')) {
+      throw new Error('Gmail is not connected. Open Settings > Service Connections > Gmail Updates.')
+    }
+    throw new Error(detail || `HTTP ${response.status}`)
   }
   return writeGmailScanCache({
     gmail_email: payload?.gmail_email || null,

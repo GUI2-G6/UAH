@@ -8,7 +8,10 @@
             <Card class="notifications-card notifications-card--wide">
                 <h2>Notifications Feed</h2>
                 <p v-if="loading">Loading latest updates...</p>
-                <p v-else-if="!gmailConnected">Connect Gmail in Settings to enable status updates.</p>
+                <p v-else-if="!gmailConnected">
+                    Connect Gmail in Settings to enable status updates.
+                    <button class="submit-btn" type="button" @click="$router.push('/settings')">Open Settings</button>
+                </p>
                 <p v-else-if="error">{{ error }}</p>
                 <p v-else-if="summary.total === 0">No ATS updates matched your submitted applications yet.</p>
                 <p v-else>Latest ATS update feed ({{ summary.matched_total }} matched, {{ summary.provisional_total }} provisional)</p>

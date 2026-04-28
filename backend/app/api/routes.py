@@ -3078,6 +3078,7 @@ async def backfill_apply_sessions_from_saved_jobs(
 def _serialize_tracked_application(row: TrackedApplication) -> dict[str, Any]:
     return {
         "id": row.id,
+        "apply_session_id": row.apply_session_id,
         "source_type": row.source_type,
         "source_ref": row.source_ref,
         "thread_key": row.thread_key,

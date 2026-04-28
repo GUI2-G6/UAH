@@ -2428,6 +2428,21 @@ export default {
           throw new Error("Missing apply-session id")
         }
         await this.fetchJson(
+          `/api/apply-sessions/${sessionId}/events`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              event_type: "dashboard.quick_action.mark_applied_started",
+              payload: {
+                source: "job_board",
+                provider: normalizedJob.provider || null,
+              },
+            }),
+          },
+          { authenticated: true },
+        )
+        await this.fetchJson(
           `/api/apply-sessions/${sessionId}/finalize`,
           {
             method: "POST",
@@ -2435,6 +2450,22 @@ export default {
             body: JSON.stringify({
               status: "submitted",
               notes: "Marked as applied from web job board",
+            }),
+          },
+          { authenticated: true },
+        )
+        await this.fetchJson(
+          "/api/apply-sessions/analytics/events",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              event_type: "dashboard.quick_action.mark_applied_completed",
+              session_id: sessionId,
+              payload: {
+                source: "job_board",
+                provider: normalizedJob.provider || null,
+              },
             }),
           },
           { authenticated: true },

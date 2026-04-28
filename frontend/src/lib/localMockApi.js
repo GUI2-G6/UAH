@@ -1060,6 +1060,7 @@ function createDefaultState() {
     mockApplySessions: createDefaultMockApplySessions(user),
     gmailSuppressions: [],
     trackedApplications: [],
+    analyticsEvents: [],
     mockTesting: {
       scanCount: 0,
       lastScenarioKey: '',
@@ -1073,6 +1074,7 @@ function createDefaultState() {
       parseJob: 100,
       savedJob: 1,
       trackedApplication: 1,
+      analyticsEvent: 1,
     },
   }
 }
@@ -1120,6 +1122,7 @@ function ensureStateShape(state) {
   safe.trackedApplications = ensureArray(safe.trackedApplications, [])
     .map((row, index) => ({
       id: Number(row?.id || index + 1),
+      apply_session_id: Number(row?.apply_session_id || 0) || null,
       source_type: normalizeTextLower(row?.source_type) || 'gmail',
       source_ref: normalizeWhitespace(row?.source_ref),
       thread_key: normalizeWhitespace(row?.thread_key),
@@ -1135,6 +1138,14 @@ function ensureStateShape(state) {
       updated_at: normalizeIsoDate(row?.updated_at) || nowIso(),
     }))
     .filter((row) => row.id > 0)
+  safe.analyticsEvents = ensureArray(safe.analyticsEvents, [])
+    .map((row, index) => ({
+      id: Number(row?.id || index + 1),
+      event_type: normalizeWhitespace(row?.event_type),
+      payload: row?.payload && typeof row.payload === 'object' ? row.payload : {},
+      created_at: normalizeIsoDate(row?.created_at) || nowIso(),
+    }))
+    .filter((row) => row.id > 0 && row.event_type)
   safe.mockTesting = safe.mockTesting && typeof safe.mockTesting === 'object' ? safe.mockTesting : {}
   safe.mockTesting.scanCount = Number(safe.mockTesting.scanCount || 0)
   safe.mockTesting.lastScenarioKey = normalizeWhitespace(safe.mockTesting.lastScenarioKey)
@@ -1147,6 +1158,7 @@ function ensureStateShape(state) {
   safe.nextIds.parseJob = Number(safe.nextIds.parseJob || 100)
   safe.nextIds.savedJob = Number(safe.nextIds.savedJob || safe.savedJobs.length + 1)
   safe.nextIds.trackedApplication = Number(safe.nextIds.trackedApplication || safe.trackedApplications.length + 1)
+  safe.nextIds.analyticsEvent = Number(safe.nextIds.analyticsEvent || safe.analyticsEvents.length + 1)
 
   if (!safe.profiles.length) {
     safe.profiles = [createProfile(safe.user)]
@@ -3192,6 +3204,58 @@ async function handleMockApiRequest(request, requestUrl, state) {
     return toJsonResponse({ session_id: nextId, session })
   }
 
+  if (pathname === '/api/apply-sessions/analytics/events' && method === 'POST') {
+    const body = await parseJsonBody(request)
+    const eventType = normalizeWhitespace(body?.event_type)
+    if (!eventType) {
+      return toJsonResponse({ detail: 'event_type is required' }, 400)
+    }
+    const nextId = Number(state.nextIds.analyticsEvent || 1)
+    state.nextIds.analyticsEvent = nextId + 1
+    const sessionId = Number(body?.session_id || 0)
+    const event = {
+      id: nextId,
+      event_type: eventType,
+      payload: body?.payload && typeof body.payload === 'object' ? { ...body.payload, session_id: sessionId || null } : { session_id: sessionId || null },
+      created_at: nowIso(),
+    }
+    state.analyticsEvents = ensureArray(state.analyticsEvents, [])
+    state.analyticsEvents.unshift(event)
+    state.analyticsEvents = state.analyticsEvents.slice(0, 300)
+    saveState(state)
+    return toJsonResponse({ ok: true, event_id: nextId, event_type: eventType, session_id: sessionId || null })
+  }
+
+  if (pathname === '/api/apply-sessions/analytics/summary' && method === 'GET') {
+    const sessions = ensureArray(state.mockApplySessions, [])
+    const trackedRows = ensureArray(state.trackedApplications, []).filter((row) => normalizeTextLower(row.selection_state) === 'active')
+    const statusCounts = {
+      started: 0,
+      in_progress: 0,
+      submitted: 0,
+      abandoned: 0,
+    }
+    sessions.forEach((row) => {
+      const key = normalizeTextLower(row.status)
+      if (Object.prototype.hasOwnProperty.call(statusCounts, key)) statusCounts[key] += 1
+    })
+    const staleThreshold = Date.now() - (7 * 24 * 60 * 60 * 1000)
+    const staleSubmissions = sessions.filter((row) => {
+      if (normalizeTextLower(row.status) !== 'submitted') return false
+      const ts = new Date(row.updated_at || row.finalized_at || row.started_at).getTime()
+      return Number.isNaN(ts) || ts < staleThreshold
+    }).length
+    const recentEvents = ensureArray(state.analyticsEvents, []).slice(0, 8)
+    return toJsonResponse({
+      status_counts: statusCounts,
+      tracked_active_count: trackedRows.length,
+      tracked_updates_count: trackedRows.filter((row) => row.has_new_update === true).length,
+      stale_submissions_count: staleSubmissions,
+      recent_events: recentEvents,
+      generated_at: nowIso(),
+    })
+  }
+
   if (/^\/api\/apply-sessions\/\d+\/finalize$/.test(pathname) && method === 'POST') {
     const body = await parseJsonBody(request)
     const sessionId = Number(pathname.split('/')[3] || 0)
@@ -3282,6 +3346,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
       state.nextIds.trackedApplication = nextId + 1
       state.trackedApplications.unshift({
         id: nextId,
+        apply_session_id: Number(row?.apply_session_id || 0) || null,
         source_type: sourceType,
         source_ref: sourceRef,
         thread_key: normalizeWhitespace(row?.thread_key),

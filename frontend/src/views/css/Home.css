@@ -56,15 +56,12 @@
   margin-top: 2px;
 }
 
-#applied, 
-#interviews, 
-#offers, 
-#rejected {
+.kpi-value {
   margin: 0;
   font-size: 2.6rem;
   text-align: center;
   font-weight: 700;
-  border-radius:8px;
+  border-radius: 8px;
   padding: 12px 16px;
 }
 
@@ -86,6 +83,77 @@
 #tracked-applications {
   font-size: 1.2rem;
   margin: 0;
+}
+
+.home-card--quick-actions :deep(.ui-card__body),
+.home-card--insights :deep(.ui-card__body),
+.home-card--health :deep(.ui-card__body) {
+  display: grid;
+  gap: 10px;
+}
+
+.quick-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.brief-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  color: var(--color-text-secondary);
+}
+
+.health-row {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.health-row h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.health-row p {
+  margin: 6px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.timeline-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.timeline-title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.timeline-meta {
+  margin: 3px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+}
+
+.timeline-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.timeline-toggle {
+  flex-shrink: 0;
 }
 
 .scan-meta {
@@ -241,6 +309,10 @@
   #offers,
   #rejected {
     font-size: 2.1rem;
+  }
+
+  .quick-actions {
+    flex-direction: column;
   }
 }
 

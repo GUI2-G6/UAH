@@ -34,11 +34,11 @@
                     <h2 id="tracked-applications">Tracked Applications</h2>
                     <p v-if="lastRefreshed" class="scan-meta">Last scan: {{ formatTimestamp(lastRefreshed) }}</p>
                     <p v-if="submittedSessionCount !== null" class="scan-meta">Submitted sessions available for matching: {{ submittedSessionCount }}</p>
-                    <button class="submit-btn" type="button" :disabled="loading" @click="scanNow">
+                    <button class="submit-btn" type="button" :disabled="loading || !gmailConnected" @click="scanNow">
                         {{ loading ? 'Scanning…' : 'Run Gmail scan' }}
                     </button>
-                    <input v-model.trim="scanQuery" type="text" placeholder="Keyword query override" class="scan-input">
-                    <select v-model.number="scanNewerThanDays" class="scan-input">
+                    <input v-model.trim="scanQuery" type="text" placeholder="Keyword query override" class="scan-input" :disabled="!gmailConnected">
+                    <select v-model.number="scanNewerThanDays" class="scan-input" :disabled="!gmailConnected">
                         <option :value="14">Last 14 days</option>
                         <option :value="30">Last 30 days</option>
                         <option :value="45">Last 45 days</option>
@@ -49,15 +49,15 @@
                         <option :value="1825">Last 5 years</option>
                         <option :value="3650">Last 10 years</option>
                     </select>
-                    <input v-model.number="scanCustomDays" type="number" min="1" max="36500" class="scan-input" placeholder="Custom days">
-                    <select v-model.number="scanMaxResults" class="scan-input">
+                    <input v-model.number="scanCustomDays" type="number" min="1" max="36500" class="scan-input" placeholder="Custom days" :disabled="!gmailConnected">
+                    <select v-model.number="scanMaxResults" class="scan-input" :disabled="!gmailConnected">
                         <option :value="10">10 results</option>
                         <option :value="20">20 results</option>
                         <option :value="50">50 results</option>
                         <option :value="100">100 results</option>
                     </select>
                     <label class="scan-toggle">
-                        <input v-model="scanIncludeProvisional" type="checkbox">
+                        <input v-model="scanIncludeProvisional" type="checkbox" :disabled="!gmailConnected">
                         Include provisional ATS updates
                     </label>
                     <select id="app-filter" v-model="selectedStatusFilter">
@@ -73,7 +73,10 @@
                     </button>
                 </template>
 
-                <p v-if="!gmailConnected" class="empty-state-copy">Connect Gmail in Settings to view matched ATS updates here.</p>
+                <p v-if="!gmailConnected" class="empty-state-copy">
+                    Connect Gmail in Settings to enable scans and view matched ATS updates here.
+                    <button class="submit-btn" type="button" @click="$router.push('/settings')">Open Settings</button>
+                </p>
                 <p v-else-if="loading" class="empty-state-copy">Running Gmail scan...</p>
                 <p v-else-if="error" class="empty-state-copy">{{ error }}</p>
                 <p v-else-if="!feedItems.length" class="empty-state-copy">No matched ATS updates yet for this filter.</p>
@@ -95,17 +98,6 @@
                         <button type="button" class="submit-btn" @click="suppressThread(app)">Hide this chain</button>
                     </div>
                 </Card>
-                <div class="saved-candidate-panel">
-                    <h3>Saved Job Candidates</h3>
-                    <p class="scan-meta">Select saved jobs to include in tracked applications.</p>
-                    <article v-for="row in savedJobCandidates" :key="`saved-candidate-${row.saved_job_id || row.id}`" class="saved-candidate-row">
-                        <label class="candidate-checkbox">
-                            <input type="checkbox" :checked="isSelected(`saved:${row.saved_job_id || row.id}`)" @change="toggleSelection(`saved:${row.saved_job_id || row.id}`)">
-                            <span>{{ row.title || row.name || 'Untitled role' }} · {{ row.company || 'Unknown company' }}</span>
-                        </label>
-                    </article>
-                    <p v-if="!savedJobCandidates.length" class="empty-state-copy">No saved jobs available yet.</p>
-                </div>
                 <Card class="home-card home-card--wide">
                     <template #header>
                         <h2>Saved Tracked Applications</h2>
@@ -175,7 +167,6 @@
                 selectedKeys: {},
                 trackingBusy: false,
                 trackedApplications: [],
-                savedJobCandidates: [],
             }
         },
         components: {
@@ -227,7 +218,6 @@
             this.gmailConnected = this.gmailConnected || Boolean(cached.gmail_email)
         }
         this.loadSuppressions()
-        this.loadSavedJobCandidates()
         this.loadTrackedApplications()
         this.unsubscribeUpdates = subscribeGmailUpdates((record) => {
             this.applyScanRecord(record)
@@ -254,8 +244,13 @@
             return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString()
         },
         async scanNow() {
+            if (!this.gmailConnected) {
+                this.error = 'Gmail is not connected. Open Settings > Service Connections > Gmail Updates.'
+                return
+            }
             this.loading = true
             this.error = ''
+            await this.emitAnalyticsEvent('dashboard.scan.started')
             try {
                 const record = await runGmailScan({
                     query: this.scanQuery,
@@ -266,10 +261,33 @@
                 this.applyScanRecord(record)
                 this.gmailConnected = true
                 await this.loadTrackedApplications()
+                await this.emitAnalyticsEvent('dashboard.scan.succeeded', {
+                    result_count: Number(record?.results?.length || 0),
+                })
             } catch (error) {
-                this.error = error?.message || 'Could not scan Gmail updates.'
+                const message = String(error?.message || '')
+                this.error = message.includes('Gmail not connected')
+                    ? 'Gmail is not connected. Open Settings > Service Connections > Gmail Updates.'
+                    : (message || 'Could not scan Gmail updates.')
+                await this.emitAnalyticsEvent('dashboard.scan.failed', {
+                    error: this.error,
+                })
             } finally {
                 this.loading = false
+            }
+        },
+        async emitAnalyticsEvent(eventType, payload = {}) {
+            try {
+                await authedFetch('/api/apply-sessions/analytics/events', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        event_type: eventType,
+                        payload,
+                    }),
+                })
+            } catch {
+                // Analytics should never block user workflows
             }
         },
         async loadSuppressions() {
@@ -337,21 +355,9 @@
                 [normalized]: !this.selectedKeys[normalized],
             }
         },
-        async loadSavedJobCandidates() {
-            try {
-                const res = await authedFetch('/api/jobs/saved?page=1&page_size=100')
-                const data = await res.json().catch(() => null)
-                if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
-                this.savedJobCandidates = Array.isArray(data?.saved_jobs) ? data.saved_jobs : []
-            } catch (error) {
-                console.error('Failed to load saved job candidates', error)
-                this.savedJobCandidates = []
-            }
-        },
         async saveSelectedTracked() {
             const chosenGmail = this.feedItems.filter((row) => this.isSelected(row.selection_key))
-            const chosenSaved = (this.savedJobCandidates || []).filter((row) => this.isSelected(`saved:${row.saved_job_id || row.id}`))
-            if (!chosenGmail.length && !chosenSaved.length) {
+            if (!chosenGmail.length) {
                 showToast('Select at least one candidate to save.', 'error')
                 return
             }
@@ -369,19 +375,6 @@
                             from: row.from,
                             gmail_open_url_direct: row.gmail_open_url_direct,
                             gmail_open_url_fallback: row.gmail_open_url_fallback,
-                        },
-                    })),
-                    ...chosenSaved.map((row) => ({
-                        source_type: 'saved_job',
-                        source_ref: String(row.saved_job_id || row.id),
-                        thread_key: null,
-                        company: row.company || null,
-                        job_title: row.title || row.name || null,
-                        latest_status: 'saved',
-                        metadata: {
-                            saved_job_id: row.saved_job_id || row.id,
-                            provider: row.provider || '',
-                            provider_job_id: row.provider_job_id || '',
                         },
                     })),
                 ]
