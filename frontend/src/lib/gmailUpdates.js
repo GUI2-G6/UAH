@@ -168,8 +168,17 @@ function normalizeScanOptions(options = {}) {
   const maxResultsRaw = Number(options?.max_results)
   const rawMode = String(options?.scan_mode || 'new').trim().toLowerCase()
   const scanMode = rawMode === 'saved' ? 'saved' : 'new'
+  const sourceStrictness = String(options?.source_strictness || 'strict_career_domains').trim().toLowerCase() === 'hybrid_job_language'
+    ? 'hybrid_job_language'
+    : 'strict_career_domains'
+  const linkedinModeRaw = String(options?.linkedin_mode || 'linkedin_apply_only').trim().toLowerCase()
+  const linkedinMode = ['linkedin_apply_only', 'linkedin_all_jobish', 'linkedin_off'].includes(linkedinModeRaw)
+    ? linkedinModeRaw
+    : 'linkedin_apply_only'
   return {
     scan_mode: scanMode,
+    source_strictness: sourceStrictness,
+    linkedin_mode: linkedinMode,
     query: sanitizeText(options?.query, 280) || null,
     newer_than_days: Number.isFinite(newerThanRaw) ? Math.min(36500, Math.max(1, Math.round(newerThanRaw))) : 45,
     max_results: Number.isFinite(maxResultsRaw) ? Math.min(100, Math.max(1, Math.round(maxResultsRaw))) : 20,

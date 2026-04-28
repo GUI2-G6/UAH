@@ -2587,6 +2587,13 @@ function buildMockGmailScanPayload(state, options = {}) {
     (session) => normalizeTextLower(session.status) === 'submitted'
   )
   const submittedCompanies = new Set(submittedSessions.map((session) => normalizeTextLower(session.company)))
+  const sourceStrictness = String(options?.source_strictness || 'strict_career_domains').trim().toLowerCase() === 'hybrid_job_language'
+    ? 'hybrid_job_language'
+    : 'strict_career_domains'
+  const linkedinModeRaw = String(options?.linkedin_mode || 'linkedin_apply_only').trim().toLowerCase()
+  const linkedinMode = ['linkedin_apply_only', 'linkedin_all_jobish', 'linkedin_off'].includes(linkedinModeRaw)
+    ? linkedinModeRaw
+    : 'linkedin_apply_only'
   const maxResults = Math.min(100, Math.max(1, Number(options?.max_results || 20)))
   const newerThanDays = Math.min(36500, Math.max(1, Number(options?.newer_than_days || 45)))
   const candidates = buildMockGmailCandidates(state, scenario)
@@ -2596,6 +2603,10 @@ function buildMockGmailScanPayload(state, options = {}) {
       return ts >= (Date.now() - (newerThanDays * 24 * 60 * 60 * 1000))
     })
   const suppressions = ensureArray(state.gmailSuppressions, [])
+  let excludedByNoncareerSource = 0
+  let excludedByNegativeIntent = 0
+  let includedByAts = 0
+  let includedByLinkedinApply = 0
   const evaluated = candidates.map((candidate) => {
     const from = String(candidate.from || '')
     const subject = String(candidate.subject || '')
@@ -2604,8 +2615,45 @@ function buildMockGmailScanPayload(state, options = {}) {
     const ats_detected = isAtsSender(from)
     const matched_applied_job = submittedCompanies.has(normalizeTextLower(companyHint))
     const detected_status = classifyMockStatus(subject, snippet)
-    const include = ats_detected || detected_status !== 'unknown'
     const senderDomain = senderDomainFromFromHeader(from)
+    const sourceCombined = `${senderDomain} ${subject.toLowerCase()} ${snippet.toLowerCase()}`
+    const sourceBucket = (
+      isAtsSender(from) ? 'ats_portal'
+        : (sourceCombined.includes('linkedin') || sourceCombined.includes('ripplematch') ? 'job_platform'
+          : (sourceCombined.includes('candidatecare') || sourceCombined.includes('career') || sourceCombined.includes('recruit') ? 'recruiter_direct' : 'non_career'))
+    )
+    const linkedinApplyDetected = sourceCombined.includes('linkedin') && (
+      sourceCombined.includes('application was sent')
+      || sourceCombined.includes('jobs-noreply')
+      || sourceCombined.includes('job application')
+      || sourceCombined.includes("what's next")
+    )
+    const negativeIntentDetected = (
+      sourceCombined.includes('deal awaits')
+      || sourceCombined.includes('limited time offer')
+      || sourceCombined.includes('premium')
+      || sourceCombined.includes('newsletter')
+      || sourceCombined.includes('share their thoughts')
+      || sourceCombined.includes('support hunger')
+    )
+    const includeByIntent = ats_detected || detected_status !== 'unknown'
+    let include = includeByIntent
+    let excludeReason = null
+    if (sourceStrictness === 'strict_career_domains' && sourceBucket === 'non_career') {
+      include = false
+      excludeReason = 'noncareer_source'
+      excludedByNoncareerSource += 1
+    } else if (sourceCombined.includes('linkedin') && linkedinMode === 'linkedin_off') {
+      include = false
+      excludeReason = 'linkedin_disabled'
+    } else if (sourceCombined.includes('linkedin') && linkedinMode === 'linkedin_apply_only' && !linkedinApplyDetected) {
+      include = false
+      excludeReason = 'linkedin_non_apply'
+    } else if (negativeIntentDetected) {
+      include = false
+      excludeReason = 'negative_intent'
+      excludedByNegativeIntent += 1
+    }
     const subjectKey = normalizeSubjectKey(subject)
     const companyKey = normalizeCompanyKey(companyHint)
     const threadKey = `${senderDomain}|${subjectKey}|${companyKey}`
@@ -2627,6 +2675,11 @@ function buildMockGmailScanPayload(state, options = {}) {
       company_hint: companyHint || null,
       snippet,
       ats_detected,
+      job_update_detected: detected_status !== 'unknown',
+      linkedin_apply_detected: linkedinApplyDetected,
+      negative_intent_detected: negativeIntentDetected,
+      source_bucket: sourceBucket,
+      intent_score: detected_status !== 'unknown' ? 3 : 1,
       matched_applied_job,
       include,
       suppressed,
@@ -2636,10 +2689,14 @@ function buildMockGmailScanPayload(state, options = {}) {
       thread_key: threadKey,
       gmail_open_url_direct: directOpenUrl,
       gmail_open_url_fallback: fallbackOpenUrl,
-      exclude_reason: include ? null : 'non_ats_or_job_update',
+      exclude_reason: include ? null : (excludeReason || 'non_ats_or_job_update'),
     }
   })
   const included = evaluated.filter((row) => row.include && !row.suppressed)
+  for (const row of included) {
+    if (row.ats_detected) includedByAts += 1
+    if (row.linkedin_apply_detected) includedByLinkedinApply += 1
+  }
   const trackedRows = ensureArray(state.trackedApplications, []).filter((row) => normalizeTextLower(row.selection_state) === 'active')
   const trackedBySource = new Map(trackedRows.map((row) => [normalizeWhitespace(row.source_ref), row]))
   const trackedByThread = new Map(trackedRows.map((row) => [normalizeWhitespace(row.thread_key), row]))
@@ -2671,6 +2728,8 @@ function buildMockGmailScanPayload(state, options = {}) {
         applied_job_statuses: [...MOCK_APPLIED_STATUSES],
         applied_job_candidates: submittedSessions.length,
         excluded_count: Math.max(evaluated.length - results.length, 0),
+        source_strictness: sourceStrictness,
+        linkedin_mode: linkedinMode,
         newer_than_days: newerThanDays,
         max_results: maxResults,
         suppression_count: suppressions.length,
@@ -2679,6 +2738,10 @@ function buildMockGmailScanPayload(state, options = {}) {
         suppression_miss_reasons: { missing_source_id: 0, missing_thread_signature: 0 },
         tracked_updates_applied: trackedUpdatesApplied,
         tracked_rows_seen: trackedRows.length,
+        excluded_by_noncareer_source: excludedByNoncareerSource,
+        excluded_by_negative_intent: excludedByNegativeIntent,
+        included_by_ats: includedByAts,
+        included_by_linkedin_apply: includedByLinkedinApply,
         scenario_profile: scenario.profile,
       },
     },

@@ -214,6 +214,13 @@
                             <button v-if="canReviewResume(r)" title="Review parsed data before profile fill" class="review-btn" @click="openReviewModal(r)">Review</button>
                             <button title="View parsed data" @click="viewResume(r.id)">View</button>
                             <button
+                                title="Re-parse this resume"
+                                :disabled="isReparseBusy(r.id)"
+                                @click="startReparse(r)"
+                            >
+                                {{ isReparseBusy(r.id) ? 'Re-parsing…' : 'Re-parse' }}
+                            </button>
+                            <button
                                 title="Delete resume"
                                 class="delete-btn"
                                 :class="{ 'confirm-delete': deletingId === r.id }"
@@ -1064,6 +1071,13 @@
                             <button v-if="canReviewResume(r)" title="Review parsed data before profile fill" class="review-btn" @click="openReviewModal(r)">Review</button>
                             <button title="View parsed data" @click="viewResume(r.id)">View</button>
                             <button
+                                title="Re-parse this resume"
+                                :disabled="isReparseBusy(r.id)"
+                                @click="startReparse(r)"
+                            >
+                                {{ isReparseBusy(r.id) ? 'Re-parsing…' : 'Re-parse' }}
+                            </button>
+                            <button
                                 title="Delete resume"
                                 class="delete-btn"
                                 :class="{ 'confirm-delete': deletingId === r.id }"
@@ -1137,6 +1151,7 @@ export default {
             parseQueueTotal: null,
             parseErrorCode: null,
             parseResumeId: null,
+            reparseBusyId: null,
 
             // Queue panel
             queueScope: 'user',
@@ -1929,6 +1944,7 @@ export default {
             this.pendingFile = null
             this.uploadError = null
             this.uploading = false
+            this.reparseBusyId = null
             this.isDragOver = false
             this.parseJobId = null
             this.parseStatus = null
@@ -1974,6 +1990,58 @@ export default {
             this.uploadStep = 'select'
             this.uploadError = null
         },
+        isReparseBusy(resumeId) {
+            const id = Number(resumeId || 0)
+            if (!id) return false
+            return Number(this.reparseBusyId || 0) === id || (Number(this.parseResumeId || 0) === id && Boolean(this.parseJobId))
+        },
+        async queueParseForResume(resumeId, selectedMethod) {
+            const parseRes = await authedFetch(`/api/resume/${resumeId}/parse-async`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ method: selectedMethod }),
+            })
+            const parseData = await parseRes.json().catch(() => null)
+            if (!parseRes.ok) {
+                throw new Error(this.apiErrorMessage(parseData, parseRes.status, 'Parse failed'))
+            }
+            this.parseJobId = parseData.job_id
+            this.parseResumeId = Number(resumeId)
+            this.parseStatus = 'queued'
+            this.parseStageLabel = 'Queued…'
+            this.parseError = null
+            this.parseJobMethod = selectedMethod
+            this.uploadStep = 'parsing'
+            this.publishDebugState('parse-started')
+            this.pollParseJob()
+        },
+        async startReparse(resume) {
+            const resumeId = Number(resume?.id || resume || 0)
+            if (!resumeId || this.parseJobId) return
+            const selectedMethod = this.parseMethod === 'local' && !this.isLocalParseMethodAvailable
+                ? 'cloud'
+                : this.parseMethod
+            if (selectedMethod !== this.parseMethod) {
+                this.parseMethod = selectedMethod
+            }
+            this.reparseBusyId = resumeId
+            this.uploadError = null
+            this.showLibraryModal = false
+            try {
+                await this.queueParseForResume(resumeId, selectedMethod)
+                showToast('Re-parse started. Tracking progress now.', 'success')
+            } catch (e) {
+                this.uploadError = e.message ?? String(e)
+                showToast(this.uploadError || 'Could not start re-parse.', 'error')
+                this.uploadStep = 'confirm'
+                this.parseJobId = null
+                this.parseResumeId = null
+                this.parseJobMethod = null
+                this.publishDebugState('reparse-error')
+            } finally {
+                this.reparseBusyId = null
+            }
+        },
         async doUpload() {
             if (!this.pendingFile || this.uploading) return
             const selectedMethod = this.parseMethod === 'local' && !this.isLocalParseMethodAvailable
@@ -1997,31 +2065,10 @@ export default {
                     throw new Error(this.apiErrorMessage(uploadData, uploadRes.status, 'Upload failed'))
                 }
 
-                // 2. Start async parse
                 const resumeId = uploadData.id
-                const parseRes = await authedFetch(`/api/resume/${resumeId}/parse-async`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ method: selectedMethod }),
-                })
-                const parseData = await parseRes.json().catch(() => null)
-                if (!parseRes.ok) {
-                    throw new Error(this.apiErrorMessage(parseData, parseRes.status, 'Parse failed'))
-                }
-
-                // 3. Switch to parsing progress stage
-                this.parseJobId = parseData.job_id
-                this.parseResumeId = resumeId
-                this.parseStatus = 'queued'
-                this.parseStageLabel = 'Queued…'
-                this.parseError = null
-                this.parseJobMethod = selectedMethod
-                this.uploadStep = 'parsing'
+                // 2. Start async parse + switch to progress stage
+                await this.queueParseForResume(resumeId, selectedMethod)
                 this.uploading = false
-                this.publishDebugState('parse-started')
-
-                // Start polling
-                this.pollParseJob()
             } catch (e) {
                 this.uploadError = e.message ?? String(e)
                 this.uploading = false

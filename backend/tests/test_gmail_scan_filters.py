@@ -52,7 +52,7 @@ class GmailScanFilterTests(unittest.TestCase):
         self.assertTrue(evaluated["ats_detected"])
         self.assertTrue(evaluated["matched_applied_job"])
 
-    def test_includes_non_ats_job_update_when_status_is_confident(self):
+    def test_includes_non_ats_job_update_when_status_is_confident_in_hybrid_mode(self):
         message = ScanMessage(
             subject="Interview next steps",
             from_header="Friend <friend@gmail.com>",
@@ -65,6 +65,7 @@ class GmailScanFilterTests(unittest.TestCase):
             apply_sessions=sessions,
             allowed_statuses={"submitted"},
             require_ats=True,
+            source_strictness="hybrid_job_language",
         )
         self.assertTrue(evaluated["include"])
         self.assertTrue(evaluated["job_update_detected"])
@@ -165,6 +166,78 @@ class GmailScanFilterTests(unittest.TestCase):
             require_ats=True,
         )
         self.assertEqual(evaluated["detected_status"], "rejection")
+
+    def test_excludes_newsletter_promo_in_strict_mode(self):
+        message = ScanMessage(
+            subject="Your next deal awaits",
+            from_header="Uber Eats <uber@uber.com>",
+            date="Mon, 28 Apr 2026 10:00:00 -0400",
+            snippet="Don't miss these limited time offers.",
+        )
+        evaluated = evaluate_message(
+            message,
+            apply_sessions=[],
+            allowed_statuses={"submitted"},
+            require_ats=True,
+            source_strictness="strict_career_domains",
+            linkedin_mode="linkedin_apply_only",
+        )
+        self.assertFalse(evaluated["include"])
+        self.assertEqual(evaluated["exclude_reason"], "noncareer_source")
+
+    def test_includes_linkedin_application_sent_email(self):
+        message = ScanMessage(
+            subject="Trent, your application was sent to Toyota Research Institute",
+            from_header="LinkedIn <jobs-noreply@linkedin.com>",
+            date="Mon, 28 Apr 2026 10:00:00 -0400",
+            snippet="Your application was sent to Toyota Research Institute",
+        )
+        evaluated = evaluate_message(
+            message,
+            apply_sessions=[],
+            allowed_statuses={"submitted"},
+            require_ats=True,
+            source_strictness="strict_career_domains",
+            linkedin_mode="linkedin_apply_only",
+        )
+        self.assertTrue(evaluated["include"])
+        self.assertTrue(evaluated["linkedin_apply_detected"])
+
+    def test_excludes_linkedin_premium_profile_email_in_apply_only_mode(self):
+        message = ScanMessage(
+            subject="Trent, enjoy this offer for LinkedIn Premium",
+            from_header="LinkedIn <linkedin@em.linkedin.com>",
+            date="Mon, 28 Apr 2026 10:00:00 -0400",
+            snippet="Premium members are more likely to get hired.",
+        )
+        evaluated = evaluate_message(
+            message,
+            apply_sessions=[],
+            allowed_statuses={"submitted"},
+            require_ats=True,
+            source_strictness="strict_career_domains",
+            linkedin_mode="linkedin_apply_only",
+        )
+        self.assertFalse(evaluated["include"])
+        self.assertEqual(evaluated["exclude_reason"], "linkedin_non_apply")
+
+    def test_includes_candidatecare_additional_info_email(self):
+        message = ScanMessage(
+            subject="Additional Information Needed for the Position of 25-798",
+            from_header="Granite Telecommunications Career Opportunities <do-not-reply@candidatecare.com>",
+            date="Mon, 28 Apr 2026 10:00:00 -0400",
+            snippet="Our recruiting team would like to review your application.",
+        )
+        evaluated = evaluate_message(
+            message,
+            apply_sessions=[],
+            allowed_statuses={"submitted"},
+            require_ats=True,
+            source_strictness="strict_career_domains",
+            linkedin_mode="linkedin_apply_only",
+        )
+        self.assertTrue(evaluated["include"])
+        self.assertEqual(evaluated["source_bucket"], "recruiter_direct")
 
     def test_matches_company_acronym_with_title_overlap(self):
         message = ScanMessage(

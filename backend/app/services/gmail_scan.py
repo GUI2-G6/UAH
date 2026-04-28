@@ -70,6 +70,39 @@ JOB_UPDATE_KEYWORDS = (
     "next steps",
     "status update",
 )
+NEGATIVE_INTENT_KEYWORDS = (
+    "deal awaits",
+    "limited time offer",
+    "coupon",
+    "promo",
+    "newsletter",
+    "breaking news",
+    "view in browser",
+    "premium",
+    "learn how to",
+    "support hunger",
+    "digest",
+    "unsubscribe",
+)
+JOB_PLATFORM_HINTS = ("linkedin", "ripplematch", "handshake", "indeed", "ziprecruiter")
+RECRUITER_HINTS = ("candidatecare", "career", "careers", "talent", "recruit")
+LINKEDIN_APPLY_SIGNALS = (
+    "your application was sent",
+    "application was sent",
+    "application submitted",
+    "jobs-noreply",
+    "job application",
+    "thanks for your interest",
+    "what's next",
+)
+LINKEDIN_NON_APPLY_SIGNALS = (
+    "premium",
+    "next steps after adding",
+    "share their thoughts",
+    "learn how to stand out",
+    "profile",
+    "connection",
+)
 
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]{3,}", re.IGNORECASE)
 _CONTROL_PATTERN = re.compile(r"[\x00-\x1F\x7F]+")
@@ -215,6 +248,38 @@ def is_job_update_message(subject: str, snippet: str, body: str = "") -> bool:
     return any(keyword in combined for keyword in JOB_UPDATE_KEYWORDS)
 
 
+def _intent_score(subject: str, snippet: str, body: str = "") -> int:
+    combined = f"{(subject or '').lower()} {(snippet or '').lower()} {(body or '').lower()}"
+    return sum(1 for keyword in JOB_UPDATE_KEYWORDS if keyword in combined)
+
+
+def _negative_intent_detected(subject: str, snippet: str, body: str = "") -> bool:
+    combined = f"{(subject or '').lower()} {(snippet or '').lower()} {(body or '').lower()}"
+    return any(keyword in combined for keyword in NEGATIVE_INTENT_KEYWORDS)
+
+
+def _source_bucket(from_header: str, subject: str, snippet: str) -> str:
+    domain = parse_sender_domain(from_header)
+    combined = f"{domain} {(subject or '').lower()} {(snippet or '').lower()}"
+    if any(hint in combined for hint in ATS_DOMAIN_HINTS):
+        return "ats_portal"
+    if any(hint in combined for hint in JOB_PLATFORM_HINTS):
+        return "job_platform"
+    if any(hint in combined for hint in RECRUITER_HINTS):
+        return "recruiter_direct"
+    return "non_career"
+
+
+def _linkedin_apply_detected(from_header: str, subject: str, snippet: str, body: str = "") -> bool:
+    domain = parse_sender_domain(from_header)
+    if "linkedin" not in domain:
+        return False
+    combined = f"{domain} {(subject or '').lower()} {(snippet or '').lower()} {(body or '').lower()}"
+    if any(marker in combined for marker in LINKEDIN_NON_APPLY_SIGNALS):
+        return False
+    return any(marker in combined for marker in LINKEDIN_APPLY_SIGNALS)
+
+
 def is_ats_message(from_header: str, subject: str, snippet: str) -> bool:
     domain = parse_sender_domain(from_header)
     combined = f"{(subject or '').lower()} {(snippet or '').lower()} {domain}"
@@ -289,6 +354,8 @@ def evaluate_message(
     apply_sessions: Iterable[dict],
     allowed_statuses: set[str],
     require_ats: bool,
+    source_strictness: str = "strict_career_domains",
+    linkedin_mode: str = "linkedin_apply_only",
 ) -> dict:
     subject = sanitize_preview_text(message.subject, max_len=220)
     snippet = sanitize_preview_text(message.snippet, max_len=320)
@@ -299,6 +366,10 @@ def evaluate_message(
     company_hint = extract_company_hint(from_header, subject, snippet, body)
     ats_detected = is_ats_message(from_header, subject, f"{snippet} {body}")
     job_update_detected = is_job_update_message(subject, snippet, body)
+    source_bucket = _source_bucket(from_header, subject, snippet)
+    intent_score = _intent_score(subject, snippet, body)
+    negative_intent_detected = _negative_intent_detected(subject, snippet, body)
+    linkedin_apply_detected = _linkedin_apply_detected(from_header, subject, snippet, body)
 
     matched_applied_job = message_matches_applied_job(
         ScanMessage(subject=subject, from_header=from_header, date=date, snippet=snippet, body=body, source_id=message.source_id),
@@ -308,7 +379,20 @@ def evaluate_message(
 
     include = True
     reason = "included"
-    if require_ats and not (ats_detected or job_update_detected):
+    if source_strictness == "strict_career_domains" and source_bucket == "non_career":
+        include = False
+        reason = "noncareer_source"
+    elif "linkedin" in parse_sender_domain(from_header):
+        if linkedin_mode == "linkedin_off":
+            include = False
+            reason = "linkedin_disabled"
+        elif linkedin_mode == "linkedin_apply_only" and not linkedin_apply_detected:
+            include = False
+            reason = "linkedin_non_apply"
+    elif negative_intent_detected:
+        include = False
+        reason = "negative_intent"
+    elif require_ats and not (ats_detected or (job_update_detected and intent_score >= 2)):
         include = False
         reason = "non_ats_or_job_update"
 
@@ -322,6 +406,10 @@ def evaluate_message(
         "snippet": snippet,
         "ats_detected": ats_detected,
         "job_update_detected": job_update_detected,
+        "linkedin_apply_detected": linkedin_apply_detected,
+        "negative_intent_detected": negative_intent_detected,
+        "source_bucket": source_bucket,
+        "intent_score": intent_score,
         "matched_applied_job": matched_applied_job,
         "include": include,
         "exclude_reason": None if include else reason,

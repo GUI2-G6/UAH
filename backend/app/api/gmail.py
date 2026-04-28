@@ -67,6 +67,8 @@ class GmailScanRequest(BaseModel):
     query: str | None = Field(default=None, max_length=280)
     newer_than_days: int = Field(default=45, ge=1, le=36500)
     max_results: int = Field(default=20, ge=1, le=100)
+    source_strictness: str = Field(default="strict_career_domains", max_length=40)
+    linkedin_mode: str = Field(default="linkedin_apply_only", max_length=40)
 
 
 class GmailSuppressionCreateRequest(BaseModel):
@@ -585,6 +587,12 @@ async def gmail_scan(
     scan_mode = (payload.scan_mode or "new").strip().lower()
     if scan_mode not in {"new", "saved"}:
         raise HTTPException(status_code=400, detail="scan_mode must be 'new' or 'saved'")
+    source_strictness = (payload.source_strictness or "strict_career_domains").strip().lower()
+    if source_strictness not in {"strict_career_domains", "hybrid_job_language"}:
+        raise HTTPException(status_code=400, detail="source_strictness must be 'strict_career_domains' or 'hybrid_job_language'")
+    linkedin_mode = (payload.linkedin_mode or "linkedin_apply_only").strip().lower()
+    if linkedin_mode not in {"linkedin_apply_only", "linkedin_all_jobish", "linkedin_off"}:
+        raise HTTPException(status_code=400, detail="linkedin_mode must be 'linkedin_apply_only', 'linkedin_all_jobish', or 'linkedin_off'")
 
     access_token = await _get_gmail_access_token(current_user.gmail_refresh_token)
     session_scope = _load_apply_session_scope(db, current_user.id, include_unsubmitted=False)
@@ -630,6 +638,10 @@ async def gmail_scan(
         suppressed_chain_hits = 0
         suppression_miss_reasons: dict[str, int] = {"missing_source_id": 0, "missing_thread_signature": 0}
         tracked_updates_applied = 0
+        excluded_by_noncareer_source = 0
+        excluded_by_negative_intent = 0
+        included_by_ats = 0
+        included_by_linkedin_apply = 0
         now = datetime.now(timezone.utc)
 
         for msg_id in message_ids[: int(payload.max_results)]:
@@ -669,6 +681,8 @@ async def gmail_scan(
                 apply_sessions=session_scope,
                 allowed_statuses=allowed_statuses,
                 require_ats=True,
+                source_strictness=source_strictness,
+                linkedin_mode=linkedin_mode,
             )
             base_result = {
                 "source_id": evaluated["source_id"],
@@ -679,6 +693,9 @@ async def gmail_scan(
                 "company_hint": evaluated["company_hint"],
                 "snippet": evaluated["snippet"],
                 "ats_detected": evaluated["ats_detected"],
+                "job_update_detected": evaluated.get("job_update_detected"),
+                "source_bucket": evaluated.get("source_bucket"),
+                "intent_score": evaluated.get("intent_score"),
                 "matched_applied_job": evaluated["matched_applied_job"],
             }
             sender_domain, subject_key, company_key = build_thread_signature(
@@ -734,7 +751,15 @@ async def gmail_scan(
                     "tracking_source": "gmail",
                     "confidence": "high",
                 })
+                if evaluated.get("ats_detected"):
+                    included_by_ats += 1
+                if evaluated.get("linkedin_apply_detected"):
+                    included_by_linkedin_apply += 1
             else:
+                if evaluated.get("exclude_reason") == "noncareer_source":
+                    excluded_by_noncareer_source += 1
+                if evaluated.get("exclude_reason") == "negative_intent":
+                    excluded_by_negative_intent += 1
                 excluded_count += 1
 
     if tracked_updates_applied > 0:
@@ -753,6 +778,8 @@ async def gmail_scan(
             "excluded_count": excluded_count,
             "query": query,
             "scan_mode": scan_mode,
+            "source_strictness": source_strictness,
+            "linkedin_mode": linkedin_mode,
             "newer_than_days": int(payload.newer_than_days),
             "max_results": int(payload.max_results),
             "suppression_count": len(suppressions),
@@ -761,6 +788,10 @@ async def gmail_scan(
             "suppression_miss_reasons": suppression_miss_reasons,
             "tracked_updates_applied": tracked_updates_applied,
             "tracked_rows_seen": len(tracked_rows),
+            "excluded_by_noncareer_source": excluded_by_noncareer_source,
+            "excluded_by_negative_intent": excluded_by_negative_intent,
+            "included_by_ats": included_by_ats,
+            "included_by_linkedin_apply": included_by_linkedin_apply,
         },
     }
 

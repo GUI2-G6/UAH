@@ -33,6 +33,9 @@
           <h2 id="tracked-applications">Scan for updates</h2>
           <p class="scan-meta">Last scan: {{ lastRefreshed ? formatTimestamp(lastRefreshed) : 'Not scanned yet' }}</p>
           <p v-if="submittedSessionCount !== null" class="scan-meta">Saved sessions available for analytics: {{ submittedSessionCount }}</p>
+          <p v-if="scanDiagnostics" class="scan-meta">
+            Included ATS: {{ scanDiagnostics.included_by_ats }} · LinkedIn apply: {{ scanDiagnostics.included_by_linkedin_apply }} · Excluded non-career: {{ scanDiagnostics.excluded_by_noncareer_source }} · Excluded promo/news: {{ scanDiagnostics.excluded_by_negative_intent }}
+          </p>
         </template>
 
         <div class="scan-primary-actions section-block">
@@ -86,6 +89,21 @@
               <option :value="20">20 results</option>
               <option :value="50">50 results</option>
               <option :value="100">100 results</option>
+            </select>
+          </div>
+          <div class="advanced-field">
+            <label for="source-strictness">Source strictness</label>
+            <select id="source-strictness" v-model="sourceStrictness" class="scan-input" :disabled="!gmailConnected">
+              <option value="strict_career_domains">Strict career domains</option>
+              <option value="hybrid_job_language">Hybrid (allow strong job language)</option>
+            </select>
+          </div>
+          <div class="advanced-field">
+            <label for="linkedin-mode">LinkedIn handling</label>
+            <select id="linkedin-mode" v-model="linkedinMode" class="scan-input" :disabled="!gmailConnected">
+              <option value="linkedin_apply_only">LinkedIn application emails only</option>
+              <option value="linkedin_all_jobish">Most LinkedIn job-ish emails</option>
+              <option value="linkedin_off">Exclude LinkedIn</option>
             </select>
           </div>
         </section>
@@ -195,10 +213,13 @@
                 selectedStatusFilter: 'unknown',
                 applications: [],
                 submittedSessionCount: null,
+                scanDiagnostics: null,
                 scanQuery: '',
                 scanNewerThanDays: 45,
                 scanMaxResults: 20,
                 scanCustomDays: null,
+                sourceStrictness: 'strict_career_domains',
+                linkedinMode: 'linkedin_apply_only',
                 suppressions: [],
                 suppressionsOpen: false,
                 selectedKeys: {},
@@ -291,6 +312,14 @@
             this.submittedSessionCount = Number.isFinite(Number(record?.scan_scope?.applied_job_candidates))
                 ? Number(record.scan_scope.applied_job_candidates)
                 : null
+            this.scanDiagnostics = record?.scan_scope && typeof record.scan_scope === 'object'
+                ? {
+                    included_by_ats: Number(record.scan_scope.included_by_ats || 0),
+                    included_by_linkedin_apply: Number(record.scan_scope.included_by_linkedin_apply || 0),
+                    excluded_by_noncareer_source: Number(record.scan_scope.excluded_by_noncareer_source || 0),
+                    excluded_by_negative_intent: Number(record.scan_scope.excluded_by_negative_intent || 0),
+                }
+                : null
         },
         formatTimestamp(value) {
             if (!value) return 'Unknown'
@@ -309,6 +338,8 @@
             try {
                 const record = await runGmailScan({
                     scan_mode: this.scanMode,
+                    source_strictness: this.sourceStrictness,
+                    linkedin_mode: this.linkedinMode,
                     query: this.scanQuery,
                     newer_than_days: Number(this.scanCustomDays || this.scanNewerThanDays || 45),
                     max_results: this.scanMaxResults,

@@ -4,6 +4,9 @@
       <h3>{{ application.company || 'Unknown company' }}</h3>
       <p class="application-status-chip" :class="`is-${statusTone}`">{{ readableStatus }}</p>
     </header>
+    <p class="application-meta">
+      <span class="source-badge">{{ sourceBadge }}</span>
+    </p>
     <p class="application-role">{{ application.role || 'Untitled role' }}</p>
     <p class="application-meta">{{ application.from || 'Unknown sender' }}</p>
     <p class="application-meta">{{ formattedDate }}</p>
@@ -38,6 +41,14 @@ export default {
       if (!value) return 'Date unavailable'
       const date = new Date(value)
       return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString()
+    },
+    sourceBadge() {
+      const bucket = String(this.application.source_bucket || '').toLowerCase()
+      if (bucket === 'ats_portal') return 'ATS'
+      if (bucket === 'job_platform' && this.application.linkedin_apply_detected === true) return 'LinkedIn Application'
+      if (bucket === 'recruiter_direct') return 'Recruiter'
+      if (bucket === 'job_platform') return 'Job Platform'
+      return 'Career Update'
     },
   },
 }
@@ -74,6 +85,16 @@ export default {
   color: var(--color-text-primary);
   font-size: 0.93rem;
   line-height: 1.4;
+}
+
+.source-badge {
+  display: inline-flex;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  background: var(--color-surface-muted);
 }
 
 .application-status-chip {
