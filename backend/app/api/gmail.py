@@ -2,6 +2,7 @@ import secrets
 import base64
 import hashlib
 import httpx
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 from cryptography.fernet import Fernet
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -11,7 +12,7 @@ from urllib.parse import urlencode
 from app.db.session import get_db
 from app.models.user import User
 from app.models.user import GmailSuppression
-from app.models.apply_session import ApplySession
+from app.models.apply_session import ApplySession, TrackedApplication
 from app.api.deps import get_current_user, require_admin_or_developer
 from app.core.rate_limit import enforce_subject_rate_limit
 from app.core.config import settings
@@ -59,7 +60,7 @@ class GmailDebugScanRequest(BaseModel):
 
 class GmailScanRequest(BaseModel):
     query: str | None = Field(default=None, max_length=280)
-    newer_than_days: int = Field(default=45, ge=1, le=365)
+    newer_than_days: int = Field(default=45, ge=1, le=36500)
     max_results: int = Field(default=20, ge=1, le=100)
     include_provisional: bool = Field(default=True)
 
@@ -432,6 +433,16 @@ async def gmail_scan(
         .order_by(GmailSuppression.created_at.desc(), GmailSuppression.id.desc())
         .all()
     )
+    tracked_rows = (
+        db.query(TrackedApplication)
+        .filter(
+            TrackedApplication.user_id == current_user.id,
+            TrackedApplication.selection_state == "active",
+        )
+        .all()
+    )
+    tracked_by_source_ref = {str(row.source_ref or ""): row for row in tracked_rows if row.source_ref}
+    tracked_by_thread_key = {str(row.thread_key or ""): row for row in tracked_rows if row.thread_key}
 
     async with httpx.AsyncClient() as client:
         resp = await client.get(search_url, headers={"Authorization": f"Bearer {access_token}"})
@@ -451,6 +462,8 @@ async def gmail_scan(
         suppressed_message_hits = 0
         suppressed_chain_hits = 0
         suppression_miss_reasons: dict[str, int] = {"missing_source_id": 0, "missing_thread_signature": 0}
+        tracked_updates_applied = 0
+        now = datetime.now(timezone.utc)
 
         for msg_id in message_ids[: int(payload.max_results)]:
             msg_resp = await client.get(
@@ -511,6 +524,17 @@ async def gmail_scan(
                 "gmail_open_url_direct": direct_url,
                 "gmail_open_url_fallback": fallback_url,
             }
+            tracked_match = tracked_by_source_ref.get(str(evaluated["source_id"] or "")) or tracked_by_thread_key.get(thread_key)
+            if tracked_match:
+                tracked_match.latest_status = str(evaluated.get("detected_status") or tracked_match.latest_status or "")
+                tracked_match.last_update_at = now
+                tracked_match.has_new_update = True
+                tracked_updates_applied += 1
+                base_result["tracked_id"] = tracked_match.id
+                base_result["has_new_update"] = True
+            else:
+                base_result["tracked_id"] = None
+                base_result["has_new_update"] = False
             matched_suppression = next((row for row in suppressions if _suppression_matches(evaluated, row)), None)
             if evaluated.get("include"):
                 if matched_suppression:
@@ -550,6 +574,9 @@ async def gmail_scan(
             else:
                 excluded_count += 1
 
+    if tracked_updates_applied > 0:
+        db.commit()
+
     return {
         "gmail_email": current_user.gmail_email,
         "results_count": len(included_results),
@@ -571,6 +598,8 @@ async def gmail_scan(
             "suppressed_message_hits": suppressed_message_hits,
             "suppressed_chain_hits": suppressed_chain_hits,
             "suppression_miss_reasons": suppression_miss_reasons,
+            "tracked_updates_applied": tracked_updates_applied,
+            "tracked_rows_seen": len(tracked_rows),
         },
     }
 

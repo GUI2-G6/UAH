@@ -1059,6 +1059,7 @@ function createDefaultState() {
     savedJobs: [],
     mockApplySessions: createDefaultMockApplySessions(user),
     gmailSuppressions: [],
+    trackedApplications: [],
     mockTesting: {
       scanCount: 0,
       lastScenarioKey: '',
@@ -1071,6 +1072,7 @@ function createDefaultState() {
       profile: 2,
       parseJob: 100,
       savedJob: 1,
+      trackedApplication: 1,
     },
   }
 }
@@ -1115,6 +1117,24 @@ function ensureStateShape(state) {
       created_at: normalizeIsoDate(row?.created_at) || nowIso(),
     }))
     .filter((row) => row.id > 0)
+  safe.trackedApplications = ensureArray(safe.trackedApplications, [])
+    .map((row, index) => ({
+      id: Number(row?.id || index + 1),
+      source_type: normalizeTextLower(row?.source_type) || 'gmail',
+      source_ref: normalizeWhitespace(row?.source_ref),
+      thread_key: normalizeWhitespace(row?.thread_key),
+      company: normalizeWhitespace(row?.company),
+      job_title: normalizeWhitespace(row?.job_title),
+      latest_status: normalizeTextLower(row?.latest_status) || 'unknown',
+      selection_state: normalizeTextLower(row?.selection_state) || 'active',
+      has_new_update: row?.has_new_update === true,
+      last_update_at: normalizeIsoDate(row?.last_update_at) || null,
+      last_seen_at: normalizeIsoDate(row?.last_seen_at) || null,
+      metadata: row?.metadata && typeof row.metadata === 'object' ? row.metadata : {},
+      created_at: normalizeIsoDate(row?.created_at) || nowIso(),
+      updated_at: normalizeIsoDate(row?.updated_at) || nowIso(),
+    }))
+    .filter((row) => row.id > 0)
   safe.mockTesting = safe.mockTesting && typeof safe.mockTesting === 'object' ? safe.mockTesting : {}
   safe.mockTesting.scanCount = Number(safe.mockTesting.scanCount || 0)
   safe.mockTesting.lastScenarioKey = normalizeWhitespace(safe.mockTesting.lastScenarioKey)
@@ -1126,6 +1146,7 @@ function ensureStateShape(state) {
   safe.nextIds.profile = Number(safe.nextIds.profile || safe.profiles.length + 1)
   safe.nextIds.parseJob = Number(safe.nextIds.parseJob || 100)
   safe.nextIds.savedJob = Number(safe.nextIds.savedJob || safe.savedJobs.length + 1)
+  safe.nextIds.trackedApplication = Number(safe.nextIds.trackedApplication || safe.trackedApplications.length + 1)
 
   if (!safe.profiles.length) {
     safe.profiles = [createProfile(safe.user)]
@@ -2545,7 +2566,7 @@ function buildMockGmailScanPayload(state, options = {}) {
   const submittedCompanies = new Set(submittedSessions.map((session) => normalizeTextLower(session.company)))
   const includeProvisional = options?.include_provisional !== false
   const maxResults = Math.min(100, Math.max(1, Number(options?.max_results || 20)))
-  const newerThanDays = Math.min(365, Math.max(1, Number(options?.newer_than_days || 45)))
+  const newerThanDays = Math.min(36500, Math.max(1, Number(options?.newer_than_days || 45)))
   const candidates = buildMockGmailCandidates(state, scenario)
     .filter((row) => {
       const ts = new Date(row.date).getTime()
@@ -2598,6 +2619,21 @@ function buildMockGmailScanPayload(state, options = {}) {
   })
   const included = evaluated.filter((row) => row.include && !row.suppressed)
   const provisional = evaluated.filter((row) => !row.include && row.ats_detected && !row.suppressed)
+  const trackedRows = ensureArray(state.trackedApplications, []).filter((row) => normalizeTextLower(row.selection_state) === 'active')
+  const trackedBySource = new Map(trackedRows.map((row) => [normalizeWhitespace(row.source_ref), row]))
+  const trackedByThread = new Map(trackedRows.map((row) => [normalizeWhitespace(row.thread_key), row]))
+  let trackedUpdatesApplied = 0
+  for (const row of [...included, ...provisional]) {
+    const tracked = trackedBySource.get(normalizeWhitespace(row.source_id)) || trackedByThread.get(normalizeWhitespace(row.thread_key))
+    if (!tracked) continue
+    tracked.latest_status = normalizeTextLower(row.detected_status) || tracked.latest_status
+    tracked.has_new_update = true
+    tracked.last_update_at = nowIso()
+    tracked.updated_at = nowIso()
+    row.tracked_id = tracked.id
+    row.has_new_update = true
+    trackedUpdatesApplied += 1
+  }
   const results = scenario.profile === 'empty'
     ? []
     : (scenario.profile === 'large' ? included.slice(0, maxResults) : included.slice(0, maxResults))
@@ -2626,6 +2662,8 @@ function buildMockGmailScanPayload(state, options = {}) {
         suppressed_message_hits: 0,
         suppressed_chain_hits: 0,
         suppression_miss_reasons: { missing_source_id: 0, missing_thread_signature: 0 },
+        tracked_updates_applied: trackedUpdatesApplied,
+        tracked_rows_seen: trackedRows.length,
         scenario_profile: scenario.profile,
       },
     },
@@ -2729,6 +2767,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
         '/api/jobs/debug/probe/live-search': {},
         '/api/integrations/gmail/debug/simulate-scan': {},
         '/api/integrations/gmail/scan': {},
+        '/api/applications/tracked': {},
         '/api/apply-sessions': {},
         '/api/providers/attribution': {},
       },
@@ -3205,6 +3244,86 @@ async function handleMockApiRequest(request, requestUrl, state) {
     state.mockApplySessions = sessions
     saveState(state)
     return toJsonResponse({ status: 'ok', saved_jobs_seen: savedJobs.length, created_sessions: created, skipped_existing: skipped })
+  }
+
+  if (pathname === '/api/applications/tracked' && method === 'GET') {
+    const rows = ensureArray(state.trackedApplications, [])
+      .filter((row) => normalizeTextLower(row.selection_state) === 'active')
+      .sort((a, b) => {
+        if (a.has_new_update !== b.has_new_update) return a.has_new_update ? -1 : 1
+        return String(b.updated_at || '').localeCompare(String(a.updated_at || ''))
+      })
+    return toJsonResponse({ tracked_applications: rows })
+  }
+
+  if (pathname === '/api/applications/tracked/select' && method === 'POST') {
+    const body = await parseJsonBody(request)
+    const selections = ensureArray(body?.selections, [])
+    let created = 0
+    let updated = 0
+    for (const row of selections) {
+      const sourceType = normalizeTextLower(row?.source_type) || 'gmail'
+      const sourceRef = normalizeWhitespace(row?.source_ref)
+      if (!sourceRef) continue
+      const existing = ensureArray(state.trackedApplications, []).find((item) => (
+        normalizeTextLower(item.source_type) === sourceType && normalizeWhitespace(item.source_ref) === sourceRef
+      ))
+      if (existing) {
+        existing.thread_key = normalizeWhitespace(row?.thread_key) || existing.thread_key
+        existing.company = normalizeWhitespace(row?.company) || existing.company
+        existing.job_title = normalizeWhitespace(row?.job_title) || existing.job_title
+        existing.latest_status = normalizeTextLower(row?.latest_status) || existing.latest_status
+        existing.selection_state = 'active'
+        existing.updated_at = nowIso()
+        updated += 1
+        continue
+      }
+      const nextId = Number(state.nextIds.trackedApplication || 1)
+      state.nextIds.trackedApplication = nextId + 1
+      state.trackedApplications.unshift({
+        id: nextId,
+        source_type: sourceType,
+        source_ref: sourceRef,
+        thread_key: normalizeWhitespace(row?.thread_key),
+        company: normalizeWhitespace(row?.company),
+        job_title: normalizeWhitespace(row?.job_title),
+        latest_status: normalizeTextLower(row?.latest_status) || 'unknown',
+        selection_state: 'active',
+        has_new_update: false,
+        last_update_at: null,
+        last_seen_at: nowIso(),
+        metadata: row?.metadata && typeof row.metadata === 'object' ? row.metadata : {},
+        created_at: nowIso(),
+        updated_at: nowIso(),
+      })
+      created += 1
+    }
+    saveState(state)
+    return toJsonResponse({ status: 'ok', created, updated })
+  }
+
+  if (/^\/api\/applications\/tracked\/\d+$/.test(pathname) && method === 'PATCH') {
+    const trackedId = Number(pathname.split('/').pop() || 0)
+    const body = await parseJsonBody(request)
+    const action = normalizeTextLower(body?.action) || 'mark_seen'
+    const target = ensureArray(state.trackedApplications, []).find((row) => Number(row.id) === trackedId)
+    if (!target) {
+      return toJsonResponse({ detail: 'Tracked application not found' }, 404)
+    }
+    if (action === 'mark_seen') {
+      target.has_new_update = false
+      target.last_seen_at = nowIso()
+      target.updated_at = nowIso()
+    } else if (action === 'untrack' || action === 'archive') {
+      target.selection_state = 'archived'
+      target.has_new_update = false
+      target.last_seen_at = nowIso()
+      target.updated_at = nowIso()
+    } else {
+      return toJsonResponse({ detail: 'Unsupported action' }, 400)
+    }
+    saveState(state)
+    return toJsonResponse({ status: 'ok', tracked_application: target })
   }
 
   if (pathname === '/api/account/change-name' && method === 'PUT') {

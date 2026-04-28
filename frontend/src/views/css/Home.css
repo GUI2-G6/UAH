@@ -160,6 +160,71 @@
   color: var(--color-text-muted);
   font-size: 0.9rem;
 }
+
+.candidate-checkbox {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.saved-candidate-panel {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--color-surface);
+  display: grid;
+  gap: 8px;
+}
+
+.saved-candidate-panel h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.saved-candidate-row {
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.tracked-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.tracked-title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.tracked-meta {
+  margin: 2px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+}
+
+.tracked-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.update-tick {
+  border-radius: 999px;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--color-success-600);
+  padding: 4px 8px;
+  font-size: 0.8rem;
+}
 @media (max-width: 768px) {
   .greeting {
     padding: 16px;

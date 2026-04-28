@@ -19,12 +19,13 @@ import time
 from urllib.parse import urlencode, urlparse
 from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_admin_user
 from app.models.user import User, SavedJob
-from app.models.apply_session import ApplySession
+from app.models.apply_session import ApplySession, TrackedApplication
 from app.db.session import get_db
 from app.google.service import GoogleAuthService
 from app.schemas.user import SaveJobRequest
@@ -82,6 +83,24 @@ TIMEZONE_TOKEN_PATTERN = re.compile(
     r"\b(eastern|central|mountain|pacific|est|edt|cst|cdt|mst|mdt|pst|pdt)\b",
     flags=re.IGNORECASE,
 )
+
+
+class TrackedSelectionItem(BaseModel):
+    source_type: str = Field(default="gmail", max_length=40)
+    source_ref: str = Field(default="", max_length=255)
+    thread_key: str | None = Field(default=None, max_length=500)
+    company: str | None = Field(default=None, max_length=255)
+    job_title: str | None = Field(default=None, max_length=255)
+    latest_status: str | None = Field(default=None, max_length=80)
+    metadata: dict | None = None
+
+
+class TrackedSelectionRequest(BaseModel):
+    selections: list[TrackedSelectionItem] = Field(default_factory=list)
+
+
+class TrackedApplicationPatchRequest(BaseModel):
+    action: str = Field(default="mark_seen", max_length=40)
 EXCLUSION_SEGMENT_PATTERN = re.compile(r"(?:except|excluding)\s+([^.;\n]+)", flags=re.IGNORECASE)
 EXCLUSION_INLINE_PATTERN = re.compile(
     r"(?:not\s+available\s+in|unavailable\s+in|outside\s+of)\s+([^.;\n]+)",
@@ -3054,6 +3073,146 @@ async def backfill_apply_sessions_from_saved_jobs(
         "created_sessions": created,
         "skipped_existing": skipped,
     }
+
+
+def _serialize_tracked_application(row: TrackedApplication) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "source_type": row.source_type,
+        "source_ref": row.source_ref,
+        "thread_key": row.thread_key,
+        "company": row.company,
+        "job_title": row.job_title,
+        "latest_status": row.latest_status,
+        "selection_state": row.selection_state,
+        "has_new_update": row.has_new_update is True,
+        "last_update_at": row.last_update_at.isoformat() if row.last_update_at else None,
+        "last_seen_at": row.last_seen_at.isoformat() if row.last_seen_at else None,
+        "metadata": row.metadata_json or {},
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+@router.post("/applications/tracked/select", tags=["applications"])
+async def save_tracked_applications(
+    payload: TrackedSelectionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    created = 0
+    updated = 0
+    now = datetime.now(timezone.utc)
+    for item in payload.selections:
+        source_type = (item.source_type or "").strip().lower() or "gmail"
+        source_ref = (item.source_ref or "").strip()
+        if not source_ref:
+            continue
+        existing = (
+            db.query(TrackedApplication)
+            .filter(
+                TrackedApplication.user_id == current_user.id,
+                TrackedApplication.source_type == source_type,
+                TrackedApplication.source_ref == source_ref,
+            )
+            .first()
+        )
+        if existing:
+            existing.thread_key = (item.thread_key or "").strip() or existing.thread_key
+            existing.company = (item.company or "").strip() or existing.company
+            existing.job_title = (item.job_title or "").strip() or existing.job_title
+            existing.latest_status = (item.latest_status or "").strip() or existing.latest_status
+            existing.selection_state = "active"
+            existing.metadata_json = item.metadata or existing.metadata_json
+            updated += 1
+            continue
+
+        apply_session_id = None
+        company = (item.company or "").strip()
+        job_title = (item.job_title or "").strip()
+        if company and job_title:
+            session = (
+                db.query(ApplySession)
+                .filter(
+                    ApplySession.user_id == current_user.id,
+                    func.lower(ApplySession.company) == company.lower(),
+                    func.lower(ApplySession.job_title) == job_title.lower(),
+                )
+                .order_by(ApplySession.started_at.desc())
+                .first()
+            )
+            apply_session_id = session.id if session else None
+        row = TrackedApplication(
+            user_id=current_user.id,
+            apply_session_id=apply_session_id,
+            source_type=source_type,
+            source_ref=source_ref,
+            thread_key=(item.thread_key or "").strip() or None,
+            company=company or None,
+            job_title=job_title or None,
+            latest_status=(item.latest_status or "").strip() or None,
+            selection_state="active",
+            has_new_update=False,
+            last_seen_at=now,
+            metadata_json=item.metadata or {},
+        )
+        db.add(row)
+        created += 1
+    db.commit()
+    return {"status": "ok", "created": created, "updated": updated}
+
+
+@router.get("/applications/tracked", tags=["applications"])
+async def list_tracked_applications(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    rows = (
+        db.query(TrackedApplication)
+        .filter(
+            TrackedApplication.user_id == current_user.id,
+            TrackedApplication.selection_state == "active",
+        )
+        .order_by(
+            TrackedApplication.has_new_update.desc(),
+            TrackedApplication.last_update_at.desc().nullslast(),
+            TrackedApplication.created_at.desc().nullslast(),
+            TrackedApplication.id.desc(),
+        )
+        .limit(500)
+        .all()
+    )
+    return {"tracked_applications": [_serialize_tracked_application(row) for row in rows]}
+
+
+@router.patch("/applications/tracked/{tracked_id}", tags=["applications"])
+async def patch_tracked_application(
+    tracked_id: int,
+    payload: TrackedApplicationPatchRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    row = (
+        db.query(TrackedApplication)
+        .filter(TrackedApplication.id == tracked_id, TrackedApplication.user_id == current_user.id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Tracked application not found")
+    action = (payload.action or "mark_seen").strip().lower()
+    now = datetime.now(timezone.utc)
+    if action == "mark_seen":
+        row.has_new_update = False
+        row.last_seen_at = now
+    elif action in {"untrack", "archive"}:
+        row.selection_state = "archived"
+        row.has_new_update = False
+        row.last_seen_at = now
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported action")
+    db.commit()
+    db.refresh(row)
+    return {"status": "ok", "tracked_application": _serialize_tracked_application(row)}
 
 GOOGLE_OAUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"

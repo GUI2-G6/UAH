@@ -63,6 +63,8 @@ function normalizeResult(item = {}) {
     thread_key: sanitizeText(item.thread_key, 380),
     gmail_open_url_direct: sanitizeText(item.gmail_open_url_direct, 500),
     gmail_open_url_fallback: sanitizeText(item.gmail_open_url_fallback, 500),
+    tracked_id: Number.isFinite(Number(item.tracked_id)) ? Number(item.tracked_id) : null,
+    has_new_update: item.has_new_update === true,
   }
 }
 
@@ -140,7 +142,7 @@ function normalizeScanOptions(options = {}) {
   const maxResultsRaw = Number(options?.max_results)
   return {
     query: sanitizeText(options?.query, 280) || null,
-    newer_than_days: Number.isFinite(newerThanRaw) ? Math.min(365, Math.max(1, Math.round(newerThanRaw))) : 45,
+    newer_than_days: Number.isFinite(newerThanRaw) ? Math.min(36500, Math.max(1, Math.round(newerThanRaw))) : 45,
     max_results: Number.isFinite(maxResultsRaw) ? Math.min(100, Math.max(1, Math.round(maxResultsRaw))) : 20,
     include_provisional: options?.include_provisional !== false,
   }
