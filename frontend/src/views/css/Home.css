@@ -9,6 +9,26 @@
   padding: 20px;
 }
 
+.application-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.application-hero h1 {
+  margin: 0 0 6px;
+}
+
+.application-hero .hero-copy {
+  max-width: 38rem;
+  color: var(--color-text-secondary);
+}
+
+.application-hero .hero-copy p {
+  margin: 0;
+}
+
 .dashboard {
   background: transparent;
   flex: 1;
@@ -48,6 +68,18 @@
   display: grid;
   gap: 10px;
   padding-top: 12px;
+}
+
+.application-scan-card :deep(.ui-card__header) {
+  display: grid;
+  gap: 6px;
+}
+
+.scan-primary-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .home-application-card {
@@ -172,6 +204,27 @@
   color: var(--color-text-primary);
 }
 
+.advanced-options-panel {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  background: var(--color-surface);
+}
+
+.advanced-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.advanced-field label {
+  font-size: 0.86rem;
+  color: var(--color-text-secondary);
+}
+
 .scan-toggle {
   display: inline-flex;
   align-items: center;
@@ -200,6 +253,40 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.results-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--color-surface);
+}
+
+.toolbar-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.submit-btn {
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: 8px 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .suppression-manager {
@@ -237,26 +324,6 @@
   font-size: 0.9rem;
 }
 
-.saved-candidate-panel {
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 10px;
-  background: var(--color-surface);
-  display: grid;
-  gap: 8px;
-}
-
-.saved-candidate-panel h3 {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.saved-candidate-row {
-  border: 1px dashed var(--border-color);
-  border-radius: 8px;
-  padding: 8px 10px;
-}
-
 .tracked-row {
   display: flex;
   justify-content: space-between;
@@ -283,6 +350,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .update-tick {
@@ -293,9 +361,37 @@
   padding: 4px 8px;
   font-size: 0.8rem;
 }
+
+.suppression-panel :deep(.ui-card__body),
+.tracked-panel :deep(.ui-card__body),
+.application-results-card :deep(.ui-card__body) {
+  gap: 12px;
+}
+
+.submit-btn.is-primary {
+  background: var(--color-primary-600);
+  border-color: var(--color-primary-600);
+  color: #fff;
+}
+
+.submit-btn.is-ghost {
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.submit-btn.is-danger {
+  background: rgba(220, 38, 38, 0.12);
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  color: var(--color-danger-600);
+}
 @media (max-width: 768px) {
   .greeting {
     padding: 16px;
+  }
+
+  .application-hero {
+    flex-direction: column;
   }
 
   .dashboard {
@@ -313,6 +409,20 @@
 
   .quick-actions {
     flex-direction: column;
+  }
+
+  .results-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .scan-primary-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .advanced-options-panel {
+    grid-template-columns: 1fr;
   }
 }
 

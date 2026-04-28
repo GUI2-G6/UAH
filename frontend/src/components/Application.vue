@@ -5,7 +5,9 @@
       <p class="application-status-chip" :class="`is-${statusTone}`">{{ readableStatus }}</p>
     </header>
     <p class="application-role">{{ application.role || 'Untitled role' }}</p>
-    <p class="application-meta">Source: {{ application.tracking_source || 'matched' }} · Confidence: {{ application.confidence || 'high' }}</p>
+    <p class="application-meta">
+      Source: {{ readableSource }} · Confidence: {{ application.confidence || 'high' }}
+    </p>
     <p class="application-meta">{{ application.from || 'Unknown sender' }}</p>
     <p class="application-meta">{{ formattedDate }}</p>
     <p v-if="application.snippet" class="application-snippet">{{ application.snippet }}</p>
@@ -34,6 +36,12 @@ export default {
       if (normalized.includes('applied')) return 'applied'
       return 'unknown'
     },
+    readableSource() {
+      const raw = String(this.application.tracking_source || 'matched').toLowerCase()
+      if (raw === 'gmail_provisional') return 'Likely Gmail match'
+      if (raw === 'matched') return 'Matched to tracked application'
+      return raw.replaceAll('_', ' ')
+    },
     formattedDate() {
       const value = this.application.date
       if (!value) return 'Date unavailable'
@@ -47,7 +55,7 @@ export default {
 <style scoped>
 .application-item {
   display: grid;
-  gap: 6px;
+  gap: 7px;
 }
 
 .application-item-header {
@@ -59,19 +67,22 @@ export default {
 
 .application-item-header h3 {
   margin: 0;
+  font-size: 1rem;
+  color: var(--color-text-primary);
 }
 
 .application-role,
 .application-meta {
   margin: 0;
   color: var(--color-text-muted);
-  font-size: 0.9rem;
+  font-size: 0.92rem;
 }
 
 .application-snippet {
   margin: 2px 0 0;
   color: var(--color-text-primary);
-  font-size: 0.92rem;
+  font-size: 0.93rem;
+  line-height: 1.4;
 }
 
 .application-status-chip {

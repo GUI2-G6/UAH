@@ -1,140 +1,180 @@
 <template>
-    <div class="page">
-        <div class="greeting">
-            <h1>Application</h1>
-            <p>Good afternoon, {{displayName}}! Review ATS updates matched to your submitted applications.</p>
-        </div>
-        <div class="dashboard">
-            <Card class="home-card home-stat-card">
-                <template #header>
-                    <h2>Applications</h2>
-                </template>
-                <p id="applied">{{ summary.applied }}</p>
-            </Card>
-            <Card class="home-card home-stat-card">
-                <template #header>
-                    <h2>Interviews</h2>
-                </template>
-                <p id="interviews">{{ summary.interview }}</p>
-            </Card>
-            <Card class="home-card home-stat-card">
-                <template #header>
-                    <h2>Offers</h2>
-                </template>
-                <p id="offers">{{ summary.offer }}</p>
-            </Card>
-            <Card class="home-card home-stat-card">
-                <template #header>
-                    <h2>Rejected</h2>
-                </template>
-                <p id="rejected">{{ summary.rejection }}</p>
-            </Card>
-            <Card class="home-card home-card--wide">
-                <template #header>
-                    <h2 id="tracked-applications">Tracked Applications</h2>
-                    <p v-if="lastRefreshed" class="scan-meta">Last scan: {{ formatTimestamp(lastRefreshed) }}</p>
-                    <p v-if="submittedSessionCount !== null" class="scan-meta">Submitted sessions available for matching: {{ submittedSessionCount }}</p>
-                    <button class="submit-btn" type="button" :disabled="loading || !gmailConnected" @click="scanNow">
-                        {{ loading ? 'Scanning…' : 'Run Gmail scan' }}
-                    </button>
-                    <input v-model.trim="scanQuery" type="text" placeholder="Keyword query override" class="scan-input" :disabled="!gmailConnected">
-                    <select v-model.number="scanNewerThanDays" class="scan-input" :disabled="!gmailConnected">
-                        <option :value="14">Last 14 days</option>
-                        <option :value="30">Last 30 days</option>
-                        <option :value="45">Last 45 days</option>
-                        <option :value="90">Last 90 days</option>
-                        <option :value="180">Last 180 days</option>
-                        <option :value="365">Last 365 days</option>
-                        <option :value="730">Last 2 years</option>
-                        <option :value="1825">Last 5 years</option>
-                        <option :value="3650">Last 10 years</option>
-                    </select>
-                    <input v-model.number="scanCustomDays" type="number" min="1" max="36500" class="scan-input" placeholder="Custom days" :disabled="!gmailConnected">
-                    <select v-model.number="scanMaxResults" class="scan-input" :disabled="!gmailConnected">
-                        <option :value="10">10 results</option>
-                        <option :value="20">20 results</option>
-                        <option :value="50">50 results</option>
-                        <option :value="100">100 results</option>
-                    </select>
-                    <label class="scan-toggle">
-                        <input v-model="scanIncludeProvisional" type="checkbox" :disabled="!gmailConnected">
-                        Include provisional ATS updates
-                    </label>
-                    <select id="app-filter" v-model="selectedStatusFilter">
-                        <option value="all">All statuses</option>
-                        <option value="interview">Interview</option>
-                        <option value="offer">Offer</option>
-                        <option value="rejection">Rejection</option>
-                        <option value="applied">Applied</option>
-                        <option value="unknown">Unknown</option>
-                    </select>
-                    <button class="submit-btn" type="button" :disabled="trackingBusy || !selectedCount" @click="saveSelectedTracked">
-                        {{ trackingBusy ? 'Saving…' : `Save selected (${selectedCount})` }}
-                    </button>
-                </template>
-
-                <p v-if="!gmailConnected" class="empty-state-copy">
-                    Connect Gmail in Settings to enable scans and view matched ATS updates here.
-                    <button class="submit-btn" type="button" @click="$router.push('/settings')">Open Settings</button>
-                </p>
-                <p v-else-if="loading" class="empty-state-copy">Running Gmail scan...</p>
-                <p v-else-if="error" class="empty-state-copy">{{ error }}</p>
-                <p v-else-if="!feedItems.length" class="empty-state-copy">No matched ATS updates yet for this filter.</p>
-
-                <Card 
-                    v-for="(app, index) in feedItems"
-                    :key="`${app.subject}-${index}`"
-                    variant="minimal"
-                    class="home-application-card"
-                >
-                    <label class="candidate-checkbox">
-                        <input type="checkbox" :checked="isSelected(app.selection_key)" @change="toggleSelection(app.selection_key)">
-                        <span>Select candidate</span>
-                    </label>
-                    <Application :application="app" />
-                    <div class="suppression-actions">
-                        <button type="button" class="submit-btn" @click="openMostRecentEmail(app)">Open email</button>
-                        <button type="button" class="submit-btn" @click="suppressMessage(app)">Hide this update</button>
-                        <button type="button" class="submit-btn" @click="suppressThread(app)">Hide this chain</button>
-                    </div>
-                </Card>
-                <Card class="home-card home-card--wide">
-                    <template #header>
-                        <h2>Saved Tracked Applications</h2>
-                        <p class="scan-meta">Selections persist across refresh and devices.</p>
-                        <button class="submit-btn" type="button" :disabled="trackingBusy" @click="loadTrackedApplications">
-                            Refresh tracked list
-                        </button>
-                    </template>
-                    <p v-if="!trackedApplications.length" class="empty-state-copy">No tracked applications saved yet.</p>
-                    <article v-for="row in trackedApplications" :key="`tracked-${row.id}`" class="tracked-row">
-                        <div>
-                            <p class="tracked-title">{{ row.job_title || 'Untitled role' }} · {{ row.company || 'Unknown company' }}</p>
-                            <p class="tracked-meta">{{ row.source_type }} · {{ row.latest_status || 'unknown' }}</p>
-                        </div>
-                        <div class="tracked-actions">
-                            <span v-if="row.has_new_update" class="update-tick">Updated</span>
-                            <button v-if="row?.metadata?.gmail_open_url_direct || row?.metadata?.gmail_open_url_fallback" type="button" class="submit-btn" @click="openMostRecentEmail(row.metadata)">Open email</button>
-                            <button type="button" class="submit-btn" @click="markTrackedSeen(row.id)">Mark seen</button>
-                            <button type="button" class="submit-btn" @click="untrack(row.id)">Untrack</button>
-                        </div>
-                    </article>
-                </Card>
-                <div class="suppression-manager">
-                    <button type="button" class="submit-btn" @click="toggleSuppressions">
-                        {{ suppressionsOpen ? 'Hide suppressed updates' : 'View suppressed updates' }}
-                    </button>
-                    <div v-if="suppressionsOpen" class="suppression-list">
-                        <p v-if="!suppressions.length" class="empty-state-copy">No suppressed updates yet.</p>
-                        <article v-for="row in suppressions" :key="row.id" class="suppression-row">
-                            <p>{{ row.scope }} · {{ row.subject_key || row.source_id || 'suppression' }}</p>
-                            <button type="button" class="submit-btn" @click="unsuppress(row.id)">Unhide</button>
-                        </article>
-                    </div>
-                </div>
-            </Card>
-        </div>
+  <div class="page">
+    <div class="greeting application-hero">
+      <div>
+        <h1>Applications</h1>
+        <p>Hi {{ displayName }}. Keep your job-search updates organized and easy to review.</p>
+      </div>
+      <div class="hero-copy">
+        <p>Scan your Gmail updates, choose the entries you care about, and keep a clean tracked list with update badges.</p>
+      </div>
     </div>
+
+    <div class="dashboard">
+      <Card class="home-card home-stat-card">
+        <template #header><h2>Applied</h2></template>
+        <p id="applied" class="kpi-value">{{ summary.applied }}</p>
+      </Card>
+      <Card class="home-card home-stat-card">
+        <template #header><h2>Interviews</h2></template>
+        <p id="interviews" class="kpi-value">{{ summary.interview }}</p>
+      </Card>
+      <Card class="home-card home-stat-card">
+        <template #header><h2>Offers</h2></template>
+        <p id="offers" class="kpi-value">{{ summary.offer }}</p>
+      </Card>
+      <Card class="home-card home-stat-card">
+        <template #header><h2>Not moving forward</h2></template>
+        <p id="rejected" class="kpi-value">{{ summary.rejection }}</p>
+      </Card>
+
+      <Card class="home-card home-card--wide application-scan-card">
+        <template #header>
+          <h2 id="tracked-applications">Scan for updates</h2>
+          <p class="scan-meta">Last scan: {{ lastRefreshed ? formatTimestamp(lastRefreshed) : 'Not scanned yet' }}</p>
+          <p v-if="submittedSessionCount !== null" class="scan-meta">Submitted sessions available for matching: {{ submittedSessionCount }}</p>
+        </template>
+
+        <div class="scan-primary-actions">
+          <button class="submit-btn is-primary" type="button" :disabled="loading || !gmailConnected" @click="scanNow">
+            {{ loading ? 'Scanning…' : 'Scan Gmail for updates' }}
+          </button>
+          <button class="submit-btn" type="button" :disabled="trackingBusy || !selectedCount" @click="saveSelectedTracked">
+            {{ trackingBusy ? 'Saving…' : `Save selected for tracking (${selectedCount})` }}
+          </button>
+          <button class="submit-btn is-ghost" type="button" @click="showAdvancedOptions = !showAdvancedOptions">
+            {{ showAdvancedOptions ? 'Hide advanced scan options' : 'Show advanced scan options' }}
+          </button>
+        </div>
+
+        <p v-if="!gmailConnected" class="empty-state-copy">
+          Connect Gmail in Settings to run scans.
+          <button class="submit-btn" type="button" @click="$router.push('/settings')">Open Settings</button>
+        </p>
+        <p v-else-if="error" class="empty-state-copy">{{ error }}</p>
+
+        <section v-if="showAdvancedOptions" class="advanced-options-panel">
+          <div class="advanced-field">
+            <label for="scan-query">Keyword search</label>
+            <input id="scan-query" v-model.trim="scanQuery" type="text" placeholder="Try: interview OR offer OR application" class="scan-input" :disabled="!gmailConnected">
+          </div>
+          <div class="advanced-field">
+            <label for="scan-window">Time window</label>
+            <select id="scan-window" v-model.number="scanNewerThanDays" class="scan-input" :disabled="!gmailConnected">
+              <option :value="14">Last 14 days</option>
+              <option :value="30">Last 30 days</option>
+              <option :value="45">Last 45 days</option>
+              <option :value="90">Last 90 days</option>
+              <option :value="180">Last 180 days</option>
+              <option :value="365">Last 365 days</option>
+              <option :value="730">Last 2 years</option>
+              <option :value="1825">Last 5 years</option>
+              <option :value="3650">Last 10 years</option>
+            </select>
+          </div>
+          <div class="advanced-field">
+            <label for="scan-custom-days">Custom days</label>
+            <input id="scan-custom-days" v-model.number="scanCustomDays" type="number" min="1" max="36500" class="scan-input" placeholder="Any number of days" :disabled="!gmailConnected">
+          </div>
+          <div class="advanced-field">
+            <label for="scan-max-results">Max results</label>
+            <select id="scan-max-results" v-model.number="scanMaxResults" class="scan-input" :disabled="!gmailConnected">
+              <option :value="10">10 results</option>
+              <option :value="20">20 results</option>
+              <option :value="50">50 results</option>
+              <option :value="100">100 results</option>
+            </select>
+          </div>
+          <label class="scan-toggle">
+            <input v-model="scanIncludeProvisional" type="checkbox" :disabled="!gmailConnected">
+            Include likely matches that still need confirmation
+          </label>
+        </section>
+      </Card>
+
+      <Card class="home-card home-card--wide application-results-card">
+        <template #header>
+          <h2>Candidate updates</h2>
+          <p class="scan-meta">{{ feedItems.length }} update{{ feedItems.length === 1 ? '' : 's' }} in this view</p>
+        </template>
+
+        <div class="results-toolbar">
+          <select id="app-filter" v-model="selectedStatusFilter">
+            <option value="all">All statuses</option>
+            <option value="interview">Interview</option>
+            <option value="offer">Offer</option>
+            <option value="rejection">Not moving forward</option>
+            <option value="applied">Applied</option>
+            <option value="unknown">Needs review</option>
+          </select>
+          <div class="toolbar-actions">
+            <button class="submit-btn is-ghost" type="button" :disabled="!feedItems.length" @click="selectAllVisible">Select all visible</button>
+            <button class="submit-btn is-ghost" type="button" :disabled="!selectedCount" @click="clearSelection">Clear selection</button>
+          </div>
+        </div>
+
+        <p v-if="loading" class="empty-state-copy">Running scan...</p>
+        <p v-else-if="!feedItems.length" class="empty-state-copy">No updates in this filter yet.</p>
+
+        <Card
+          v-for="(app, index) in feedItems"
+          :key="`${app.subject}-${index}`"
+          variant="minimal"
+          class="home-application-card"
+        >
+          <label class="candidate-checkbox">
+            <input type="checkbox" :checked="isSelected(app.selection_key)" @change="toggleSelection(app.selection_key)">
+            <span>Select for tracking</span>
+          </label>
+          <Application :application="app" />
+          <div class="suppression-actions">
+            <button type="button" class="submit-btn is-primary" @click="openMostRecentEmail(app)">Open email</button>
+            <button type="button" class="submit-btn" @click="suppressMessage(app)">Hide this update</button>
+            <button type="button" class="submit-btn" @click="suppressThread(app)">Hide similar emails</button>
+          </div>
+        </Card>
+      </Card>
+
+      <Card class="home-card home-card--wide tracked-panel">
+        <template #header>
+          <h2>Saved tracked applications</h2>
+          <p class="scan-meta">These stay saved and will show update badges after refresh.</p>
+          <button class="submit-btn is-ghost" type="button" :disabled="trackingBusy" @click="loadTrackedApplications">Refresh list</button>
+        </template>
+
+        <p v-if="!trackedApplications.length" class="empty-state-copy">You have not saved any tracked applications yet.</p>
+        <article v-for="row in trackedApplications" :key="`tracked-${row.id}`" class="tracked-row">
+          <div>
+            <p class="tracked-title">{{ row.job_title || 'Untitled role' }} · {{ row.company || 'Unknown company' }}</p>
+            <p class="tracked-meta">{{ row.source_type }} · {{ row.latest_status || 'needs review' }}</p>
+          </div>
+          <div class="tracked-actions">
+            <span v-if="row.has_new_update" class="update-tick">New update</span>
+            <button v-if="row?.metadata?.gmail_open_url_direct || row?.metadata?.gmail_open_url_fallback" type="button" class="submit-btn is-primary" @click="openMostRecentEmail(row.metadata)">Open email</button>
+            <button type="button" class="submit-btn" @click="markTrackedSeen(row.id)">Mark as reviewed</button>
+            <button type="button" class="submit-btn is-danger" @click="untrack(row.id)">Remove from tracked</button>
+          </div>
+        </article>
+      </Card>
+
+      <Card class="home-card home-card--wide suppression-panel">
+        <template #header>
+          <h2>Manage hidden updates</h2>
+          <p class="scan-meta">Use this if you want to restore something you previously hid.</p>
+        </template>
+        <button type="button" class="submit-btn is-ghost" @click="toggleSuppressions">
+          {{ suppressionsOpen ? 'Hide hidden updates list' : 'Show hidden updates list' }}
+        </button>
+        <div v-if="suppressionsOpen" class="suppression-list">
+          <p v-if="!suppressions.length" class="empty-state-copy">No hidden updates.</p>
+          <article v-for="row in suppressions" :key="row.id" class="suppression-row">
+            <p>{{ row.scope }} · {{ row.subject_key || row.source_id || 'suppression' }}</p>
+            <button type="button" class="submit-btn" @click="unsuppress(row.id)">Restore</button>
+          </article>
+        </div>
+      </Card>
+    </div>
+  </div>
 </template>
 
 <script>
@@ -167,6 +207,7 @@
                 selectedKeys: {},
                 trackingBusy: false,
                 trackedApplications: [],
+                showAdvancedOptions: false,
             }
         },
         components: {
@@ -354,6 +395,16 @@
                 ...this.selectedKeys,
                 [normalized]: !this.selectedKeys[normalized],
             }
+        },
+        selectAllVisible() {
+            const next = { ...this.selectedKeys }
+            for (const item of this.feedItems) {
+                next[String(item.selection_key)] = true
+            }
+            this.selectedKeys = next
+        },
+        clearSelection() {
+            this.selectedKeys = {}
         },
         async saveSelectedTracked() {
             const chosenGmail = this.feedItems.filter((row) => this.isSelected(row.selection_key))
