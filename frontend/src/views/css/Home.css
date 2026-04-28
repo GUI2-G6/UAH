@@ -33,7 +33,7 @@
   background: transparent;
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   grid-template-rows: auto auto;
   gap: 16px;
   padding: 16px;

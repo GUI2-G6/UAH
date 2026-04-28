@@ -594,35 +594,37 @@ async def gmail_create_feedback(
     )
     db.add(row)
 
-    suppression = None
+    suppression_rows: list[GmailSuppression] = []
     if triage_label == "not_relevant":
+        note = (payload.false_positive_reason or "not_relevant feedback").strip()[:255]
         if source_id:
-            suppression = GmailSuppression(
+            suppression_rows.append(GmailSuppression(
                 user_id=current_user.id,
                 scope="message",
                 source_id=source_id,
-                note=(payload.false_positive_reason or "not_relevant feedback").strip()[:255],
-            )
-        elif sender_domain and subject_key:
-            suppression = GmailSuppression(
+                note=note,
+            ))
+        if sender_domain and subject_key:
+            suppression_rows.append(GmailSuppression(
                 user_id=current_user.id,
                 scope="thread",
                 sender_domain=sender_domain,
                 subject_key=subject_key,
                 company_key=company_key,
-                note=(payload.false_positive_reason or "not_relevant feedback").strip()[:255],
-            )
-        if suppression:
+                note=note,
+            ))
+        for suppression in suppression_rows:
             db.add(suppression)
 
     db.commit()
     db.refresh(row)
-    if suppression:
+    for suppression in suppression_rows:
         db.refresh(suppression)
     return {
         "status": "ok",
         "feedback": _serialize_feedback(row),
-        "suppression": _serialize_suppression(suppression) if suppression else None,
+        "suppression": _serialize_suppression(suppression_rows[0]) if suppression_rows else None,
+        "suppressions": [_serialize_suppression(item) for item in suppression_rows],
     }
 
 

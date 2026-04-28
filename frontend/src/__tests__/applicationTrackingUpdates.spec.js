@@ -14,7 +14,6 @@ const gmailMocks = vi.hoisted(() => ({
   subscribeGmailUpdates: vi.fn(),
   summarizeGmailResults: vi.fn(),
   listGmailSuppressions: vi.fn(),
-  createGmailSuppression: vi.fn(),
   removeGmailSuppression: vi.fn(),
   createGmailFeedback: vi.fn(),
 }))
@@ -31,7 +30,6 @@ vi.mock('@/lib/gmailUpdates.js', () => ({
   subscribeGmailUpdates: gmailMocks.subscribeGmailUpdates,
   summarizeGmailResults: gmailMocks.summarizeGmailResults,
   listGmailSuppressions: gmailMocks.listGmailSuppressions,
-  createGmailSuppression: gmailMocks.createGmailSuppression,
   removeGmailSuppression: gmailMocks.removeGmailSuppression,
   createGmailFeedback: gmailMocks.createGmailFeedback,
 }))
@@ -64,7 +62,6 @@ describe('Application tracking page updates', () => {
     gmailMocks.subscribeGmailUpdates.mockReset()
     gmailMocks.summarizeGmailResults.mockReset()
     gmailMocks.listGmailSuppressions.mockReset()
-    gmailMocks.createGmailSuppression.mockReset()
     gmailMocks.removeGmailSuppression.mockReset()
     gmailMocks.createGmailFeedback.mockReset()
 
@@ -132,6 +129,7 @@ describe('Application tracking page updates', () => {
     const options = wrapper.findAll('#app-filter option').map((node) => node.text())
     expect(options).toContain('All statuses')
     expect(options).toContain('Action Required')
+    expect(options).toContain('Not moving forward')
     expect(wrapper.vm.selectedStatusFilter).toBe('all')
   })
 
@@ -173,6 +171,54 @@ describe('Application tracking page updates', () => {
     expect(wrapper.vm.applications[0].manual_override_applied).toBe(true)
   })
 
+  it('marks an update as not relevant and removes matching rows from current list', async () => {
+    const wrapper = mount(ApplicationView, {
+      global: {
+        stubs: {
+          Card: cardStub,
+          Application: applicationStub,
+        },
+        mocks: {
+          $router: { push: vi.fn() },
+        },
+      },
+    })
+    await flushPromises()
+    wrapper.vm.applications = [
+      {
+        source_id: 'gmail-1',
+        subject: 'Additional Information Needed',
+        from: 'Careers <do-not-reply@candidatecare.com>',
+        detected_status: 'action_required',
+        status_bucket: 'action_required',
+        sender_domain: 'candidatecare.com',
+        subject_key: 'additional information needed',
+        company_key: 'granite telecommunications',
+        thread_key: 'candidatecare.com|additional information needed|granite telecommunications',
+      },
+      {
+        source_id: 'gmail-2',
+        subject: 'Additional Information Needed',
+        from: 'Careers <do-not-reply@candidatecare.com>',
+        detected_status: 'action_required',
+        status_bucket: 'action_required',
+        sender_domain: 'candidatecare.com',
+        subject_key: 'additional information needed',
+        company_key: 'granite telecommunications',
+        thread_key: 'candidatecare.com|additional information needed|granite telecommunications',
+      },
+    ]
+    gmailMocks.createGmailFeedback.mockResolvedValueOnce({ id: 3, triage_label: 'not_relevant' })
+
+    await wrapper.vm.setManualStatus(wrapper.vm.feedItems[0], 'not_relevant')
+
+    expect(gmailMocks.createGmailFeedback).toHaveBeenCalledWith(expect.objectContaining({
+      source_id: 'gmail-1',
+      triage_label: 'not_relevant',
+    }))
+    expect(wrapper.vm.applications).toHaveLength(0)
+  })
+
   it('shows high-priority section for action required updates', async () => {
     const wrapper = mount(ApplicationView, {
       global: {
@@ -202,5 +248,71 @@ describe('Application tracking page updates', () => {
 
     expect(wrapper.text()).toContain('High Priority: Action Required')
     expect(wrapper.find('#action-required').exists()).toBe(true)
+  })
+
+  it('autosaves tracking when checkbox selection toggles on and off', async () => {
+    const wrapper = mount(ApplicationView, {
+      global: {
+        stubs: {
+          Card: cardStub,
+          Application: applicationStub,
+        },
+        mocks: {
+          $router: { push: vi.fn() },
+        },
+      },
+    })
+    await flushPromises()
+    wrapper.vm.applications = [{
+      source_id: 'gmail-track-1',
+      subject: 'Status update',
+      from: 'Recruiting <jobs@example.com>',
+      detected_status: 'unknown',
+      status_bucket: 'unknown',
+      company_hint: 'Example Co',
+      sender_domain: 'example.com',
+      subject_key: 'status update',
+      company_key: 'example co',
+      thread_key: 'example.com|status update|example co',
+    }]
+
+    authMocks.authedFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ created: 1, updated: 0 }) })
+    authMocks.authedFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ tracked_applications: [{ id: 11, source_ref: 'gmail-track-1' }] }) })
+
+    await wrapper.vm.toggleSelection(wrapper.vm.feedItems[0])
+    expect(authMocks.authedFetch).toHaveBeenCalledWith('/api/applications/tracked/select', expect.any(Object))
+
+    wrapper.vm.trackedApplications = [{ id: 11, source_ref: 'gmail-track-1', thread_key: 'example.com|status update|example co' }]
+    authMocks.authedFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'ok' }) })
+    authMocks.authedFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ tracked_applications: [] }) })
+    await wrapper.vm.toggleSelection(wrapper.vm.feedItems[0])
+    expect(authMocks.authedFetch).toHaveBeenCalledWith('/api/applications/tracked/11', expect.any(Object))
+  })
+
+  it('clears only non-tracked rows in current filtered view', async () => {
+    const wrapper = mount(ApplicationView, {
+      global: {
+        stubs: {
+          Card: cardStub,
+          Application: applicationStub,
+        },
+        mocks: {
+          $router: { push: vi.fn() },
+        },
+      },
+    })
+    await flushPromises()
+    wrapper.vm.selectedStatusFilter = 'unknown'
+    wrapper.vm.applications = [
+      { source_id: 'a', subject: 'A', from: 'x', detected_status: 'unknown', status_bucket: 'unknown', thread_key: 'k1' },
+      { source_id: 'b', subject: 'B', from: 'x', detected_status: 'unknown', status_bucket: 'unknown', thread_key: 'k2' },
+      { source_id: 'c', subject: 'C', from: 'x', detected_status: 'offer', status_bucket: 'offer', thread_key: 'k3' },
+    ]
+    wrapper.vm.selectedKeys = { 'gmail:a': true }
+
+    wrapper.vm.clearFilteredNonTracked()
+
+    const ids = wrapper.vm.applications.map((item) => item.source_id)
+    expect(ids).toEqual(['a', 'c'])
   })
 })

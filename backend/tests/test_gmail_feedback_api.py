@@ -89,7 +89,7 @@ class GmailFeedbackApiTests(unittest.IsolatedAsyncioTestCase):
                 current_user=user,
             )
 
-    async def test_not_relevant_feedback_creates_suppression(self):
+    async def test_not_relevant_feedback_creates_message_and_thread_suppressions(self):
         db = _FakeDb()
         user = SimpleNamespace(id=9)
         response = await gmail_create_feedback(
@@ -107,6 +107,9 @@ class GmailFeedbackApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response["feedback"]["triage_label"], "not_relevant")
         self.assertIsNotNone(response["suppression"])
         self.assertEqual(response["suppression"]["scope"], "message")
+        self.assertEqual(len(response.get("suppressions") or []), 2)
+        scopes = {row["scope"] for row in response["suppressions"]}
+        self.assertEqual(scopes, {"message", "thread"})
 
 
 if __name__ == "__main__":

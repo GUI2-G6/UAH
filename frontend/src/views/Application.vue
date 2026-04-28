@@ -50,7 +50,7 @@
             {{ loading && scanMode === 'saved' ? 'Scanning…' : 'Scan saved tracked applications' }}
           </button>
           <button class="submit-btn" type="button" :disabled="trackingBusy || !selectedVisibleCount" @click="saveSelectedTracked">
-            {{ trackingBusy ? 'Saving…' : `Save selected for tracking (${selectedVisibleCount})` }}
+            {{ trackingBusy ? 'Saving…' : `Save changes (${selectedVisibleCount})` }}
           </button>
           <button class="submit-btn is-ghost" type="button" @click="showAdvancedOptions = !showAdvancedOptions">
             {{ showAdvancedOptions ? 'Hide advanced scan options' : 'Show advanced scan options' }}
@@ -130,17 +130,16 @@
           >
             <p v-if="app.manual_override_applied" class="scan-meta">Manual override</p>
             <label class="candidate-checkbox">
-              <input type="checkbox" :checked="isSelected(app.selection_key)" @change="toggleSelection(app.selection_key)">
+              <input type="checkbox" :checked="isSelected(app.selection_key)" @change="toggleSelection(app)">
               <span>Select for tracking</span>
             </label>
             <Application :application="app" />
             <div class="suppression-actions">
               <button type="button" class="submit-btn is-primary" @click="openMostRecentEmail(app)">Open email</button>
-              <button type="button" class="submit-btn" @click="suppressMessage(app)">Hide this update</button>
-              <button type="button" class="submit-btn" @click="suppressThread(app)">Hide similar emails</button>
               <label class="manual-status-label">
                 <span>Set status</span>
                 <select class="manual-status-select" :value="manualStatusFor(app)" @change="setManualStatus(app, $event?.target?.value)">
+                  <option value="not_relevant">Not relevant</option>
                   <option value="action_required">Action Required</option>
                   <option value="applied">Applied</option>
                   <option value="interview">Interview</option>
@@ -165,7 +164,7 @@
           </select>
           <div class="toolbar-actions">
             <button class="submit-btn is-ghost" type="button" :disabled="!feedItems.length" @click="selectAllVisible">Select all visible</button>
-            <button class="submit-btn is-ghost" type="button" :disabled="!selectedCount" @click="clearSelection">Clear selection</button>
+            <button class="submit-btn is-ghost" type="button" :disabled="!feedItems.length" @click="clearFilteredNonTracked">Clear non-tracked in view</button>
           </div>
         </div>
 
@@ -180,17 +179,16 @@
         >
           <p v-if="app.manual_override_applied" class="scan-meta">Manual override</p>
           <label class="candidate-checkbox">
-            <input type="checkbox" :checked="isSelected(app.selection_key)" @change="toggleSelection(app.selection_key)">
+            <input type="checkbox" :checked="isSelected(app.selection_key)" @change="toggleSelection(app)">
             <span>Select for tracking</span>
           </label>
           <Application :application="app" />
           <div class="suppression-actions">
             <button type="button" class="submit-btn is-primary" @click="openMostRecentEmail(app)">Open email</button>
-            <button type="button" class="submit-btn" @click="suppressMessage(app)">Hide this update</button>
-            <button type="button" class="submit-btn" @click="suppressThread(app)">Hide similar emails</button>
             <label class="manual-status-label">
               <span>Set status</span>
               <select class="manual-status-select" :value="manualStatusFor(app)" @change="setManualStatus(app, $event?.target?.value)">
+                <option value="not_relevant">Not relevant</option>
                 <option value="action_required">Action Required</option>
                 <option value="applied">Applied</option>
                 <option value="interview">Interview</option>
@@ -249,7 +247,7 @@
     import Card from "../components/Card.vue"
     import Application from "../components/Application.vue"
     import { authedFetch, getCurrentUser } from "../lib/auth.js";
-    import { readGmailScanCache, resolveGmailConnectionStatus, runGmailScan, subscribeGmailUpdates, summarizeGmailResults, listGmailSuppressions, createGmailSuppression, removeGmailSuppression, createGmailFeedback } from "../lib/gmailUpdates.js"
+    import { readGmailScanCache, resolveGmailConnectionStatus, runGmailScan, subscribeGmailUpdates, summarizeGmailResults, listGmailSuppressions, removeGmailSuppression, createGmailFeedback } from "../lib/gmailUpdates.js"
     import { showToast } from "../services/toastService";
 
     export default{
@@ -449,40 +447,6 @@
             this.suppressionsOpen = !this.suppressionsOpen
             if (this.suppressionsOpen) this.loadSuppressions()
         },
-        async suppressMessage(item) {
-            const snapshot = [...this.applications]
-            this.removeApplicationBySourceId(item.source_id)
-            try {
-                await createGmailSuppression({
-                    scope: 'message',
-                    source_id: item.source_id || null,
-                    note: 'Suppressed from Applications view',
-                })
-                showToast('Update hidden from future scans.', 'success')
-                await this.loadSuppressions()
-            } catch (error) {
-                this.applications = snapshot
-                showToast(error?.message || 'Could not hide this update.', 'error')
-            }
-        },
-        async suppressThread(item) {
-            const snapshot = [...this.applications]
-            this.removeApplicationsByThread(item)
-            try {
-                await createGmailSuppression({
-                    scope: 'thread',
-                    from_header: item.from,
-                    subject: item.subject,
-                    company_hint: item.company_hint || item.company,
-                    note: 'Suppressed chain from Applications view',
-                })
-                showToast('Apply chain hidden from future scans.', 'success')
-                await this.loadSuppressions()
-            } catch (error) {
-                this.applications = snapshot
-                showToast(error?.message || 'Could not hide this chain.', 'error')
-            }
-        },
         async unsuppress(id) {
             try {
                 await removeGmailSuppression(id)
@@ -495,12 +459,35 @@
         isSelected(key) {
             return this.selectedKeys[String(key || "")] === true
         },
-        toggleSelection(key) {
-            const normalized = String(key || '')
+        async toggleSelection(item) {
+            const normalized = String(item?.selection_key || '')
             if (!normalized) return
+            const shouldSelect = !this.selectedKeys[normalized]
             this.selectedKeys = {
                 ...this.selectedKeys,
-                [normalized]: !this.selectedKeys[normalized],
+                [normalized]: shouldSelect,
+            }
+            this.trackingBusy = true
+            try {
+                if (shouldSelect) {
+                    await this.saveTrackedRows([item], { clearSelectionAfterSave: false, suppressToast: true })
+                } else {
+                    const tracked = (this.trackedApplications || []).find(
+                        (row) =>
+                            String(row.source_ref || '') === String(item.source_id || item.thread_key || '')
+                            || String(row.thread_key || '') === String(item.thread_key || '')
+                    )
+                    if (tracked?.id) await this.untrack(tracked.id, { suppressReload: true, suppressToast: true })
+                    await this.loadTrackedApplications()
+                }
+            } catch (error) {
+                this.selectedKeys = {
+                    ...this.selectedKeys,
+                    [normalized]: !shouldSelect,
+                }
+                showToast(error?.message || 'Could not update tracking state.', 'error')
+            } finally {
+                this.trackingBusy = false
             }
         },
         selectAllVisible() {
@@ -510,16 +497,21 @@
             }
             this.selectedKeys = next
         },
-        clearSelection() {
-            this.selectedKeys = {}
+        clearFilteredNonTracked() {
+            const visibleKeys = new Set(this.feedItems.map((item) => String(item.selection_key || '')))
+            this.applications = (this.applications || []).filter((row) => {
+                const key = row.source_id ? `gmail:${row.source_id}` : `thread:${row.thread_key || `${row.subject}|${row.from}`}`
+                if (!visibleKeys.has(String(key))) return true
+                return this.isSelected(key)
+            })
+            this.summary = summarizeGmailResults(this.applications || [])
+            showToast('Cleared non-tracked rows in this view.', 'success')
         },
-        async saveSelectedTracked() {
-            const chosenGmail = this.feedItems.filter((row) => this.isSelected(row.selection_key))
+        async saveTrackedRows(chosenGmail, options = {}) {
             if (!chosenGmail.length) {
-                showToast('Select at least one candidate to save.', 'error')
+                if (!options.suppressToast) showToast('Select at least one candidate to save.', 'error')
                 return
             }
-            this.trackingBusy = true
             try {
                 const selections = [
                     ...chosenGmail.map((row) => ({
@@ -543,11 +535,21 @@
                 })
                 const data = await res.json().catch(() => null)
                 if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
-                this.selectedKeys = {}
-                showToast(`Tracked applications saved (${Number(data?.created || 0) + Number(data?.updated || 0)}).`, 'success')
+                if (options.clearSelectionAfterSave !== false) this.selectedKeys = {}
+                if (!options.suppressToast) {
+                    showToast(`Tracked applications saved (${Number(data?.created || 0) + Number(data?.updated || 0)}).`, 'success')
+                }
                 await this.loadTrackedApplications()
             } catch (error) {
-                showToast(error?.message || 'Could not save tracked selections.', 'error')
+                if (!options.suppressToast) showToast(error?.message || 'Could not save tracked selections.', 'error')
+                throw error
+            }
+        },
+        async saveSelectedTracked() {
+            const chosenGmail = this.feedItems.filter((row) => this.isSelected(row.selection_key))
+            this.trackingBusy = true
+            try {
+                await this.saveTrackedRows(chosenGmail)
             } finally {
                 this.trackingBusy = false
             }
@@ -577,7 +579,7 @@
                 showToast(error?.message || 'Could not mark tracked item as seen.', 'error')
             }
         },
-        async untrack(id) {
+        async untrack(id, options = {}) {
             try {
                 const res = await authedFetch(`/api/applications/tracked/${id}`, {
                     method: 'PATCH',
@@ -586,9 +588,10 @@
                 })
                 const data = await res.json().catch(() => null)
                 if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
-                await this.loadTrackedApplications()
+                if (!options.suppressReload) await this.loadTrackedApplications()
             } catch (error) {
-                showToast(error?.message || 'Could not untrack item.', 'error')
+                if (!options.suppressToast) showToast(error?.message || 'Could not untrack item.', 'error')
+                throw error
             }
         },
         removeApplicationBySourceId(sourceId) {
@@ -609,6 +612,7 @@
         },
         manualStatusFor(item) {
             const status = String(item?.status || item?.detected_status || 'unknown').trim().toLowerCase()
+            if (status === 'not_relevant') return 'not_relevant'
             if (status === 'action_required') return 'action_required'
             if (status === 'application_received' || status === 'applied') return 'applied'
             if (status === 'interview_invite' || status === 'interview') return 'interview'
@@ -619,6 +623,7 @@
         async setManualStatus(item, selectedStatus) {
             const normalized = String(selectedStatus || '').trim().toLowerCase()
             const statusMap = {
+                not_relevant: null,
                 action_required: 'action_required',
                 applied: 'application_received',
                 interview: 'interview_invite',
@@ -626,17 +631,25 @@
                 rejection: 'rejection',
                 unknown: 'unknown',
             }
-            if (!statusMap[normalized]) return
+            if (!Object.prototype.hasOwnProperty.call(statusMap, normalized)) return
             try {
                 await createGmailFeedback({
                     source_id: item.source_id || null,
                     from_header: item.from || '',
                     subject: item.subject || '',
                     company_hint: item.company_hint || item.company || '',
-                    triage_label: 'relevant',
+                    triage_label: normalized === 'not_relevant' ? 'not_relevant' : 'relevant',
                     override_status: statusMap[normalized],
                     notes: 'Manual status set from Applications view',
                 })
+                if (normalized === 'not_relevant') {
+                    this.removeApplicationBySourceId(item.source_id)
+                    this.removeApplicationsByThread(item)
+                    this.summary = summarizeGmailResults(this.applications || [])
+                    showToast('Marked not relevant and hidden from future scans.', 'success')
+                    await this.loadSuppressions()
+                    return
+                }
                 this.applications = (this.applications || []).map((row) => {
                     if (String(row.source_id || '') !== String(item.source_id || '')) return row
                     return {
