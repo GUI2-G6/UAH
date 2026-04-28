@@ -11,7 +11,7 @@
         UAH is a job-search workspace that helps you discover jobs, track applications, and keep updates in one place.
       </p>
       <p class="landing-compliance-links">
-        <a class="inline-link" href="/our-commitment">Privacy Policy</a>
+        <a class="inline-link" href="/privacy-policy">Privacy Policy</a>
         <span aria-hidden="true">·</span>
         <a class="inline-link" href="/terms">Terms of Service</a>
       </p>

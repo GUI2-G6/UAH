@@ -276,6 +276,11 @@ class ResumeReviewDraftResponse(BaseModel):
     review_status: str | None = Field(default=None, description="Current review lifecycle state for this draft.", examples=["pending"])
     review_updated_at: datetime | None = Field(default=None, description="UTC timestamp of the latest persisted review draft update.", examples=["2026-04-14T14:25:19.987654Z"])
     review_draft: dict = Field(..., description="Editable structured review draft returned to the frontend.", examples=[{"personal_info": {"first_name": "Jane"}}])
+    review_schema: dict | None = Field(
+        default=None,
+        description="Optional schema metadata describing canonical sections and editable fields for data-driven review rendering.",
+        examples=[{"version": "v1", "personal_fields": [{"key": "first_name", "label": "First Name"}]}],
+    )
 
 
 class ResumeReviewConflictRequest(BaseModel):

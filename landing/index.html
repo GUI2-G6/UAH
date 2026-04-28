@@ -29,11 +29,74 @@
   <meta property="og:description"
     content="Free, open-source job search and application tracking. Built for job seekers, not advertisers.">
   <meta property="og:url" content="https://uahapp.com">
+  <link rel="canonical" href="https://uahapp.com/">
   <title>UAH | Unified Application Hub</title>
+  <!-- Static fallback styling: visible to verification crawlers and JS-disabled visitors,
+       hidden once the SPA boots so JS-enabled users see the full Vue-rendered page. -->
+  <style>
+    html.js-enabled #ssr-fallback { display: none; }
+    #ssr-fallback {
+      max-width: 720px;
+      margin: 48px auto;
+      padding: 24px;
+      font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: #0f172a;
+    }
+    #ssr-fallback h1 { font-size: 1.6rem; margin: 0 0 12px; }
+    #ssr-fallback p { margin: 0 0 12px; }
+    #ssr-fallback nav { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 16px; }
+    #ssr-fallback a { color: #1F5C99; text-decoration: underline; }
+  </style>
 </head>
 
 <body>
-  <div id="app"></div>
+  <div id="app">
+    <!-- Static crawler/no-JS fallback. Vue replaces this on mount so JS-enabled users
+         never render it. Required for Google OAuth branding verification: the home page
+         must show its purpose, a Privacy Policy link, and not appear to be behind a login. -->
+    <main id="ssr-fallback">
+      <h1>Unified Application Hub &mdash; free, open-source job search and application tracking</h1>
+      <p>
+        UAH brings job discovery, resume parsing, and application tracking into one workspace.
+        It is free to use, ad-free, and open source. No login or account is required to view this
+        home page or the public policy pages linked below.
+      </p>
+      <p>
+        UAH unifies the fragmented job search experience: pulling listings from multiple providers
+        into a single normalized index, parsing your resume, and tracking the status of every
+        application in one place &mdash; without selling user data, profiling for ads, or sharing
+        information with employers.
+      </p>
+      <nav aria-label="Public legal and project pages">
+        <a href="/privacy-policy">Privacy Policy</a>
+        <a href="/terms">Terms of Service</a>
+        <a href="/status">Service Status</a>
+        <a href="https://github.com/GUI2-G6/UAH" rel="noopener noreferrer">GitHub repository</a>
+      </nav>
+    </main>
+  </div>
+  <noscript>
+    <main>
+      <h1>Unified Application Hub &mdash; free, open-source job search and application tracking</h1>
+      <p>
+        UAH brings job discovery, resume parsing, and application tracking into one workspace.
+        It is free to use, ad-free, and open source. No login or account is required to view this
+        home page or the public policy pages linked below.
+      </p>
+      <p>
+        UAH unifies the fragmented job search experience: pulling listings from multiple providers
+        into a single normalized index, parsing your resume, and tracking the status of every
+        application in one place &mdash; without selling user data, profiling for ads, or sharing
+        information with employers.
+      </p>
+      <nav aria-label="Public legal and project pages">
+        <a href="/privacy-policy">Privacy Policy</a> &middot;
+        <a href="/terms">Terms of Service</a> &middot;
+        <a href="/status">Service Status</a> &middot;
+        <a href="https://github.com/GUI2-G6/UAH" rel="noopener noreferrer">GitHub repository</a>
+      </nav>
+    </main>
+  </noscript>
   <script type="module" src="/src/main.js"></script>
 </body>
 

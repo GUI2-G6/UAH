@@ -46,7 +46,7 @@ Use these buckets when deciding what can be publicly reachable versus still behi
 
 ### Public (Internet reachable)
 
-- frontend public pages: `/landing`, `/login`, `/register`, `/signup`, `/status`, `/forgot-password`, `/reset-password`, `/oauth-callback`, `/verify-email`, `/our-commitment`, `/contributors`
+- frontend public pages: `/landing`, `/login`, `/register`, `/signup`, `/status`, `/forgot-password`, `/reset-password`, `/oauth-callback`, `/verify-email`, `/privacy-policy`, `/our-commitment` (legacy redirect to `/privacy-policy`), `/contributors`
 - backend public/identity routes needed for user auth and onboarding:
   - `/api/status`
   - `/api/auth/*`

@@ -1,5 +1,3 @@
-import { flattenResume } from './shared.js'
-
 function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
@@ -41,13 +39,8 @@ export function sanitizeTokenMap(tokenMap = {}) {
 }
 
 export function buildProfileAutofillSource(profile = {}) {
-  // Prefer an explicitly curated token map when one exists. Falling back to
-  // flattened canonical data keeps older or lightly managed profiles usable.
-  const baseTokenMap = sanitizeTokenMap(
-    isObject(profile.token_map) && Object.keys(profile.token_map).length
-      ? profile.token_map
-      : flattenResume(isObject(profile.canonical_data) ? profile.canonical_data : {})
-  )
+  const baseTokenMap = sanitizeTokenMap(isObject(profile.token_map) ? profile.token_map : {})
+  const hasTokenMap = Object.keys(baseTokenMap).length > 0
 
   const extraTokens = {
     work_auth: cleanTokenValue(profile.work_auth),
@@ -69,6 +62,8 @@ export function buildProfileAutofillSource(profile = {}) {
       profileId: typeof profile.id === 'number' ? profile.id : null,
       profileName: sourceName,
     },
+    contractSatisfied: hasTokenMap,
+    error: hasTokenMap ? '' : 'Selected profile is missing token_map from the backend. Open Profiles in UAH and resave this profile.',
     tokenMap: baseTokenMap,
     tokenCount: Object.keys(baseTokenMap).length,
   }

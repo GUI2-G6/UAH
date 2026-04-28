@@ -328,6 +328,7 @@ export default {
       skillFields: SKILL_FIELDS,
       structuredSections: STRUCTURED_SECTIONS,
       extraListSections: EXTRA_LIST_SECTIONS,
+      reviewSchemaVersion: '',
       loading: false,
       error: '',
       step: 'review',
@@ -423,10 +424,12 @@ export default {
       const draft = value && typeof value === 'object' ? value : {}
       const personal = draft.personal_info && typeof draft.personal_info === 'object' ? draft.personal_info : {}
       const skills = draft.skills && typeof draft.skills === 'object' ? draft.skills : {}
+      const personalFields = Array.isArray(this.personalFields) && this.personalFields.length ? this.personalFields : PERSONAL_FIELDS
+      const skillFields = Array.isArray(this.skillFields) && this.skillFields.length ? this.skillFields : SKILL_FIELDS
       return {
-        personal_info: Object.fromEntries(PERSONAL_FIELDS.map((field) => [field.key, this.normalizeText(personal[field.key])])),
+        personal_info: Object.fromEntries(personalFields.map((field) => [field.key, this.normalizeText(personal[field.key])])),
         summary: this.normalizeText(draft.summary),
-        skills: Object.fromEntries(SKILL_FIELDS.map((field) => [field.key, this.normalizeList(skills[field.key])])),
+        skills: Object.fromEntries(skillFields.map((field) => [field.key, this.normalizeList(skills[field.key])])),
         education: Array.isArray(draft.education) ? draft.education.map((entry) => this.normalizeEntry('education', entry)) : [],
         work_experience: Array.isArray(draft.work_experience) ? draft.work_experience.map((entry) => this.normalizeEntry('work_experience', entry)) : [],
         projects: Array.isArray(draft.projects) ? draft.projects.map((entry) => this.normalizeEntry('projects', entry)) : [],
@@ -436,6 +439,18 @@ export default {
         volunteer: this.normalizeList(draft.volunteer),
         _validation: this.normalizeValidation(draft._validation),
       }
+    },
+    applyReviewSchema(schema) {
+      const normalized = schema && typeof schema === 'object' ? schema : {}
+      const personalFields = Array.isArray(normalized.personal_fields) ? normalized.personal_fields : PERSONAL_FIELDS
+      const skillFields = Array.isArray(normalized.skill_fields) ? normalized.skill_fields : SKILL_FIELDS
+      const structuredSections = Array.isArray(normalized.structured_sections) ? normalized.structured_sections : STRUCTURED_SECTIONS
+      const extraListSections = Array.isArray(normalized.extra_list_sections) ? normalized.extra_list_sections : EXTRA_LIST_SECTIONS
+      this.personalFields = personalFields
+      this.skillFields = skillFields
+      this.structuredSections = structuredSections
+      this.extraListSections = extraListSections
+      this.reviewSchemaVersion = typeof normalized.version === 'string' ? normalized.version : ''
     },
     hasObjectContent(value) { return Object.values(value || {}).some((item) => Array.isArray(item) ? item.length > 0 : Boolean(this.cleanText(item))) },
     hasListContent(value) { return Array.isArray(value) && value.some((item) => typeof item === 'string' ? Boolean(this.cleanText(item)) : this.hasObjectContent(item)) },
@@ -469,6 +484,7 @@ export default {
         const payload = await response.json().catch(() => null)
         if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`)
         this.meta = { file_name: payload.file_name || '', parse_method: payload.parse_method || '', review_status: payload.review_status || '', review_updated_at: payload.review_updated_at || '' }
+        this.applyReviewSchema(payload.review_schema)
         this.reviewDraft = this.normalizeDraft(this.cloneValue(payload.review_draft))
         this.lastSavedSignature = this.currentSignature
         if (!this.cleanText(this.newProfileName)) this.newProfileName = this.suggestedProfileName
@@ -489,6 +505,7 @@ export default {
         })
         const payload = await response.json().catch(() => null)
         if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`)
+        this.applyReviewSchema(payload.review_schema)
         this.meta.review_status = payload.review_status || 'pending'
         this.meta.review_updated_at = payload.review_updated_at || ''
         this.reviewDraft = this.normalizeDraft(this.cloneValue(payload.review_draft))

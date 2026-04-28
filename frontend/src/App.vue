@@ -50,7 +50,7 @@
     },
     computed: {
       showBurger() {
-        return !['/landing', '/login', '/register', '/signup', '/status', '/forgot-password', '/reset-password', '/oauth-callback', '/verify-email', '/our-commitment', '/contributors'].includes(this.$route.path)
+        return !['/landing', '/login', '/register', '/signup', '/status', '/forgot-password', '/reset-password', '/oauth-callback', '/verify-email', '/privacy-policy', '/our-commitment', '/contributors'].includes(this.$route.path)
       }
     },
     mounted() {

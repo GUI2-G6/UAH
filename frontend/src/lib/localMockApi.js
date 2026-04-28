@@ -694,7 +694,6 @@ function createProfile(user, id = 1, overrides = {}) {
     id,
     name: 'Default',
     is_active: true,
-    is_default: true,
     created_at: createdAt,
     updated_at: createdAt,
     first_name: user.first_name || '',
@@ -731,6 +730,51 @@ function createProfile(user, id = 1, overrides = {}) {
   })
 }
 
+const REVIEW_DRAFT_SCHEMA = {
+  version: 'canonical_v1',
+  personal_fields: [
+    { key: 'first_name', label: 'First Name' },
+    { key: 'middle_name', label: 'Middle Name' },
+    { key: 'last_name', label: 'Last Name' },
+    { key: 'full_legal_name', label: 'Full Legal Name' },
+    { key: 'preferred_name', label: 'Preferred Name' },
+    { key: 'suffix', label: 'Suffix' },
+    { key: 'email', label: 'Email', type: 'email' },
+    { key: 'phone', label: 'Phone' },
+    { key: 'address', label: 'Street Address', full: true },
+    { key: 'city', label: 'City' },
+    { key: 'state', label: 'State' },
+    { key: 'zip', label: 'ZIP' },
+    { key: 'linkedin', label: 'LinkedIn', type: 'url' },
+    { key: 'website', label: 'Website', type: 'url' },
+  ],
+  skill_fields: [
+    { key: 'technical', label: 'Technical Skills' },
+    { key: 'languages', label: 'Languages' },
+    { key: 'tools', label: 'Tools' },
+    { key: 'soft_skills', label: 'Soft Skills' },
+  ],
+  structured_sections: [
+    { key: 'education', pathStem: 'education', title: 'Education', fields: [
+      { key: 'institution', label: 'Institution' }, { key: 'degree', label: 'Degree' }, { key: 'field_of_study', label: 'Field of Study' }, { key: 'gpa', label: 'GPA' }, { key: 'start_date', label: 'Start Date' }, { key: 'end_date', label: 'End Date' }, { key: 'honors', label: 'Honors', kind: 'inline-list', full: true }, { key: 'relevant_coursework', label: 'Relevant Coursework', kind: 'inline-list', full: true },
+    ] },
+    { key: 'work_experience', pathStem: 'work_experience', title: 'Work Experience', fields: [
+      { key: 'company', label: 'Company' }, { key: 'title', label: 'Title' }, { key: 'location', label: 'Location' }, { key: 'is_current', label: 'Current Role', kind: 'current-select' }, { key: 'start_date', label: 'Start Date' }, { key: 'end_date', label: 'End Date' }, { key: 'bullets', label: 'Bullets', kind: 'line-list', full: true },
+    ] },
+    { key: 'projects', pathStem: 'projects', title: 'Projects', fields: [
+      { key: 'name', label: 'Name' }, { key: 'date', label: 'Date' }, { key: 'description', label: 'Description', kind: 'textarea', full: true }, { key: 'technologies', label: 'Technologies', kind: 'inline-list', full: true },
+    ] },
+    { key: 'certifications', pathStem: 'certifications', title: 'Certifications', fields: [
+      { key: 'name', label: 'Name' }, { key: 'issuer', label: 'Issuer' }, { key: 'date', label: 'Date', full: true },
+    ] },
+  ],
+  extra_list_sections: [
+    { key: 'awards', label: 'Awards' },
+    { key: 'activities', label: 'Activities' },
+    { key: 'volunteer', label: 'Volunteer' },
+  ],
+}
+
 function cleanProfileString(value) {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -764,7 +808,11 @@ function normalizeCanonicalData(value = {}) {
   return {
     personal_info: {
       first_name: cleanProfileString(personal.first_name),
+      middle_name: cleanProfileString(personal.middle_name),
       last_name: cleanProfileString(personal.last_name),
+      full_legal_name: cleanProfileString(personal.full_legal_name),
+      preferred_name: cleanProfileString(personal.preferred_name),
+      suffix: cleanProfileString(personal.suffix),
       email: cleanProfileString(personal.email),
       phone: cleanProfileString(personal.phone),
       address: cleanProfileString(personal.address),
@@ -859,7 +907,11 @@ function deriveCanonicalFromProfile(profile = {}) {
   return normalizeCanonicalData({
     personal_info: {
       first_name: profile.first_name,
+      middle_name: profile.middle_name,
       last_name: profile.last_name,
+      full_legal_name: profile.full_legal_name,
+      preferred_name: profile.preferred_name,
+      suffix: profile.suffix,
       email: profile.email,
       phone: profile.phone,
       address: profile.street_address,
@@ -883,9 +935,32 @@ function deriveCanonicalFromProfile(profile = {}) {
 function flattenCanonicalData(canonical) {
   const normalized = normalizeCanonicalData(canonical)
   const tokens = {}
+  const splitDateTokens = (value) => {
+    const raw = cleanProfileString(value)
+    if (!raw) return { month: null, year: null, is_present: false }
+    if (raw.toLowerCase() === 'present') return { month: null, year: null, is_present: true }
+    const monthYear = raw.match(/^([A-Za-z]+)\s+(\d{4})$/)
+    if (monthYear) return { month: monthYear[1], year: monthYear[2], is_present: false }
+    const yearOnly = raw.match(/^(\d{4})$/)
+    if (yearOnly) return { month: null, year: yearOnly[1], is_present: false }
+    return { month: null, year: null, is_present: false }
+  }
+
   Object.entries(normalized.personal_info || {}).forEach(([key, value]) => {
     if (cleanProfileString(value)) tokens[`personal_info.${key}`] = value
   })
+  const first = cleanProfileString(normalized.personal_info?.first_name)
+  const middle = cleanProfileString(normalized.personal_info?.middle_name)
+  const last = cleanProfileString(normalized.personal_info?.last_name)
+  const suffix = cleanProfileString(normalized.personal_info?.suffix)
+  if (middle) tokens['personal_info.middle_initial'] = middle.slice(0, 1).toUpperCase()
+  if (first || middle || last) {
+    const assembled = [first, middle, last].filter(Boolean).join(' ')
+    if (assembled) {
+      tokens['personal_info.first_middle_last'] = assembled
+      if (suffix) tokens['personal_info.first_middle_last_with_suffix'] = `${assembled} ${suffix}`
+    }
+  }
   if (cleanProfileString(normalized.summary)) tokens.summary = normalized.summary
     ;['education', 'work_experience', 'projects', 'certifications'].forEach((sectionKey) => {
       ; (normalized[sectionKey] || []).forEach((entry, index) => {
@@ -896,6 +971,27 @@ function flattenCanonicalData(canonical) {
             tokens[`${sectionKey}[${index}].${key}`] = value
           }
         })
+        if (sectionKey === 'education') {
+          const start = splitDateTokens(entry?.start_date)
+          const end = splitDateTokens(entry?.end_date)
+          if (start.month) tokens[`education[${index}].start_month`] = start.month
+          if (start.year) tokens[`education[${index}].start_year`] = start.year
+          if (end.is_present) tokens[`education[${index}].is_current`] = true
+          if (!end.is_present && end.month) tokens[`education[${index}].end_month`] = end.month
+          if (!end.is_present && end.year) tokens[`education[${index}].end_year`] = end.year
+        }
+        if (sectionKey === 'work_experience') {
+          const start = splitDateTokens(entry?.start_date)
+          const end = splitDateTokens(entry?.end_date)
+          if (start.month) tokens[`work_experience[${index}].start_month`] = start.month
+          if (start.year) tokens[`work_experience[${index}].start_year`] = start.year
+          if (entry?.is_current || end.is_present) {
+            tokens[`work_experience[${index}].is_current`] = true
+          } else {
+            if (end.month) tokens[`work_experience[${index}].end_month`] = end.month
+            if (end.year) tokens[`work_experience[${index}].end_year`] = end.year
+          }
+        }
       })
     })
   Object.entries(normalized.skills || {}).forEach(([key, value]) => {
@@ -922,7 +1018,11 @@ function deriveProfileFieldsFromCanonical(canonical, existing = {}) {
 
   return {
     first_name: cleanProfileString(normalized.personal_info.first_name),
+    middle_name: cleanProfileString(normalized.personal_info.middle_name),
     last_name: cleanProfileString(normalized.personal_info.last_name),
+    full_legal_name: cleanProfileString(normalized.personal_info.full_legal_name),
+    preferred_name: cleanProfileString(normalized.personal_info.preferred_name),
+    suffix: cleanProfileString(normalized.personal_info.suffix),
     email: cleanProfileString(normalized.personal_info.email),
     phone: cleanProfileString(normalized.personal_info.phone),
     linkedin: cleanProfileString(normalized.personal_info.linkedin),
@@ -3759,6 +3859,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
       review_status: resume.review_status || 'pending',
       review_updated_at: resume.review_updated_at,
       review_draft: reviewDraft,
+      review_schema: REVIEW_DRAFT_SCHEMA,
     })
   }
 
@@ -3783,6 +3884,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
       review_status: state.resumes[resumeIndex].review_status,
       review_updated_at: state.resumes[resumeIndex].review_updated_at,
       review_draft: state.resumes[resumeIndex].review_draft,
+      review_schema: REVIEW_DRAFT_SCHEMA,
     })
   }
 
@@ -3836,7 +3938,6 @@ async function handleMockApiRequest(request, requestUrl, state) {
       state.profiles = state.profiles.map((item) => ({ ...item, is_active: false }))
       profile = syncMockProfileStorage(createProfile(state.user, id, {
         name: cleanProfileString(body.profile_name) || cleanProfileString(incoming.personal_info.first_name) || `Profile ${id}`,
-        is_default: false,
         is_active: true,
         canonical_data: incoming,
         updated_at: nowIso(),
@@ -3898,8 +3999,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
     const created = createProfile(state.user, id, {
       ...body,
       name: normalizeText(body.name) || `Profile ${id}`,
-      is_default: state.profiles.length === 0 || body.is_default === true,
-      is_active: body.is_default === true || state.profiles.length === 0,
+      is_active: state.profiles.length === 0,
       created_at: nowIso(),
     })
 
@@ -3969,8 +4069,8 @@ async function handleMockApiRequest(request, requestUrl, state) {
       return toJsonResponse({ detail: 'Profile not found' }, 404)
     }
 
-    if (profile.is_default) {
-      return toJsonResponse({ detail: 'Default profile cannot be deleted' }, 400)
+    if (state.profiles.length <= 1) {
+      return toJsonResponse({ detail: 'Cannot delete your only profile. Create another profile first.' }, 400)
     }
 
     state.profiles = state.profiles.filter((item) => Number(item.id) !== profileId)

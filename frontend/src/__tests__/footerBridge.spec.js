@@ -29,7 +29,7 @@ describe('frontend footer external-landing bridge', () => {
 describe('legacy public route compatibility', () => {
   it('turns legacy public views into lightweight bridge pages', () => {
     const statusSource = readFileSync('src/views/Status.vue', 'utf8')
-    const commitmentSource = readFileSync('src/views/Our-Commitment.vue', 'utf8')
+    const commitmentSource = readFileSync('src/views/Privacy-Policy.vue', 'utf8')
     const contributorsSource = readFileSync('src/views/Contributors.vue', 'utf8')
 
     expect(statusSource).toContain('This page moved to the public landing')

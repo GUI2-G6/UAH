@@ -103,6 +103,50 @@ class ApplicantProfileCanonicalTests(unittest.TestCase):
         self.assertEqual(merged_override["personal_info"]["email"], "new@example.com")
         self.assertIn("skills.technical", flatten_canonical_data(merged_override))
 
+    def test_sync_profile_storage_generates_derived_name_tokens_for_extension_contract(self):
+        profile = SimpleNamespace(
+            first_name="Taylor",
+            middle_name="Alex",
+            last_name="Example",
+            suffix="Jr",
+            full_legal_name="Taylor Alex Example Jr",
+            preferred_name="Tay",
+            email="taylor@example.com",
+            phone="",
+            linkedin="",
+            portfolio="",
+            street_address="",
+            city="",
+            state="",
+            zip="",
+            summary="",
+            degree="",
+            major="",
+            university="",
+            grad_year="",
+            gpa="",
+            years_experience="",
+            job_title="",
+            skills_text="",
+            certifications_text="",
+            professional_links_text="",
+            education_history_text="",
+            employment_history_text="",
+            demographic_gender="",
+            demographic_ethnicity="",
+            veteran_status="",
+            disability_status="",
+            california_resident="",
+            canonical_data=None,
+            token_map=None,
+        )
+
+        sync_profile_storage(profile)
+
+        self.assertEqual(profile.token_map["personal_info.middle_initial"], "A")
+        self.assertEqual(profile.token_map["personal_info.first_middle_last"], "Taylor Alex Example")
+        self.assertEqual(profile.token_map["personal_info.first_middle_last_with_suffix"], "Taylor Alex Example Jr")
+
 
 if __name__ == "__main__":
     unittest.main()

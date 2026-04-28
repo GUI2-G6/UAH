@@ -21,16 +21,16 @@ import { showToast } from '@/services/toastService.js'
 const DEFAULT_PUBLIC_LANDING_URL = 'https://uahapp.com'
 
 export default {
-  name: 'OurCommitmentBridge',
+  name: 'PrivacyPolicyBridge',
   data() {
     return {
-      destination: `${DEFAULT_PUBLIC_LANDING_URL}/our-commitment`,
+      destination: `${DEFAULT_PUBLIC_LANDING_URL}/privacy-policy`,
     }
   },
   created() {
     const configuredBase = String(import.meta.env.VITE_PUBLIC_LANDING_URL || '').trim()
     const base = (configuredBase || DEFAULT_PUBLIC_LANDING_URL).replace(/\/+$/, '')
-    this.destination = `${base}/our-commitment`
+    this.destination = `${base}/privacy-policy`
   },
   methods: {
     openInNewTab() {

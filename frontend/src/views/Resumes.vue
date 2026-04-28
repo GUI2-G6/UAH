@@ -408,7 +408,7 @@
                         </select>
                         <button class="btn-secondary btn-compact" @click="showNewProfileInput = !showNewProfileInput" title="New profile">+</button>
                         <button
-                            v-if="profiles.length > 1 && !isDefaultProfile(activeProfileId)"
+                            v-if="profiles.length > 1 && Number(activeProfileId) > 0"
                             class="btn-secondary btn-compact delete-profile-btn"
                             @click="deleteProfile(activeProfileId)"
                             title="Delete current profile"
@@ -2299,8 +2299,9 @@ export default {
         },
 
         buildProfilePayload() {
+            const activeProfile = this.profiles.find((profile) => Number(profile?.id) === Number(this.activeProfileId))
             return {
-                name: 'Default',
+                name: activeProfile?.name || 'Default',
                 first_name: this.firstName, last_name: this.lastName, email: this.appEmail,
                 phone: this.phone, linkedin: this.linkedin, portfolio: this.portfolio,
                 street_address: this.streetAddress, city: this.city, state: this.appState, zip: this.zip,
@@ -2385,10 +2386,7 @@ export default {
                 const res = await authedFetch('/api/applicant-profile/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        name,
-                        is_default: this.profiles.length === 0  // Makes first profile created the default profile.
-                    }),
+                    body: JSON.stringify({ name }),
                 })
                 if (!res.ok) {
                     const data = await res.json().catch(() => null)
@@ -2406,17 +2404,13 @@ export default {
                 showToast(e.message || 'Failed to create profile.', 'error')
             }
         },
-        isDefaultProfile(profileId) {
-            const profile = this.profiles.find(p => p.id === profileId)
-            return profile?.is_default || false
-        },
         async deleteProfile(profileId) {
             if (this.profiles.length <= 1) {
                 this.saveStatus = { type: 'error', message: 'Cannot delete your only profile.' }
                 return
             }
-            if (this.isDefaultProfile(profileId)) {
-                alert("Default profile cannot be deleted.")
+            if (Number(profileId) === Number(this.activeProfileId)) {
+                alert("Active profile cannot be deleted. Switch profiles first.")
                 return
             }
             try {

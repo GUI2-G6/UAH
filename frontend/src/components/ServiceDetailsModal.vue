@@ -152,7 +152,7 @@ export default {
     privacyPolicyUrl() {
       const configuredBase = String(import.meta.env.VITE_PUBLIC_LANDING_URL || '').trim()
       const base = (configuredBase || DEFAULT_PUBLIC_LANDING_URL).replace(/\/+$/, '')
-      return `${base}/our-commitment`
+      return `${base}/privacy-policy`
     },
   },
   mounted() {

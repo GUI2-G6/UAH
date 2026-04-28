@@ -42,7 +42,7 @@
           <h2>Privacy and data handling</h2>
           <p>
             Data handling details are described in the
-            <RouterLink to="/our-commitment">Privacy Policy</RouterLink>.
+            <RouterLink to="/privacy-policy">Privacy Policy</RouterLink>.
             Optional integrations remain opt-in where applicable.
           </p>
           <p>

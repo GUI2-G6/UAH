@@ -22,7 +22,7 @@
             <strong>Status</strong>
             <p>Live public-safe service summary, refreshed from `/api/status`.</p>
           </RouterLink>
-          <RouterLink class="page-link-card" to="/our-commitment">
+          <RouterLink class="page-link-card" to="/privacy-policy">
             <strong>Privacy Policy</strong>
             <p>Detailed data handling, no-sell/no-share terms, and cloud-parse transparency.</p>
           </RouterLink>

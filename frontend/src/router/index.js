@@ -55,6 +55,10 @@ const routes = [
     path: '/landing',
     redirect: '/',
   },
+  {
+    path: '/our-commitment',
+    redirect: '/privacy-policy',
+  },
 ]
 
 
@@ -81,6 +85,7 @@ router.beforeEach(async (to) => {
     '/reset-password',
     '/oauth-callback',
     '/verify-email',
+    '/privacy-policy',
     '/our-commitment',
     '/contributors',
   ])
