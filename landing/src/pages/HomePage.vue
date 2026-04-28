@@ -23,8 +23,8 @@
             <p>Live public-safe service summary, refreshed from `/api/status`.</p>
           </RouterLink>
           <RouterLink class="page-link-card" to="/our-commitment">
-            <strong>Our Commitment</strong>
-            <p>Data handling principles, beta transparency, and contact paths.</p>
+            <strong>Privacy Policy</strong>
+            <p>Detailed data handling, no-sell/no-share terms, and cloud-parse transparency.</p>
           </RouterLink>
           <RouterLink class="page-link-card" to="/contributors">
             <strong>Contributors</strong>

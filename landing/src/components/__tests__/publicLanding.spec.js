@@ -224,7 +224,7 @@ describe('public landing route architecture', () => {
     expect(labels).toEqual([
       'Home',
       'Status',
-      'Our Commitment',
+      'Privacy Policy',
       'Contributors',
       'Ecosystem',
       'Extension (alpha)',

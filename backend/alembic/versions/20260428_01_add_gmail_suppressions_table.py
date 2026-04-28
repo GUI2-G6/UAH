@@ -1,7 +1,7 @@
 """add gmail suppressions table
 
 Revision ID: 20260428_01
-Revises: 20260423_01_add_landing_feedback_submissions_table
+Revises: 20260423_01
 Create Date: 2026-04-28 16:55:00
 """
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 revision = "20260428_01"
-down_revision = "20260423_01_add_landing_feedback_submissions_table"
+down_revision = "20260423_01"
 branch_labels = None
 depends_on = None
 

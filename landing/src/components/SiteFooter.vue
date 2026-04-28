@@ -13,7 +13,7 @@
         <ThemeModeControl compact group-label="Color theme" />
         <RouterLink to="/">Home</RouterLink>
         <RouterLink to="/status">Status</RouterLink>
-        <RouterLink to="/our-commitment">Our Commitment</RouterLink>
+        <RouterLink to="/our-commitment">Privacy Policy</RouterLink>
         <RouterLink to="/contributors">Contributors</RouterLink>
         <RouterLink to="/ecosystem">Ecosystem</RouterLink>
         <RouterLink to="/provider-requests">Provider Requests</RouterLink>

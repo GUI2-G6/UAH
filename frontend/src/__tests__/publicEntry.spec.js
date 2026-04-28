@@ -44,7 +44,7 @@ describe('frontend footer public links', () => {
 
     expect(footer.get('a[href^="mailto:"]').attributes('href')).toBe('mailto:support@uahapp.com')
     expect(footer.text()).toContain('Status')
-    expect(footer.text()).toContain('Our Commitment')
+    expect(footer.text()).toContain('Privacy Policy')
     expect(footer.text()).toContain('Contributors')
     expect(footer.text()).toContain('Ecosystem')
     expect(footer.text()).toContain('Provider Requests')

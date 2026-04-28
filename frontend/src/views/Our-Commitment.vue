@@ -1,16 +1,15 @@
 <template>
   <section class="legacy-bridge">
     <div class="legacy-bridge-card">
-      <p class="legacy-label">Commitment moved</p>
+      <p class="legacy-label">Privacy policy moved</p>
       <h1>This page moved to the public landing</h1>
       <p>
-        Our commitment and transparency policy now lives on the public landing so guests and signed-in users see the
-        same source of truth.
+        Our privacy policy now lives on the public landing so guests and signed-in users see the same source of truth.
       </p>
       <p>Choose how you want to continue.</p>
       <div class="legacy-actions">
-        <button class="submit-btn" type="button" @click="openInNewTab">Open commitment in new tab</button>
-        <button class="landing-btn" type="button" @click="openHere">Open commitment here</button>
+        <button class="submit-btn" type="button" @click="openInNewTab">Open privacy policy in new tab</button>
+        <button class="landing-btn" type="button" @click="openHere">Open privacy policy here</button>
       </div>
     </div>
   </section>
@@ -36,7 +35,7 @@ export default {
   methods: {
     openInNewTab() {
       window.open(this.destination, '_blank', 'noopener,noreferrer')
-      showToast('Our Commitment opened in a new tab.', 'success')
+      showToast('Privacy Policy opened in a new tab.', 'success')
     },
     openHere() {
       window.location.replace(this.destination)

@@ -141,6 +141,10 @@
                     <div v-if="actionStatus.deleteAccount.message" :class="feedbackClass('deleteAccount')">
                         {{ actionStatus.deleteAccount.message }}
                     </div>
+                    <p class="connected-account-detail">
+                        Review full data handling details in the
+                        <a :href="publicPrivacyPolicyUrl()" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
+                    </p>
                 </div>
             </Card>
             <Card class="settings-card settings-card--integrations">
@@ -317,6 +321,8 @@ import { setDebugToolsPreference, subscribeDebugTools } from "../lib/debugTools.
 import { assertValidEmail } from "../lib/validation.js";
 import { showToast } from '@/services/toastService.js';
 
+const DEFAULT_PUBLIC_LANDING_URL = 'https://uahapp.com'
+
 const SERVICE_STATUS_LABELS = {
     connected: 'Connected',
     available: 'Available',
@@ -392,6 +398,7 @@ export default {
             canAccessDebugTools: false,
             showDebugTools: false,
             debugToolsUnsubscribe: null,
+            publicLandingBaseUrl: String(import.meta.env.VITE_PUBLIC_LANDING_URL || '').trim() || DEFAULT_PUBLIC_LANDING_URL,
         }
     },
     async mounted() {
@@ -474,6 +481,10 @@ export default {
             if (!this.showDebugTools && this.$route?.meta?.debugOnly) {
                 this.$router.replace('/home')
             }
+        },
+        publicPrivacyPolicyUrl() {
+            const base = String(this.publicLandingBaseUrl || DEFAULT_PUBLIC_LANDING_URL).replace(/\/+$/, '')
+            return `${base}/our-commitment`
         },
         serviceClassKey(key) {
             return String(key || 'service').trim().toLowerCase().replaceAll('_', '-')
