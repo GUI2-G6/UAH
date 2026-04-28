@@ -1,8 +1,23 @@
 <template>
   <div class="page">
     <div class="auth-card">
-      <h1>Create account</h1>
-      <p class="subtitle">Create an account to access UAH</p>
+      <button
+        type="button"
+        class="landing-btn landing-btn--back"
+        :disabled="loading || oauthRedirecting"
+        @click="goToLanding"
+      >
+        Back to access options
+      </button>
+      <h1>Create your beta account</h1>
+      <p class="subtitle">
+        This invite-only beta registration flow is for approved users only. You need a valid beta invite code
+        to create your account and start using UAH.
+      </p>
+      <p class="auth-note auth-note--soft">
+        Need approval first?
+        <a href="#" @click.prevent="showBetaRequestForm = true">Request beta access</a>
+      </p>
       <form @submit.prevent="register">
         <label class="auth-label" for="register-invite-code">Invite Code</label>
         <input
@@ -34,26 +49,52 @@
           {{ loading ? 'Creating…' : 'Create account' }}
         </button>
       </form>
-
-      <div class="oauth-divider" aria-hidden="true">
-        <span>or</span>
+      <div class="auth-note">
+        <strong>Google sign-in comes later.</strong>
+        After you create your account and sign in normally, you can optionally link Google later from
+        Settings under <strong>Sign-in Methods</strong>.
       </div>
-
-      <button
-        type="button"
-        class="oauth-btn"
-        :disabled="loading || oauthRedirecting"
-        @click="startGoogleOAuth"
-      >
-        {{ oauthRedirecting ? 'Redirecting to Google…' : 'Continue with Google' }}
-      </button>
 
       <p v-if="message" class="auth-feedback auth-feedback--success">{{ message }}</p>
       <p v-if="error" class="auth-feedback auth-feedback--error">{{ error }}</p>
+      <div v-if="showBetaRequestForm" class="auth-note auth-note--soft beta-request-panel">
+        <strong>Beta access request</strong>
+        <p>Share the email we should review for invite approval.</p>
+        <form class="beta-request-form" @submit.prevent="submitBetaRequest">
+          <input
+            id="register-beta-request-email"
+            class="email-input"
+            type="email"
+            v-model.trim="betaRequestEmail"
+            autocomplete="email"
+            placeholder="you@example.com"
+            :disabled="betaRequestSubmitting"
+            required
+          />
+          <button class="submit-btn" type="submit" :disabled="betaRequestSubmitting || !betaRequestEmail">
+            {{ betaRequestSubmitting ? 'Submitting…' : 'Submit beta request' }}
+          </button>
+        </form>
+        <p v-if="betaRequestMessage" class="auth-feedback auth-feedback--success" role="status" aria-live="polite">
+          {{ betaRequestMessage }}
+        </p>
+        <p
+          v-if="betaRequestError"
+          class="auth-feedback"
+          :class="betaRequestErrorIsLimit ? 'auth-feedback--warn' : 'auth-feedback--error'"
+          role="status"
+          aria-live="polite"
+        >
+          {{ betaRequestError }}
+        </p>
+      </div>
 
       <div class="signup-row">
         <span>Already have an account?</span>
         <a @click.prevent="goToLogin" href="#">Sign in</a>
+      </div>
+      <div class="signup-row">
+        <a href="#" @click.prevent="showBetaRequestForm = true">Request beta access</a>
       </div>
     </div>
   </div>
@@ -61,8 +102,11 @@
 
 <script>
 import SecretInput from '../components/SecretInput.vue'
+import { messageFromApiFailure } from '../lib/apiErrorMessage.js'
 import { logout, readApiError } from '../lib/auth.js'
 import { assertValidEmail } from '../lib/validation.js'
+
+const MIN_MS_BETWEEN_BETA_REQUESTS = 3500
 
 export default {
   name: 'Register',
@@ -83,16 +127,29 @@ export default {
       inviteCodeError: null,
       message: null,
       error: null,
+      showBetaRequestForm: false,
+      betaRequestEmail: '',
+      betaRequestSubmitting: false,
+      betaRequestMessage: '',
+      betaRequestError: '',
+      betaRequestErrorIsLimit: false,
+      lastBetaRequestAttemptAt: 0,
     }
   },
   mounted() {
     const oauthError = this.$route?.query?.oauth
     const reason = this.$route?.query?.reason
     if (oauthError === 'error') {
-      this.error = `Google sign-in failed${reason ? ` (${String(reason).replaceAll('_', ' ')})` : ''}`
+      this.error = this.googleOAuthErrorMessage(reason)
     }
   },
   methods: {
+    googleOAuthErrorMessage(reason) {
+      if (reason === 'google_not_linked') {
+        return 'Google sign-in is only available after you create an account and link Google later from Settings.'
+      }
+      return `Google sign-in failed${reason ? ` (${String(reason).replaceAll('_', ' ')})` : ''}`
+    },
     async register() {
       this.loading = true
       this.inviteCodeError = null
@@ -151,13 +208,47 @@ export default {
     goToLogin() {
       this.$router.push('/login')
     },
-    startGoogleOAuth() {
-      this.error = null
-      this.oauthRedirecting = true
-      const next = typeof this.$route?.query?.next === 'string' ? this.$route.query.next : ''
-      const params = new URLSearchParams({ intent: 'register' })
-      if (next) params.set('next', next)
-      window.location.assign(`/api/auth/google?${params.toString()}`)
+    goToLanding() {
+      this.$router.push('/landing')
+    },
+    async submitBetaRequest() {
+      this.betaRequestMessage = ''
+      this.betaRequestError = ''
+      this.betaRequestErrorIsLimit = false
+      const now = Date.now()
+      if (now - this.lastBetaRequestAttemptAt < MIN_MS_BETWEEN_BETA_REQUESTS) {
+        this.betaRequestError =
+          'Please wait a few seconds between attempts. This slows accidental double-clicks and automated abuse.'
+        this.betaRequestErrorIsLimit = true
+        return
+      }
+      this.lastBetaRequestAttemptAt = now
+      this.betaRequestSubmitting = true
+      try {
+        const res = await fetch('/api/public/beta-access', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: this.betaRequestEmail,
+            source_surface: 'frontend_register',
+          }),
+        })
+        const payload = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          this.betaRequestError = messageFromApiFailure(res, payload)
+          this.betaRequestErrorIsLimit = res.status === 429
+          return
+        }
+        this.betaRequestMessage = payload?.message || 'Thanks - your beta access request has been received.'
+        this.betaRequestEmail = ''
+      } catch (error) {
+        this.betaRequestError =
+          error instanceof TypeError
+            ? messageFromApiFailure({ status: 0 }, null)
+            : error?.message || 'Unable to submit beta request right now.'
+      } finally {
+        this.betaRequestSubmitting = false
+      }
     },
   },
 }

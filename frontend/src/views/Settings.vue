@@ -28,6 +28,12 @@
                     </div>
                 </div>
                 <div class="settings-group">
+                    <h4>Appearance</h4>
+                    <p class="current-value">Theme applies to this browser only. Auto follows your OS light or dark mode.</p>
+                    <p>Color mode</p>
+                    <ThemeModeControl id="settings-theme" group-label="App color theme" />
+                </div>
+                <div class="settings-group">
                     <h4>Notifications & Preferences</h4>
                     <p class="current-value">These preferences are currently local to this browser session and are organized here for future account-level settings support.</p>
                     <p>Email Notifications</p>
@@ -135,6 +141,10 @@
                     <div v-if="actionStatus.deleteAccount.message" :class="feedbackClass('deleteAccount')">
                         {{ actionStatus.deleteAccount.message }}
                     </div>
+                    <p class="connected-account-detail">
+                        Review full data handling details in the
+                        <a :href="publicPrivacyPolicyUrl()" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
+                    </p>
                 </div>
             </Card>
             <Card class="settings-card settings-card--integrations">
@@ -143,7 +153,9 @@
                 </template>
                 <div class="settings-group connected-accounts-group">
                     <p class="connected-accounts-intro">
-                        Manage linked sign-in providers separately from optional platform services like Gmail updates.
+                        After you create your account, you can optionally connect Google here and use Google to
+                        sign in later. Manage linked sign-in providers separately from optional platform services
+                        like Gmail updates.
                     </p>
                     <p v-if="connectedAccountsError" class="account-error">{{ connectedAccountsError }}</p>
                     <div class="connected-accounts-list">
@@ -303,10 +315,13 @@ import Card from "../components/Card.vue";
 import ConfirmModal from "../components/ConfirmModal.vue";
 import SecretInput from "../components/SecretInput.vue";
 import ServiceDetailsModal from "../components/ServiceDetailsModal.vue";
+import ThemeModeControl from "../components/ThemeModeControl.vue";
 import { authedFetch, clearAuth, getCurrentUser, setCurrentUser, syncCurrentUser } from "../lib/auth.js";
 import { setDebugToolsPreference, subscribeDebugTools } from "../lib/debugTools.js";
 import { assertValidEmail } from "../lib/validation.js";
 import { showToast } from '@/services/toastService.js';
+
+const DEFAULT_PUBLIC_LANDING_URL = 'https://uahapp.com'
 
 const SERVICE_STATUS_LABELS = {
     connected: 'Connected',
@@ -328,6 +343,7 @@ export default {
         ConfirmModal,
         SecretInput,
         ServiceDetailsModal,
+        ThemeModeControl,
     },
     data() {
         return {
@@ -382,6 +398,7 @@ export default {
             canAccessDebugTools: false,
             showDebugTools: false,
             debugToolsUnsubscribe: null,
+            publicLandingBaseUrl: String(import.meta.env.VITE_PUBLIC_LANDING_URL || '').trim() || DEFAULT_PUBLIC_LANDING_URL,
         }
     },
     async mounted() {
@@ -465,6 +482,10 @@ export default {
                 this.$router.replace('/home')
             }
         },
+        publicPrivacyPolicyUrl() {
+            const base = String(this.publicLandingBaseUrl || DEFAULT_PUBLIC_LANDING_URL).replace(/\/+$/, '')
+            return `${base}/privacy-policy`
+        },
         serviceClassKey(key) {
             return String(key || 'service').trim().toLowerCase().replaceAll('_', '-')
         },
@@ -489,6 +510,7 @@ export default {
             if (this.serviceActionBusyKey !== busyKey) return action.label
             if (action.key === 'connect') return 'Connecting…'
             if (action.key === 'disconnect') return 'Disconnecting…'
+            if (action.key === 'scan') return 'Scanning…'
             return 'Working…'
         },
         setServiceHighlight(serviceKey) {

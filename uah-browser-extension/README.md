@@ -19,6 +19,7 @@ Use these docs together:
 
 - repo entrypoint: [../README.md](../README.md)
 - docs map: [../docs/README.md](../docs/README.md)
+- Chrome install/repack guide: [../docs/BROWSER_EXTENSION_CHROME_INSTALL.md](../docs/BROWSER_EXTENSION_CHROME_INSTALL.md)
 - extension adapter system: [src/adapters/ADAPTERS.md](src/adapters/ADAPTERS.md)
 
 ## Architecture

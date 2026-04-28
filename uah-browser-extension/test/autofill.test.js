@@ -5,6 +5,7 @@ import { buildPlan, resolveNameToPath } from '../src/autofill/matching.js'
 import { fillField, fillPlan, isFieldRequired } from '../src/autofill/dom.js'
 import { buildProfileAutofillSource, sanitizeTokenMap } from '../src/autofill/source.js'
 import { flattenResume } from '../src/autofill/shared.js'
+import { resolveFieldPolicy } from '../src/autofill/resolver.js'
 import {
   buildDefaultFloatingPosition,
   clampPanelSize,
@@ -12,6 +13,7 @@ import {
   mergePinnedUiState,
   normalizeFloatingPosition,
 } from '../src/lib/pinnedUiState.js'
+import { applyDocumentTheme, normalizeThemePreference, resolveEffectiveTheme } from '../src/lib/themeMode.js'
 
 function createDispatchingElement(overrides = {}) {
   const events = []
@@ -51,6 +53,23 @@ test('buildProfileAutofillSource prefers token_map and overlays profile-only ext
   assert.equal(source.tokenMap.requires_sponsorship, 'No')
   assert.equal(source.tokenMap.years_experience, '5')
   assert.equal(source.tokenMap.professional_links_text, 'GitHub: https://github.com/example')
+  assert.equal(source.contractSatisfied, true)
+  assert.equal(source.error, '')
+})
+
+test('buildProfileAutofillSource requires backend token_map and does not flatten canonical fallback', () => {
+  const source = buildProfileAutofillSource({
+    id: 33,
+    name: 'No token map profile',
+    canonical_data: {
+      personal_info: { first_name: 'Fallback', last_name: 'ShouldNotApply' },
+    },
+  })
+
+  assert.equal(source.contractSatisfied, false)
+  assert.equal(source.tokenCount, 0)
+  assert.equal(source.tokenMap['personal_info.first_name'], undefined)
+  assert.match(source.error, /missing token_map/i)
 })
 
 test('sanitizeTokenMap keeps only structured-clone-safe flat primitives', () => {
@@ -74,7 +93,14 @@ test('sanitizeTokenMap keeps only structured-clone-safe flat primitives', () => 
 
 test('flattenResume keeps legacy date splitting behavior for present and expected dates', () => {
   const tokens = flattenResume({
-    personal_info: { first_name: 'Taylor', last_name: 'Example' },
+    personal_info: {
+      first_name: 'Taylor',
+      middle_name: 'Alex',
+      last_name: 'Example',
+      suffix: 'Jr',
+      preferred_name: 'Tay',
+      full_legal_name: 'Taylor Alex Example Jr',
+    },
     education: [
       {
         institution: 'UAH',
@@ -103,10 +129,16 @@ test('flattenResume keeps legacy date splitting behavior for present and expecte
   assert.equal(tokens['work_experience[0].start_year'], '2024')
   assert.equal(tokens['work_experience[0].is_current'], true)
   assert.equal(tokens['work_experience[0].bullets'], 'Built tools\nShipped features')
+  assert.equal(tokens['personal_info.middle_initial'], 'A')
+  assert.equal(tokens['personal_info.first_middle_last'], 'Taylor Alex Example')
+  assert.equal(tokens['personal_info.preferred_name'], 'Tay')
 })
 
 test('resolveNameToPath supports direct, indexed, and checkbox aliases', () => {
   assert.equal(resolveNameToPath('first_name'), 'personal_info.first_name')
+  assert.equal(resolveNameToPath('middle_name'), 'personal_info.middle_name')
+  assert.equal(resolveNameToPath('middle_initial'), 'personal_info.middle_initial')
+  assert.equal(resolveNameToPath('legal_name'), 'personal_info.full_legal_name')
   assert.equal(resolveNameToPath('education[0].school'), 'education[0].institution')
   assert.equal(resolveNameToPath('currently_work_here_2'), 'work_experience[2].is_current')
   assert.equal(resolveNameToPath('work-authorization'), 'work_auth')
@@ -223,9 +255,42 @@ test('fillPlan fills current checkboxes first and skips end date tokens when cur
   assert.equal(endDateField.element.value, '')
 })
 
+test('fillPlan respects approval-gated fields', () => {
+  const first = createDispatchingElement()
+  const auth = createDispatchingElement({ id: 'work-auth' })
+  const plan = [
+    { el: first.element, matchPath: 'personal_info.first_name', matchScore: 1, requiresApproval: false },
+    { el: auth.element, matchPath: 'work_auth', matchScore: 0.95, requiresApproval: true },
+  ]
+  const tokenMap = {
+    'personal_info.first_name': 'Taylor',
+    work_auth: 'Yes',
+  }
+
+  const filledWithoutApproval = fillPlan(plan, tokenMap)
+  assert.equal(filledWithoutApproval, 1)
+  assert.equal(first.element.value, 'Taylor')
+  assert.equal(auth.element.value, '')
+
+  const filledWithApproval = fillPlan(plan, tokenMap, { approvedPaths: ['work_auth'] })
+  assert.equal(filledWithApproval, 2)
+  assert.equal(auth.element.value, 'Yes')
+})
+
+test('resolver marks sensitive fields as requiring approval', () => {
+  const policy = resolveFieldPolicy(
+    { label: 'Are you authorized to work in the US?' },
+    { matchPath: 'work_auth', matchScore: 0.98, reason: 'label' },
+  )
+  assert.equal(policy.sensitive, true)
+  assert.equal(policy.requiresApproval, true)
+  assert.equal(policy.confidenceClass, 'high')
+})
+
 test('mergePinnedUiState normalizes persisted pin state and positions', () => {
   const state = mergePinnedUiState(undefined, {
     pinEnabled: true,
+    themePreference: 'dark',
     panelPosition: { top: '24', left: 18.2 },
     panelSize: { width: '480', height: 620.4 },
     panelResizeUnlocked: true,
@@ -233,10 +298,36 @@ test('mergePinnedUiState normalizes persisted pin state and positions', () => {
   })
 
   assert.equal(state.pinEnabled, true)
+  assert.equal(state.themePreference, 'dark')
   assert.deepEqual(state.panelPosition, { top: 24, left: 18 })
   assert.deepEqual(state.panelSize, { width: 480, height: 620 })
   assert.equal(state.panelResizeUnlocked, true)
   assert.equal(state.debugPosition, null)
+})
+
+test('mergePinnedUiState defaults invalid theme preference to system', () => {
+  const state = mergePinnedUiState(
+    { pinEnabled: true, themePreference: 'invalid-value' },
+    { themePreference: 'wat' },
+  )
+  assert.equal(state.themePreference, 'system')
+})
+
+test('theme helpers normalize preference and resolve effective mode', () => {
+  assert.equal(normalizeThemePreference('Dark'), 'dark')
+  assert.equal(normalizeThemePreference('unknown'), 'system')
+  assert.equal(resolveEffectiveTheme('light', null), 'light')
+  assert.equal(resolveEffectiveTheme('dark', null), 'dark')
+  assert.equal(
+    resolveEffectiveTheme('system', { matchMedia: () => ({ matches: true }) }),
+    'dark',
+  )
+})
+
+test('applyDocumentTheme sets html data-theme', () => {
+  const fakeDoc = { documentElement: { dataset: {} } }
+  applyDocumentTheme('dark', fakeDoc)
+  assert.equal(fakeDoc.documentElement.dataset.theme, 'dark')
 })
 
 test('locked panel size helper returns the default pinned footprint', async () => {

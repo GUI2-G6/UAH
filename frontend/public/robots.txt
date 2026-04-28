@@ -1,22 +1,7 @@
-# UAH (Unified Application Hub) — robots.txt
-# Read our full data & scraping policy at:
-# https://uahapp.com/scraping-policy
+# UAH internal/beta app robots policy
+# Host example: https://beta.uahapp.com
 #
-# We practice what we preach — UAH itself follows responsible
-# crawling standards with all of our own data providers.
+# This surface is not intended for search indexing.
 
 User-agent: *
-Disallow: /api/
-Disallow: /api/jobs
-Disallow: /api/jobs/
-Disallow: /api/search
-Disallow: /api/search/
-
-# UAH respects responsible crawling and asks the same in return.
-# Our job listing data is provided by partners who trust us to
-# protect it. Unauthorized scraping threatens those partnerships
-# and ultimately the free experience we provide to all users.
-# If you'd like to partner with or index UAH, please reach out:
-# data@uahapp.com
-
-Crawl-delay: 10
+Disallow: /

@@ -1,33 +1,18 @@
 <!-- Renders the full standalone landing page and owns app-wide anchor-scroll enhancement. -->
 <template>
-  <a class="skip-link" href="#main-content">Skip to content</a>
-  <SiteHeader />
+  <div class="app-shell">
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <SiteHeader />
 
-  <main id="main-content" tabindex="-1">
-    <HeroSection />
-    <ProblemSection />
-    <WhatUAHDoes />
-    <HowItsBuilt />
-    <OpenSourceValues />
-    <PartnersSection />
-    <BetaAccess />
-    <WishlistForm />
-  </main>
+    <router-view />
 
-  <SiteFooter />
+    <SiteFooter />
+  </div>
 </template>
 
 <script setup>
 import { onMounted, onUnmounted } from 'vue'
 import SiteHeader from './components/SiteHeader.vue'
-import HeroSection from './components/HeroSection.vue'
-import ProblemSection from './components/ProblemSection.vue'
-import WhatUAHDoes from './components/WhatUAHDoes.vue'
-import HowItsBuilt from './components/HowItsBuilt.vue'
-import OpenSourceValues from './components/OpenSourceValues.vue'
-import PartnersSection from './components/PartnersSection.vue'
-import BetaAccess from './components/BetaAccess.vue'
-import WishlistForm from './components/WishlistForm.vue'
 import SiteFooter from './components/SiteFooter.vue'
 
 const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -73,3 +58,15 @@ onUnmounted(() => {
   document.removeEventListener('click', handleAnchorClick)
 })
 </script>
+
+<style>
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-shell > main {
+  flex: 1;
+}
+</style>

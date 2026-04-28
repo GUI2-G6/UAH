@@ -13,9 +13,12 @@ Use it to answer two questions quickly:
 | --- | --- |
 | Repo overview, local development, and stack entrypoints | [../README.md](../README.md) |
 | System architecture and subsystem boundaries | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| Text-only architecture diagram for writeups/forms | [ARCHITECTURE_TEXT_DIAGRAM.md](ARCHITECTURE_TEXT_DIAGRAM.md) |
 | Backend local development and runtime notes | [backend/README.md](backend/README.md) |
 | Frontend local development and active UI/runtime behavior | [frontend/README.md](frontend/README.md) |
+| Theme tokens, appearance modes, and theme-pack roadmap | [../shared/theme/README.md](../shared/theme/README.md) |
 | Browser extension architecture, build, and testing | [../uah-browser-extension/README.md](../uah-browser-extension/README.md) |
+| Browser extension build/repack/install in Chrome | [BROWSER_EXTENSION_CHROME_INSTALL.md](BROWSER_EXTENSION_CHROME_INSTALL.md) |
 | Environment templates and runtime `.env` rules | [env-examples/README.md](env-examples/README.md) |
 | Server-side env requirements and operational checklist | [SERVER_ENV_CHECKLIST.md](SERVER_ENV_CHECKLIST.md) |
 | Contribution policy | [../CONTRIBUTING.md](../CONTRIBUTING.md) |

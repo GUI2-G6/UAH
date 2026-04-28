@@ -6,11 +6,12 @@ import json
 import time
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_admin_or_developer
+from app.core.rate_limit import enforce_ip_rate_limit
 from app.db.session import get_db
 from app.providers.registry import get_adapter, list_provider_statuses
 from app.schemas.job import NormalizedJob
@@ -19,6 +20,9 @@ from app.services.job_search import search_local_jobs
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+JOBS_SEARCH_IP_LIMIT = 60
+JOBS_SEARCH_IP_WINDOW_SECONDS = 300
 
 
 class ProviderProbeRequest(BaseModel):
@@ -111,6 +115,7 @@ def _serialize_normalized_job(job: NormalizedJob) -> dict[str, Any]:
     response_description="Locally cached job results with compatibility pagination metadata.",
 )
 def search_jobs(
+    request: Request = None,
     page: int = Query(1, ge=1, description="UI page number (1-indexed)."),
     page_size: int = Query(20, ge=1, le=100, description="Number of jobs to return."),
     category: Optional[list[str]] = Query(None, description="One or more canonical UAH job categories."),
@@ -130,6 +135,14 @@ def search_jobs(
     db: Session = Depends(get_db),
 ):
     """Query the local jobs catalog only and optionally enqueue a thin-results sweep."""
+    if request is not None:
+        enforce_ip_rate_limit(
+            "jobs:search-local",
+            request,
+            limit=JOBS_SEARCH_IP_LIMIT,
+            window_seconds=JOBS_SEARCH_IP_WINDOW_SECONDS,
+        )
+
     requested_categories = list(category or []) + list(catogory or [])
     requested_levels = list(experience_level or []) + list(level or [])
     payload = search_local_jobs(
@@ -292,16 +305,18 @@ def probe_local_search(
     response_description="Replay the live-source jobs search path and return the UI payload shape.",
 )
 async def probe_live_search(
-    request: SearchProbeRequest,
+    http_request: Request,
+    probe_request: SearchProbeRequest,
     db: Session = Depends(get_db),
     current_user=Depends(require_admin_or_developer),
 ):
     del current_user
     from app.api import routes as routes_api
 
-    params = dict(request.params or {})
+    params = dict(probe_request.params or {})
     started_at = time.perf_counter()
     payload = await routes_api.search_jobs(
+        request=http_request,
         page=_coerce_int(params.get("page"), 1),
         page_size=_coerce_int(params.get("page_size"), 10),
         category=_coerce_list(params.get("category")) or None,

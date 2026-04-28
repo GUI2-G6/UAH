@@ -126,10 +126,10 @@ def trigger_verification_email_flow(db: Session, user: User) -> MessageResponse:
         raise HTTPException(status_code=400, detail="No email set on this account")
 
     token = _issue_email_verification_token(user, user.email)
-    db.commit()
-    db.refresh(user)
 
     if not settings.EMAILS_ENABLED:
+        db.commit()
+        db.refresh(user)
         return MessageResponse(message=f"Verification token (dev only): {token}")
 
     verify_link = _build_verify_email_link(token)
@@ -152,10 +152,14 @@ def trigger_verification_email_flow(db: Session, user: User) -> MessageResponse:
             text=text,
         )
     except EmailNotConfiguredError as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=f"Email not configured: {e}")
     except Exception:
+        db.rollback()
         raise HTTPException(status_code=500, detail="Failed to send verification email")
 
+    db.commit()
+    db.refresh(user)
     return MessageResponse(message="Verification email sent")
 
 

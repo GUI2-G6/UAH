@@ -214,6 +214,13 @@
                             <button v-if="canReviewResume(r)" title="Review parsed data before profile fill" class="review-btn" @click="openReviewModal(r)">Review</button>
                             <button title="View parsed data" @click="viewResume(r.id)">View</button>
                             <button
+                                title="Re-parse this resume"
+                                :disabled="isReparseBusy(r.id)"
+                                @click="startReparse(r)"
+                            >
+                                {{ isReparseBusy(r.id) ? 'Re-parsing…' : 'Re-parse' }}
+                            </button>
+                            <button
                                 title="Delete resume"
                                 class="delete-btn"
                                 :class="{ 'confirm-delete': deletingId === r.id }"
@@ -401,7 +408,7 @@
                         </select>
                         <button class="btn-secondary btn-compact" @click="showNewProfileInput = !showNewProfileInput" title="New profile">+</button>
                         <button
-                            v-if="profiles.length > 1 && !isDefaultProfile(activeProfileId)"
+                            v-if="profiles.length > 1 && Number(activeProfileId) > 0"
                             class="btn-secondary btn-compact delete-profile-btn"
                             @click="deleteProfile(activeProfileId)"
                             title="Delete current profile"
@@ -1064,6 +1071,13 @@
                             <button v-if="canReviewResume(r)" title="Review parsed data before profile fill" class="review-btn" @click="openReviewModal(r)">Review</button>
                             <button title="View parsed data" @click="viewResume(r.id)">View</button>
                             <button
+                                title="Re-parse this resume"
+                                :disabled="isReparseBusy(r.id)"
+                                @click="startReparse(r)"
+                            >
+                                {{ isReparseBusy(r.id) ? 'Re-parsing…' : 'Re-parse' }}
+                            </button>
+                            <button
                                 title="Delete resume"
                                 class="delete-btn"
                                 :class="{ 'confirm-delete': deletingId === r.id }"
@@ -1137,6 +1151,7 @@ export default {
             parseQueueTotal: null,
             parseErrorCode: null,
             parseResumeId: null,
+            reparseBusyId: null,
 
             // Queue panel
             queueScope: 'user',
@@ -1198,6 +1213,8 @@ export default {
             applicantEditingField: '',
             applicantSavingField: '',
             lastApplicantSavedSignature: '',
+            loadedEducationHistoryText: '',
+            loadedEmploymentHistoryText: '',
             saveStatus: { type: '', message: '' },
             _saveTimer: null,
             showNewProfileInput: false,
@@ -1491,6 +1508,9 @@ export default {
         },
         serializeApplicantPayload(payload = this.buildProfilePayload()) {
             return JSON.stringify(payload)
+        },
+        normalizedTextValue(value) {
+            return String(value || '').trim()
         },
         syncApplicantSavedSignature() {
             this.lastApplicantSavedSignature = this.serializeApplicantPayload()
@@ -1929,6 +1949,7 @@ export default {
             this.pendingFile = null
             this.uploadError = null
             this.uploading = false
+            this.reparseBusyId = null
             this.isDragOver = false
             this.parseJobId = null
             this.parseStatus = null
@@ -1974,6 +1995,58 @@ export default {
             this.uploadStep = 'select'
             this.uploadError = null
         },
+        isReparseBusy(resumeId) {
+            const id = Number(resumeId || 0)
+            if (!id) return false
+            return Number(this.reparseBusyId || 0) === id || (Number(this.parseResumeId || 0) === id && Boolean(this.parseJobId))
+        },
+        async queueParseForResume(resumeId, selectedMethod) {
+            const parseRes = await authedFetch(`/api/resume/${resumeId}/parse-async`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ method: selectedMethod }),
+            })
+            const parseData = await parseRes.json().catch(() => null)
+            if (!parseRes.ok) {
+                throw new Error(this.apiErrorMessage(parseData, parseRes.status, 'Parse failed'))
+            }
+            this.parseJobId = parseData.job_id
+            this.parseResumeId = Number(resumeId)
+            this.parseStatus = 'queued'
+            this.parseStageLabel = 'Queued…'
+            this.parseError = null
+            this.parseJobMethod = selectedMethod
+            this.uploadStep = 'parsing'
+            this.publishDebugState('parse-started')
+            this.pollParseJob()
+        },
+        async startReparse(resume) {
+            const resumeId = Number(resume?.id || resume || 0)
+            if (!resumeId || this.parseJobId) return
+            const selectedMethod = this.parseMethod === 'local' && !this.isLocalParseMethodAvailable
+                ? 'cloud'
+                : this.parseMethod
+            if (selectedMethod !== this.parseMethod) {
+                this.parseMethod = selectedMethod
+            }
+            this.reparseBusyId = resumeId
+            this.uploadError = null
+            this.showLibraryModal = false
+            try {
+                await this.queueParseForResume(resumeId, selectedMethod)
+                showToast('Re-parse started. Tracking progress now.', 'success')
+            } catch (e) {
+                this.uploadError = e.message ?? String(e)
+                showToast(this.uploadError || 'Could not start re-parse.', 'error')
+                this.uploadStep = 'confirm'
+                this.parseJobId = null
+                this.parseResumeId = null
+                this.parseJobMethod = null
+                this.publishDebugState('reparse-error')
+            } finally {
+                this.reparseBusyId = null
+            }
+        },
         async doUpload() {
             if (!this.pendingFile || this.uploading) return
             const selectedMethod = this.parseMethod === 'local' && !this.isLocalParseMethodAvailable
@@ -1997,31 +2070,10 @@ export default {
                     throw new Error(this.apiErrorMessage(uploadData, uploadRes.status, 'Upload failed'))
                 }
 
-                // 2. Start async parse
                 const resumeId = uploadData.id
-                const parseRes = await authedFetch(`/api/resume/${resumeId}/parse-async`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ method: selectedMethod }),
-                })
-                const parseData = await parseRes.json().catch(() => null)
-                if (!parseRes.ok) {
-                    throw new Error(this.apiErrorMessage(parseData, parseRes.status, 'Parse failed'))
-                }
-
-                // 3. Switch to parsing progress stage
-                this.parseJobId = parseData.job_id
-                this.parseResumeId = resumeId
-                this.parseStatus = 'queued'
-                this.parseStageLabel = 'Queued…'
-                this.parseError = null
-                this.parseJobMethod = selectedMethod
-                this.uploadStep = 'parsing'
+                // 2. Start async parse + switch to progress stage
+                await this.queueParseForResume(resumeId, selectedMethod)
                 this.uploading = false
-                this.publishDebugState('parse-started')
-
-                // Start polling
-                this.pollParseJob()
             } catch (e) {
                 this.uploadError = e.message ?? String(e)
                 this.uploading = false
@@ -2240,6 +2292,8 @@ export default {
             this.professionalLinksText = p.professional_links_text || ''
             this.educationHistoryText = p.education_history_text || ''
             this.employmentHistoryText = p.employment_history_text || ''
+            this.loadedEducationHistoryText = this.educationHistoryText
+            this.loadedEmploymentHistoryText = this.employmentHistoryText
             this.demographicGender = p.demographic_gender || ''
             this.demographicEthnicity = p.demographic_ethnicity || ''
             this.veteranStatus = p.veteran_status || ''
@@ -2252,8 +2306,9 @@ export default {
         },
 
         buildProfilePayload() {
-            return {
-                name: 'Default',
+            const activeProfile = this.profiles.find((profile) => Number(profile?.id) === Number(this.activeProfileId))
+            const payload = {
+                name: activeProfile?.name || 'Default',
                 first_name: this.firstName, last_name: this.lastName, email: this.appEmail,
                 phone: this.phone, linkedin: this.linkedin, portfolio: this.portfolio,
                 street_address: this.streetAddress, city: this.city, state: this.appState, zip: this.zip,
@@ -2269,6 +2324,13 @@ export default {
                 veteran_status: this.veteranStatus, disability_status: this.disabilityStatus,
                 california_resident: this.californiaResident,
             }
+            if (this.normalizedTextValue(this.educationHistoryText) === this.normalizedTextValue(this.loadedEducationHistoryText)) {
+                delete payload.education_history_text
+            }
+            if (this.normalizedTextValue(this.employmentHistoryText) === this.normalizedTextValue(this.loadedEmploymentHistoryText)) {
+                delete payload.employment_history_text
+            }
+            return payload
         },
 
         loadApplicantInfoFromLocal() {
@@ -2338,10 +2400,7 @@ export default {
                 const res = await authedFetch('/api/applicant-profile/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        name,
-                        is_default: this.profiles.length === 0  // Makes first profile created the default profile.
-                    }),
+                    body: JSON.stringify({ name }),
                 })
                 if (!res.ok) {
                     const data = await res.json().catch(() => null)
@@ -2359,17 +2418,13 @@ export default {
                 showToast(e.message || 'Failed to create profile.', 'error')
             }
         },
-        isDefaultProfile(profileId) {
-            const profile = this.profiles.find(p => p.id === profileId)
-            return profile?.is_default || false
-        },
         async deleteProfile(profileId) {
             if (this.profiles.length <= 1) {
                 this.saveStatus = { type: 'error', message: 'Cannot delete your only profile.' }
                 return
             }
-            if (this.isDefaultProfile(profileId)) {
-                alert("Default profile cannot be deleted.")
+            if (Number(profileId) === Number(this.activeProfileId)) {
+                alert("Active profile cannot be deleted. Switch profiles first.")
                 return
             }
             try {

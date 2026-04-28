@@ -42,12 +42,23 @@ const viewRoutes = Object.keys(modules).map((path) => {
   }
 })
 
+const landingRoute = viewRoutes.find((route) => route.path === '/landing')
+
 const routes = [
   {
     path: '/',
-    redirect: () => (isAuthenticated() ? '/home' : '/login')
+    name: 'public-home',
+    component: landingRoute?.component || modules['../views/Landing.vue'],
   },
-  ...viewRoutes,
+  ...viewRoutes.filter((route) => route.path !== '/landing'),
+  {
+    path: '/landing',
+    redirect: '/',
+  },
+  {
+    path: '/our-commitment',
+    redirect: '/privacy-policy',
+  },
 ]
 
 
@@ -65,13 +76,16 @@ router.beforeEach(async (to) => {
   // These routes stay reachable without an existing session, but they may still
   // redirect signed-in users away from auth pages once identity is resolved.
   const publicPaths = new Set([
+    '/landing',
     '/login',
     '/register',
+    '/signup',
     '/status',
     '/forgot-password',
     '/reset-password',
     '/oauth-callback',
     '/verify-email',
+    '/privacy-policy',
     '/our-commitment',
     '/contributors',
   ])
@@ -82,8 +96,8 @@ router.beforeEach(async (to) => {
   }
 
   if (publicPaths.has(to.path)) {
-    const authedUser = await resolveAuthenticatedUser(to.path === '/login' || to.path === '/register')
-    if (authedUser && (to.path === '/login' || to.path === '/register')) {
+    const authedUser = await resolveAuthenticatedUser(to.path === '/login' || to.path === '/register' || to.path === '/signup')
+    if (authedUser && (to.path === '/login' || to.path === '/register' || to.path === '/signup')) {
       return '/home'
     }
     return true

@@ -1,4 +1,3 @@
-<!-- Renders the feedback form and preserves the existing mailto subject and body format exactly. -->
 <template>
   <section id="wishlist" tabindex="-1">
     <div class="section-shell">
@@ -25,8 +24,7 @@
           </div>
 
           <div class="form-card">
-            <form id="wishlist-form" action="mailto:admincontact@uahapp.com" method="post" enctype="text/plain"
-              @submit.prevent="handleSubmit">
+            <form id="wishlist-form" @submit.prevent="handleSubmit">
               <div class="form-grid">
                 <div class="form-row">
                   <div class="field">
@@ -35,9 +33,16 @@
                     <input id="name" v-model="form.name" name="name" type="text" autocomplete="name">
                   </div>
                   <div class="field">
-                    <label for="email">Email <span
-                        style="font-weight:400;color:var(--color-muted);">(optional)</span></label>
-                    <input id="email" v-model="form.email" name="email" type="email" autocomplete="email">
+                    <label for="email">Email <span style="font-weight:700;color:var(--color-text);">(required)</span></label>
+                    <input
+                      id="email"
+                      v-model.trim="form.email"
+                      name="email"
+                      type="email"
+                      autocomplete="email"
+                      required
+                      :disabled="submitting"
+                    >
                   </div>
                 </div>
                 <div class="field">
@@ -63,10 +68,35 @@
                   </label>
                 </div>
                 <div class="form-actions">
-                  <button class="button" type="submit">Send Feedback</button>
-                  <p class="small-note">Opens your email client with your responses pre-filled. We don't collect
-                    anything from this page directly.</p>
+                  <button
+                    class="button"
+                    type="submit"
+                    :disabled="submitting || !form.email"
+                    :aria-busy="submitting"
+                  >
+                    {{ submitting ? 'Sending…' : 'Send feedback' }}
+                  </button>
+                  <p class="small-note">
+                    Your answers are sent securely to our team when you submit. You do not need to open your email app
+                    for us to receive them.
+                  </p>
+                  <p class="small-note">
+                    <button type="button" class="link-button" :disabled="submitting" @click="openMailtoFallback">
+                      Open in my email app instead
+                    </button>
+                    <span class="muted-inline"> (optional; same content as below)</span>
+                  </p>
                 </div>
+                <p
+                  v-if="feedback"
+                  id="wishlist-feedback"
+                  class="wishlist-feedback"
+                  :class="feedbackClass"
+                  role="status"
+                  aria-live="polite"
+                >
+                  {{ feedback }}
+                </p>
                 <p class="small-note">We read every message. Your email is never sold or shared.</p>
               </div>
             </form>
@@ -78,7 +108,8 @@
 </template>
 
 <script setup>
-import { reactive } from 'vue'
+import { computed, reactive, ref } from 'vue'
+import { messageFromApiFailure } from '../lib/apiErrorMessage.js'
 
 const form = reactive({
   name: '',
@@ -89,6 +120,23 @@ const form = reactive({
   interested_beta: false,
 })
 
+const feedback = ref('')
+const feedbackKind = ref('idle')
+const submitting = ref(false)
+const lastAttemptAt = ref(0)
+const MIN_MS_BETWEEN_ATTEMPTS = 5000
+
+const feedbackClass = computed(() => ({
+  'wishlist-feedback--success': feedbackKind.value === 'success',
+  'wishlist-feedback--warn': feedbackKind.value === 'warn',
+  'wishlist-feedback--error': feedbackKind.value === 'error',
+}))
+
+function setFeedback(kind, text) {
+  feedbackKind.value = kind
+  feedback.value = text
+}
+
 function valueOrFallback(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : 'Not provided'
 }
@@ -97,7 +145,7 @@ function yesOrNo(value) {
   return value ? 'Yes' : 'No'
 }
 
-function handleSubmit() {
+function buildMailtoHref() {
   const lines = [
     'UAH Feature Request / Interest',
     '',
@@ -111,11 +159,120 @@ function handleSubmit() {
     valueOrFallback(form.features),
     '',
     'Notify when public access opens: ' + yesOrNo(form.notify_public),
-    'Interested in beta access: ' + yesOrNo(form.interested_beta)
+    'Interested in beta access: ' + yesOrNo(form.interested_beta),
   ]
+  return (
+    'mailto:feedback@uahapp.com' +
+    '?subject=' +
+    encodeURIComponent('UAH Feature Request / Interest') +
+    '&body=' +
+    encodeURIComponent(lines.join('\r\n'))
+  )
+}
 
-  window.location.href = 'mailto:admincontact@uahapp.com'
-    + '?subject=' + encodeURIComponent('UAH Feature Request / Interest')
-    + '&body=' + encodeURIComponent(lines.join('\r\n'))
+function openMailtoFallback() {
+  try {
+    window.location.href = buildMailtoHref()
+    setFeedback(
+      'success',
+      'We asked your system to open your email app with this feedback pre-filled. You can still use “Send feedback” above so we receive it without email. If nothing opened, copy feedback@uahapp.com and paste your text manually.'
+    )
+  } catch {
+    setFeedback(
+      'warn',
+      'Your browser could not start the email handoff. Use “Send feedback” above, or email feedback@uahapp.com and paste the same details.'
+    )
+  }
+}
+
+async function handleSubmit() {
+  const now = Date.now()
+  if (now - lastAttemptAt.value < MIN_MS_BETWEEN_ATTEMPTS) {
+    setFeedback(
+      'warn',
+      'Please wait a few seconds before sending again. This limits repeated requests from scripts or double-clicks.'
+    )
+    return
+  }
+  lastAttemptAt.value = now
+  setFeedback('idle', '')
+  submitting.value = true
+
+  try {
+    const response = await fetch('/api/public/landing-feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: form.email,
+        full_name: form.name.trim() || null,
+        frustration: form.frustration.trim() || null,
+        features: form.features.trim() || null,
+        notify_public: Boolean(form.notify_public),
+        interested_beta: Boolean(form.interested_beta),
+        source_surface: 'landing_wishlist',
+      }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      if (response.status === 429) {
+        setFeedback('warn', messageFromApiFailure(response, payload))
+      } else {
+        setFeedback('error', messageFromApiFailure(response, payload))
+      }
+      return
+    }
+    setFeedback('success', payload?.message || 'Thanks — we received your feedback.')
+    form.name = ''
+    form.email = ''
+    form.frustration = ''
+    form.features = ''
+    form.notify_public = false
+    form.interested_beta = false
+  } catch (error) {
+    setFeedback('error', error instanceof Error ? error.message : 'Could not reach the server. Check your connection and try again.')
+  } finally {
+    submitting.value = false
+  }
 }
 </script>
+
+<style scoped>
+.wishlist-feedback {
+  margin: 0.35rem 0 0;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.wishlist-feedback--success {
+  color: #137333;
+}
+
+.wishlist-feedback--warn {
+  color: #7a4e00;
+}
+
+.wishlist-feedback--error {
+  color: #8b1c1c;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--color-primary, #1a5fb4);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.muted-inline {
+  color: var(--color-muted, #666);
+  font-size: 0.9em;
+}
+</style>

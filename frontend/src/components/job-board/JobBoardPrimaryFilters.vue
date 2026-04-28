@@ -586,4 +586,86 @@ export default {
     text-align: center;
   }
 }
+
+</style>
+
+<style>
+html[data-theme="dark"] .primary-filters-card {
+  border-color: var(--border-color);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-surface-muted) 90%, black),
+    var(--color-surface)
+  );
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .inline-select {
+  color: var(--color-text-secondary);
+}
+
+html[data-theme="dark"] .inline-select select,
+html[data-theme="dark"] .primary-group input,
+html[data-theme="dark"] .primary-group select,
+html[data-theme="dark"] .stacked-control input,
+html[data-theme="dark"] .stacked-control select {
+  background: var(--color-surface-muted);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .primary-group input:focus,
+html[data-theme="dark"] .primary-group select:focus,
+html[data-theme="dark"] .stacked-control input:focus,
+html[data-theme="dark"] .stacked-control select:focus,
+html[data-theme="dark"] .inline-select select:focus {
+  outline: 2px solid rgba(96, 165, 250, 0.45);
+  border-color: rgba(96, 165, 250, 0.72);
+}
+
+html[data-theme="dark"] .primary-group input::placeholder,
+html[data-theme="dark"] .stacked-control input::placeholder {
+  color: var(--color-text-muted);
+}
+
+html[data-theme="dark"] .primary-group label,
+html[data-theme="dark"] .stacked-control label {
+  color: var(--color-text-secondary);
+}
+
+html[data-theme="dark"] .company-suggestions {
+  background: var(--color-surface);
+  border-color: var(--border-color);
+}
+
+html[data-theme="dark"] .company-option {
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .company-option:hover,
+html[data-theme="dark"] .company-option.active {
+  background: rgba(59, 130, 246, 0.24);
+}
+
+html[data-theme="dark"] .company-count {
+  color: var(--color-text-secondary);
+}
+
+html[data-theme="dark"] .mode-button,
+html[data-theme="dark"] .secondary-action,
+html[data-theme="dark"] .chip {
+  background: var(--color-surface);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .saved-mode-panel {
+  border-top-color: var(--border-color);
+}
+
+html[data-theme="dark"] .location-caption,
+html[data-theme="dark"] .info-text,
+html[data-theme="dark"] .saved-mode-copy {
+  color: var(--color-text-secondary);
+}
 </style>

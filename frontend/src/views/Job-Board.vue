@@ -293,6 +293,7 @@
                 :is-saved="isJobSaved(job)"
                 :save-pending="isSaveActionPending(job)"
                 @toggle-save="toggleSaveJob"
+                @mark-applied="markJobAsApplied"
             />
         </div>
 
@@ -2401,6 +2402,78 @@ export default {
           delete next[pendingKey]
           this.saveBusyByKey = next
         }
+      }
+    },
+    async markJobAsApplied(job) {
+      const normalizedJob = this.normalizeJobRecord(job)
+      try {
+        const startPayload = await this.fetchJson(
+          "/api/apply-sessions/start",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              job_title: normalizedJob.title,
+              company: normalizedJob.company,
+              ats_url: normalizedJob.apply_link || "",
+              job_url: normalizedJob.link || normalizedJob.apply_link || "",
+              job_id: normalizedJob.provider_job_id || normalizedJob.id || null,
+              platform: normalizedJob.provider || null,
+            }),
+          },
+          { authenticated: true },
+        )
+        const sessionId = Number(startPayload?.session_id || 0)
+        if (!sessionId) {
+          throw new Error("Missing apply-session id")
+        }
+        await this.fetchJson(
+          `/api/apply-sessions/${sessionId}/events`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              event_type: "dashboard.quick_action.mark_applied_started",
+              payload: {
+                source: "job_board",
+                provider: normalizedJob.provider || null,
+              },
+            }),
+          },
+          { authenticated: true },
+        )
+        await this.fetchJson(
+          `/api/apply-sessions/${sessionId}/finalize`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              status: "submitted",
+              notes: "Marked as applied from web job board",
+            }),
+          },
+          { authenticated: true },
+        )
+        await this.fetchJson(
+          "/api/apply-sessions/analytics/events",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              event_type: "dashboard.quick_action.mark_applied_completed",
+              session_id: sessionId,
+              payload: {
+                source: "job_board",
+                provider: normalizedJob.provider || null,
+              },
+            }),
+          },
+          { authenticated: true },
+        )
+        showToast("Marked as applied. Tracking session created.", "success")
+      } catch (error) {
+        console.error("Failed to mark as applied", error)
+        showToast(error?.message || "Could not mark this role as applied.", "error")
       }
     },
     async detectViaIp() {

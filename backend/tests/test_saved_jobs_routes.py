@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.api import routes as routes_api
 from app.models.job import Job
 from app.models.user import SavedJob
+from app.models.apply_session import ApplySession
 from app.schemas.user import SaveJobRequest
 
 
@@ -86,17 +87,22 @@ def _matches_condition(row, condition):
 
 
 class _FakeDb:
-    def __init__(self, saved_jobs=None, jobs=None):
+    def __init__(self, saved_jobs=None, jobs=None, apply_sessions=None):
         self.saved_jobs = list(saved_jobs or [])
         self.jobs = list(jobs or [])
+        self.apply_sessions = list(apply_sessions or [])
         self.pending_saved_jobs = []
+        self.pending_apply_sessions = []
         self.next_saved_id = max([job.id for job in self.saved_jobs] or [0]) + 1
+        self.next_apply_id = max([row.id for row in self.apply_sessions if getattr(row, "id", None)] or [0]) + 1
 
     def query(self, model):
         if model is SavedJob:
             return _FakeQuery(model, self.saved_jobs)
         if model is Job:
             return _FakeQuery(model, self.jobs)
+        if model is ApplySession:
+            return _FakeQuery(model, self.apply_sessions)
         return _FakeQuery(model, [])
 
     def add(self, obj):
@@ -107,15 +113,26 @@ class _FakeDb:
             if getattr(obj, "created_at", None) is None:
                 obj.created_at = datetime.now(timezone.utc)
             self.pending_saved_jobs.append(obj)
+        if isinstance(obj, ApplySession):
+            if obj.id is None:
+                obj.id = self.next_apply_id
+                self.next_apply_id += 1
+            if getattr(obj, "started_at", None) is None:
+                obj.started_at = datetime.now(timezone.utc)
+            self.pending_apply_sessions.append(obj)
 
     def commit(self):
         if self.pending_saved_jobs:
             self.saved_jobs.extend(self.pending_saved_jobs)
             self.pending_saved_jobs = []
+        if self.pending_apply_sessions:
+            self.apply_sessions.extend(self.pending_apply_sessions)
+            self.pending_apply_sessions = []
         return None
 
     def rollback(self):
         self.pending_saved_jobs = []
+        self.pending_apply_sessions = []
 
     def refresh(self, _obj):
         return None
@@ -141,6 +158,44 @@ class _CommitFailureDb(_FakeDb):
 
 
 class SavedJobsRouteTests(unittest.IsolatedAsyncioTestCase):
+    async def test_backfill_apply_sessions_from_saved_creates_submitted_rows(self):
+        db = _FakeDb(
+            saved_jobs=[
+                _saved_job(id=10, title="Backend Engineer", company="Acme", url="https://acme.example/apply"),
+                _saved_job(id=11, title="Frontend Engineer", company="Beta", url="https://beta.example/apply"),
+            ]
+        )
+        current_user = type("User", (), {"id": 1})()
+
+        payload = await routes_api.backfill_apply_sessions_from_saved_jobs(db=db, current_user=current_user)
+
+        self.assertEqual(payload["created_sessions"], 2)
+        self.assertEqual(len(db.apply_sessions), 2)
+        self.assertTrue(all((row.status or "").lower() == "submitted" for row in db.apply_sessions))
+
+    async def test_backfill_apply_sessions_from_saved_dedupes_existing_match(self):
+        existing = ApplySession(
+            id=5,
+            user_id=1,
+            company="Acme",
+            job_title="Backend Engineer",
+            status="submitted",
+            ats_url="https://acme.example/apply",
+            job_url="https://acme.example/apply",
+        )
+        existing.started_at = datetime.now(timezone.utc)
+        db = _FakeDb(
+            saved_jobs=[_saved_job(id=12, title="Backend Engineer", company="Acme", url="https://acme.example/apply")],
+            apply_sessions=[existing],
+        )
+        current_user = type("User", (), {"id": 1})()
+
+        payload = await routes_api.backfill_apply_sessions_from_saved_jobs(db=db, current_user=current_user)
+
+        self.assertEqual(payload["created_sessions"], 0)
+        self.assertEqual(payload["skipped_existing"], 1)
+        self.assertEqual(len(db.apply_sessions), 1)
+
     async def test_save_job_accepts_string_provider_job_id(self):
         db = _FakeDb()
         current_user = type("User", (), {"id": 1})()

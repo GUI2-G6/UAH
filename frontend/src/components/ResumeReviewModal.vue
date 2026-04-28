@@ -328,6 +328,7 @@ export default {
       skillFields: SKILL_FIELDS,
       structuredSections: STRUCTURED_SECTIONS,
       extraListSections: EXTRA_LIST_SECTIONS,
+      reviewSchemaVersion: '',
       loading: false,
       error: '',
       step: 'review',
@@ -423,10 +424,12 @@ export default {
       const draft = value && typeof value === 'object' ? value : {}
       const personal = draft.personal_info && typeof draft.personal_info === 'object' ? draft.personal_info : {}
       const skills = draft.skills && typeof draft.skills === 'object' ? draft.skills : {}
+      const personalFields = Array.isArray(this.personalFields) && this.personalFields.length ? this.personalFields : PERSONAL_FIELDS
+      const skillFields = Array.isArray(this.skillFields) && this.skillFields.length ? this.skillFields : SKILL_FIELDS
       return {
-        personal_info: Object.fromEntries(PERSONAL_FIELDS.map((field) => [field.key, this.normalizeText(personal[field.key])])),
+        personal_info: Object.fromEntries(personalFields.map((field) => [field.key, this.normalizeText(personal[field.key])])),
         summary: this.normalizeText(draft.summary),
-        skills: Object.fromEntries(SKILL_FIELDS.map((field) => [field.key, this.normalizeList(skills[field.key])])),
+        skills: Object.fromEntries(skillFields.map((field) => [field.key, this.normalizeList(skills[field.key])])),
         education: Array.isArray(draft.education) ? draft.education.map((entry) => this.normalizeEntry('education', entry)) : [],
         work_experience: Array.isArray(draft.work_experience) ? draft.work_experience.map((entry) => this.normalizeEntry('work_experience', entry)) : [],
         projects: Array.isArray(draft.projects) ? draft.projects.map((entry) => this.normalizeEntry('projects', entry)) : [],
@@ -436,6 +439,18 @@ export default {
         volunteer: this.normalizeList(draft.volunteer),
         _validation: this.normalizeValidation(draft._validation),
       }
+    },
+    applyReviewSchema(schema) {
+      const normalized = schema && typeof schema === 'object' ? schema : {}
+      const personalFields = Array.isArray(normalized.personal_fields) ? normalized.personal_fields : PERSONAL_FIELDS
+      const skillFields = Array.isArray(normalized.skill_fields) ? normalized.skill_fields : SKILL_FIELDS
+      const structuredSections = Array.isArray(normalized.structured_sections) ? normalized.structured_sections : STRUCTURED_SECTIONS
+      const extraListSections = Array.isArray(normalized.extra_list_sections) ? normalized.extra_list_sections : EXTRA_LIST_SECTIONS
+      this.personalFields = personalFields
+      this.skillFields = skillFields
+      this.structuredSections = structuredSections
+      this.extraListSections = extraListSections
+      this.reviewSchemaVersion = typeof normalized.version === 'string' ? normalized.version : ''
     },
     hasObjectContent(value) { return Object.values(value || {}).some((item) => Array.isArray(item) ? item.length > 0 : Boolean(this.cleanText(item))) },
     hasListContent(value) { return Array.isArray(value) && value.some((item) => typeof item === 'string' ? Boolean(this.cleanText(item)) : this.hasObjectContent(item)) },
@@ -469,6 +484,7 @@ export default {
         const payload = await response.json().catch(() => null)
         if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`)
         this.meta = { file_name: payload.file_name || '', parse_method: payload.parse_method || '', review_status: payload.review_status || '', review_updated_at: payload.review_updated_at || '' }
+        this.applyReviewSchema(payload.review_schema)
         this.reviewDraft = this.normalizeDraft(this.cloneValue(payload.review_draft))
         this.lastSavedSignature = this.currentSignature
         if (!this.cleanText(this.newProfileName)) this.newProfileName = this.suggestedProfileName
@@ -489,6 +505,7 @@ export default {
         })
         const payload = await response.json().catch(() => null)
         if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`)
+        this.applyReviewSchema(payload.review_schema)
         this.meta.review_status = payload.review_status || 'pending'
         this.meta.review_updated_at = payload.review_updated_at || ''
         this.reviewDraft = this.normalizeDraft(this.cloneValue(payload.review_draft))
@@ -618,4 +635,64 @@ export default {
 .review-footer-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
 @media (max-width:900px){.review-overlay{padding:12px}.review-dialog{max-height:calc(100vh - 24px)}.review-grid--two,.review-grid--three,.conflict-grid{grid-template-columns:1fr}.review-header,.review-footer,.review-section-head,.conflict-head,.review-banner{flex-direction:column;align-items:stretch}.review-footer-actions{width:100%;justify-content:flex-end}}
 @media (max-width:640px){.review-header,.review-steps,.review-body,.review-footer{padding-left:16px;padding-right:16px}.review-steps{overflow:auto}.review-footer-actions{flex-direction:column-reverse;align-items:stretch}.review-footer-actions .btn-primary,.review-footer-actions .btn-secondary{width:100%}}
+
+html[data-theme="dark"] .review-overlay{background:rgba(2,6,23,.72)}
+html[data-theme="dark"] .review-dialog{background:var(--color-surface);border-color:var(--border-color);box-shadow:0 24px 52px rgba(2,6,23,.55)}
+html[data-theme="dark"] .review-header,
+html[data-theme="dark"] .review-steps,
+html[data-theme="dark"] .review-footer{background:var(--color-surface)}
+html[data-theme="dark"] .review-header,
+html[data-theme="dark"] .review-steps,
+html[data-theme="dark"] .review-footer{border-color:var(--border-color)}
+html[data-theme="dark"] .review-eyebrow{color:#5eead4}
+html[data-theme="dark"] .review-subtitle,
+html[data-theme="dark"] .review-banner p,
+html[data-theme="dark"] .review-section-head p,
+html[data-theme="dark"] .review-helper,
+html[data-theme="dark"] .review-empty,
+html[data-theme="dark"] .review-footer-note,
+html[data-theme="dark"] .profile-option p,
+html[data-theme="dark"] .review-entry summary span{color:var(--color-text-secondary)}
+html[data-theme="dark"] .review-step,
+html[data-theme="dark"] .review-pill,
+html[data-theme="dark"] .review-toggle-btn,
+html[data-theme="dark"] .review-inline-btn,
+html[data-theme="dark"] .profile-option,
+html[data-theme="dark"] .conflict-option{border-color:var(--border-color);background:var(--color-surface);color:var(--color-text-primary)}
+html[data-theme="dark"] .review-step:hover,
+html[data-theme="dark"] .review-toggle-btn:hover,
+html[data-theme="dark"] .profile-option:hover,
+html[data-theme="dark"] .conflict-option:hover{background:var(--color-surface-hover)}
+html[data-theme="dark"] .review-step.active,
+html[data-theme="dark"] .review-toggle-btn.active{border-color:rgba(96,165,250,.58);background:rgba(59,130,246,.22);color:#dbeafe}
+html[data-theme="dark"] .review-step.is-disabled{opacity:.52}
+html[data-theme="dark"] .review-state{color:var(--color-text-secondary)}
+html[data-theme="dark"] .review-banner,
+html[data-theme="dark"] .review-alert,
+html[data-theme="dark"] .review-section,
+html[data-theme="dark"] .conflict-card{border-color:var(--border-color);background:var(--color-surface-muted)}
+html[data-theme="dark"] .review-banner.is-warning,
+html[data-theme="dark"] .conflict-card{border-color:rgba(250,204,21,.35);background:rgba(82,61,10,.22)}
+html[data-theme="dark"] .review-pill{color:var(--color-text-secondary)}
+html[data-theme="dark"] .review-pill.is-success{border-color:rgba(34,197,94,.45);background:rgba(34,197,94,.2);color:#bbf7d0}
+html[data-theme="dark"] .review-pill.is-warning{border-color:rgba(245,158,11,.45);background:rgba(245,158,11,.2);color:#fde68a}
+html[data-theme="dark"] .review-list{color:var(--color-text-secondary)}
+html[data-theme="dark"] .review-field span{color:var(--color-text-secondary)}
+html[data-theme="dark"] .review-field input,
+html[data-theme="dark"] .review-field select,
+html[data-theme="dark"] .review-field textarea{border-color:var(--border-color);background:var(--color-surface);color:var(--color-text-primary)}
+html[data-theme="dark"] .review-field input::placeholder,
+html[data-theme="dark"] .review-field textarea::placeholder{color:var(--color-text-muted)}
+html[data-theme="dark"] .review-field input:focus,
+html[data-theme="dark"] .review-field select:focus,
+html[data-theme="dark"] .review-field textarea:focus{box-shadow:0 0 0 3px rgba(96,165,250,.3)}
+html[data-theme="dark"] .review-field .is-attention{border-color:rgba(245,158,11,.62);background:rgba(120,53,15,.22)}
+html[data-theme="dark"] .review-entry{border-color:var(--border-color);background:var(--color-surface)}
+html[data-theme="dark"] .review-entry summary{border-bottom-color:var(--border-color)}
+html[data-theme="dark"] .review-inline-btn{color:#fecaca;background:rgba(127,29,29,.42);border-color:rgba(248,113,113,.42)}
+html[data-theme="dark"] .review-toggle{border-color:var(--border-color);background:var(--color-surface-muted)}
+html[data-theme="dark"] .profile-option.is-selected,
+html[data-theme="dark"] .conflict-option.is-selected{border-color:rgba(96,165,250,.62);background:rgba(59,130,246,.22);box-shadow:0 0 0 3px rgba(59,130,246,.22)}
+html[data-theme="dark"] .conflict-option-title{color:var(--color-text-primary)}
+html[data-theme="dark"] .conflict-option code{background:rgba(2,6,23,.46);color:#e2e8f0}
 </style>

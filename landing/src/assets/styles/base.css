@@ -1,5 +1,5 @@
 :root {
-  --color-primary: #1F5C99;
+  --color-primary:rgba(63, 98, 236);
   --color-primary-deep: #173f69;
   --color-text: #222222;
   --color-surface: #FFFFFF;
@@ -20,6 +20,7 @@
   --radius-sm: 12px;
   --content-width: 1180px;
   --nav-height: 80px;
+  --nav-breakpoint: 1080px;
 }
 
 * {
@@ -102,6 +103,10 @@ main {
   overflow: clip;
 }
 
+.js-enabled body.nav-open {
+  overflow: hidden;
+}
+
 section {
   scroll-margin-top: calc(var(--nav-height) + 20px);
 }
@@ -118,13 +123,15 @@ section {
   border: 0;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 1080px) {
   :root {
     --nav-height: 72px;
   }
+}
 
-  .js-enabled body.nav-open {
-    overflow: hidden;
+@media (max-width: 860px) {
+  :root {
+    --nav-height: 68px;
   }
 }
 
@@ -139,4 +146,38 @@ section {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* Dark theme (data-theme set by shared themePreference + inline boot script) */
+html[data-theme="dark"] {
+  --color-primary: #7cb6ff;
+  --color-primary-deep: #9dc6ff;
+  --color-text: #f1f5f9;
+  --color-surface: #1a2332;
+  --color-surface-muted: #0b1018;
+  --color-surface-strong: #243044;
+  --color-muted: #a8b3c3;
+  --color-border: rgba(130, 170, 220, 0.32);
+  --color-border-strong: rgba(150, 190, 240, 0.45);
+  --shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+html[data-theme="dark"] body {
+  color: var(--color-text);
+  background:
+    radial-gradient(circle at top right, rgba(100, 160, 240, 0.12), transparent 30%),
+    radial-gradient(circle at 12% 18%, rgba(255, 100, 100, 0.06), transparent 16%),
+    linear-gradient(180deg, #080c12 0%, #0f1520 45%, #080c12 100%);
+}
+
+html[data-theme="dark"] body::before {
+  background-image:
+    linear-gradient(rgba(126, 184, 234, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(126, 184, 234, 0.07) 1px, transparent 1px);
+  mask-image: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.35) 18%, rgba(0, 0, 0, 0.28) 82%, transparent);
+}
+
+html[data-theme="dark"] :focus-visible {
+  outline-color: rgba(126, 184, 234, 0.45);
 }

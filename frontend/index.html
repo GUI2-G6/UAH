@@ -2,10 +2,26 @@
 <html lang="en">
     <head>
         <!--Meta tags-->
+        <meta charset="utf-8">
+        <script>
+            (function () {
+                try {
+                    var k = 'uah-theme-preference';
+                    var v = localStorage.getItem(k);
+                    var dark = false;
+                    if (v === 'dark') dark = true;
+                    else if (v === 'light') dark = false;
+                    else dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+                } catch (e) {
+                    document.documentElement.dataset.theme = 'light';
+                }
+            })();
+        </script>
         <meta name="author" content="Trent Brown, Nicholas Johnson, Ram Senthil, Elyas Khoubach, Rajin Kichannagari">
         <meta name="description" content="A unified platform for tracking the status of your job applications">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta charset="utf-8">
+        <meta name="theme-color" content="#1f5c99">
         <title>Unified Application Hub</title>
         <link rel="icon" type="image/png" href="/favicon-nobg.png">
     </head>

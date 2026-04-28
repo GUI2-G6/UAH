@@ -2,6 +2,7 @@ import WorkdayAdapter from './ats/WorkdayAdapter.js'
 import GreenhouseAdapter from './ats/GreenhouseAdapter.js'
 import LeverAdapter from './ats/LeverAdapter.js'
 import ICIMSAdapter from './ats/iCIMSAdapter.js'
+import TaleoAdapter from './ats/TaleoAdapter.js'
 import ExampleCorpWorkdayAdapter from './companies/workday/ExampleCorpWorkdayAdapter.js'
 import ExampleCorpGreenhouseAdapter from './companies/greenhouse/ExampleCorpGreenhouseAdapter.js'
 
@@ -101,5 +102,6 @@ registerAdapter(new WorkdayAdapter())
 registerAdapter(new GreenhouseAdapter())
 registerAdapter(new LeverAdapter())
 registerAdapter(new ICIMSAdapter())
+registerAdapter(new TaleoAdapter())
 registerAdapter(new ExampleCorpWorkdayAdapter())
 registerAdapter(new ExampleCorpGreenhouseAdapter())

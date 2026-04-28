@@ -45,35 +45,34 @@ EMAIL_VERIFICATION_REQUIRED_MESSAGE = (
 
 
 def _ensure_admin_user(db: Session) -> User:
-    admin_password = os.getenv("ADMIN_BOOTSTRAP_PASSWORD")
-    admin_first_name = os.getenv("ADMIN_BOOTSTRAP_FIRST_NAME")
-    admin_last_name = os.getenv("ADMIN_BOOTSTRAP_LAST_NAME")
+    """Create or reconcile the fixed admin contact row (ADMIN_EMAIL only).
 
-    missing = [
-        name
-        for name, value in {
-            "ADMIN_BOOTSTRAP_PASSWORD": admin_password,
-            "ADMIN_BOOTSTRAP_FIRST_NAME": admin_first_name,
-            "ADMIN_BOOTSTRAP_LAST_NAME": admin_last_name,
-        }.items()
-        if not value
-    ]
-    if missing:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Admin bootstrap env vars missing: {', '.join(missing)}",
-        )
+    Credential login always uses that email address; ADMIN_BOOTSTRAP_USERNAME is not
+    consulted here. When ADMIN_BOOTSTRAP_PASSWORD is set, the stored hash is updated
+    to match so deploy-time password rotation applies to this account only.
+    """
+    admin_password = (os.getenv("ADMIN_BOOTSTRAP_PASSWORD") or "").strip()
+    admin_first_name = (os.getenv("ADMIN_BOOTSTRAP_FIRST_NAME") or "").strip() or "Admin"
+    admin_last_name = (os.getenv("ADMIN_BOOTSTRAP_LAST_NAME") or "").strip() or "UAH"
+
+    if not admin_password:
+        raise ValueError("ADMIN_BOOTSTRAP_PASSWORD is required to create or repair the admin contact account.")
 
     normalized_admin_email = normalize_email(ADMIN_EMAIL)
     user = db.query(User).filter(func.lower(User.email) == normalized_admin_email).first()
     if user:
-        if not user.hashed_password:
-            user.hashed_password = hash_password(admin_password)
+        user.hashed_password = hash_password(admin_password)
         if user.username != normalized_admin_email:
             user.username = normalized_admin_email
         if user.email != normalized_admin_email:
             user.email = normalized_admin_email
         user.is_admin = True
+        user.is_active = True
+        user.email_verified = True
+        if user.first_name is None or not str(user.first_name).strip():
+            user.first_name = admin_first_name
+        if user.last_name is None or not str(user.last_name).strip():
+            user.last_name = admin_last_name
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -87,6 +86,7 @@ def _ensure_admin_user(db: Session) -> User:
         last_name=admin_last_name,
         is_active=True,
         is_admin=True,
+        email_verified=True,
     )
     db.add(user)
     db.commit()
@@ -171,8 +171,6 @@ def register(
         invite.is_active = False
     user.invite_code_used = invite.code
 
-    db.commit()
-    db.refresh(user)
     trigger_verification_email_flow(db=db, user=user)
 
     auth_client = resolve_auth_client(request)
@@ -202,6 +200,8 @@ def login(
     - 200: Authentication succeeded and token issued.
     - 401: Invalid email/password combination.
     - 403: Account exists but is deactivated or email verification is still pending.
+           For unverified users, a fresh verification email is sent before returning 403.
+    - 500: Verification email could not be sent for an unverified account.
     - 422: Request validation failed.
     """
     enforce_ip_rate_limit(
@@ -232,6 +232,7 @@ def login(
             detail="Account is deactivated",
         )
     if not user.email_verified:
+        trigger_verification_email_flow(db=db, user=user)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=EMAIL_VERIFICATION_REQUIRED_MESSAGE,
@@ -264,6 +265,8 @@ def token_login(
     - 200: Token generated successfully.
     - 401: Invalid email/password.
     - 403: Account is deactivated or email verification is still pending.
+           For unverified users, a fresh verification email is sent before returning 403.
+    - 500: Verification email could not be sent for an unverified account.
     - 422: Invalid form payload.
     """
     enforce_ip_rate_limit(
@@ -297,6 +300,7 @@ def token_login(
             detail="Account is deactivated",
         )
     if not user.email_verified:
+        trigger_verification_email_flow(db=db, user=user)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=EMAIL_VERIFICATION_REQUIRED_MESSAGE,

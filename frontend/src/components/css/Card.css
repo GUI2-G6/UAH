@@ -80,3 +80,30 @@
   padding: var(--ui-card-padding);
   min-width: 0;
 }
+
+html[data-theme="dark"] .ui-card--default {
+  --ui-card-bg: var(--color-surface);
+  --ui-card-border: 1px solid var(--border-color);
+  --ui-card-header-bg: rgba(59, 130, 246, 0.14);
+}
+
+html[data-theme="dark"] .ui-card--job {
+  --ui-card-bg: var(--color-surface);
+  --ui-card-border: 1px solid var(--border-color);
+  --ui-card-shadow: var(--shadow-card);
+}
+
+html[data-theme="dark"] .ui-card--minimal {
+  --ui-card-bg: var(--color-surface);
+  --ui-card-border: 1px solid var(--border-color);
+  --ui-card-shadow: var(--shadow-card);
+}
+
+html[data-theme="dark"] .ui-card__header {
+  border-bottom-color: var(--border-color);
+}
+
+html[data-theme="dark"] .ui-card__tab {
+  background: var(--color-surface);
+  border-color: var(--border-color);
+}

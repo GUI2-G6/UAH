@@ -2,6 +2,8 @@
 
 This document explains how the current codebase is split, how requests move through it, and where to look when a feature crosses multiple layers.
 
+For a paste-friendly ASCII version of the same architecture, use [ARCHITECTURE_TEXT_DIAGRAM.md](ARCHITECTURE_TEXT_DIAGRAM.md).
+
 For setup instructions, use the linked source-of-truth guides instead:
 
 - Repo entrypoint: [../README.md](../README.md)

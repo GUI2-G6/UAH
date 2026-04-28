@@ -2,6 +2,9 @@ import { getAccessToken, getCurrentUser, setAuth } from './auth.js'
 import { assertValidEmail, normalizePhone } from './validation.js'
 
 const MOCK_STATE_KEY = 'uah_mock_state_v1'
+const MOCK_APPLIED_STATUSES = ['submitted']
+const MOCK_ATS_DOMAIN_HINTS = ['greenhouse', 'workday', 'myworkdayjobs', 'lever', 'icims', 'ashby']
+const MOCK_GMAIL_ERROR_SEQUENCE = [null, null, null, '429', null, null, '502', null]
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 
@@ -446,6 +449,72 @@ function nowIso() {
   return new Date().toISOString()
 }
 
+function hashString(value) {
+  const input = String(value || '')
+  let hash = 2166136261
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return Math.abs(hash >>> 0)
+}
+
+function dayBucketIso() {
+  const now = new Date()
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`
+}
+
+function seededIndex(seed, modulo) {
+  const safeModulo = Math.max(1, Number(modulo || 1))
+  return Math.abs(Number(seed || 0)) % safeModulo
+}
+
+function createDefaultMockApplySessions(user) {
+  return [
+    {
+      id: 1,
+      user_id: user.id,
+      company: 'Acme Robotics',
+      job_title: 'Software Engineer',
+      status: 'submitted',
+      started_at: nowIso(),
+    },
+    {
+      id: 2,
+      user_id: user.id,
+      company: 'Nimbus Systems',
+      job_title: 'Frontend Engineer',
+      status: 'submitted',
+      started_at: nowIso(),
+    },
+    {
+      id: 3,
+      user_id: user.id,
+      company: 'Atlas Systems',
+      job_title: 'QA Engineer',
+      status: 'in_progress',
+      started_at: nowIso(),
+    },
+  ]
+}
+
+function resolveMockScenario(state) {
+  const userSeed = state?.user?.id || state?.user?.email || 'anon'
+  const daySeed = dayBucketIso()
+  const baseSeed = hashString(`${userSeed}:${daySeed}`)
+  const profiles = ['mixed', 'large', 'empty', 'malformed']
+  const profile = profiles[seededIndex(baseSeed, profiles.length)]
+  return {
+    key: `${userSeed}:${daySeed}:${profile}`,
+    baseSeed,
+    profile,
+    disconnectedByScenario: seededIndex(baseSeed, 11) === 0,
+    malformedRate: profile === 'malformed' ? 0.35 : 0.08,
+    totalCandidates: profile === 'large' ? 140 : profile === 'empty' ? 8 : 32,
+    responseDelayMs: 30 + seededIndex(baseSeed, 140),
+  }
+}
+
 function normalizeMode(rawMode) {
   const mode = String(rawMode || '').trim().toLowerCase()
   if (mode === 'backend') return 'backend'
@@ -518,8 +587,11 @@ export function assertSafeLocalModeConfig() {
   }
 }
 
+const DEFAULT_LOCAL_ADMIN_EMAIL = 'local.admin@uah.local'
+const DEFAULT_LOCAL_ADMIN_PASSWORD = 'LocalAdmin123!'
+
 function createDefaultUser(overrides = {}) {
-  const defaultEmail = 'localdev@uah.local'
+  const defaultEmail = DEFAULT_LOCAL_ADMIN_EMAIL
   return {
     id: 1,
     username: defaultEmail,
@@ -532,7 +604,7 @@ function createDefaultUser(overrides = {}) {
     gmail_refresh_token: null,
     gmail_email: null,
     first_name: 'Local',
-    last_name: 'Developer',
+    last_name: 'Admin',
     phone: '',
     linkedin: '',
     portfolio: '',
@@ -622,7 +694,6 @@ function createProfile(user, id = 1, overrides = {}) {
     id,
     name: 'Default',
     is_active: true,
-    is_default: true,
     created_at: createdAt,
     updated_at: createdAt,
     first_name: user.first_name || '',
@@ -659,6 +730,51 @@ function createProfile(user, id = 1, overrides = {}) {
   })
 }
 
+const REVIEW_DRAFT_SCHEMA = {
+  version: 'canonical_v1',
+  personal_fields: [
+    { key: 'first_name', label: 'First Name' },
+    { key: 'middle_name', label: 'Middle Name' },
+    { key: 'last_name', label: 'Last Name' },
+    { key: 'full_legal_name', label: 'Full Legal Name' },
+    { key: 'preferred_name', label: 'Preferred Name' },
+    { key: 'suffix', label: 'Suffix' },
+    { key: 'email', label: 'Email', type: 'email' },
+    { key: 'phone', label: 'Phone' },
+    { key: 'address', label: 'Street Address', full: true },
+    { key: 'city', label: 'City' },
+    { key: 'state', label: 'State' },
+    { key: 'zip', label: 'ZIP' },
+    { key: 'linkedin', label: 'LinkedIn', type: 'url' },
+    { key: 'website', label: 'Website', type: 'url' },
+  ],
+  skill_fields: [
+    { key: 'technical', label: 'Technical Skills' },
+    { key: 'languages', label: 'Languages' },
+    { key: 'tools', label: 'Tools' },
+    { key: 'soft_skills', label: 'Soft Skills' },
+  ],
+  structured_sections: [
+    { key: 'education', pathStem: 'education', title: 'Education', fields: [
+      { key: 'institution', label: 'Institution' }, { key: 'degree', label: 'Degree' }, { key: 'field_of_study', label: 'Field of Study' }, { key: 'gpa', label: 'GPA' }, { key: 'start_date', label: 'Start Date' }, { key: 'end_date', label: 'End Date' }, { key: 'honors', label: 'Honors', kind: 'inline-list', full: true }, { key: 'relevant_coursework', label: 'Relevant Coursework', kind: 'inline-list', full: true },
+    ] },
+    { key: 'work_experience', pathStem: 'work_experience', title: 'Work Experience', fields: [
+      { key: 'company', label: 'Company' }, { key: 'title', label: 'Title' }, { key: 'location', label: 'Location' }, { key: 'is_current', label: 'Current Role', kind: 'current-select' }, { key: 'start_date', label: 'Start Date' }, { key: 'end_date', label: 'End Date' }, { key: 'bullets', label: 'Bullets', kind: 'line-list', full: true },
+    ] },
+    { key: 'projects', pathStem: 'projects', title: 'Projects', fields: [
+      { key: 'name', label: 'Name' }, { key: 'date', label: 'Date' }, { key: 'description', label: 'Description', kind: 'textarea', full: true }, { key: 'technologies', label: 'Technologies', kind: 'inline-list', full: true },
+    ] },
+    { key: 'certifications', pathStem: 'certifications', title: 'Certifications', fields: [
+      { key: 'name', label: 'Name' }, { key: 'issuer', label: 'Issuer' }, { key: 'date', label: 'Date', full: true },
+    ] },
+  ],
+  extra_list_sections: [
+    { key: 'awards', label: 'Awards' },
+    { key: 'activities', label: 'Activities' },
+    { key: 'volunteer', label: 'Volunteer' },
+  ],
+}
+
 function cleanProfileString(value) {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -692,7 +808,11 @@ function normalizeCanonicalData(value = {}) {
   return {
     personal_info: {
       first_name: cleanProfileString(personal.first_name),
+      middle_name: cleanProfileString(personal.middle_name),
       last_name: cleanProfileString(personal.last_name),
+      full_legal_name: cleanProfileString(personal.full_legal_name),
+      preferred_name: cleanProfileString(personal.preferred_name),
+      suffix: cleanProfileString(personal.suffix),
       email: cleanProfileString(personal.email),
       phone: cleanProfileString(personal.phone),
       address: cleanProfileString(personal.address),
@@ -787,7 +907,11 @@ function deriveCanonicalFromProfile(profile = {}) {
   return normalizeCanonicalData({
     personal_info: {
       first_name: profile.first_name,
+      middle_name: profile.middle_name,
       last_name: profile.last_name,
+      full_legal_name: profile.full_legal_name,
+      preferred_name: profile.preferred_name,
+      suffix: profile.suffix,
       email: profile.email,
       phone: profile.phone,
       address: profile.street_address,
@@ -811,27 +935,71 @@ function deriveCanonicalFromProfile(profile = {}) {
 function flattenCanonicalData(canonical) {
   const normalized = normalizeCanonicalData(canonical)
   const tokens = {}
+  const splitDateTokens = (value) => {
+    const raw = cleanProfileString(value)
+    if (!raw) return { month: null, year: null, is_present: false }
+    if (raw.toLowerCase() === 'present') return { month: null, year: null, is_present: true }
+    const monthYear = raw.match(/^([A-Za-z]+)\s+(\d{4})$/)
+    if (monthYear) return { month: monthYear[1], year: monthYear[2], is_present: false }
+    const yearOnly = raw.match(/^(\d{4})$/)
+    if (yearOnly) return { month: null, year: yearOnly[1], is_present: false }
+    return { month: null, year: null, is_present: false }
+  }
+
   Object.entries(normalized.personal_info || {}).forEach(([key, value]) => {
     if (cleanProfileString(value)) tokens[`personal_info.${key}`] = value
   })
+  const first = cleanProfileString(normalized.personal_info?.first_name)
+  const middle = cleanProfileString(normalized.personal_info?.middle_name)
+  const last = cleanProfileString(normalized.personal_info?.last_name)
+  const suffix = cleanProfileString(normalized.personal_info?.suffix)
+  if (middle) tokens['personal_info.middle_initial'] = middle.slice(0, 1).toUpperCase()
+  if (first || middle || last) {
+    const assembled = [first, middle, last].filter(Boolean).join(' ')
+    if (assembled) {
+      tokens['personal_info.first_middle_last'] = assembled
+      if (suffix) tokens['personal_info.first_middle_last_with_suffix'] = `${assembled} ${suffix}`
+    }
+  }
   if (cleanProfileString(normalized.summary)) tokens.summary = normalized.summary
-  ;['education', 'work_experience', 'projects', 'certifications'].forEach((sectionKey) => {
-    ;(normalized[sectionKey] || []).forEach((entry, index) => {
-      Object.entries(entry || {}).forEach(([key, value]) => {
-        if (Array.isArray(value) && value.length) {
-          tokens[`${sectionKey}[${index}].${key}`] = value.join(key === 'bullets' ? '\n' : ', ')
-        } else if (!Array.isArray(value) && cleanProfileString(String(value || ''))) {
-          tokens[`${sectionKey}[${index}].${key}`] = value
+    ;['education', 'work_experience', 'projects', 'certifications'].forEach((sectionKey) => {
+      ; (normalized[sectionKey] || []).forEach((entry, index) => {
+        Object.entries(entry || {}).forEach(([key, value]) => {
+          if (Array.isArray(value) && value.length) {
+            tokens[`${sectionKey}[${index}].${key}`] = value.join(key === 'bullets' ? '\n' : ', ')
+          } else if (!Array.isArray(value) && cleanProfileString(String(value || ''))) {
+            tokens[`${sectionKey}[${index}].${key}`] = value
+          }
+        })
+        if (sectionKey === 'education') {
+          const start = splitDateTokens(entry?.start_date)
+          const end = splitDateTokens(entry?.end_date)
+          if (start.month) tokens[`education[${index}].start_month`] = start.month
+          if (start.year) tokens[`education[${index}].start_year`] = start.year
+          if (end.is_present) tokens[`education[${index}].is_current`] = true
+          if (!end.is_present && end.month) tokens[`education[${index}].end_month`] = end.month
+          if (!end.is_present && end.year) tokens[`education[${index}].end_year`] = end.year
+        }
+        if (sectionKey === 'work_experience') {
+          const start = splitDateTokens(entry?.start_date)
+          const end = splitDateTokens(entry?.end_date)
+          if (start.month) tokens[`work_experience[${index}].start_month`] = start.month
+          if (start.year) tokens[`work_experience[${index}].start_year`] = start.year
+          if (entry?.is_current || end.is_present) {
+            tokens[`work_experience[${index}].is_current`] = true
+          } else {
+            if (end.month) tokens[`work_experience[${index}].end_month`] = end.month
+            if (end.year) tokens[`work_experience[${index}].end_year`] = end.year
+          }
         }
       })
     })
-  })
   Object.entries(normalized.skills || {}).forEach(([key, value]) => {
     if (Array.isArray(value) && value.length) tokens[`skills.${key}`] = value.join(', ')
   })
-  ;['awards', 'activities', 'volunteer'].forEach((key) => {
-    if (normalized[key]?.length) tokens[key] = normalized[key].join('\n')
-  })
+    ;['awards', 'activities', 'volunteer'].forEach((key) => {
+      if (normalized[key]?.length) tokens[key] = normalized[key].join('\n')
+    })
   return tokens
 }
 
@@ -850,7 +1018,11 @@ function deriveProfileFieldsFromCanonical(canonical, existing = {}) {
 
   return {
     first_name: cleanProfileString(normalized.personal_info.first_name),
+    middle_name: cleanProfileString(normalized.personal_info.middle_name),
     last_name: cleanProfileString(normalized.personal_info.last_name),
+    full_legal_name: cleanProfileString(normalized.personal_info.full_legal_name),
+    preferred_name: cleanProfileString(normalized.personal_info.preferred_name),
+    suffix: cleanProfileString(normalized.personal_info.suffix),
     email: cleanProfileString(normalized.personal_info.email),
     phone: cleanProfileString(normalized.personal_info.phone),
     linkedin: cleanProfileString(normalized.personal_info.linkedin),
@@ -985,12 +1157,25 @@ function createDefaultState() {
     ],
     profiles: [createProfile(user)],
     savedJobs: [],
+    mockApplySessions: createDefaultMockApplySessions(user),
+    gmailSuppressions: [],
+    gmailNotificationStates: [],
+    trackedApplications: [],
+    analyticsEvents: [],
+    mockTesting: {
+      scanCount: 0,
+      lastScenarioKey: '',
+      lastScanStatus: 'idle',
+      lastScanAt: null,
+    },
     parseJobs: {},
     nextIds: {
       resume: 3,
       profile: 2,
       parseJob: 100,
       savedJob: 1,
+      trackedApplication: 1,
+      analyticsEvent: 1,
     },
   }
 }
@@ -1013,12 +1198,78 @@ function ensureStateShape(state) {
     url: normalizeWhitespace(job?.url),
     created_at: normalizeIsoDate(job?.created_at) || nowIso(),
   })).filter((job) => job.id > 0 && job.title && job.company && job.url)
+  safe.mockApplySessions = ensureArray(safe.mockApplySessions, [])
+    .map((session, index) => ({
+      id: Number(session?.id || index + 1),
+      user_id: Number(session?.user_id || safe.user.id),
+      company: normalizeWhitespace(session?.company),
+      job_title: normalizeWhitespace(session?.job_title),
+      status: normalizeTextLower(session?.status) || 'submitted',
+      started_at: normalizeIsoDate(session?.started_at) || nowIso(),
+    }))
+    .filter((session) => session.id > 0 && session.company && session.job_title)
+  safe.gmailSuppressions = ensureArray(safe.gmailSuppressions, [])
+    .map((row, index) => ({
+      id: Number(row?.id || index + 1),
+      scope: normalizeTextLower(row?.scope) === 'thread' ? 'thread' : 'message',
+      source_id: normalizeWhitespace(row?.source_id),
+      sender_domain: normalizeTextLower(row?.sender_domain),
+      subject_key: normalizeWhitespace(row?.subject_key),
+      company_key: normalizeWhitespace(row?.company_key),
+      note: normalizeWhitespace(row?.note),
+      created_at: normalizeIsoDate(row?.created_at) || nowIso(),
+    }))
+    .filter((row) => row.id > 0)
+  safe.gmailNotificationStates = ensureArray(safe.gmailNotificationStates, [])
+    .map((row, index) => ({
+      id: Number(row?.id || index + 1),
+      source_id: normalizeWhitespace(row?.source_id),
+      state: normalizeTextLower(row?.state) === 'dismissed' ? 'dismissed' : 'snoozed',
+      snoozed_until: normalizeIsoDate(row?.snoozed_until) || null,
+      created_at: normalizeIsoDate(row?.created_at) || nowIso(),
+      updated_at: normalizeIsoDate(row?.updated_at) || nowIso(),
+    }))
+    .filter((row) => row.id > 0 && row.source_id)
+  safe.trackedApplications = ensureArray(safe.trackedApplications, [])
+    .map((row, index) => ({
+      id: Number(row?.id || index + 1),
+      apply_session_id: Number(row?.apply_session_id || 0) || null,
+      source_type: normalizeTextLower(row?.source_type) || 'gmail',
+      source_ref: normalizeWhitespace(row?.source_ref),
+      thread_key: normalizeWhitespace(row?.thread_key),
+      company: normalizeWhitespace(row?.company),
+      job_title: normalizeWhitespace(row?.job_title),
+      latest_status: normalizeTextLower(row?.latest_status) || 'unknown',
+      selection_state: normalizeTextLower(row?.selection_state) || 'active',
+      has_new_update: row?.has_new_update === true,
+      last_update_at: normalizeIsoDate(row?.last_update_at) || null,
+      last_seen_at: normalizeIsoDate(row?.last_seen_at) || null,
+      metadata: row?.metadata && typeof row.metadata === 'object' ? row.metadata : {},
+      created_at: normalizeIsoDate(row?.created_at) || nowIso(),
+      updated_at: normalizeIsoDate(row?.updated_at) || nowIso(),
+    }))
+    .filter((row) => row.id > 0)
+  safe.analyticsEvents = ensureArray(safe.analyticsEvents, [])
+    .map((row, index) => ({
+      id: Number(row?.id || index + 1),
+      event_type: normalizeWhitespace(row?.event_type),
+      payload: row?.payload && typeof row.payload === 'object' ? row.payload : {},
+      created_at: normalizeIsoDate(row?.created_at) || nowIso(),
+    }))
+    .filter((row) => row.id > 0 && row.event_type)
+  safe.mockTesting = safe.mockTesting && typeof safe.mockTesting === 'object' ? safe.mockTesting : {}
+  safe.mockTesting.scanCount = Number(safe.mockTesting.scanCount || 0)
+  safe.mockTesting.lastScenarioKey = normalizeWhitespace(safe.mockTesting.lastScenarioKey)
+  safe.mockTesting.lastScanStatus = normalizeTextLower(safe.mockTesting.lastScanStatus) || 'idle'
+  safe.mockTesting.lastScanAt = normalizeIsoDate(safe.mockTesting.lastScanAt) || null
   safe.parseJobs = safe.parseJobs && typeof safe.parseJobs === 'object' ? safe.parseJobs : {}
   safe.nextIds = safe.nextIds && typeof safe.nextIds === 'object' ? safe.nextIds : { resume: 1, profile: 1, parseJob: 1, savedJob: 1 }
   safe.nextIds.resume = Number(safe.nextIds.resume || safe.resumes.length + 1)
   safe.nextIds.profile = Number(safe.nextIds.profile || safe.profiles.length + 1)
   safe.nextIds.parseJob = Number(safe.nextIds.parseJob || 100)
   safe.nextIds.savedJob = Number(safe.nextIds.savedJob || safe.savedJobs.length + 1)
+  safe.nextIds.trackedApplication = Number(safe.nextIds.trackedApplication || safe.trackedApplications.length + 1)
+  safe.nextIds.analyticsEvent = Number(safe.nextIds.analyticsEvent || safe.analyticsEvents.length + 1)
 
   if (!safe.profiles.length) {
     safe.profiles = [createProfile(safe.user)]
@@ -1028,6 +1279,9 @@ function ensureStateShape(state) {
   if (!safe.resumes.length) {
     safe.resumes = [createResume(1, safe.user)]
     safe.nextIds.resume = Math.max(safe.nextIds.resume, 2)
+  }
+  if (!safe.mockApplySessions.length) {
+    safe.mockApplySessions = createDefaultMockApplySessions(safe.user)
   }
 
   return safe
@@ -1063,7 +1317,7 @@ function setAuthStorage(user) {
 }
 
 function maybeBootstrapAutoLogin(state) {
-  const autoLogin = parseBoolean(import.meta.env.VITE_LOCAL_AUTO_LOGIN, false)
+  const autoLogin = parseBoolean(import.meta.env.VITE_LOCAL_AUTO_LOGIN, true)
   if (!autoLogin) return
 
   if (!getAccessToken()) {
@@ -1480,7 +1734,7 @@ function buildQueueSnapshot(state, focusMethod = 'local', includeGlobalQueue = t
     job_id: job.job_id,
     method: job.method,
     status: job.status,
-    user_display: 'Local Developer',
+    user_display: 'Local Admin',
     queue_position: index + 1,
     queue_total: activeJobs.length,
     created_at: job.created_at,
@@ -1932,6 +2186,8 @@ function buildMockServiceDetail(state, serviceKey) {
   const gmailConfigured = mockGmailConfigured()
 
   if (normalized === 'gmail') {
+    const lastScanStatus = normalizeTextLower(state?.mockTesting?.lastScanStatus)
+    const lastScanAt = normalizeIsoDate(state?.mockTesting?.lastScanAt)
     const connected = gmailConnected
     const status = connected ? 'connected' : (gmailConfigured ? 'available' : 'needs_attention')
     const accountLabel = connected
@@ -1957,31 +2213,39 @@ function buildMockServiceDetail(state, serviceKey) {
       ],
       readiness: connected
         ? {
-            title: 'Ready for mailbox-powered updates',
-            description: 'UAH can use this mailbox connection for future job-update scanning, status inference, and timeline enrichment without asking you to reconnect.',
-            tone: 'positive',
-          }
+          title: 'Ready for mailbox-powered updates',
+          description: lastScanAt
+            ? `Last mock scan: ${lastScanAt}. UAH can use this mailbox connection for status inference and timeline enrichment.`
+            : 'UAH can use this mailbox connection for future job-update scanning, status inference, and timeline enrichment without asking you to reconnect.',
+          tone: 'positive',
+        }
         : (gmailConfigured
-            ? {
-                title: 'Available to connect',
-                description: 'Connect Gmail when you want UAH ready for inbox-based job update features. Nothing is scanned automatically in this phase.',
-                tone: 'neutral',
-              }
-            : {
-                title: 'Needs environment setup',
-                description: 'An administrator still needs to configure Gmail OAuth credentials for this environment before users can opt in.',
-                tone: 'warning',
-              }),
+          ? {
+            title: 'Available to connect',
+            description: 'Connect Gmail when you want UAH ready for inbox-based job update features. Nothing is scanned automatically in this phase.',
+            tone: 'neutral',
+          }
+          : {
+            title: 'Needs environment setup',
+            description: 'An administrator still needs to configure Gmail OAuth credentials for this environment before users can opt in.',
+            tone: 'warning',
+          }),
       planned_features: [
         'Inbox-powered application status detection',
         'Timeline enrichment from recruiter communications',
         'Optional service-level scan controls and summaries in a later phase',
       ],
+      diagnostics: {
+        last_scan_status: lastScanStatus || 'idle',
+        last_scan_at: lastScanAt,
+      },
       actions: connected
-        ? [buildMockServiceAction({ key: 'disconnect', label: 'Disconnect', style: 'secondary', method: 'DELETE', href: '/api/integrations/gmail/disconnect' })]
+        ? [
+          buildMockServiceAction({ key: 'disconnect', label: 'Disconnect', style: 'secondary', method: 'DELETE', href: '/api/integrations/gmail/disconnect' }),
+        ]
         : [gmailConfigured
-            ? buildMockServiceAction({ key: 'connect', label: 'Connect', style: 'primary', method: 'POST', href: '/api/integrations/gmail/connect/start' })
-            : buildMockServiceAction({ key: 'unavailable', label: 'Unavailable', enabled: false, style: 'muted' })],
+          ? buildMockServiceAction({ key: 'connect', label: 'Connect', style: 'primary', method: 'POST', href: '/api/integrations/gmail/connect/start' })
+          : buildMockServiceAction({ key: 'unavailable', label: 'Unavailable', enabled: false, style: 'muted' })],
     }
   }
 
@@ -2068,8 +2332,8 @@ function listMockServiceSummaries(state) {
       summary: gmailDetail.connected
         ? 'Mailbox ready for future job-update scanning and timeline enrichment.'
         : (mockGmailConfigured()
-            ? 'Opt in to read-only inbox access so UAH can prepare for job update workflows.'
-            : 'Gmail support exists, but this environment still needs OAuth configuration before users can connect.'),
+          ? 'Opt in to read-only inbox access so UAH can prepare for job update workflows.'
+          : 'Gmail support exists, but this environment still needs OAuth configuration before users can connect.'),
       account_label: gmailDetail.account_label,
       primary_action: gmailDetail.actions[0],
       can_view_details: true,
@@ -2329,6 +2593,268 @@ function applyJobSearchFilters(baseJobs, params, selectedLocations) {
   }
 }
 
+function isAtsSender(fromValue) {
+  const normalized = normalizeTextLower(fromValue)
+  return MOCK_ATS_DOMAIN_HINTS.some((hint) => normalized.includes(hint))
+}
+
+function classifyMockStatus(subject, snippet) {
+  const combined = `${normalizeTextLower(subject)} ${normalizeTextLower(snippet)}`
+  if (
+    combined.includes('additional information needed')
+    || combined.includes('information appears to be missing')
+    || combined.includes('missing from your job application')
+    || combined.includes('complete your job application')
+    || combined.includes('please follow the below steps')
+  ) return 'action_required'
+  if (combined.includes('unfortunately') || combined.includes('regret')) return 'rejection'
+  if (combined.includes('interview') || combined.includes('schedule')) return 'interview_invite'
+  if (combined.includes('offer') || combined.includes('congratulations')) return 'offer'
+  if (combined.includes('application received') || combined.includes('thank you for applying')) return 'application_received'
+  return 'unknown'
+}
+
+function normalizeSubjectKey(subject) {
+  return normalizeTextLower(String(subject || '').replace(/\b(re|fwd?)\s*:\s*/gi, '').replace(/[^a-z0-9]+/gi, ' ')).trim()
+}
+
+function normalizeCompanyKey(company) {
+  return normalizeTextLower(String(company || '').replace(/[^a-z0-9]+/gi, ' ')).trim()
+}
+
+function senderDomainFromFromHeader(fromValue) {
+  const match = String(fromValue || '').match(/@([^>\s]+)/)
+  return normalizeTextLower(match?.[1] || '')
+}
+
+function buildMockGmailCandidates(state, scenario) {
+  const companies = ['Acme Robotics', 'Nimbus Systems', 'Atlas Systems', 'Blue Pine Labs', 'Vertex Dynamics']
+  const subjects = ['Interview next steps', 'Application received', 'Offer discussion', 'Update on your application', 'Final decision']
+  const snippets = [
+    'We would like to schedule your interview.',
+    'Thank you for applying to our role.',
+    'Congratulations, we would like to extend an offer.',
+    'Unfortunately we will not move forward.',
+    'Please confirm your availability for next steps.',
+  ]
+  const now = Date.now()
+  const rows = []
+  for (let i = 0; i < scenario.totalCandidates; i += 1) {
+    const company = companies[(scenario.baseSeed + i) % companies.length]
+    const usesAtsSender = ((scenario.baseSeed + i) % 5) !== 0
+    const senderDomain = usesAtsSender ? `${company.toLowerCase().replaceAll(' ', '')}.greenhouse.io` : 'gmail.com'
+    const from = usesAtsSender ? `${company} Recruiting <noreply@${senderDomain}>` : `Friend <friend${i}@${senderDomain}>`
+    const subjectBase = subjects[(scenario.baseSeed + i * 3) % subjects.length]
+    const snippetBase = snippets[(scenario.baseSeed + i * 7) % snippets.length]
+    const malformed = ((scenario.baseSeed + i) % 100) < Math.round(scenario.malformedRate * 100)
+    const subject = malformed && i % 4 === 0 ? null : `${subjectBase} at ${company}`
+    const snippet = malformed && i % 6 === 0 ? 42 : snippetBase
+    const date = malformed && i % 9 === 0 ? 'not-a-date' : new Date(now - i * 4_200_000).toUTCString()
+    rows.push({
+      source_id: `mock-mail-${i + 1}`,
+      subject,
+      from,
+      date,
+      snippet,
+      company_hint: company,
+    })
+  }
+  return rows
+}
+
+function buildMockGmailScanPayload(state, options = {}) {
+  const scenario = resolveMockScenario(state)
+  state.mockTesting.scanCount = Number(state.mockTesting.scanCount || 0) + 1
+  state.mockTesting.lastScenarioKey = scenario.key
+  state.mockTesting.lastScanAt = nowIso()
+
+  const errorKey = MOCK_GMAIL_ERROR_SEQUENCE[(state.mockTesting.scanCount - 1) % MOCK_GMAIL_ERROR_SEQUENCE.length]
+  if (errorKey === '429') {
+    state.mockTesting.lastScanStatus = 'rate_limited'
+    return {
+      error: {
+        status: 429,
+        payload: { detail: 'Too many requests for this action. Try again in 30s.' },
+        headers: { 'Retry-After': '30' },
+      },
+    }
+  }
+  if (errorKey === '502') {
+    state.mockTesting.lastScanStatus = 'provider_error'
+    return {
+      error: {
+        status: 502,
+        payload: { detail: 'Gmail API request failed' },
+        headers: {},
+      },
+    }
+  }
+
+  const submittedSessions = ensureArray(state.mockApplySessions, []).filter(
+    (session) => normalizeTextLower(session.status) === 'submitted'
+  )
+  const submittedCompanies = new Set(submittedSessions.map((session) => normalizeTextLower(session.company)))
+  const sourceStrictness = String(options?.source_strictness || 'hybrid_job_language').trim().toLowerCase() === 'hybrid_job_language'
+    ? 'hybrid_job_language'
+    : 'strict_career_domains'
+  const linkedinModeRaw = String(options?.linkedin_mode || 'linkedin_apply_only').trim().toLowerCase()
+  const linkedinMode = ['linkedin_apply_only', 'linkedin_all_jobish', 'linkedin_off'].includes(linkedinModeRaw)
+    ? linkedinModeRaw
+    : 'linkedin_apply_only'
+  const maxResults = Math.min(100, Math.max(1, Number(options?.max_results || 20)))
+  const newerThanDays = Math.min(36500, Math.max(1, Number(options?.newer_than_days || 45)))
+  const candidates = buildMockGmailCandidates(state, scenario)
+    .filter((row) => {
+      const ts = new Date(row.date).getTime()
+      if (!Number.isFinite(ts)) return true
+      return ts >= (Date.now() - (newerThanDays * 24 * 60 * 60 * 1000))
+    })
+  const suppressions = ensureArray(state.gmailSuppressions, [])
+  let excludedByNoncareerSource = 0
+  let excludedByNegativeIntent = 0
+  let includedByAts = 0
+  let includedByLinkedinApply = 0
+  const evaluated = candidates.map((candidate) => {
+    const from = String(candidate.from || '')
+    const subject = String(candidate.subject || '')
+    const snippet = String(candidate.snippet || '')
+    const companyHint = normalizeWhitespace(candidate.company_hint || '')
+    const ats_detected = isAtsSender(from)
+    const matched_applied_job = submittedCompanies.has(normalizeTextLower(companyHint))
+    const detected_status = classifyMockStatus(subject, snippet)
+    const senderDomain = senderDomainFromFromHeader(from)
+    const sourceCombined = `${senderDomain} ${subject.toLowerCase()} ${snippet.toLowerCase()}`
+    const sourceBucket = (
+      isAtsSender(from) ? 'ats_portal'
+        : (sourceCombined.includes('linkedin') || sourceCombined.includes('ripplematch') ? 'job_platform'
+          : (sourceCombined.includes('candidatecare') || sourceCombined.includes('career') || sourceCombined.includes('recruit') ? 'recruiter_direct' : 'non_career'))
+    )
+    const linkedinApplyDetected = sourceCombined.includes('linkedin') && (
+      sourceCombined.includes('application was sent')
+      || sourceCombined.includes('jobs-noreply')
+      || sourceCombined.includes('job application')
+      || sourceCombined.includes("what's next")
+    )
+    const negativeIntentDetected = (
+      sourceCombined.includes('deal awaits')
+      || sourceCombined.includes('limited time offer')
+      || sourceCombined.includes('premium')
+      || sourceCombined.includes('newsletter')
+      || sourceCombined.includes('share their thoughts')
+      || sourceCombined.includes('support hunger')
+    )
+    const includeByIntent = ats_detected || detected_status !== 'unknown'
+    let include = includeByIntent
+    let excludeReason = null
+    if (sourceStrictness === 'strict_career_domains' && sourceBucket === 'non_career') {
+      include = false
+      excludeReason = 'noncareer_source'
+      excludedByNoncareerSource += 1
+    } else if (sourceCombined.includes('linkedin') && linkedinMode === 'linkedin_off') {
+      include = false
+      excludeReason = 'linkedin_disabled'
+    } else if (sourceCombined.includes('linkedin') && linkedinMode === 'linkedin_apply_only' && !linkedinApplyDetected) {
+      include = false
+      excludeReason = 'linkedin_non_apply'
+    } else if (negativeIntentDetected) {
+      include = false
+      excludeReason = 'negative_intent'
+      excludedByNegativeIntent += 1
+    }
+    const subjectKey = normalizeSubjectKey(subject)
+    const companyKey = normalizeCompanyKey(companyHint)
+    const threadKey = `${senderDomain}|${subjectKey}|${companyKey}`
+    const directOpenUrl = `https://mail.google.com/mail/u/0/#inbox/${encodeURIComponent(String(candidate.source_id || ''))}`
+    const fallbackOpenUrl = `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(`from:${senderDomain} subject:\"${subject}\"`)}` 
+    const suppressed = suppressions.some((entry) => (
+      (entry.scope === 'message' && entry.source_id && entry.source_id === candidate.source_id)
+      || (entry.scope === 'thread'
+        && entry.sender_domain === senderDomain
+        && entry.subject_key === subjectKey
+        && entry.company_key === companyKey)
+    ))
+    return {
+      source_id: candidate.source_id,
+      subject,
+      from,
+      date: String(candidate.date || ''),
+      detected_status,
+      company_hint: companyHint || null,
+      snippet,
+      ats_detected,
+      job_update_detected: detected_status !== 'unknown',
+      linkedin_apply_detected: linkedinApplyDetected,
+      negative_intent_detected: negativeIntentDetected,
+      source_bucket: sourceBucket,
+      intent_score: detected_status !== 'unknown' ? 3 : 1,
+      matched_applied_job,
+      include,
+      suppressed,
+      sender_domain: senderDomain,
+      subject_key: subjectKey,
+      company_key: companyKey,
+      thread_key: threadKey,
+      gmail_open_url_direct: directOpenUrl,
+      gmail_open_url_fallback: fallbackOpenUrl,
+      exclude_reason: include ? null : (excludeReason || 'non_ats_or_job_update'),
+    }
+  })
+  const included = evaluated.filter((row) => row.include && !row.suppressed)
+  for (const row of included) {
+    if (row.ats_detected) includedByAts += 1
+    if (row.linkedin_apply_detected) includedByLinkedinApply += 1
+  }
+  const trackedRows = ensureArray(state.trackedApplications, []).filter((row) => normalizeTextLower(row.selection_state) === 'active')
+  const trackedBySource = new Map(trackedRows.map((row) => [normalizeWhitespace(row.source_ref), row]))
+  const trackedByThread = new Map(trackedRows.map((row) => [normalizeWhitespace(row.thread_key), row]))
+  let trackedUpdatesApplied = 0
+  for (const row of included) {
+    const tracked = trackedBySource.get(normalizeWhitespace(row.source_id)) || trackedByThread.get(normalizeWhitespace(row.thread_key))
+    if (!tracked) continue
+    tracked.latest_status = normalizeTextLower(row.detected_status) || tracked.latest_status
+    tracked.has_new_update = true
+    tracked.last_update_at = nowIso()
+    tracked.updated_at = nowIso()
+    row.tracked_id = tracked.id
+    row.has_new_update = true
+    trackedUpdatesApplied += 1
+  }
+  const results = scenario.profile === 'empty'
+    ? []
+    : (scenario.profile === 'large' ? included.slice(0, maxResults) : included.slice(0, maxResults))
+  state.mockTesting.lastScanStatus = 'ok'
+  return {
+    payload: {
+      gmail_email: state.user.gmail_email || state.user.email,
+      results_count: results.length,
+      matched_results_count: results.length,
+      results: results.map((item) => ({ ...item, tracking_source: 'gmail', confidence: 'high' })),
+      matched_results: results.map((item) => ({ ...item, tracking_source: 'gmail', confidence: 'high' })),
+      scan_scope: {
+        require_ats_or_job_update: true,
+        applied_job_statuses: [...MOCK_APPLIED_STATUSES],
+        applied_job_candidates: submittedSessions.length,
+        excluded_count: Math.max(evaluated.length - results.length, 0),
+        source_strictness: sourceStrictness,
+        linkedin_mode: linkedinMode,
+        newer_than_days: newerThanDays,
+        max_results: maxResults,
+        suppression_count: suppressions.length,
+        suppressed_message_hits: 0,
+        suppressed_chain_hits: 0,
+        suppression_miss_reasons: { missing_source_id: 0, missing_thread_signature: 0 },
+        tracked_updates_applied: trackedUpdatesApplied,
+        tracked_rows_seen: trackedRows.length,
+        excluded_by_noncareer_source: excludedByNoncareerSource,
+        excluded_by_negative_intent: excludedByNegativeIntent,
+        included_by_ats: includedByAts,
+        included_by_linkedin_apply: includedByLinkedinApply,
+        scenario_profile: scenario.profile,
+      },
+    },
+  }
+}
+
 async function parseJsonBody(request) {
   try {
     return await request.clone().json()
@@ -2424,6 +2950,11 @@ async function handleMockApiRequest(request, requestUrl, state) {
         '/api/jobs/debug/probe/provider': {},
         '/api/jobs/debug/probe/local-search': {},
         '/api/jobs/debug/probe/live-search': {},
+        '/api/integrations/gmail/debug/simulate-scan': {},
+        '/api/integrations/gmail/scan': {},
+        '/api/integrations/gmail/notification-states': {},
+        '/api/applications/tracked': {},
+        '/api/apply-sessions': {},
         '/api/providers/attribution': {},
       },
     })
@@ -2459,12 +2990,14 @@ async function handleMockApiRequest(request, requestUrl, state) {
   if (pathname === '/api/jobs/debug/probe/provider' && method === 'POST') {
     const body = await parseJsonBody(request)
     const provider = normalizeTextLower(body.provider) || 'the_muse'
+    const scenario = resolveMockScenario(state)
+    const shouldFail = seededIndex(scenario.baseSeed + Number(state.mockTesting.scanCount || 0), 6) === 0
     return toJsonResponse({
-      status: 'ok',
+      status: shouldFail ? 'error' : 'ok',
       provider,
-      latency_ms: 82,
+      latency_ms: 40 + seededIndex(scenario.baseSeed, 140),
       request_params: body.params || {},
-      item_count: 2,
+      item_count: shouldFail ? 0 : 2,
       sample: JOB_FIXTURES
         .filter((job) => job.provider === provider)
         .slice(0, 2)
@@ -2487,16 +3020,20 @@ async function handleMockApiRequest(request, requestUrl, state) {
           description: job.contents || '',
           published_at: job.publication_date,
         })),
-      sample_truncated: 0,
+      sample_truncated: shouldFail ? 0 : 0,
+      error_type: shouldFail ? 'ProviderTimeout' : null,
+      error_message: shouldFail ? 'Upstream provider timed out in mock scenario' : null,
     })
   }
 
   if (pathname === '/api/jobs/debug/probe/local-search' && method === 'POST') {
     const body = await parseJsonBody(request)
     const payload = buildMockJobsSearchPayload(toSearchParamsFromObject(body.params || {}))
+    const scenario = resolveMockScenario(state)
+    const shouldFail = seededIndex(scenario.baseSeed + 3, 9) === 0
     return toJsonResponse({
-      status: 'ok',
-      latency_ms: 4,
+      status: shouldFail ? 'error' : 'ok',
+      latency_ms: 4 + seededIndex(scenario.baseSeed, 22),
       request_params: body.params || {},
       payload_hash: 'mocklocal1234',
       response_preview: {
@@ -2504,15 +3041,19 @@ async function handleMockApiRequest(request, requestUrl, state) {
         jobs: (payload.jobs || []).slice(0, 5),
         jobs_truncated: Math.max((payload.jobs || []).length - 5, 0),
       },
+      error_type: shouldFail ? 'FilterMismatch' : null,
+      error_message: shouldFail ? 'Mock local-search scenario produced a simulated mismatch.' : null,
     })
   }
 
   if (pathname === '/api/jobs/debug/probe/live-search' && method === 'POST') {
     const body = await parseJsonBody(request)
     const payload = buildMockJobsSearchPayload(toSearchParamsFromObject(body.params || {}))
+    const scenario = resolveMockScenario(state)
+    const shouldFail = seededIndex(scenario.baseSeed + 7, 8) === 0
     return toJsonResponse({
-      status: 'ok',
-      latency_ms: 48,
+      status: shouldFail ? 'error' : 'ok',
+      latency_ms: 30 + seededIndex(scenario.baseSeed, 90),
       request_params: body.params || {},
       payload_hash: 'mocklive12345',
       response_preview: {
@@ -2520,12 +3061,19 @@ async function handleMockApiRequest(request, requestUrl, state) {
         jobs: (payload.jobs || []).slice(0, 5),
         jobs_truncated: Math.max((payload.jobs || []).length - 5, 0),
       },
+      error_type: shouldFail ? 'RateLimited' : null,
+      error_message: shouldFail ? 'Simulated live-search rate-limit response.' : null,
     })
   }
 
   if (pathname === '/api/auth/login' && method === 'POST') {
     const body = await parseJsonBody(request)
-    const email = normalizeTextLower(body.email || body.username) || 'localdev@uah.local'
+    const email = normalizeTextLower(body.email || body.username) || DEFAULT_LOCAL_ADMIN_EMAIL
+    const password = normalizeText(body.password)
+
+    if (password !== DEFAULT_LOCAL_ADMIN_PASSWORD) {
+      return toJsonResponse({ detail: 'Invalid credentials' }, 401)
+    }
 
     if (!state.user.email_verified) {
       return toJsonResponse(
@@ -2554,7 +3102,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
   if (pathname === '/api/auth/register' && method === 'POST') {
     const body = await parseJsonBody(request)
     const inviteCode = normalizeText(body.invite_code)
-    const email = normalizeTextLower(body.email) || 'localdev@uah.local'
+    const email = normalizeTextLower(body.email) || DEFAULT_LOCAL_ADMIN_EMAIL
 
     if (!inviteCode) {
       return toJsonResponse({ detail: 'Invalid or expired invite code' }, 400)
@@ -2698,6 +3246,384 @@ async function handleMockApiRequest(request, requestUrl, state) {
     }
     saveState(state)
     return toJsonResponse({ message: 'Gmail disconnected' })
+  }
+
+  if (pathname === '/api/integrations/gmail/scan' && method === 'POST') {
+    if (!state.user.gmail_refresh_token) {
+      return toJsonResponse({ detail: 'Gmail not connected' }, 400)
+    }
+    const body = await parseJsonBody(request)
+    const scan = buildMockGmailScanPayload(state, body || {})
+    if (scan.error) {
+      return toJsonResponse(scan.error.payload, scan.error.status, scan.error.headers)
+    }
+    return toJsonResponse(scan.payload)
+  }
+
+  if (pathname === '/api/integrations/gmail/suppressions' && method === 'GET') {
+    const rows = ensureArray(state.gmailSuppressions, [])
+      .slice()
+      .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+    return toJsonResponse({ suppressions: rows })
+  }
+
+  if (pathname === '/api/integrations/gmail/notification-states' && method === 'GET') {
+    const nowMs = Date.now()
+    const rows = ensureArray(state.gmailNotificationStates, [])
+      .filter((row) => (
+        row.state === 'dismissed'
+        || (row.state === 'snoozed' && Number.isFinite(Date.parse(row.snoozed_until || '')) && Date.parse(row.snoozed_until) > nowMs)
+      ))
+      .slice()
+      .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')))
+    return toJsonResponse({ notification_states: rows })
+  }
+
+  if (pathname === '/api/integrations/gmail/notification-states' && method === 'POST') {
+    const body = await parseJsonBody(request)
+    const sourceId = normalizeWhitespace(body?.source_id)
+    const action = normalizeTextLower(body?.action)
+    if (!sourceId) {
+      return toJsonResponse({ detail: 'source_id is required' }, 400)
+    }
+    if (!['dismiss', 'snooze'].includes(action)) {
+      return toJsonResponse({ detail: "action must be 'dismiss' or 'snooze'" }, 400)
+    }
+    const rows = ensureArray(state.gmailNotificationStates, [])
+    const existing = rows.find((row) => row.source_id === sourceId)
+    const now = nowIso()
+    const snoozedUntil = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+    if (existing) {
+      existing.state = action === 'dismiss' ? 'dismissed' : 'snoozed'
+      existing.snoozed_until = action === 'dismiss' ? null : snoozedUntil
+      existing.updated_at = now
+      saveState(state)
+      return toJsonResponse({ status: 'ok', notification_state: existing })
+    }
+    const nextId = Math.max(0, ...rows.map((row) => Number(row.id || 0))) + 1
+    const row = {
+      id: nextId,
+      source_id: sourceId,
+      state: action === 'dismiss' ? 'dismissed' : 'snoozed',
+      snoozed_until: action === 'dismiss' ? null : snoozedUntil,
+      created_at: now,
+      updated_at: now,
+    }
+    state.gmailNotificationStates = [row, ...rows]
+    saveState(state)
+    return toJsonResponse({ status: 'ok', notification_state: row })
+  }
+
+  if (pathname.startsWith('/api/integrations/gmail/notification-states/') && method === 'DELETE') {
+    const sourceId = decodeURIComponent(pathname.split('/').pop() || '').trim()
+    if (!sourceId) {
+      return toJsonResponse({ detail: 'source_id is required' }, 400)
+    }
+    const before = ensureArray(state.gmailNotificationStates, []).length
+    state.gmailNotificationStates = ensureArray(state.gmailNotificationStates, []).filter((row) => row.source_id !== sourceId)
+    if (state.gmailNotificationStates.length === before) {
+      return toJsonResponse({ detail: 'Notification state not found' }, 404)
+    }
+    saveState(state)
+    return toJsonResponse({ status: 'ok', message: 'Notification state removed' })
+  }
+
+  if (pathname === '/api/integrations/gmail/suppressions' && method === 'POST') {
+    const body = await parseJsonBody(request)
+    const scope = normalizeTextLower(body?.scope) === 'thread' ? 'thread' : 'message'
+    const nextId = Math.max(0, ...ensureArray(state.gmailSuppressions, []).map((row) => Number(row.id || 0))) + 1
+    const row = {
+      id: nextId,
+      scope,
+      source_id: scope === 'message' ? normalizeWhitespace(body?.source_id) : '',
+      sender_domain: scope === 'thread' ? senderDomainFromFromHeader(body?.from_header) : '',
+      subject_key: scope === 'thread' ? normalizeSubjectKey(body?.subject) : '',
+      company_key: scope === 'thread' ? normalizeCompanyKey(body?.company_hint) : '',
+      note: normalizeWhitespace(body?.note || ''),
+      created_at: nowIso(),
+    }
+    if (scope === 'message' && !row.source_id) {
+      return toJsonResponse({ detail: 'source_id is required for message scope' }, 400)
+    }
+    if (scope === 'thread' && (!row.sender_domain || !row.subject_key)) {
+      return toJsonResponse({ detail: 'from_header and subject are required for thread scope' }, 400)
+    }
+    state.gmailSuppressions = [row, ...ensureArray(state.gmailSuppressions, [])]
+    saveState(state)
+    return toJsonResponse({ status: 'ok', suppression: row })
+  }
+
+  if (/^\/api\/integrations\/gmail\/suppressions\/\d+$/.test(pathname) && method === 'DELETE') {
+    const suppressionId = Number(pathname.split('/').pop() || 0)
+    const before = ensureArray(state.gmailSuppressions, []).length
+    state.gmailSuppressions = ensureArray(state.gmailSuppressions, []).filter((row) => Number(row.id) !== suppressionId)
+    if (state.gmailSuppressions.length === before) {
+      return toJsonResponse({ detail: 'Suppression not found' }, 404)
+    }
+    saveState(state)
+    return toJsonResponse({ status: 'ok', message: 'Suppression removed' })
+  }
+
+  if (pathname === '/api/integrations/gmail/debug/simulate-scan' && method === 'POST') {
+    const body = await parseJsonBody(request)
+    const submittedCompanies = new Set(
+      ensureArray(state.mockApplySessions, [])
+        .filter((session) => normalizeTextLower(session.status) === 'submitted')
+        .map((session) => normalizeTextLower(session.company))
+    )
+    const requireAts = body?.require_ats !== false
+    const rows = ensureArray(body?.messages, []).map((item, index) => {
+      const from = String(item?.from || item?.from_header || '')
+      const subject = String(item?.subject || '')
+      const snippet = String(item?.snippet || '')
+      const companyHint = normalizeWhitespace(item?.company_hint || '')
+      const atsDetected = isAtsSender(from)
+      const matched = submittedCompanies.has(normalizeTextLower(companyHint))
+      const include = (!requireAts || atsDetected) && matched
+      return {
+        source_id: `debug-${index + 1}`,
+        subject,
+        from,
+        date: String(item?.date || nowIso()),
+        detected_status: classifyMockStatus(subject, snippet),
+        company_hint: companyHint || null,
+        snippet,
+        ats_detected: atsDetected,
+        matched_applied_job: matched,
+        include,
+        exclude_reason: include ? null : (!atsDetected ? 'non_ats_sender' : 'no_applied_job_match'),
+      }
+    })
+    const included = rows.filter((row) => row.include)
+    return toJsonResponse({
+      status: 'ok',
+      require_ats: requireAts,
+      applied_job_statuses: [...MOCK_APPLIED_STATUSES],
+      applied_job_candidates: submittedCompanies.size,
+      submitted_messages: rows.length,
+      included_count: included.length,
+      excluded_count: rows.length - included.length,
+      included_results: included,
+      all_evaluated: rows,
+      latency_ms: 20 + seededIndex(hashString(JSON.stringify(body || {})), 80),
+    })
+  }
+
+  if (pathname === '/api/apply-sessions' && method === 'GET') {
+    const statusFilter = normalizeTextLower(requestUrl.searchParams.get('status'))
+    const all = ensureArray(state.mockApplySessions, [])
+    const sessions = statusFilter ? all.filter((session) => normalizeTextLower(session.status) === statusFilter) : all
+    return toJsonResponse(sessions)
+  }
+
+  if (pathname === '/api/apply-sessions/start' && method === 'POST') {
+    const body = await parseJsonBody(request)
+    const all = ensureArray(state.mockApplySessions, [])
+    const nextId = Math.max(0, ...all.map((row) => Number(row.id || 0))) + 1
+    const session = {
+      id: nextId,
+      user_id: state.user.id,
+      status: 'started',
+      company: normalizeWhitespace(body?.company || 'Unknown company'),
+      job_title: normalizeWhitespace(body?.job_title || body?.jobTitle || 'Unknown role'),
+      platform: normalizeWhitespace(body?.platform || 'web'),
+      ats_url: normalizeWhitespace(body?.ats_url || ''),
+      job_url: normalizeWhitespace(body?.job_url || ''),
+      started_at: nowIso(),
+      updated_at: nowIso(),
+      finalized_at: null,
+    }
+    all.unshift(session)
+    state.mockApplySessions = all
+    saveState(state)
+    return toJsonResponse({ session_id: nextId, session })
+  }
+
+  if (pathname === '/api/apply-sessions/analytics/events' && method === 'POST') {
+    const body = await parseJsonBody(request)
+    const eventType = normalizeWhitespace(body?.event_type)
+    if (!eventType) {
+      return toJsonResponse({ detail: 'event_type is required' }, 400)
+    }
+    const nextId = Number(state.nextIds.analyticsEvent || 1)
+    state.nextIds.analyticsEvent = nextId + 1
+    const sessionId = Number(body?.session_id || 0)
+    const event = {
+      id: nextId,
+      event_type: eventType,
+      payload: body?.payload && typeof body.payload === 'object' ? { ...body.payload, session_id: sessionId || null } : { session_id: sessionId || null },
+      created_at: nowIso(),
+    }
+    state.analyticsEvents = ensureArray(state.analyticsEvents, [])
+    state.analyticsEvents.unshift(event)
+    state.analyticsEvents = state.analyticsEvents.slice(0, 300)
+    saveState(state)
+    return toJsonResponse({ ok: true, event_id: nextId, event_type: eventType, session_id: sessionId || null })
+  }
+
+  if (pathname === '/api/apply-sessions/analytics/summary' && method === 'GET') {
+    const sessions = ensureArray(state.mockApplySessions, [])
+    const trackedRows = ensureArray(state.trackedApplications, []).filter((row) => normalizeTextLower(row.selection_state) === 'active')
+    const statusCounts = {
+      started: 0,
+      in_progress: 0,
+      submitted: 0,
+      abandoned: 0,
+    }
+    sessions.forEach((row) => {
+      const key = normalizeTextLower(row.status)
+      if (Object.prototype.hasOwnProperty.call(statusCounts, key)) statusCounts[key] += 1
+    })
+    const staleThreshold = Date.now() - (7 * 24 * 60 * 60 * 1000)
+    const staleSubmissions = sessions.filter((row) => {
+      if (normalizeTextLower(row.status) !== 'submitted') return false
+      const ts = new Date(row.updated_at || row.finalized_at || row.started_at).getTime()
+      return Number.isNaN(ts) || ts < staleThreshold
+    }).length
+    const recentEvents = ensureArray(state.analyticsEvents, []).slice(0, 8)
+    return toJsonResponse({
+      status_counts: statusCounts,
+      tracked_active_count: trackedRows.length,
+      tracked_updates_count: trackedRows.filter((row) => row.has_new_update === true).length,
+      stale_submissions_count: staleSubmissions,
+      recent_events: recentEvents,
+      generated_at: nowIso(),
+    })
+  }
+
+  if (/^\/api\/apply-sessions\/\d+\/finalize$/.test(pathname) && method === 'POST') {
+    const body = await parseJsonBody(request)
+    const sessionId = Number(pathname.split('/')[3] || 0)
+    const all = ensureArray(state.mockApplySessions, [])
+    const target = all.find((row) => Number(row.id) === sessionId)
+    if (!target) {
+      return toJsonResponse({ detail: 'Apply session not found' }, 404)
+    }
+    target.status = normalizeTextLower(body?.status) || 'submitted'
+    target.notes = normalizeWhitespace(body?.notes || target.notes || '')
+    target.finalized_at = nowIso()
+    target.updated_at = nowIso()
+    saveState(state)
+    return toJsonResponse({ status: 'ok', session: target })
+  }
+
+  if (pathname === '/api/apply-sessions/backfill-from-saved' && method === 'POST') {
+    const savedJobs = ensureArray(state.savedJobs, [])
+    const sessions = ensureArray(state.mockApplySessions, [])
+    let created = 0
+    let skipped = 0
+    for (const row of savedJobs) {
+      const company = normalizeTextLower(row.company)
+      const title = normalizeTextLower(row.title || row.name)
+      const url = normalizeWhitespace(row.url || row.job_url || row.apply_url || '')
+      const duplicate = sessions.some((session) => (
+        normalizeTextLower(session.company) === company
+        && normalizeTextLower(session.job_title) === title
+        && normalizeWhitespace(session.ats_url || session.job_url || '') === url
+      ))
+      if (duplicate || !company || !title) {
+        skipped += 1
+        continue
+      }
+      sessions.unshift({
+        id: Math.max(0, ...sessions.map((entry) => Number(entry.id || 0))) + 1,
+        user_id: state.user.id,
+        status: 'submitted',
+        company: row.company,
+        job_title: row.title || row.name,
+        platform: row.provider || 'saved_jobs',
+        ats_url: url,
+        job_url: url,
+        started_at: nowIso(),
+        updated_at: nowIso(),
+        finalized_at: nowIso(),
+      })
+      created += 1
+    }
+    state.mockApplySessions = sessions
+    saveState(state)
+    return toJsonResponse({ status: 'ok', saved_jobs_seen: savedJobs.length, created_sessions: created, skipped_existing: skipped })
+  }
+
+  if (pathname === '/api/applications/tracked' && method === 'GET') {
+    const rows = ensureArray(state.trackedApplications, [])
+      .filter((row) => normalizeTextLower(row.selection_state) === 'active')
+      .sort((a, b) => {
+        if (a.has_new_update !== b.has_new_update) return a.has_new_update ? -1 : 1
+        return String(b.updated_at || '').localeCompare(String(a.updated_at || ''))
+      })
+    return toJsonResponse({ tracked_applications: rows })
+  }
+
+  if (pathname === '/api/applications/tracked/select' && method === 'POST') {
+    const body = await parseJsonBody(request)
+    const selections = ensureArray(body?.selections, [])
+    let created = 0
+    let updated = 0
+    for (const row of selections) {
+      const sourceType = normalizeTextLower(row?.source_type) || 'gmail'
+      const sourceRef = normalizeWhitespace(row?.source_ref)
+      if (!sourceRef) continue
+      const existing = ensureArray(state.trackedApplications, []).find((item) => (
+        normalizeTextLower(item.source_type) === sourceType && normalizeWhitespace(item.source_ref) === sourceRef
+      ))
+      if (existing) {
+        existing.thread_key = normalizeWhitespace(row?.thread_key) || existing.thread_key
+        existing.company = normalizeWhitespace(row?.company) || existing.company
+        existing.job_title = normalizeWhitespace(row?.job_title) || existing.job_title
+        existing.latest_status = normalizeTextLower(row?.latest_status) || existing.latest_status
+        existing.selection_state = 'active'
+        existing.updated_at = nowIso()
+        updated += 1
+        continue
+      }
+      const nextId = Number(state.nextIds.trackedApplication || 1)
+      state.nextIds.trackedApplication = nextId + 1
+      state.trackedApplications.unshift({
+        id: nextId,
+        apply_session_id: Number(row?.apply_session_id || 0) || null,
+        source_type: sourceType,
+        source_ref: sourceRef,
+        thread_key: normalizeWhitespace(row?.thread_key),
+        company: normalizeWhitespace(row?.company),
+        job_title: normalizeWhitespace(row?.job_title),
+        latest_status: normalizeTextLower(row?.latest_status) || 'unknown',
+        selection_state: 'active',
+        has_new_update: false,
+        last_update_at: null,
+        last_seen_at: nowIso(),
+        metadata: row?.metadata && typeof row.metadata === 'object' ? row.metadata : {},
+        created_at: nowIso(),
+        updated_at: nowIso(),
+      })
+      created += 1
+    }
+    saveState(state)
+    return toJsonResponse({ status: 'ok', created, updated })
+  }
+
+  if (/^\/api\/applications\/tracked\/\d+$/.test(pathname) && method === 'PATCH') {
+    const trackedId = Number(pathname.split('/').pop() || 0)
+    const body = await parseJsonBody(request)
+    const action = normalizeTextLower(body?.action) || 'mark_seen'
+    const target = ensureArray(state.trackedApplications, []).find((row) => Number(row.id) === trackedId)
+    if (!target) {
+      return toJsonResponse({ detail: 'Tracked application not found' }, 404)
+    }
+    if (action === 'mark_seen') {
+      target.has_new_update = false
+      target.last_seen_at = nowIso()
+      target.updated_at = nowIso()
+    } else if (action === 'untrack' || action === 'archive') {
+      target.selection_state = 'archived'
+      target.has_new_update = false
+      target.last_seen_at = nowIso()
+      target.updated_at = nowIso()
+    } else {
+      return toJsonResponse({ detail: 'Unsupported action' }, 400)
+    }
+    saveState(state)
+    return toJsonResponse({ status: 'ok', tracked_application: target })
   }
 
   if (pathname === '/api/account/change-name' && method === 'PUT') {
@@ -2940,6 +3866,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
       review_status: resume.review_status || 'pending',
       review_updated_at: resume.review_updated_at,
       review_draft: reviewDraft,
+      review_schema: REVIEW_DRAFT_SCHEMA,
     })
   }
 
@@ -2964,6 +3891,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
       review_status: state.resumes[resumeIndex].review_status,
       review_updated_at: state.resumes[resumeIndex].review_updated_at,
       review_draft: state.resumes[resumeIndex].review_draft,
+      review_schema: REVIEW_DRAFT_SCHEMA,
     })
   }
 
@@ -3017,7 +3945,6 @@ async function handleMockApiRequest(request, requestUrl, state) {
       state.profiles = state.profiles.map((item) => ({ ...item, is_active: false }))
       profile = syncMockProfileStorage(createProfile(state.user, id, {
         name: cleanProfileString(body.profile_name) || cleanProfileString(incoming.personal_info.first_name) || `Profile ${id}`,
-        is_default: false,
         is_active: true,
         canonical_data: incoming,
         updated_at: nowIso(),
@@ -3079,8 +4006,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
     const created = createProfile(state.user, id, {
       ...body,
       name: normalizeText(body.name) || `Profile ${id}`,
-      is_default: state.profiles.length === 0 || body.is_default === true,
-      is_active: body.is_default === true || state.profiles.length === 0,
+      is_active: state.profiles.length === 0,
       created_at: nowIso(),
     })
 
@@ -3150,8 +4076,8 @@ async function handleMockApiRequest(request, requestUrl, state) {
       return toJsonResponse({ detail: 'Profile not found' }, 404)
     }
 
-    if (profile.is_default) {
-      return toJsonResponse({ detail: 'Default profile cannot be deleted' }, 400)
+    if (state.profiles.length <= 1) {
+      return toJsonResponse({ detail: 'Cannot delete your only profile. Create another profile first.' }, 400)
     }
 
     state.profiles = state.profiles.filter((item) => Number(item.id) !== profileId)

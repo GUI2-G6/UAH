@@ -711,3 +711,150 @@
 .pagination-bottom {
   padding-top: 6px;
 }
+
+html[data-theme="dark"] .greeting p,
+html[data-theme="dark"] .hero-copy p {
+  color: var(--color-text-secondary);
+}
+
+html[data-theme="dark"] .hero-chip {
+  background: color-mix(in srgb, var(--color-primary-600) 20%, var(--color-surface));
+  border: 1px solid var(--border-color);
+  color: #bfdbfe;
+}
+
+html[data-theme="dark"] .active-filters-bar,
+html[data-theme="dark"] .filter-group,
+html[data-theme="dark"] .advanced-filters-panel,
+html[data-theme="dark"] .city-preview,
+html[data-theme="dark"] .city-modal-dialog,
+html[data-theme="dark"] .empty-state,
+html[data-theme="dark"] .results-state-item,
+html[data-theme="dark"] .category-suggestions {
+  background: var(--color-surface);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .filter-group input,
+html[data-theme="dark"] .filter-group select,
+html[data-theme="dark"] .custom-input-row input,
+html[data-theme="dark"] .custom-input-row select {
+  background: var(--color-surface-muted);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .filter-group input:focus,
+html[data-theme="dark"] .filter-group select:focus {
+  outline: 2px solid rgba(96, 165, 250, 0.45);
+  border-color: rgba(96, 165, 250, 0.72);
+}
+
+html[data-theme="dark"] .filter-group-placeholder {
+  border-style: dashed;
+  border-color: var(--border-color);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-surface-muted) 88%, black),
+    var(--color-surface)
+  );
+}
+
+html[data-theme="dark"] .filter-group input::placeholder,
+html[data-theme="dark"] .custom-input-row input::placeholder {
+  color: var(--color-text-muted);
+}
+
+html[data-theme="dark"] .city-modal-scroll,
+html[data-theme="dark"] .city-sort-row {
+  background: var(--color-surface-muted);
+  border-color: var(--border-color);
+}
+
+html[data-theme="dark"] .city-modal-header {
+  border-bottom-color: var(--border-color);
+}
+
+html[data-theme="dark"] .active-filter-chip,
+html[data-theme="dark"] .mode-button,
+html[data-theme="dark"] .advanced-toggle,
+html[data-theme="dark"] .city-sort-btn,
+html[data-theme="dark"] .city-preview-more,
+html[data-theme="dark"] .custom-input-row button,
+html[data-theme="dark"] .filter-actions button,
+html[data-theme="dark"] .secondary-action,
+html[data-theme="dark"] .chip,
+html[data-theme="dark"] .empty-state-actions button {
+  background: var(--color-surface);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .active-filter-chip:hover,
+html[data-theme="dark"] .mode-button:hover,
+html[data-theme="dark"] .advanced-toggle:hover,
+html[data-theme="dark"] .city-sort-btn:hover,
+html[data-theme="dark"] .city-preview-more:hover,
+html[data-theme="dark"] .custom-input-row button:hover,
+html[data-theme="dark"] .filter-actions button:hover,
+html[data-theme="dark"] .secondary-action:hover,
+html[data-theme="dark"] .chip:hover,
+html[data-theme="dark"] .empty-state-actions button:hover {
+  background: var(--color-surface-hover);
+}
+
+html[data-theme="dark"] .filter-actions .secondary,
+html[data-theme="dark"] .active-filters-actions .secondary {
+  background: var(--color-surface);
+}
+
+html[data-theme="dark"] .filter-actions button:disabled,
+html[data-theme="dark"] .custom-input-row button:disabled {
+  background: var(--color-surface-muted);
+  border-color: var(--border-color);
+  color: var(--color-text-muted);
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+html[data-theme="dark"] .category-option {
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .category-option:hover,
+html[data-theme="dark"] .category-option.active {
+  background: rgba(59, 130, 246, 0.24);
+}
+
+html[data-theme="dark"] .advanced-eyebrow,
+html[data-theme="dark"] .active-filters-label,
+html[data-theme="dark"] .results-state-label,
+html[data-theme="dark"] .city-distance,
+html[data-theme="dark"] .active-filters-empty,
+html[data-theme="dark"] .helper-text,
+html[data-theme="dark"] .hint-text {
+  color: var(--color-text-secondary);
+}
+
+html[data-theme="dark"] .advanced-filters-header h2,
+html[data-theme="dark"] .jobs-meta,
+html[data-theme="dark"] .city-modal-header h2,
+html[data-theme="dark"] .city-preview-list li,
+html[data-theme="dark"] .city-modal-list li {
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .advanced-filters-header p,
+html[data-theme="dark"] .city-modal-subtitle {
+  color: var(--color-text-secondary);
+}
+
+html[data-theme="dark"] .warn-text {
+  color: var(--color-warning-600);
+}
+
+html[data-theme="dark"] .results-state-item.is-highlight {
+  background: color-mix(in srgb, var(--color-primary-600) 18%, var(--color-surface));
+  border-color: rgba(96, 165, 250, 0.62);
+}

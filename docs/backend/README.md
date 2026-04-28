@@ -18,6 +18,11 @@ For repo-wide context, start with [../README.md](../README.md) and [../ARCHITECT
 | Compose backend profile | Best when you want a full localhost-only backend container | `docker-compose.local.yml --profile backend` |
 | Full dev stack | Best when you need the deployed dev shape | `docker-compose.yml` and `scripts/uah.sh` |
 
+For `scripts/uah.sh` lifecycle flows (`start`, `restart`, and post-`sync` rebuild), schema reconcile is automatic via `alembic upgrade head` inside the backend container. Failure policy is environment-aware:
+
+- `dev`: logs warnings and continues.
+- `beta`: fails fast with non-zero exit.
+
 ## Prerequisites
 
 - Docker running locally
@@ -158,6 +163,20 @@ cd frontend
 npm install
 npm run dev:backend
 ```
+
+### Standard local dev test admin account
+
+For local/dev workflows, the standard bypass account uses `DEV_AUTH_TEST_*` settings
+(not `ADMIN_BOOTSTRAP_*`).
+
+Default local template values in `env-examples/local/.env.example`:
+
+- `DEV_AUTH_TEST_ACCOUNT_ENABLED=true`
+- `DEV_AUTH_TEST_EMAIL=local.admin@uah.local`
+- `DEV_AUTH_TEST_PASSWORD=LocalAdmin123!`
+- `DEV_AUTH_TEST_IS_ADMIN=true`
+
+This account is local/dev-only and should remain disabled in beta/prod.
 
 ## Optional: Queue And Job Sync
 

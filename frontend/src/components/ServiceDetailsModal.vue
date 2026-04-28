@@ -68,6 +68,13 @@
               <li v-for="feature in service.planned_features || []" :key="feature">{{ feature }}</li>
             </ul>
           </section>
+          <section class="service-details-section">
+            <h3>Privacy policy</h3>
+            <p>
+              Read full data handling details:
+              <a :href="privacyPolicyUrl" target="_blank" rel="noopener noreferrer">UAH Privacy Policy</a>
+            </p>
+          </section>
         </template>
       </div>
 
@@ -102,6 +109,8 @@ const MONOGRAMS = {
   calendar_sync: 'CS',
   resume_imports: 'RI',
 }
+
+const DEFAULT_PUBLIC_LANDING_URL = 'https://uahapp.com'
 
 export default {
   name: 'ServiceDetailsModal',
@@ -139,6 +148,11 @@ export default {
     },
     monogram() {
       return MONOGRAMS[this.service?.key] || 'SV'
+    },
+    privacyPolicyUrl() {
+      const configuredBase = String(import.meta.env.VITE_PUBLIC_LANDING_URL || '').trim()
+      const base = (configuredBase || DEFAULT_PUBLIC_LANDING_URL).replace(/\/+$/, '')
+      return `${base}/privacy-policy`
     },
   },
   mounted() {

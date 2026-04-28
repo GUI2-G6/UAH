@@ -345,6 +345,56 @@ export function registerAutofillRuntime(win = window, doc = document) {
       refreshOverlay()
       return { filled, total: state.currentPlan.length }
     },
+    autoRun(payload = {}) {
+      ensureStyles(doc)
+      const nextTokens = cloneTokenMap(payload?.tokenMap || payload)
+      state.currentTokens = nextTokens
+      state.currentPlan = buildDomPlan(state.currentTokens, doc)
+
+      const approvedPaths = []
+      const pendingApprovals = []
+      for (const item of state.currentPlan) {
+        if (!item?.matchPath) continue
+        if (item.requiresApproval) {
+          pendingApprovals.push({
+            path: item.matchPath,
+            label: item.label || item.name || item.id || item.matchPath,
+            reason: item.resolverReason || item.matchReason || 'review',
+            sensitive: item.sensitive === true,
+            confidence: item.confidenceClass || 'review',
+          })
+        } else {
+          approvedPaths.push(item.matchPath)
+        }
+      }
+      const filled = fillPlan(state.currentPlan, state.currentTokens, { approvedPaths })
+      state.notice = pendingApprovals.length
+        ? `Auto-filled ${filled}. ${pendingApprovals.length} field(s) require approval before fill.`
+        : `Auto-filled ${filled} field${filled === 1 ? '' : 's'} without gated approvals.`
+      refreshOverlay()
+      return {
+        filled,
+        total: state.currentPlan.length,
+        approved_count: approvedPaths.length,
+        pending_approvals: pendingApprovals,
+      }
+    },
+    fillApproved(payload = {}) {
+      ensureStyles(doc)
+      const approvedPaths = Array.isArray(payload?.approvedPaths) ? payload.approvedPaths : []
+      if (!state.currentPlan || !state.currentTokens) {
+        state.currentTokens = cloneTokenMap(payload?.tokenMap || {})
+        state.currentPlan = buildDomPlan(state.currentTokens, doc)
+      }
+      const filled = fillPlan(state.currentPlan, state.currentTokens, { approvedPaths })
+      state.notice = `Filled ${filled} approved field${filled === 1 ? '' : 's'}.`
+      refreshOverlay()
+      return {
+        filled,
+        approved_count: approvedPaths.length,
+        total: state.currentPlan.length,
+      }
+    },
     remove() {
       teardownOverlay()
       doc.getElementById(STYLE_ID)?.remove()

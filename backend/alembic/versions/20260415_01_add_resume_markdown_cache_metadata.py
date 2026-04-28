@@ -17,12 +17,28 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("resumes", sa.Column("raw_markdown_source", sa.String(length=80), nullable=True))
-    op.add_column("resumes", sa.Column("raw_markdown_method", sa.String(length=50), nullable=True))
-    op.add_column("resumes", sa.Column("raw_markdown_updated_at", sa.DateTime(timezone=True), nullable=True))
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if "resumes" not in set(inspector.get_table_names()):
+        return
+    existing = {c["name"] for c in inspector.get_columns("resumes")}
+    if "raw_markdown_source" not in existing:
+        op.add_column("resumes", sa.Column("raw_markdown_source", sa.String(length=80), nullable=True))
+    if "raw_markdown_method" not in existing:
+        op.add_column("resumes", sa.Column("raw_markdown_method", sa.String(length=50), nullable=True))
+    if "raw_markdown_updated_at" not in existing:
+        op.add_column("resumes", sa.Column("raw_markdown_updated_at", sa.DateTime(timezone=True), nullable=True))
 
 
 def downgrade() -> None:
-    op.drop_column("resumes", "raw_markdown_updated_at")
-    op.drop_column("resumes", "raw_markdown_method")
-    op.drop_column("resumes", "raw_markdown_source")
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if "resumes" not in set(inspector.get_table_names()):
+        return
+    existing = {c["name"] for c in inspector.get_columns("resumes")}
+    if "raw_markdown_updated_at" in existing:
+        op.drop_column("resumes", "raw_markdown_updated_at")
+    if "raw_markdown_method" in existing:
+        op.drop_column("resumes", "raw_markdown_method")
+    if "raw_markdown_source" in existing:
+        op.drop_column("resumes", "raw_markdown_source")

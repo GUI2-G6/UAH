@@ -10,11 +10,14 @@ export const DEBUG_PANEL_WIDTH = 340
 
 export const DEFAULT_PINNED_UI_STATE = Object.freeze({
   pinEnabled: false,
+  themePreference: 'system',
   panelPosition: null,
   panelSize: null,
   panelResizeUnlocked: false,
   debugPosition: null,
 })
+
+const VALID_THEME_PREFERENCES = new Set(['system', 'light', 'dark'])
 
 function toFiniteNumber(value) {
   const normalized = Number(value)
@@ -48,8 +51,14 @@ export function normalizePanelSize(value) {
 }
 
 export function mergePinnedUiState(currentState = DEFAULT_PINNED_UI_STATE, patch = {}) {
+  const normalizeThemePreference = (value) => {
+    const normalized = String(value || '').trim().toLowerCase()
+    return VALID_THEME_PREFERENCES.has(normalized) ? normalized : 'system'
+  }
+
   const normalizedCurrent = {
     pinEnabled: Boolean(currentState?.pinEnabled),
+    themePreference: normalizeThemePreference(currentState?.themePreference),
     panelPosition: normalizeFloatingPosition(currentState?.panelPosition),
     panelSize: normalizePanelSize(currentState?.panelSize),
     panelResizeUnlocked: Boolean(currentState?.panelResizeUnlocked),
@@ -58,6 +67,9 @@ export function mergePinnedUiState(currentState = DEFAULT_PINNED_UI_STATE, patch
 
   return {
     pinEnabled: typeof patch?.pinEnabled === 'boolean' ? patch.pinEnabled : normalizedCurrent.pinEnabled,
+    themePreference: Object.prototype.hasOwnProperty.call(patch || {}, 'themePreference')
+      ? normalizeThemePreference(patch?.themePreference)
+      : normalizedCurrent.themePreference,
     panelPosition: Object.prototype.hasOwnProperty.call(patch || {}, 'panelPosition')
       ? normalizeFloatingPosition(patch?.panelPosition)
       : normalizedCurrent.panelPosition,

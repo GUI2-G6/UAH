@@ -19,11 +19,13 @@ import time
 from urllib.parse import urlencode, urlparse
 from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_admin_user
 from app.models.user import User, SavedJob
+from app.models.apply_session import ApplySession, TrackedApplication
 from app.db.session import get_db
 from app.google.service import GoogleAuthService
 from app.schemas.user import SaveJobRequest
@@ -33,6 +35,7 @@ from app.core.auth_session import (
     resolve_auth_client,
 )
 from app.core.auth_cookie import set_auth_cookie
+from app.core.rate_limit import enforce_ip_rate_limit, enforce_subject_rate_limit
 from typing import Optional, List, Any
 from app.services.geolocation import (
     geocode_query,
@@ -62,6 +65,15 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
 MUSE_API_KEY = os.getenv("MUSE_API_KEY")
 
+GEOLOOKUP_IP_LIMIT = 40
+GEOLOOKUP_IP_WINDOW_SECONDS = 300
+GEOLOOKUP_QUERY_LIMIT = 25
+GEOLOOKUP_QUERY_WINDOW_SECONDS = 300
+JOBS_LIVE_SEARCH_IP_LIMIT = 30
+JOBS_LIVE_SEARCH_IP_WINDOW_SECONDS = 300
+JOBS_LIVE_SEARCH_QUERY_LIMIT = 20
+JOBS_LIVE_SEARCH_QUERY_WINDOW_SECONDS = 300
+
 REMOTE_TEXT_PATTERN = re.compile(
     r"\b(remote|work\s*from\s*home|telecommute|telecommuting|distributed|anywhere)\b",
     flags=re.IGNORECASE,
@@ -71,6 +83,24 @@ TIMEZONE_TOKEN_PATTERN = re.compile(
     r"\b(eastern|central|mountain|pacific|est|edt|cst|cdt|mst|mdt|pst|pdt)\b",
     flags=re.IGNORECASE,
 )
+
+
+class TrackedSelectionItem(BaseModel):
+    source_type: str = Field(default="gmail", max_length=40)
+    source_ref: str = Field(default="", max_length=255)
+    thread_key: str | None = Field(default=None, max_length=500)
+    company: str | None = Field(default=None, max_length=255)
+    job_title: str | None = Field(default=None, max_length=255)
+    latest_status: str | None = Field(default=None, max_length=80)
+    metadata: dict | None = None
+
+
+class TrackedSelectionRequest(BaseModel):
+    selections: list[TrackedSelectionItem] = Field(default_factory=list)
+
+
+class TrackedApplicationPatchRequest(BaseModel):
+    action: str = Field(default="mark_seen", max_length=40)
 EXCLUSION_SEGMENT_PATTERN = re.compile(r"(?:except|excluding)\s+([^.;\n]+)", flags=re.IGNORECASE)
 EXCLUSION_INLINE_PATTERN = re.compile(
     r"(?:not\s+available\s+in|unavailable\s+in|outside\s+of)\s+([^.;\n]+)",
@@ -1663,6 +1693,45 @@ def _serialize_saved_job_row(saved_job: SavedJob, db: Session) -> dict[str, Any]
     }
 
 
+def _normalize_apply_text(value: Any) -> str:
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def _has_recent_apply_session_match(
+    db: Session,
+    *,
+    user_id: int,
+    company: str,
+    job_title: str,
+    ats_url: str,
+    job_url: str,
+) -> bool:
+    normalized_company = _normalize_apply_text(company)
+    normalized_title = _normalize_apply_text(job_title)
+    normalized_ats_url = (ats_url or "").strip()
+    normalized_job_url = (job_url or "").strip()
+
+    recent_rows = (
+        db.query(ApplySession)
+        .filter(ApplySession.user_id == user_id)
+        .order_by(ApplySession.started_at.desc())
+        .limit(400)
+        .all()
+    )
+    for row in recent_rows:
+        if _normalize_apply_text(row.company) != normalized_company:
+            continue
+        if _normalize_apply_text(row.job_title) != normalized_title:
+            continue
+        if normalized_ats_url and (row.ats_url or "").strip() == normalized_ats_url:
+            return True
+        if normalized_job_url and (row.job_url or "").strip() == normalized_job_url:
+            return True
+        if not normalized_ats_url and not normalized_job_url:
+            return True
+    return False
+
+
 def _extract_client_ip(request: Request) -> Optional[str]:
     candidates: List[str] = []
 
@@ -1738,6 +1807,12 @@ async def geolocation_by_ip(request: Request):
     - 200: IP geolocation resolved successfully.
     - 502: Upstream geolocation provider error.
     """
+    enforce_ip_rate_limit(
+        "geolocation:ip",
+        request,
+        limit=GEOLOOKUP_IP_LIMIT,
+        window_seconds=GEOLOOKUP_IP_WINDOW_SECONDS,
+    )
     client_ip = _extract_client_ip(request)
     try:
         payload = await resolve_ip_location(client_ip)
@@ -1790,6 +1865,7 @@ async def geolocation_by_ip(request: Request):
     },
 )
 async def geocode_location(
+    request: Request,
     q: str = Query(
         ...,
         min_length=2,
@@ -1813,6 +1889,18 @@ async def geocode_location(
     - 200: Location resolved successfully.
     - 404: No matching location found.
     """
+    enforce_ip_rate_limit(
+        "geolocation:geocode",
+        request,
+        limit=GEOLOOKUP_IP_LIMIT,
+        window_seconds=GEOLOOKUP_IP_WINDOW_SECONDS,
+    )
+    enforce_subject_rate_limit(
+        "geolocation:geocode:query",
+        q,
+        limit=GEOLOOKUP_QUERY_LIMIT,
+        window_seconds=GEOLOOKUP_QUERY_WINDOW_SECONDS,
+    )
     try:
         return await geocode_query(q, country_code=country_code)
     except Exception as exc:
@@ -2128,8 +2216,10 @@ async def muse_supported_locations(
     },
 )
 async def refresh_muse_supported_locations(
+    request: Request,
     force: bool = Query(False, description="When true, bypass freshness checks and force a full index refresh."),
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_user),
 ):
     """
     Refresh cached Muse location support index.
@@ -2140,6 +2230,13 @@ async def refresh_muse_supported_locations(
     Response codes:
     - 200: Refresh completed or confirmed current index state.
     """
+    del current_user
+    enforce_ip_rate_limit(
+        "geolocation:muse-supported-locations:refresh",
+        request,
+        limit=GEOLOOKUP_IP_LIMIT,
+        window_seconds=GEOLOOKUP_IP_WINDOW_SECONDS,
+    )
     result = await refresh_muse_location_index(force=force)
     countries = list_supported_countries(db)
     return {
@@ -2207,6 +2304,7 @@ async def jobs_filter_metadata(db: Session = Depends(get_db)):
     },
 )
 async def search_jobs(
+    request: Request,
     page: int = Query(1, ge=1, description="UI page number (1-indexed)."),
     page_size: int = Query(
         settings.JOBS_DEFAULT_PAGE_SIZE,
@@ -2273,6 +2371,19 @@ async def search_jobs(
     - 200: Search completed successfully with filtered jobs and diagnostics.
     - 500: Muse API unavailable on first fetch or unexpected internal failure.
     """
+    enforce_ip_rate_limit(
+        "jobs:search-live-source",
+        request,
+        limit=JOBS_LIVE_SEARCH_IP_LIMIT,
+        window_seconds=JOBS_LIVE_SEARCH_IP_WINDOW_SECONDS,
+    )
+    enforce_subject_rate_limit(
+        "jobs:search-live-source:query",
+        q,
+        limit=JOBS_LIVE_SEARCH_QUERY_LIMIT,
+        window_seconds=JOBS_LIVE_SEARCH_QUERY_WINDOW_SECONDS,
+    )
+
     # Gets the list of jobs from The Muse API based on the provided query parameters 
     url = "https://www.themuse.com/api/public/jobs"
     params_base = []
@@ -2910,6 +3021,200 @@ async def unsave_job(
     db.commit()
     return {"message": "Job removed from saved list"}
 
+
+@router.post("/apply-sessions/backfill-from-saved", tags=["apply-sessions"])
+async def backfill_apply_sessions_from_saved_jobs(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    saved_rows = (
+        db.query(SavedJob)
+        .filter(SavedJob.user_id == current_user.id)
+        .order_by(SavedJob.created_at.desc().nullslast(), SavedJob.id.desc())
+        .all()
+    )
+
+    created = 0
+    skipped = 0
+    for row in saved_rows:
+        company = (row.company or "").strip()
+        job_title = (row.title or "").strip()
+        if not company or not job_title:
+            skipped += 1
+            continue
+        url = (row.url or "").strip()
+        if _has_recent_apply_session_match(
+            db,
+            user_id=current_user.id,
+            company=company,
+            job_title=job_title,
+            ats_url=url,
+            job_url=url,
+        ):
+            skipped += 1
+            continue
+
+        session = ApplySession(
+            user_id=current_user.id,
+            platform=(row.provider or "saved_jobs"),
+            company=company,
+            job_title=job_title,
+            status="submitted",
+            ats_url=url,
+            job_url=url,
+        )
+        db.add(session)
+        created += 1
+
+    db.commit()
+    return {
+        "status": "ok",
+        "saved_jobs_seen": len(saved_rows),
+        "created_sessions": created,
+        "skipped_existing": skipped,
+    }
+
+
+def _serialize_tracked_application(row: TrackedApplication) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "apply_session_id": row.apply_session_id,
+        "source_type": row.source_type,
+        "source_ref": row.source_ref,
+        "thread_key": row.thread_key,
+        "company": row.company,
+        "job_title": row.job_title,
+        "latest_status": row.latest_status,
+        "selection_state": row.selection_state,
+        "has_new_update": row.has_new_update is True,
+        "last_update_at": row.last_update_at.isoformat() if row.last_update_at else None,
+        "last_seen_at": row.last_seen_at.isoformat() if row.last_seen_at else None,
+        "metadata": row.metadata_json or {},
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+@router.post("/applications/tracked/select", tags=["applications"])
+async def save_tracked_applications(
+    payload: TrackedSelectionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    created = 0
+    updated = 0
+    now = datetime.now(timezone.utc)
+    for item in payload.selections:
+        source_type = (item.source_type or "").strip().lower() or "gmail"
+        source_ref = (item.source_ref or "").strip()
+        if not source_ref:
+            continue
+        existing = (
+            db.query(TrackedApplication)
+            .filter(
+                TrackedApplication.user_id == current_user.id,
+                TrackedApplication.source_type == source_type,
+                TrackedApplication.source_ref == source_ref,
+            )
+            .first()
+        )
+        if existing:
+            existing.thread_key = (item.thread_key or "").strip() or existing.thread_key
+            existing.company = (item.company or "").strip() or existing.company
+            existing.job_title = (item.job_title or "").strip() or existing.job_title
+            existing.latest_status = (item.latest_status or "").strip() or existing.latest_status
+            existing.selection_state = "active"
+            existing.metadata_json = item.metadata or existing.metadata_json
+            updated += 1
+            continue
+
+        apply_session_id = None
+        company = (item.company or "").strip()
+        job_title = (item.job_title or "").strip()
+        if company and job_title:
+            session = (
+                db.query(ApplySession)
+                .filter(
+                    ApplySession.user_id == current_user.id,
+                    func.lower(ApplySession.company) == company.lower(),
+                    func.lower(ApplySession.job_title) == job_title.lower(),
+                )
+                .order_by(ApplySession.started_at.desc())
+                .first()
+            )
+            apply_session_id = session.id if session else None
+        row = TrackedApplication(
+            user_id=current_user.id,
+            apply_session_id=apply_session_id,
+            source_type=source_type,
+            source_ref=source_ref,
+            thread_key=(item.thread_key or "").strip() or None,
+            company=company or None,
+            job_title=job_title or None,
+            latest_status=(item.latest_status or "").strip() or None,
+            selection_state="active",
+            has_new_update=False,
+            last_seen_at=now,
+            metadata_json=item.metadata or {},
+        )
+        db.add(row)
+        created += 1
+    db.commit()
+    return {"status": "ok", "created": created, "updated": updated}
+
+
+@router.get("/applications/tracked", tags=["applications"])
+async def list_tracked_applications(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    rows = (
+        db.query(TrackedApplication)
+        .filter(
+            TrackedApplication.user_id == current_user.id,
+            TrackedApplication.selection_state == "active",
+        )
+        .order_by(
+            TrackedApplication.has_new_update.desc(),
+            TrackedApplication.last_update_at.desc().nullslast(),
+            TrackedApplication.created_at.desc().nullslast(),
+            TrackedApplication.id.desc(),
+        )
+        .limit(500)
+        .all()
+    )
+    return {"tracked_applications": [_serialize_tracked_application(row) for row in rows]}
+
+
+@router.patch("/applications/tracked/{tracked_id}", tags=["applications"])
+async def patch_tracked_application(
+    tracked_id: int,
+    payload: TrackedApplicationPatchRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    row = (
+        db.query(TrackedApplication)
+        .filter(TrackedApplication.id == tracked_id, TrackedApplication.user_id == current_user.id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Tracked application not found")
+    action = (payload.action or "mark_seen").strip().lower()
+    now = datetime.now(timezone.utc)
+    if action == "mark_seen":
+        row.has_new_update = False
+        row.last_seen_at = now
+    elif action in {"untrack", "archive"}:
+        row.selection_state = "archived"
+        row.has_new_update = False
+        row.last_seen_at = now
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported action")
+    db.commit()
+    db.refresh(row)
+    return {"status": "ok", "tracked_application": _serialize_tracked_application(row)}
+
 GOOGLE_OAUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
@@ -3271,7 +3576,7 @@ async def google_oauth_callback(
 @router.get(
     "/status",
     tags=["status"],
-    response_description="Lightweight backend status payload.",
+    response_description="Public-safe backend status payload with service summaries.",
     responses={
         200: {
             "description": "Backend status returned.",
@@ -3281,26 +3586,160 @@ async def google_oauth_callback(
                         "status": "ok",
                         "environment": "dev",
                         "message": "UAH API is running",
+                        "overall": "healthy",
+                        "services": {
+                            "backend": {
+                                "status": "healthy",
+                                "summary": "API process responding.",
+                                "name": "UAH",
+                                "version": "0.1.0",
+                            },
+                            "database": {
+                                "status": "healthy",
+                                "summary": "Database connectivity is healthy.",
+                                "latency_ms": 5.2,
+                                "postgres_version": "PostgreSQL 16.4",
+                            },
+                            "resume_parsing": {
+                                "status": "healthy",
+                                "summary": "3 of 3 parsing methods available.",
+                                "available_methods": 3,
+                                "total_methods": 3,
+                            },
+                        },
                     }
                 }
             },
         }
     },
 )
-async def api_status():
+async def api_status(db: Session = Depends(get_db)):
     """
     Lightweight status endpoint for frontend connectivity checks.
 
-    Returns a minimal service health payload used by the frontend to confirm
-    `/api` proxy routing and basic backend availability.
+    Returns a dynamic, public-safe service health payload used by landing pages
+    and frontend connectivity checks. The response intentionally excludes
+    sensitive runtime details (for example hostnames, PIDs, DB user/name, and
+    internal exception traces).
 
     Response codes:
     - 200: Service is reachable.
     """
+    import platform
+    from sqlalchemy import text
+
+    backend_status = "healthy"
+    backend_summary = "API process responding."
+
+    db_started = time.monotonic()
+    db_status = "healthy"
+    db_summary = "Database connectivity is healthy."
+    db_latency_ms = None
+    postgres_version = "unknown"
+    try:
+        db.execute(text("SELECT 1"))
+        version_row = db.execute(text("SELECT version()")).fetchone()
+        if version_row and version_row[0]:
+            postgres_version = str(version_row[0])
+    except Exception:
+        db_status = "unhealthy"
+        db_summary = "Database connectivity check failed."
+    finally:
+        db_latency_ms = round((time.monotonic() - db_started) * 1000, 2)
+
+    parsing_method_statuses: list[str] = []
+    parsing_method_entries: dict[str, dict[str, Any]] = {}
+    parsing_total = 0
+    parsing_available = 0
+    parsing_status = "degraded"
+    parsing_summary = "Parsing availability is currently unknown."
+    try:
+        method_availability = await get_pipeline_availability()
+        for method_key in ("cloud", "local", "rules"):
+            method_info = method_availability.get(method_key) or {}
+            method_available = bool(method_info.get("available"))
+            method_degraded = bool(method_info.get("degraded")) or bool(method_info.get("unreliable"))
+            method_status = "healthy" if method_available and not method_degraded else "degraded"
+            parsing_method_statuses.append(method_status)
+            parsing_total += 1
+            if method_available:
+                parsing_available += 1
+            parsing_method_entries[method_key] = {
+                "status": method_status,
+                "available": method_available,
+                "reachable": bool(method_info.get("reachable")),
+            }
+        parsing_status = "healthy" if parsing_method_statuses and all(
+            status == "healthy" for status in parsing_method_statuses
+        ) else "degraded"
+        parsing_summary = f"{parsing_available} of {parsing_total} parsing methods available."
+    except Exception:
+        parsing_status = "degraded"
+        parsing_summary = "Parsing availability checks are temporarily unavailable."
+        parsing_total = 3
+        parsing_available = 0
+        parsing_method_entries = {
+            "cloud": {"status": "degraded", "available": False, "reachable": False},
+            "local": {"status": "degraded", "available": False, "reachable": False},
+            "rules": {"status": "degraded", "available": False, "reachable": False},
+        }
+
+    services = {
+        "backend": {
+            "status": backend_status,
+            "summary": backend_summary,
+            "name": settings.PROJECT_NAME,
+            "version": settings.VERSION,
+            "python_version": platform.python_version(),
+        },
+        "database": {
+            "status": db_status,
+            "summary": db_summary,
+            "latency_ms": db_latency_ms,
+            "postgres_version": postgres_version if db_status == "healthy" else "unavailable",
+        },
+        "resume_parsing": {
+            "status": parsing_status,
+            "summary": parsing_summary,
+            "available_methods": parsing_available,
+            "total_methods": parsing_total,
+            "methods": parsing_method_entries,
+        },
+    }
+
+    service_statuses = [item.get("status") for item in services.values()]
+    if all(item == "healthy" for item in service_statuses):
+        overall = "healthy"
+    elif any(item == "unhealthy" for item in service_statuses):
+        overall = "unhealthy"
+    else:
+        overall = "degraded"
+
+    if overall == "healthy":
+        public_status = "ok"
+        message = "UAH API is running"
+    elif overall == "degraded":
+        public_status = "degraded"
+        message = "UAH API is running with limited availability"
+    else:
+        public_status = "degraded"
+        message = "UAH API is experiencing service disruption"
+
     return {
-        "status": "ok",
-        "environment": "dev",
-        "message": "UAH API is running",
+        "status": public_status,
+        "environment": os.getenv("ENV", "dev"),
+        "message": message,
+        "overall": overall,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "services": services,
+        "service_summaries": [
+            {
+                "service": service_name,
+                "status": service_data.get("status"),
+                "summary": service_data.get("summary"),
+            }
+            for service_name, service_data in services.items()
+        ],
     }
 
 

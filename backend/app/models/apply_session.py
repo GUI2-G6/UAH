@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Boolean
 from sqlalchemy.sql import func
 from app.db.base import Base
 
@@ -32,3 +32,24 @@ class ApplySessionEvent(Base):
     event_type = Column(String(100), nullable=False)
     payload = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class TrackedApplication(Base):
+    __tablename__ = "tracked_applications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    apply_session_id = Column(Integer, ForeignKey("apply_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
+    source_type = Column(String(40), nullable=False, index=True)
+    source_ref = Column(String(255), nullable=False, index=True)
+    thread_key = Column(String(500), nullable=True, index=True)
+    company = Column(String(255), nullable=True)
+    job_title = Column(String(255), nullable=True)
+    latest_status = Column(String(80), nullable=True)
+    selection_state = Column(String(40), nullable=False, default="active", index=True)
+    has_new_update = Column(Boolean, nullable=False, default=False)
+    last_update_at = Column(DateTime(timezone=True), nullable=True)
+    last_seen_at = Column(DateTime(timezone=True), nullable=True)
+    metadata_json = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

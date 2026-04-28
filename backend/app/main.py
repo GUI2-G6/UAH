@@ -31,11 +31,14 @@ from app.api.applicant_profile import router as profile_router
 from app.api.apply_session import router as apply_session_router
 from app.api.integrations import router as integrations_router
 from app.api.gmail import router as gmail_router
+from app.api.beta_access import router as beta_access_router
+from app.api.landing_feedback import router as landing_feedback_router
 from app.core.config import settings
 from app.core.runtime_environment import (
     generated_docs_auth_required,
     generated_docs_authenticate_header,
     generated_docs_enabled,
+    internal_surface_auth_required,
 )
 from app.core.validation import normalize_email, require_valid_email
 from app.db.base import Base
@@ -44,44 +47,18 @@ from app.services.geolocation import ensure_city_dataset
 from app.services.muse_location_index import ensure_muse_location_index
 from app.services.parse_queue import start_queue_worker, stop_queue_worker, reconcile_stale_parse_jobs
 import app.models  # noqa: F401 — ensure all models are registered
-from app.models.user import User, SavedJob
-from app.models.resume import Resume
-from app.models.parse_job import ParseJob
-from app.models.applicant_profile import ApplicantProfile
-from app.models.muse_location import MuseSupportedLocation
-from app.models.apply_session import ApplySession, ApplySessionEvent
-from app.models.invite import Invite
 
 logger = logging.getLogger(__name__)
-
-# These tables still rely on startup-time `create_all()` support for local/dev
-# compatibility. The newer jobs catalog schema is tracked through Alembic.
-LEGACY_STARTUP_TABLES = [
-    User.__table__,
-    SavedJob.__table__,
-    Resume.__table__,
-    ParseJob.__table__,
-    ApplicantProfile.__table__,
-    MuseSupportedLocation.__table__,
-    ApplySession.__table__,
-    ApplySessionEvent.__table__,
-    Invite.__table__,
-]
 
 # Fail fast on missing critical secrets when running the backend.
 settings.require_secrets()
 
 
 def _ensure_users_table_columns(engine) -> None:
-    """Dev safety net: add missing columns when DB schema lags behind models.
+    """Dev safety net: add missing user columns on very old DB volumes.
 
-    This project currently uses `Base.metadata.create_all()`, which does not
-    apply schema migrations to existing tables. If the `users` table already
-    exists (e.g. persisted Docker volume) but the model gained new columns,
-    SQLAlchemy will raise runtime errors like:
-      psycopg2.errors.UndefinedColumn: column users.<col> does not exist
-
-    Long-term fix: introduce Alembic migrations.
+    Core schema is delivered by Alembic. This only patches legacy volumes that predate
+    a migration, so ORM access does not fail with undefined column errors.
     """
 
     try:
@@ -277,9 +254,48 @@ def _bootstrap_admin_user_if_enabled() -> None:
     db = SessionLocal()
     try:
         _ensure_admin_user(db)
-        logger.warning("Admin bootstrap ensured for %s", "admincontact@uahapp.com")
+        logger.warning("Admin bootstrap ensured for admincontact@uahapp.com")
     except Exception as exc:
         logger.exception("Admin bootstrap failed: %s", exc)
+    finally:
+        db.close()
+
+
+def _ensure_live_admin_if_absent() -> None:
+    """On beta/staging/prod, reconcile admincontact@uahapp.com when ADMIN_BOOTSTRAP_PASSWORD is set.
+
+    Runs even if other admin users already exist so the ops inbox account is always
+    created or repaired (password hash, email_verified, is_active). Does not run in
+    development/local so local DBs are not auto-seeded.
+    """
+    env_slug = (settings.ENVIRONMENT or "").strip().lower()
+    if env_slug not in {"beta", "staging", "production", "prod"}:
+        return
+
+    if not (os.getenv("ADMIN_BOOTSTRAP_PASSWORD") or "").strip():
+        logger.warning(
+            "Live admin contact not reconciled: set ADMIN_BOOTSTRAP_PASSWORD to create or "
+            "repair admincontact@uahapp.com on startup (ENVIRONMENT=%s).",
+            settings.ENVIRONMENT,
+        )
+        return
+
+    try:
+        from app.db.session import SessionLocal
+        from app.api.auth import _ensure_admin_user
+    except Exception as exc:
+        logger.exception("Live admin seed import failed: %s", exc)
+        return
+
+    db = SessionLocal()
+    try:
+        _ensure_admin_user(db)
+        logger.warning(
+            "Live admin contact reconciled for admincontact@uahapp.com (ENVIRONMENT=%s).",
+            settings.ENVIRONMENT,
+        )
+    except Exception as exc:
+        logger.exception("Live admin seed failed: %s", exc)
     finally:
         db.close()
 
@@ -430,9 +446,9 @@ async def lifespan(app: FastAPI):
     init_engine()
     engine = get_engine()
 
-    # Local/dev startup still carries a small compatibility layer for older
-    # volumes so contributors can keep moving even when their schema lags.
-    Base.metadata.create_all(bind=engine, tables=LEGACY_STARTUP_TABLES)
+    # Schema: apply with `alembic upgrade head` (e.g. uah sync, CI, deploy). Do not call
+    # `Base.metadata.create_all()` for app tables here—models reflect the full current
+    # ORM, which would pre-create columns that later migrations add and break upgrades.
     _ensure_users_table_columns(engine)
     _ensure_resumes_table_columns(engine)
     _ensure_saved_jobs_table_columns(engine)
@@ -440,6 +456,7 @@ async def lifespan(app: FastAPI):
     # First normalize whatever already exists in the database.
     _enforce_email_first_identity_mirror()
     _bootstrap_admin_user_if_enabled()
+    _ensure_live_admin_if_absent()
     _ensure_dev_test_user_if_enabled()
     # Then normalize any bootstrap-created rows using the same invariant.
     _enforce_email_first_identity_mirror()
@@ -529,6 +546,23 @@ async def beta_docs_basic_auth_gate(request: Request, call_next):
         )
     return await call_next(request)
 
+
+@app.middleware("http")
+async def internal_surface_api_key_gate(request: Request, call_next):
+    requires_internal_key = internal_surface_auth_required(
+        path=request.url.path,
+        raw_environment=os.getenv("ENVIRONMENT"),
+        provided_key=request.headers.get("X-Internal-Api-Key"),
+        expected_key=settings.INTERNAL_API_KEY,
+    )
+    if requires_internal_key:
+        return PlainTextResponse(
+            "Not found.",
+            status_code=404,
+            headers={"Cache-Control": "no-store"},
+        )
+    return await call_next(request)
+
 # ---------------------------------------------------------------------------
 # Mount the API router
 # ---------------------------------------------------------------------------
@@ -546,6 +580,8 @@ app.include_router(profile_router)
 app.include_router(apply_session_router)
 app.include_router(integrations_router)
 app.include_router(gmail_router)
+app.include_router(beta_access_router)
+app.include_router(landing_feedback_router)
 
 
 # ---------------------------------------------------------------------------

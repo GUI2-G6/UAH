@@ -1,11 +1,20 @@
 @import "../../../shared/theme/uah-theme.css";
+@import "../../../shared/theme/theme-mode-control.css";
 
 * {
   box-sizing: border-box;
 }
 
 :root {
+  color-scheme: light dark;
+}
+
+html[data-theme="light"] {
   color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 html,
@@ -58,14 +67,36 @@ button {
   padding: clamp(10px, 3vw, 14px);
 }
 
+.theme-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color-light);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.theme-label {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .hero-card,
 .auth-card,
 .panel-card,
 .account-strip,
 .state-card,
 .inline-banner {
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(203, 213, 225, 0.8);
+  background: var(--color-surface);
+  border: 1px solid var(--border-color-light);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
 }
@@ -163,7 +194,7 @@ button {
   padding: 10px 12px;
   border: 1px solid var(--border-color-light);
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--color-surface);
   color: var(--color-text-secondary);
   font-weight: 600;
   transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
@@ -215,7 +246,7 @@ button {
   gap: 10px;
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid rgba(203, 213, 225, 0.88);
+  border: 1px solid var(--border-color-light);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   text-align: left;
@@ -259,9 +290,9 @@ button {
 .detail-row,
 .copy-card,
 .autofill-card {
-  border: 1px solid rgba(203, 213, 225, 0.86);
+  border: 1px solid var(--border-color-light);
   border-radius: var(--radius-sm);
-  background: rgba(248, 250, 252, 0.88);
+  background: var(--color-surface-muted);
 }
 
 .detail-row {
@@ -390,8 +421,8 @@ button {
 .text-link {
   min-height: 30px;
   padding: 0 10px;
-  border: 1px solid rgba(203, 213, 225, 0.9);
-  background: white;
+  border: 1px solid var(--border-color-light);
+  background: var(--color-surface);
   color: var(--color-primary-700);
   font-weight: 600;
 }
@@ -463,7 +494,7 @@ button {
   content: "";
   flex: 1;
   height: 1px;
-  background: rgba(203, 213, 225, 0.92);
+  background: var(--border-color-light);
 }
 
 .footer-actions {
@@ -477,8 +508,8 @@ button {
 .empty-card {
   padding: 12px;
   border-radius: var(--radius-sm);
-  background: rgba(248, 250, 252, 0.88);
-  border: 1px dashed rgba(148, 163, 184, 0.7);
+  background: var(--color-surface-muted);
+  border: 1px dashed var(--border-color);
 }
 
 .state-card--nested {
@@ -496,14 +527,14 @@ button {
 }
 
 .inline-banner--error {
-  border-color: rgba(220, 38, 38, 0.2);
-  background: rgba(254, 242, 242, 0.95);
+  border-color: color-mix(in srgb, var(--color-danger-600) 36%, transparent);
+  background: color-mix(in srgb, var(--color-danger-600) 14%, var(--color-surface));
   color: var(--color-danger-600);
 }
 
 .inline-banner--success {
-  border-color: rgba(22, 163, 74, 0.2);
-  background: rgba(240, 253, 244, 0.96);
+  border-color: color-mix(in srgb, var(--color-success-600) 36%, transparent);
+  background: color-mix(in srgb, var(--color-success-600) 14%, var(--color-surface));
   color: var(--color-success-600);
 }
 

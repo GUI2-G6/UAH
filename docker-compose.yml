@@ -88,6 +88,7 @@ services:
       AUTH_NAMESPACE: ${AUTH_NAMESPACE:?AUTH_NAMESPACE required}
       AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-uah_auth_dev}
       SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:?SESSION_COOKIE_NAME required}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
       BETA_DOCS_USERNAME: ${BETA_DOCS_USERNAME:-dev}
       BETA_DOCS_PASSCODE: ${BETA_DOCS_PASSCODE:-}
       SESSION_COOKIE_SAMESITE: ${SESSION_COOKIE_SAMESITE:-lax}
@@ -119,6 +120,8 @@ services:
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
       SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
       SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-20}
+      BETA_ACCESS_NOTIFY_EMAIL: ${BETA_ACCESS_NOTIFY_EMAIL:-beta@uahapp.com}
+      LANDING_FEEDBACK_NOTIFY_EMAIL: ${LANDING_FEEDBACK_NOTIFY_EMAIL:-feedback@uahapp.com}
 
       # OAuth and integrations
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -221,6 +224,18 @@ services:
       - ./backend:/app          # Hot-reload in dev
     networks:
       - uah-infra
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/status', timeout=8).read()",
+        ]
+      interval: 20s
+      timeout: 12s
+      retries: 5
+      start_period: 60s
     # NO ports exposed — frontend proxies /api → backend:8000
 
   celery_worker:
@@ -356,7 +371,8 @@ services:
     container_name: uah-dev-frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     environment:
       DEV_DOMAIN: ${DEV_DOMAIN:-dev.uahapp.com}
       DEV_TLS_ENABLED: ${DEV_TLS_ENABLED:-false}

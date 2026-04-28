@@ -1,4 +1,35 @@
 @import "../../shared/theme/uah-theme.css";
+@import "../../shared/theme/theme-mode-control.css";
+
+/* Sidebar (Burger) — theming; see components/css/Burger.css */
+:root {
+  --nav-sidebar-bg: #fff7ec;
+  --nav-sidebar-border: rgb(249, 246, 246);
+  --nav-sidebar-hover: rgb(194, 255, 251);
+  --nav-sidebar-label: rgb(63, 132, 236);
+  --nav-sidebar-bar: rgba(63, 98, 236);
+  --nav-mobile-footer-border: #d1d5db;
+  --control-bg: var(--color-surface);
+  --control-bg-hover: var(--color-surface-hover);
+  --control-border: var(--border-color);
+  --control-text: var(--color-text-primary);
+  --control-text-muted: var(--color-text-secondary);
+  --control-focus: rgba(37, 99, 235, 0.35);
+  --control-disabled-bg: rgba(148, 163, 184, 0.16);
+  --control-disabled-text: #64748b;
+}
+
+html[data-theme="dark"] {
+  --nav-sidebar-bg: #0c1118;
+  --nav-sidebar-border: rgba(130, 160, 200, 0.28);
+  --nav-sidebar-hover: rgba(59, 130, 246, 0.18);
+  --nav-sidebar-label: #93c5fd;
+  --nav-sidebar-bar: #60a5fa;
+  --nav-mobile-footer-border: rgba(100, 130, 180, 0.35);
+  --control-focus: rgba(96, 165, 250, 0.5);
+  --control-disabled-bg: rgba(15, 23, 42, 0.5);
+  --control-disabled-text: #94a3b8;
+}
 
 * {
   margin: 0;
@@ -22,6 +53,48 @@ button:hover {
   background-color: rgba(0, 0, 0, 0.05);
 }
 
+html[data-theme="dark"] button:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.btn-secondary,
+.secondary-action,
+.chip,
+.pill {
+  background: var(--control-bg);
+  border: 1px solid var(--control-border);
+  color: var(--control-text);
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.btn-secondary:hover:not(:disabled),
+.secondary-action:hover:not(:disabled),
+.chip:hover:not(:disabled),
+.pill:hover:not(:disabled) {
+  background: var(--control-bg-hover);
+}
+
+.btn-secondary:focus-visible,
+.secondary-action:focus-visible,
+.chip:focus-visible,
+.pill:focus-visible,
+.btn-primary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--control-focus);
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.secondary-action:disabled,
+.chip:disabled,
+.pill:disabled {
+  background: var(--control-disabled-bg);
+  border-color: var(--control-border);
+  color: var(--control-disabled-text);
+  opacity: 1;
+  cursor: not-allowed;
+}
+
 #uah-app {
   width: 100%;
   max-width: 100%;
@@ -42,7 +115,7 @@ button:hover {
   min-width: 0;
   background: var(--app-page-background);
   overflow: auto;
-  overflow-x: clip;
+  overflow-x: auto;
 }
 
 .page {

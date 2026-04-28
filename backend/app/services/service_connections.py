@@ -126,11 +126,7 @@ def _gmail_detail(user: User) -> ServiceDetail:
             tone="warning",
         )
 
-    actions = (
-        [_gmail_disconnect_action()]
-        if connected
-        else ([_gmail_connect_action()] if configured else [_gmail_unavailable_action()])
-    )
+    actions = [_gmail_disconnect_action()] if connected else ([_gmail_connect_action()] if configured else [_gmail_unavailable_action()])
 
     return ServiceDetail(
         key="gmail",

@@ -84,6 +84,7 @@ class Settings:
 
     # Environment
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    INTERNAL_API_KEY: str = os.getenv("INTERNAL_API_KEY", "")
     BETA_DOCS_USERNAME: str = os.getenv("BETA_DOCS_USERNAME", "dev")
     BETA_DOCS_PASSCODE: str = os.getenv("BETA_DOCS_PASSCODE", "")
     DEV_AUTH_TEST_ACCOUNT_ENABLED: bool = _env_bool("DEV_AUTH_TEST_ACCOUNT_ENABLED", "false")
@@ -108,6 +109,8 @@ class Settings:
     SMTP_USE_TLS: bool = _env_bool("SMTP_USE_TLS", "true")
     SMTP_USE_SSL: bool = _env_bool("SMTP_USE_SSL", "false")
     SMTP_TIMEOUT_SECONDS: int = int(os.getenv("SMTP_TIMEOUT_SECONDS", "20"))
+    BETA_ACCESS_NOTIFY_EMAIL: str = os.getenv("BETA_ACCESS_NOTIFY_EMAIL", "beta@uahapp.com")
+    LANDING_FEEDBACK_NOTIFY_EMAIL: str = os.getenv("LANDING_FEEDBACK_NOTIFY_EMAIL", "feedback@uahapp.com")
 
     GMAIL_CLIENT_ID: str = os.getenv("GMAIL_CLIENT_ID", "")
     GMAIL_CLIENT_SECRET: str = os.getenv("GMAIL_CLIENT_SECRET", "")

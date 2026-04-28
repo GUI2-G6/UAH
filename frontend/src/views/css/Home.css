@@ -5,19 +5,39 @@
 }
 
 .greeting {
-  border-bottom: solid 2px rgba(246, 247, 249);
+  border-bottom: solid 2px var(--border-color-light);
   padding: 20px;
+}
+
+.application-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.application-hero h1 {
+  margin: 0 0 6px;
+}
+
+.application-hero .hero-copy {
+  max-width: 38rem;
+  color: var(--color-text-secondary);
+}
+
+.application-hero .hero-copy p {
+  margin: 0;
 }
 
 .dashboard {
   background: transparent;
   flex: 1;
-  padding: 20px;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto;
   gap: 16px;
   padding: 16px;
+  align-content: start;
 }
 
 .home-card {
@@ -30,18 +50,13 @@
 }
 
 .home-stat-card {
-  min-height: 220px;
+  min-height: 180px;
 }
 
 .home-stat-card :deep(.ui-card__body) {
   display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
-}
-
-.home-stat-card :deep(.ui-card__tab h3) {
-  margin: 0;
-  font-size: 0.82rem;
+  align-items: center;
+  justify-content: center;
 }
 
 .home-card--wide {
@@ -50,55 +65,410 @@
 }
 
 .home-card--wide :deep(.ui-card__body) {
-  padding-top: 18px;
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+}
+
+.section-block {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--color-surface);
+}
+
+.application-scan-card :deep(.ui-card__header) {
+  display: grid;
+  gap: 6px;
+}
+
+.scan-primary-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .home-application-card {
-  --ui-card-bg: rgba(255, 255, 255, 0.96);
+  --ui-card-bg: var(--color-surface);
   --ui-card-padding: 12px;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
-#applied, 
-#interviews, 
-#offers, 
-#rejected {
+.kpi-value {
   margin: 0;
-  font-size:75px;
-  text-align:right;
-  font-weight:bold;
-  border-radius:8px;
-  padding-left:30px;
-  padding-right:30px;
+  font-size: 2.6rem;
+  text-align: center;
+  font-weight: 700;
+  border-radius: 8px;
+  padding: 12px 16px;
 }
 
 #applied, #interviews {
-  color:rgba(63, 98, 236);
-  background-color:rgb(231, 235, 255);
+  color: var(--color-primary-600);
+  background-color: rgba(37, 99, 235, 0.14);
 }
 
 #offers {
-  color:rgb(112, 228, 58);
-  background-color:rgb(231, 255, 220);
+  color: var(--color-success-600);
+  background-color: rgba(34, 197, 94, 0.14);
+}
+
+#action-required {
+  color: var(--color-danger-600);
+  background-color: rgba(245, 158, 11, 0.22);
 }
 
 #rejected {
-  color:rgb(255, 72, 72);
-  background-color:rgb(255, 227, 227);
+  color: var(--color-danger-600);
+  background-color: rgba(239, 68, 68, 0.14);
+}
+
+.action-required-stat-card {
+  border: 2px solid rgba(245, 158, 11, 0.45);
 }
 
 #tracked-applications {
-  font-size:50px;
+  font-size: 1.2rem;
+  margin: 0;
+}
+
+.home-card--quick-actions :deep(.ui-card__body),
+.home-card--insights :deep(.ui-card__body),
+.home-card--health :deep(.ui-card__body) {
+  display: grid;
+  gap: 10px;
+}
+
+.quick-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.brief-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  color: var(--color-text-secondary);
+}
+
+.health-row {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.health-row h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.health-row p {
+  margin: 6px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.timeline-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.timeline-title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.timeline-meta {
+  margin: 3px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+}
+
+.timeline-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.timeline-toggle {
+  flex-shrink: 0;
+}
+
+.scan-meta {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.scan-input {
+  width: 220px;
+  max-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.advanced-options-panel {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  background: var(--color-surface);
+}
+
+.advanced-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.advanced-field label {
+  font-size: 0.86rem;
+  color: var(--color-text-secondary);
+}
+
+.scan-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+#app-filter {
+  width: 220px;
+  max-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.empty-state-copy {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+}
+
+.suppression-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.results-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--color-surface);
+}
+
+.toolbar-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.submit-btn {
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: 8px 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.suppression-manager {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.suppression-list {
+  display: grid;
+  gap: 8px;
+}
+
+.suppression-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.suppression-row p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.candidate-checkbox {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.tracked-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.tracked-title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.tracked-meta {
+  margin: 2px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+}
+
+.tracked-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.update-tick {
+  border-radius: 999px;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--color-success-600);
+  padding: 4px 8px;
+  font-size: 0.8rem;
+}
+
+.suppression-panel :deep(.ui-card__body),
+.tracked-panel :deep(.ui-card__body),
+.application-results-card :deep(.ui-card__body) {
+  gap: 12px;
+}
+
+.application-scan-card,
+.application-results-card,
+.tracked-panel {
+  margin-top: 4px;
+}
+
+.application-results-card {
+  border-top: 2px solid var(--border-color-light);
+  padding-top: 8px;
+}
+
+.action-required-section {
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.action-required-title {
+  margin: 0;
+  color: var(--color-danger-600);
+}
+
+.action-required-card {
+  border: 1px solid rgba(245, 158, 11, 0.5);
+}
+
+.tracked-panel {
+  border-top: 2px solid var(--border-color-light);
+  padding-top: 8px;
+}
+
+.submit-btn.is-primary {
+  background: var(--color-primary-600);
+  border-color: var(--color-primary-600);
+  color: #fff;
+}
+
+.submit-btn.is-ghost {
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.submit-btn.is-danger {
+  background: rgba(220, 38, 38, 0.12);
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  color: var(--color-danger-600);
 }
 @media (max-width: 768px) {
   .greeting {
     padding: 16px;
   }
 
+  .application-hero {
+    flex-direction: column;
+  }
+
   .dashboard {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
     padding: 12px;
+  }
+
+  #applied,
+  #interviews,
+  #offers,
+  #rejected {
+    font-size: 2.1rem;
+  }
+
+  .quick-actions {
+    flex-direction: column;
+  }
+
+  .results-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .scan-primary-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .advanced-options-panel {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -110,4 +480,29 @@
   .home-card--wide {
     min-height: 180px;
   }
+}
+
+html[data-theme="dark"] .home-application-card {
+  --ui-card-bg: var(--color-surface);
+}
+
+html[data-theme="dark"] #applied,
+html[data-theme="dark"] #interviews {
+  color: #bfdbfe;
+  background-color: rgba(37, 99, 235, 0.24);
+}
+
+html[data-theme="dark"] #offers {
+  color: #bbf7d0;
+  background-color: rgba(22, 163, 74, 0.24);
+}
+
+html[data-theme="dark"] #action-required {
+  color: #fcd34d;
+  background-color: rgba(245, 158, 11, 0.28);
+}
+
+html[data-theme="dark"] #rejected {
+  color: #fecaca;
+  background-color: rgba(220, 38, 38, 0.24);
 }

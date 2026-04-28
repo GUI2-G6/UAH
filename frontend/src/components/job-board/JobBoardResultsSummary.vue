@@ -287,3 +287,39 @@ h2 {
   }
 }
 </style>
+
+<style>
+html[data-theme="dark"] .results-summary-card {
+  border-color: var(--border-color);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .eyebrow,
+html[data-theme="dark"] .sort-control,
+html[data-theme="dark"] .note-text,
+html[data-theme="dark"] .summary-copy {
+  color: var(--color-text-secondary);
+}
+
+html[data-theme="dark"] .results-summary-card h2 {
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .sort-control select {
+  background: var(--color-surface-muted);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .secondary-action,
+html[data-theme="dark"] .active-filter-chip {
+  background: var(--color-surface);
+  border-color: var(--border-color);
+  color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .warn-text {
+  color: var(--color-warning-600);
+}
+</style>

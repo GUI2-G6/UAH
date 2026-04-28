@@ -6,12 +6,12 @@ from typing import Iterable
 
 try:
     from app.scrapers.base.BaseProviderAdapter import BaseProviderAdapter
-    from app.scrapers.providers.WhatJobs import WhatJobsAdapter
+    from app.scrapers.providers import DummyProviderAdapter
 except ModuleNotFoundError as exc:  # pragma: no cover - repo-root module execution fallback
     if exc.name != "app":
         raise
     from backend.app.scrapers.base.BaseProviderAdapter import BaseProviderAdapter
-    from backend.app.scrapers.providers.WhatJobs import WhatJobsAdapter
+    from backend.app.scrapers.providers import DummyProviderAdapter
 
 _REGISTERED_PROVIDERS: dict[str, BaseProviderAdapter] = {}
 
@@ -66,7 +66,7 @@ def get_opted_out_providers() -> list[BaseProviderAdapter]:
     return [adapter for adapter in get_all_providers() if adapter.get_opt_out_status()]
 
 
-register_provider(WhatJobsAdapter())
+register_provider(DummyProviderAdapter())
 
 __all__ = [
     "get_active_providers",

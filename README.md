@@ -45,6 +45,32 @@ npm run dev
 
 This is the fastest path for UI work. It uses the in-browser mock API layer and does not require backend services.
 
+### One-command local stack (backend + frontend mock + landing)
+
+From repo root:
+
+```bash
+npm run dev:local
+```
+
+What this does:
+
+- starts `db-local` and `backend-local` using `docker-compose.local.yml`
+- starts `frontend` in mock mode on `http://localhost:5173`
+- starts `landing` on `http://localhost:5174` (avoids Vite port collision)
+
+Standard local dev credentials:
+
+- email: `local.admin@uah.local`
+- password: `LocalAdmin123!`
+
+Useful helpers:
+
+```bash
+npm run dev:local:logs
+npm run dev:local:down
+```
+
 ### Local backend + frontend
 
 ```bash
@@ -126,7 +152,14 @@ bash scripts/uah.sh dev sync
 bash scripts/uah.sh beta restart --build-all
 ```
 
+Run `bash scripts/uah.sh <dev|beta>` with no action to open the **Control Center** (grouped lifecycle, deploy, governance, observability, data access, and advanced ops). Non-interactive `bash scripts/uah.sh <env> debug …` subcommands are unchanged. The legacy `tools` / `tooling` / `ui` action names are deprecated in favor of the Control Center; they print a short hint and exit non-zero.
+
 Wrapper scripts under `scripts/dev/lifecycle/` and `scripts/beta/lifecycle/` remain supported aliases, but they pass through to `scripts/uah.sh`.
+
+`start`, `restart`, and post-`sync` rebuild paths in `scripts/uah.sh` run a live Alembic reconcile (`alembic upgrade head`) against the running backend container:
+
+- `dev`: migration/reconcile failures are logged as warnings and lifecycle flow continues.
+- `beta`: migration/reconcile failures are treated as fatal and the lifecycle command exits non-zero.
 
 ## Repository Layout
 

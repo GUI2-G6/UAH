@@ -57,7 +57,22 @@ endpoint_utilization_matrix_2026-04-11.tsv
 /frontend/node_modules/.vite/deps
 backend/app/scrapers/checklist/checklist_log/*
 !backend/app/scrapers/checklist/checklist_log/.gitkeep
+mobile-friendliness-audit-2026-04-22.md
+
+# Ops runtime state (generated from scripts/uah.sh)
+.ops-state/
+landing/public/downloads/uah-browser-extension-alpha.last-repacked.txt
 
 # Celery Beat runtime scheduler file
 celerybeat-schedule
 celerybeat.pid
+/.audit-venv
+hw1needfinding.md
+hw2proposal.md
+hw3slides.md
+HW5Alpha.md
+hw6usabilityanalysis.md
+hw7.md
+HW7tasklist.md
+HW7PresentationGuide.md
+ARCHITECTURE.md

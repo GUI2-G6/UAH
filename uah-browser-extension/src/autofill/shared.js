@@ -45,6 +45,36 @@ function setJoinedToken(target, path, value, separator = ', ') {
   target[path] = value.map((item) => stringifyValue(item)).filter(Boolean).join(separator)
 }
 
+function deriveNameTokens(personalInfo = {}) {
+  const first = stringifyValue(personalInfo.first_name).trim()
+  const middle = stringifyValue(personalInfo.middle_name).trim()
+  const last = stringifyValue(personalInfo.last_name).trim()
+  const suffix = stringifyValue(personalInfo.suffix).trim()
+  const legal = stringifyValue(personalInfo.full_legal_name).trim()
+  const preferred = stringifyValue(personalInfo.preferred_name).trim()
+  const tokens = {}
+
+  if (middle) tokens['personal_info.middle_initial'] = middle.charAt(0).toUpperCase()
+  if (first && middle) tokens['personal_info.first_middle'] = `${first} ${middle}`
+  if (middle && last) tokens['personal_info.middle_last'] = `${middle} ${last}`
+  if (first && last) {
+    tokens['personal_info.first_last'] = `${first} ${last}`
+    tokens['personal_info.last_first'] = `${last}, ${first}`
+  }
+  if (first || middle || last) {
+    const assembled = [first, middle, last].filter(Boolean).join(' ')
+    if (assembled) {
+      tokens['personal_info.first_middle_last'] = assembled
+      if (suffix) tokens['personal_info.first_middle_last_with_suffix'] = `${assembled} ${suffix}`
+    }
+  }
+  if (first && middle && last) tokens['personal_info.last_first_middle'] = `${last}, ${first} ${middle}`
+  if (legal) tokens['personal_info.full_legal_name'] = legal
+  if (preferred) tokens['personal_info.preferred_name'] = preferred
+  if (suffix) tokens['personal_info.suffix'] = suffix
+  return tokens
+}
+
 export function flattenResume(structured = {}) {
   const tokens = {}
 
@@ -55,6 +85,7 @@ export function flattenResume(structured = {}) {
     const normalized = stringifyValue(value).trim()
     if (normalized) tokens[`personal_info.${key}`] = normalized
   })
+  Object.assign(tokens, deriveNameTokens(personalInfo))
 
   const summary = stringifyValue(structured.summary).trim()
   if (summary) tokens.summary = summary

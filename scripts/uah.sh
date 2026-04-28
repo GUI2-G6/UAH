@@ -23,6 +23,8 @@ SYNC_CAN_FAST_FORWARD=true
 DETECTED_ENV_SOURCE="unknown"
 ENV_CONFIRMATION_APPROVED=false
 ENV_CONFIRMATION_ENV=""
+SCHEMA_RECONCILE_LAST_STATUS="not-run"
+SCHEMA_RECONCILE_LAST_MESSAGE="Schema reconcile has not run yet."
 
 ENV_POLICY_ERROR_COUNT=0
 ENV_POLICY_WARN_COUNT=0
@@ -355,7 +357,7 @@ build_mode_default_service_list() {
 
   case "$env_name" in
     beta)
-      echo "backend frontend db redis cloudflared"
+      echo "backend frontend db redis cloudflared landing"
       ;;
     *)
       echo "backend frontend db redis"
@@ -377,7 +379,7 @@ build_mode_service_supported_for_env() {
       ;;
     beta)
       case "$service_name" in
-        backend|frontend|db|redis|cloudflared)
+        backend|frontend|db|redis|cloudflared|landing)
           return 0
           ;;
       esac
@@ -395,7 +397,7 @@ build_mode_supported_services_label() {
       echo "backend frontend db redis"
       ;;
     beta)
-      echo "backend frontend db redis cloudflared"
+      echo "backend frontend db redis cloudflared landing"
       ;;
     *)
       echo "<none>"
@@ -962,6 +964,19 @@ run_alembic_upgrade_for_env() {
   docker exec "$backend_container" sh -lc 'cd /app && alembic upgrade head'
 }
 
+record_schema_reconcile_status() {
+  local status="${1:-unknown}"
+  local message="${2:-}"
+  SCHEMA_RECONCILE_LAST_STATUS="$status"
+  SCHEMA_RECONCILE_LAST_MESSAGE="$message"
+}
+
+print_schema_reconcile_summary() {
+  local env_name="$1"
+  local context="${2:-lifecycle}"
+  echo "Schema reconcile summary [$env_name/$context]: ${SCHEMA_RECONCILE_LAST_STATUS} - ${SCHEMA_RECONCILE_LAST_MESSAGE}"
+}
+
 refresh_job_runtime_services() {
   local env_name="$1"
   local backend_container
@@ -980,32 +995,59 @@ run_live_schema_reconcile() {
   local backend_container
 
   backend_container="$(backend_container_name_for_env "$env_name")" || return 1
+  record_schema_reconcile_status "running" "Starting Alembic reconcile for $env_name."
 
   if ! is_container_running "$backend_container"; then
     if [[ "$require_running" == "true" ]]; then
+      record_schema_reconcile_status "failed" "Backend container '$backend_container' is not running."
       echo "Backend container '$backend_container' is not running; cannot apply Alembic migrations." >&2
       return 1
     fi
 
+    record_schema_reconcile_status "skipped" "Backend container '$backend_container' is not running."
     echo "Backend container '$backend_container' is not running. Skipping post-sync Alembic reconcile."
     return 0
   fi
 
   if ! wait_for_backend_exec_ready "$env_name" "$backend_container" 10; then
+    record_schema_reconcile_status "failed" "Backend container '$backend_container' was not ready for docker exec."
     return 1
   fi
 
   if ! run_alembic_upgrade_for_env "$env_name" "$backend_container"; then
+    record_schema_reconcile_status "failed" "Alembic upgrade failed in '$backend_container'."
     echo "Alembic upgrade failed for $env_name." >&2
     return 1
   fi
 
   if ! refresh_job_runtime_services "$env_name"; then
+    record_schema_reconcile_status "failed" "Runtime service refresh failed for $env_name."
     echo "Runtime service refresh failed for $env_name after Alembic upgrade." >&2
     return 1
   fi
 
+  record_schema_reconcile_status "success" "Alembic upgrade and runtime refresh completed."
   echo "Schema reconcile completed for $env_name."
+}
+
+run_live_schema_reconcile_with_policy() {
+  local env_name="$1"
+  local require_running="${2:-true}"
+  local context="${3:-start}"
+
+  if run_live_schema_reconcile "$env_name" "$require_running"; then
+    return 0
+  fi
+
+  if [[ "$env_name" == "dev" ]]; then
+    echo "WARNING: Schema reconcile failed during '$context' in dev. Continuing startup flow."
+    echo "WARNING DETAIL: ${SCHEMA_RECONCILE_LAST_MESSAGE}"
+    return 0
+  fi
+
+  echo "Schema reconcile failed during '$context' in $env_name."
+  echo "ERROR DETAIL: ${SCHEMA_RECONCILE_LAST_MESSAGE}" >&2
+  return 1
 }
 
 run_sync_rebuild_if_requested() {
@@ -1017,7 +1059,8 @@ run_sync_rebuild_if_requested() {
   if [[ "$BUILD_MODE" == "none" ]]; then
     if is_container_running "$backend_container"; then
       echo "Backend container '$backend_container' is running. Applying live schema reconcile after sync..."
-      run_live_schema_reconcile "$env_name" true
+      run_live_schema_reconcile_with_policy "$env_name" true "sync"
+      print_schema_reconcile_summary "$env_name" "sync"
       return $?
     fi
 
@@ -1034,7 +1077,8 @@ run_sync_rebuild_if_requested() {
   echo "Running post-sync compose update ($(build_mode_label))..."
   preflight_startup "$env_name"
   run_compose_up_with_build_mode "$env_name"
-  run_live_schema_reconcile "$env_name" true
+  run_live_schema_reconcile_with_policy "$env_name" true "sync-rebuild"
+  print_schema_reconcile_summary "$env_name" "sync-rebuild"
 }
 
 prepare_sync_branch() {
@@ -1045,8 +1089,28 @@ prepare_sync_branch() {
 refresh_sync_blocker_snapshot() {
   local ahead_count
   local behind_count
+  local line
+  local ignored_count=0
+  local filtered_status=""
 
   SYNC_BLOCKER_STATUS="$(git -C "$ROOT_DIR" status --porcelain --untracked-files=all || true)"
+  SYNC_BLOCKER_STATUS_FILTERED=""
+  SYNC_BLOCKER_IGNORED_COUNT=0
+
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    if [[ "$line" =~ landing/public/downloads/uah-browser-extension-alpha\.zip$ ]]; then
+      ignored_count=$((ignored_count + 1))
+      continue
+    fi
+    if [[ -n "$filtered_status" ]]; then
+      filtered_status+=$'\n'
+    fi
+    filtered_status+="$line"
+  done <<< "$SYNC_BLOCKER_STATUS"
+
+  SYNC_BLOCKER_STATUS_FILTERED="$filtered_status"
+  SYNC_BLOCKER_IGNORED_COUNT="$ignored_count"
 
   ahead_count="$(git -C "$ROOT_DIR" rev-list --count origin/dev..dev 2>/dev/null || echo 0)"
   behind_count="$(git -C "$ROOT_DIR" rev-list --count dev..origin/dev 2>/dev/null || echo 0)"
@@ -1073,7 +1137,7 @@ refresh_sync_blocker_snapshot() {
 sync_blockers_detected() {
   refresh_sync_blocker_snapshot
 
-  if [[ -n "$SYNC_BLOCKER_STATUS" ]]; then
+  if [[ -n "$SYNC_BLOCKER_STATUS_FILTERED" ]]; then
     return 0
   fi
 
@@ -1093,13 +1157,19 @@ print_sync_blocker_report() {
   echo "Repository: $ROOT_DIR"
   echo ""
 
-  if [[ -n "$SYNC_BLOCKER_STATUS" ]]; then
-    total_lines=$(printf '%s\n' "$SYNC_BLOCKER_STATUS" | sed '/^$/d' | wc -l | tr -d ' ')
+  if [[ -n "$SYNC_BLOCKER_STATUS_FILTERED" ]]; then
+    total_lines=$(printf '%s\n' "$SYNC_BLOCKER_STATUS_FILTERED" | sed '/^$/d' | wc -l | tr -d ' ')
     echo "Local changes ($total_lines):"
-    printf '%s\n' "$SYNC_BLOCKER_STATUS" | sed -n "1,${preview_limit}p" | sed 's/^/  /'
+    printf '%s\n' "$SYNC_BLOCKER_STATUS_FILTERED" | sed -n "1,${preview_limit}p" | sed 's/^/  /'
     if ((total_lines > preview_limit)); then
       echo "  ... and $((total_lines - preview_limit)) more"
     fi
+    echo ""
+  fi
+
+  if ((SYNC_BLOCKER_IGNORED_COUNT > 0)); then
+    echo "Ignored local changes ($SYNC_BLOCKER_IGNORED_COUNT):"
+    echo "  landing/public/downloads/uah-browser-extension-alpha.zip"
     echo ""
   fi
 
@@ -2810,7 +2880,7 @@ import sys
 import urllib.request
 
 try:
-    with urllib.request.urlopen("http://localhost:8000/api/jobs/providers/attribution", timeout=5) as response:
+    with urllib.request.urlopen("http://localhost:8000/api/providers/attribution", timeout=5) as response:
         payload = json.load(response)
 except Exception:
     raise SystemExit(1)
@@ -3891,9 +3961,13 @@ startup_quick_hud() {
   local backend_container
   local network_name
   local provider_summary
+  local extension_dir
+  local landing_dir
 
   backend_container="$(startup_backend_container_name "$env_name")"
   network_name="$(startup_network_name "$env_name")"
+  extension_dir="$ROOT_DIR/uah-browser-extension"
+  landing_dir="$ROOT_DIR/landing"
 
   debug_print_section "Quick HUD"
   startup_status_chip "ok" "Environment: $env_name (source: $DETECTED_ENV_SOURCE)"
@@ -3935,6 +4009,40 @@ startup_quick_hud() {
   if [[ -n "$provider_summary" ]]; then
     startup_status_chip "ok" "$provider_summary"
   fi
+
+  if [[ -d "$extension_dir" && -d "$landing_dir" ]]; then
+    if command -v npm >/dev/null 2>&1; then
+      startup_status_chip "ok" "Extension repack readiness: host npm available"
+    elif command -v docker >/dev/null 2>&1; then
+      startup_status_chip "warn" "Extension repack readiness: host npm missing, Docker fallback available"
+    else
+      startup_status_chip "error" "Extension repack readiness: blocked (need npm or docker)"
+    fi
+  else
+    startup_status_chip "warn" "Extension repack readiness: missing extension or landing directory"
+  fi
+}
+
+extension_zip_note_file() {
+  echo "$ROOT_DIR/.ops-state/uah-browser-extension-alpha.last-repacked.txt"
+}
+
+extension_zip_target_file() {
+  echo "$ROOT_DIR/landing/public/downloads/uah-browser-extension-alpha.zip"
+}
+
+extension_zip_last_repacked_label() {
+  local note_file
+  note_file="$(extension_zip_note_file)"
+  if [[ -f "$note_file" ]]; then
+    local line
+    line="$(sed -n '1p' "$note_file" 2>/dev/null || true)"
+    if [[ -n "$line" ]]; then
+      echo "$line"
+      return
+    fi
+  fi
+  echo "not yet repacked"
 }
 
 choose_environment_interactive() {
@@ -4023,91 +4131,18 @@ configure_audit_wizard_args() {
   fi
 }
 
-choose_tooling_action() {
-  local env_name="$1"
-  local choice
-
-  while true; do
-    startup_header "$env_name"
-    startup_quick_hud "$env_name"
-    echo ""
-    echo "  Tooling Center"
-    echo "    1) Launch debug console"
-    echo "    2) Invite management console"
-    echo "    3) Provider dashboard"
-    echo "    4) Security audit wizard"
-    echo "    5) Environment safety review"
-    echo "    6) Quick backend status snapshot"
-    echo "    7) Script doctor audit"
-    echo "    8) Script doctor fix CRLF"
-    echo "    0) Back"
-    read -rp "  Choice [1-8/0]: " choice
-
-    case "$choice" in
-      1)
-        build_mode_reset_selection
-        ACTION="debug"
-        EXTRA_ARGS=()
-        return 0
-        ;;
-      2)
-        build_mode_reset_selection
-        ACTION="debug"
-        EXTRA_ARGS=("invites" "menu")
-        return 0
-        ;;
-      3)
-        build_mode_reset_selection
-        ACTION="providers"
-        EXTRA_ARGS=()
-        return 0
-        ;;
-      4)
-        build_mode_reset_selection
-        ACTION="audit"
-        configure_audit_wizard_args
-        return 0
-        ;;
-      5)
-        ensure_env_confirmation "$env_name" "tooling env review" "preview" || true
-        debug_press_enter
-        ;;
-      6)
-        build_mode_reset_selection
-        ACTION="debug"
-        EXTRA_ARGS=("status")
-        return 0
-        ;;
-      7)
-        build_mode_reset_selection
-        ACTION="debug"
-        EXTRA_ARGS=("scripts" "audit")
-        return 0
-        ;;
-      8)
-        build_mode_reset_selection
-        ACTION="debug"
-        EXTRA_ARGS=("scripts" "fix")
-        return 0
-        ;;
-      0)
-        return 1
-        ;;
-      *)
-        debug_print_warn "Invalid action selection."
-        debug_press_enter
-        ;;
-    esac
-  done
-}
-
 choose_action() {
   local active_env="$1"
   local choice
   local selected_env
+  local audit_mode
+  local script_doctor_choice
+
+  # shellcheck disable=SC1091
+  source "$ROOT_DIR/scripts/lib/ops_console_menus.sh"
 
   if [[ ! -t 0 ]]; then
-    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync|audit|providers|tools" >&2
+    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync|audit|providers|…" >&2
     exit 1
   fi
 
@@ -4115,21 +4150,31 @@ choose_action() {
     startup_header "$active_env"
     startup_quick_hud "$active_env"
     echo ""
-    echo "  Actions"
-    echo "    1) start"
-    echo "    2) stop"
-    echo "    3) restart"
-    echo "    4) debug"
-    echo "    5) sync"
-    echo "    6) cert-sync"
-    echo "    7) audit"
-    echo "    8) providers"
-    echo "    9) review env values"
-    echo "   10) switch environment"
-    echo "   11) rebuild options"
-    echo "   12) tooling center"
-    echo "    0) exit"
-    read -rp "  Choice [1-12/0]: " choice
+    echo "  Lifecycle"
+    printf '    %2d)  %s\n' 1 "start" 2 "stop" 3 "restart"
+    echo ""
+    echo "  Deploy"
+    printf '    %2d)  %s\n' 4 "sync" 5 "cert-sync (dev only)"
+    printf '    %2d)  %s\n' 21 "repack extension zip (landing download)"
+    echo "        last repacked: $(extension_zip_last_repacked_label)"
+    echo ""
+    echo "  Governance"
+    printf '    %2d)  %s\n' 6 "security audit" 7 "providers" 8 "env safety review"
+    echo ""
+    echo "  Observability"
+    echo "  (submenus; choose 0 in submenu to return here)"
+    printf '    %2d)  %s\n' 9 "connectivity" 10 "logs" 11 "queue"
+    echo ""
+    echo "  Data and access"
+    printf '    %2d)  %s\n' 12 "database" 13 "users" 14 "invites" 15 "networking"
+    echo ""
+    echo "  Advanced"
+    printf '    %2d)  %s\n' 16 "script doctor" 17 "backend status snapshot" 18 "open full ops console (classic menu)"
+    echo ""
+    echo "  Session"
+    printf '    %2d)  %s\n' 19 "switch environment" 20 "rebuild options" 0 "exit"
+    echo ""
+    read -rp "  Choice [0-21]: " choice
 
     case "$choice" in
       1)
@@ -4155,12 +4200,6 @@ choose_action() {
         return
         ;;
       4)
-        build_mode_reset_selection
-        ACTION="debug"
-        ENV_NAME="$active_env"
-        return
-        ;;
-      5)
         if ! configure_rebuild_ui_for_action "$active_env" "sync"; then
           continue
         fi
@@ -4168,39 +4207,103 @@ choose_action() {
         ENV_NAME="$active_env"
         return
         ;;
-      6)
+      5)
+        if [[ "$active_env" != "dev" ]]; then
+          debug_print_warn "cert-sync is only supported for dev."
+          debug_press_enter
+          continue
+        fi
         build_mode_reset_selection
         ACTION="cert-sync"
         ENV_NAME="$active_env"
         return
         ;;
-      7)
+      6)
+        echo ""
+        echo "  Security audit:"
+        echo "    1) Run with default options"
+        echo "    2) Configure wizard (mode, --fix, JSON, …)"
+        read -rp "  Choice [1/2, default 1]: " audit_mode
         build_mode_reset_selection
-        ACTION="audit"
         ENV_NAME="$active_env"
+        if [[ "${audit_mode:-1}" == "2" ]]; then
+          configure_audit_wizard_args
+        fi
+        ACTION="audit"
         return
         ;;
-      8)
+      7)
         build_mode_reset_selection
         ACTION="providers"
         ENV_NAME="$active_env"
         return
         ;;
+      8)
+        ensure_env_confirmation "$active_env" "env safety review" "preview" || true
+        ;;
       9)
-        ensure_env_confirmation "$active_env" "preflight review" "preview" || true
+        OPS_ROOT_DIR="$ROOT_DIR" uah_ops_dispatch_submenu "$active_env" menu_connectivity || true
         ;;
       10)
+        OPS_ROOT_DIR="$ROOT_DIR" uah_ops_dispatch_submenu "$active_env" menu_logs || true
+        ;;
+      11)
+        OPS_ROOT_DIR="$ROOT_DIR" uah_ops_dispatch_submenu "$active_env" menu_queue || true
+        ;;
+      12)
+        OPS_ROOT_DIR="$ROOT_DIR" uah_ops_dispatch_submenu "$active_env" menu_database || true
+        ;;
+      13)
+        OPS_ROOT_DIR="$ROOT_DIR" uah_ops_dispatch_submenu "$active_env" menu_users || true
+        ;;
+      14)
+        build_mode_reset_selection
+        ACTION="debug"
+        EXTRA_ARGS=("invites" "menu")
+        ENV_NAME="$active_env"
+        return
+        ;;
+      15)
+        OPS_ROOT_DIR="$ROOT_DIR" uah_ops_dispatch_submenu "$active_env" menu_network || true
+        ;;
+      16)
+        echo ""
+        read -rp "  Script doctor: 1) audit  2) fix CRLF  [1/2]: " script_doctor_choice
+        build_mode_reset_selection
+        ENV_NAME="$active_env"
+        if [[ "$script_doctor_choice" == "2" ]]; then
+          ACTION="debug"
+          EXTRA_ARGS=("scripts" "fix")
+        else
+          ACTION="debug"
+          EXTRA_ARGS=("scripts" "audit")
+        fi
+        return
+        ;;
+      17)
+        run_debug "$active_env" status
+        debug_press_enter
+        ;;
+      18)
+        build_mode_reset_selection
+        ACTION="debug"
+        EXTRA_ARGS=()
+        ENV_NAME="$active_env"
+        return
+        ;;
+      19)
         selected_env="$(choose_environment_interactive "$active_env")"
         active_env="$selected_env"
         ;;
-      11)
+      20)
         configure_rebuild_ui_for_action "$active_env" "menu" || true
         ;;
-      12)
-        if choose_tooling_action "$active_env"; then
-          ENV_NAME="$active_env"
-          return
-        fi
+      21)
+        build_mode_reset_selection
+        ACTION="debug"
+        EXTRA_ARGS=("extension" "repack")
+        ENV_NAME="$active_env"
+        return
         ;;
       0)
         echo "Cancelled."
@@ -4234,9 +4337,9 @@ Environment selection:
   - If detection fails, pass environment explicitly.
 
 Actions:
-  start | stop | restart | debug | sync | cert-sync | audit | providers | tools
+  start | stop | restart | debug | sync | cert-sync | audit | providers
 
-Tooling center aliases:
+Deprecated (prints a hint; use interactive Control Center instead):
   tools | tooling | ui
 
 Debug:
@@ -4244,7 +4347,7 @@ Debug:
   bash scripts/uah.sh <env> debug help
   bash scripts/uah.sh <env> debug status
   bash scripts/uah.sh <env> debug connectivity [full|ollama|redis|db|vpn-ping|host-ollama|containers|env|wireguard|cert]
-  bash scripts/uah.sh <env> debug logs [backend|frontend|cloudflared|redis|db] [--tail N] [--follow] [--raw|--errors|--filtered]
+  bash scripts/uah.sh <env> debug logs [backend|frontend|landing|cloudflared|redis|db] [--tail N] [--follow] [--raw|--errors|--filtered]
   bash scripts/uah.sh <env> debug queue [status|clear|clear-redis|clear-stuck|active|recent|failed|retry <id>|test-parse <local|cloud|rules>]
   bash scripts/uah.sh <env> debug database [isolation|user-count|resume-count|parse-stats|recent|raw <SQL>|size]
   bash scripts/uah.sh <env> debug users [list|show <email>|toggle-active <email> <true|false>|toggle-developer <email> <true|false>|reset-password <email> <password>]
@@ -4261,6 +4364,7 @@ Build options (for start, restart, sync only):
   --build-db
   --build-redis
   --build-cloudflared (beta only)
+  --build-landing (beta only)
   --build-service <name>
   --build-service=<name>
 
@@ -4395,11 +4499,7 @@ dev_start() {
   run_compose_up_with_build_mode dev
 
   echo "[3/7] Applying Alembic migrations and refreshing runtime services..."
-  if ! run_live_schema_reconcile dev true; then
-    echo "Dev start failed during Alembic upgrade or runtime refresh." >&2
-    run_compose dev ps || true
-    return 1
-  fi
+  run_live_schema_reconcile_with_policy dev true "start"
 
   echo "[4/7] Applying WireGuard host route..."
   VPN_CONTAINER=uah-dev-vpn \
@@ -4435,6 +4535,7 @@ dev_start() {
   echo ""
   run_compose dev ps
   echo ""
+  print_schema_reconcile_summary dev "start"
   echo "=== Dev stack started ==="
   echo "Access: https://dev.uahapp.com (VPN required)"
 }
@@ -4481,6 +4582,7 @@ beta_start() {
   local beta_backend_running="false"
   local beta_backend_port_ok="false"
   local beta_ollama_ok="false"
+  local -a required_beta_services=(backend frontend db redis cloudflared landing)
   local beta_bridge
   local infra_bridge
   local beta_br
@@ -4499,8 +4601,11 @@ beta_start() {
   echo "[2/7] Starting containers ($(build_mode_label))..."
   run_compose_up_with_build_mode beta
 
+  echo "[2b/7] Ensuring required beta services are running..."
+  run_compose beta up -d "${required_beta_services[@]}"
+
   echo "[3/7] Applying Alembic migrations and refreshing runtime services..."
-  if ! run_live_schema_reconcile beta true; then
+  if ! run_live_schema_reconcile_with_policy beta true "start"; then
     notify_discord "**Beta start FAILED** during Alembic upgrade or runtime refresh" 15158332
     run_compose beta ps || true
     return 1
@@ -4565,6 +4670,7 @@ except Exception:
   echo ""
   run_compose beta ps
   echo ""
+  print_schema_reconcile_summary beta "start"
   echo "=== Beta stack started ==="
 
   if [[ "$beta_backend_running" == "true" && "$beta_backend_port_ok" == "true" && "$beta_ollama_ok" == "true" ]]; then
@@ -4776,7 +4882,7 @@ debug_logs() {
 
   while (($#)); do
     case "$1" in
-      backend|frontend|cloudflared|redis|db)
+      backend|frontend|landing|cloudflared|redis|db)
         service="$1"
         ;;
       --tail)
@@ -4809,6 +4915,11 @@ debug_logs() {
 
   if [[ "$env_name" == "dev" && "$service" == "cloudflared" ]]; then
     echo "cloudflared logs are beta-specific." >&2
+    exit 1
+  fi
+
+  if [[ "$env_name" == "dev" && "$service" == "landing" ]]; then
+    echo "landing logs are beta-specific." >&2
     exit 1
   fi
 
@@ -5513,19 +5624,319 @@ debug_scripts() {
   fi
 }
 
+debug_extension() {
+  local env_name="$1"
+  local action="${2:-status}"
+  local extension_dir="$ROOT_DIR/uah-browser-extension"
+  local landing_downloads_dir="$ROOT_DIR/landing/public/downloads"
+  local zip_target
+  local note_file
+  local legacy_note_file
+  local timestamp_utc
+  local timestamp_iso
+  local commit_sha
+  local source_count
+  local source_count_trimmed
+  local used_builder_label="host npm"
+  local extension_env_file
+  local extension_env_example
+  local default_app_origin
+  local default_api_origin
+  local default_auth_namespace
+  local public_note_file
+
+  extension_env_file="$extension_dir/.env"
+  extension_env_example="$extension_dir/.env.example"
+  public_note_file="$ROOT_DIR/landing/public/downloads/uah-browser-extension-alpha.last-repacked.txt"
+
+  case "$env_name" in
+    dev)
+      default_app_origin="https://dev.uahapp.com"
+      default_api_origin="https://dev.uahapp.com"
+      default_auth_namespace="dev"
+      ;;
+    beta)
+      default_app_origin="https://beta.uahapp.com"
+      default_api_origin="https://beta.uahapp.com"
+      default_auth_namespace="beta"
+      ;;
+    *)
+      default_app_origin="https://uahapp.com"
+      default_api_origin="https://uahapp.com"
+      default_auth_namespace="prod"
+      ;;
+  esac
+
+  zip_target="$(extension_zip_target_file)"
+  note_file="$(extension_zip_note_file)"
+  legacy_note_file="$ROOT_DIR/landing/public/downloads/uah-browser-extension-alpha.last-repacked.txt"
+
+  case "$action" in
+    repack|repack-zip|refresh-zip)
+      debug_header "$env_name" "Extension ZIP Repack"
+      debug_print_section "Target"
+      echo "  Extension source: $extension_dir"
+      echo "  Landing zip path: $zip_target"
+      echo ""
+
+      if [[ ! -d "$extension_dir" ]]; then
+        debug_print_error "Missing extension directory: $extension_dir"
+        exit 1
+      fi
+      if [[ ! -d "$ROOT_DIR/landing" ]]; then
+        debug_print_error "Missing landing directory: $ROOT_DIR/landing"
+        exit 1
+      fi
+      if [[ ! -f "$extension_env_file" ]]; then
+        debug_print_warn "Missing $extension_env_file. Creating one for extension build."
+        if [[ -f "$extension_env_example" ]]; then
+          cp "$extension_env_example" "$extension_env_file"
+        else
+          cat > "$extension_env_file" <<'EOF'
+VITE_EXTENSION_APP_ORIGIN=
+VITE_EXTENSION_API_ORIGIN=
+VITE_EXTENSION_AUTH_NAMESPACE=
+EOF
+        fi
+      fi
+
+      debug_print_section "Safe target profile"
+      echo "  app origin: $default_app_origin"
+      echo "  api origin: $default_api_origin"
+      echo "  auth namespace: $default_auth_namespace"
+
+      # Enforce safe per-environment extension env and reject risky keys.
+      if ! python3 - "$extension_env_file" "$env_name" "$default_app_origin" "$default_api_origin" "$default_auth_namespace" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+env_path = Path(sys.argv[1])
+env_name = sys.argv[2]
+safe_app_origin = sys.argv[3]
+safe_api_origin = sys.argv[4]
+safe_auth_namespace = sys.argv[5]
+raw = env_path.read_text(encoding="utf-8")
+lines = raw.splitlines()
+required = {
+    "VITE_EXTENSION_APP_ORIGIN": safe_app_origin,
+    "VITE_EXTENSION_API_ORIGIN": safe_api_origin,
+    "VITE_EXTENSION_AUTH_NAMESPACE": safe_auth_namespace,
+}
+allowed_vite = set(required.keys()) | {"VITE_EXTENSION_AUTH_COOKIE_NAME"}
+forbidden_fragments = (
+    "API_KEY",
+    "SECRET",
+    "TOKEN",
+    "PASSWORD",
+    "PRIVATE_KEY",
+    "ACCESS_KEY",
+    "OPENAI",
+    "ANTHROPIC",
+    "GEMINI",
+    "AWS_",
+    "CLOUDFLARE_",
+)
+
+present = {}
+kv = {}
+for idx, line in enumerate(lines):
+    m = re.match(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$", line)
+    if not m:
+        continue
+    key = m.group(1)
+    present[key] = idx
+    value = m.group(2).strip().strip('"').strip("'")
+    kv[key] = value
+
+violations = []
+for key, value in kv.items():
+    key_upper = key.upper()
+    if key.startswith("VITE_") and key not in allowed_vite:
+        violations.append(f"Unexpected VITE key in extension env: {key}")
+    if value and any(fragment in key_upper for fragment in forbidden_fragments):
+        violations.append(f"Potential secret-like key is not allowed in extension env: {key}")
+
+if violations:
+    print("Unsafe extension env detected; refusing repack:", file=sys.stderr)
+    for item in violations:
+        print(f"- {item}", file=sys.stderr)
+    raise SystemExit(1)
+
+for key, default in required.items():
+    if key in present:
+        # Always force safe profile values during repack.
+        lines[present[key]] = f"{key}={default}"
+    else:
+        lines.append(f"{key}={default}")
+
+# Optional cookie override can remain if present and non-empty.
+if "VITE_EXTENSION_AUTH_COOKIE_NAME" in present:
+    idx = present["VITE_EXTENSION_AUTH_COOKIE_NAME"]
+    current_value = lines[idx].split("=", 1)[1].strip().strip('"').strip("'")
+    if not current_value:
+        lines[idx] = f"VITE_EXTENSION_AUTH_COOKIE_NAME=uah_auth_{safe_auth_namespace}"
+
+# Safety guard: enforce approved live hosts for each environment profile.
+allowed_hosts = {
+    "dev": {"https://dev.uahapp.com"},
+    "beta": {"https://beta.uahapp.com"},
+    "prod": {"https://uahapp.com", "https://www.uahapp.com"},
+}.get(env_name, {"https://uahapp.com"})
+
+if required["VITE_EXTENSION_APP_ORIGIN"] not in allowed_hosts or required["VITE_EXTENSION_API_ORIGIN"] not in allowed_hosts:
+    raise SystemExit("Configured extension origins are not allowed for this environment profile.")
+
+env_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+PY
+      then
+        debug_print_error "Unsafe extension .env detected. Repack aborted."
+        exit 1
+      fi
+      if ! command -v python3 >/dev/null 2>&1; then
+        debug_print_error "python3 is required for zip packaging but was not found in PATH."
+        exit 1
+      fi
+
+      mkdir -p "$landing_downloads_dir"
+      mkdir -p "$(dirname "$note_file")"
+      mkdir -p "$(dirname "$public_note_file")"
+      rm -f "$legacy_note_file"
+
+      debug_print_section "Build extension"
+      if command -v npm >/dev/null 2>&1; then
+        if ! (
+          cd "$extension_dir"
+          npm run build
+        ); then
+          debug_print_error "Extension build failed with host npm. Zip was not updated."
+          exit 1
+        fi
+      else
+        used_builder_label="docker node"
+        debug_print_warn "Host npm not found. Falling back to Dockerized Node build."
+        if ! command -v docker >/dev/null 2>&1; then
+          debug_print_error "docker is not available, and host npm is missing."
+          debug_print_warn "Install npm or docker on this host before running repack."
+          exit 1
+        fi
+        if ! docker run --rm \
+          --user "$(id -u):$(id -g)" \
+          -e HOME=/tmp \
+          -e npm_config_cache=/tmp/.npm \
+          -v "$ROOT_DIR:/repo" \
+          -w /repo/uah-browser-extension \
+          node:22-bookworm \
+          bash -lc "set -euo pipefail; npm ci --include=optional || npm ci; if ! node -e \"require('@rollup/rollup-linux-x64-gnu')\" >/dev/null 2>&1; then npm install --no-save --include=optional @rollup/rollup-linux-x64-gnu; fi; npm run build"; then
+          debug_print_error "Dockerized extension build failed. Zip was not updated."
+          exit 1
+        fi
+      fi
+      if [[ ! -f "$extension_dir/dist/manifest.json" ]]; then
+        debug_print_error "Build did not produce dist/manifest.json. Zip was not updated."
+        exit 1
+      fi
+      echo ""
+
+      debug_print_section "Repack zip"
+      if ! python3 - "$extension_dir/dist" "$zip_target" <<'PY'
+import pathlib
+import sys
+import zipfile
+
+dist_dir = pathlib.Path(sys.argv[1])
+zip_path = pathlib.Path(sys.argv[2])
+if not dist_dir.exists():
+    raise SystemExit(f"dist directory missing: {dist_dir}")
+
+files = [p for p in dist_dir.rglob("*") if p.is_file()]
+if not files:
+    raise SystemExit(f"no files found under: {dist_dir}")
+
+zip_path.parent.mkdir(parents=True, exist_ok=True)
+if zip_path.exists():
+    zip_path.unlink()
+
+with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+    for file_path in files:
+        zf.write(file_path, file_path.relative_to(dist_dir).as_posix())
+PY
+      then
+        debug_print_error "Zip repack failed. Existing artifact was left unchanged."
+        exit 1
+      fi
+
+      source_count="$(python3 - "$extension_dir/dist" <<'PY'
+import pathlib, sys
+dist_dir = pathlib.Path(sys.argv[1])
+print(sum(1 for p in dist_dir.rglob("*") if p.is_file()))
+PY
+)"
+      source_count_trimmed="$(printf '%s' "$source_count" | tr -d '[:space:]')"
+      if [[ -z "$source_count_trimmed" || ! "$source_count_trimmed" =~ ^[0-9]+$ || "$source_count_trimmed" == "0" ]]; then
+        debug_print_error "Source file count was invalid ($source_count). Refusing to mark repack successful."
+        exit 1
+      fi
+
+      timestamp_utc="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+      timestamp_iso="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+      commit_sha="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+
+      cat > "$note_file" <<EOF
+last repacked: $timestamp_utc
+iso: $timestamp_iso
+commit: $commit_sha
+artifact: /downloads/uah-browser-extension-alpha.zip
+source_files: $source_count_trimmed
+EOF
+      cp "$note_file" "$public_note_file"
+
+      debug_print_ok "Extension zip refreshed."
+      echo "  build path: $used_builder_label"
+      echo "  -> $zip_target"
+      echo "  metadata: $public_note_file"
+      echo ""
+      debug_print_section "Last repacked note"
+      sed 's/^/  /' "$note_file"
+      ;;
+    status|show|note)
+      debug_header "$env_name" "Extension ZIP Repack Status"
+      debug_print_section "Artifact"
+      echo "  zip: $zip_target"
+      echo "  note: $note_file"
+      echo ""
+      if [[ -f "$note_file" ]]; then
+        debug_print_ok "Found last repacked note."
+        sed 's/^/  /' "$note_file"
+      elif [[ -f "$legacy_note_file" ]]; then
+        debug_print_warn "Found legacy note path; it no longer blocks sync and can be removed."
+        echo "  legacy note: $legacy_note_file"
+      else
+        debug_print_warn "No repack note found yet."
+      fi
+      ;;
+    *)
+      echo "Unknown extension action '$action'." >&2
+      echo "Supported: repack, status" >&2
+      exit 1
+      ;;
+  esac
+}
+
 print_debug_usage() {
   cat <<'EOF'
 Debug subcommands:
   bash scripts/uah.sh <env> debug
   bash scripts/uah.sh <env> debug status
   bash scripts/uah.sh <env> debug connectivity [full|ollama|redis|db|vpn-ping|host-ollama|containers|env|wireguard|cert]
-  bash scripts/uah.sh <env> debug logs [backend|frontend|cloudflared|redis|db] [--tail N] [--follow] [--raw|--errors|--filtered]
+  bash scripts/uah.sh <env> debug logs [backend|frontend|landing|cloudflared|redis|db] [--tail N] [--follow] [--raw|--errors|--filtered]
   bash scripts/uah.sh <env> debug queue [status|clear|clear-redis|clear-stuck|active|recent|failed|retry <id>|test-parse <local|cloud|rules>]
   bash scripts/uah.sh <env> debug database [isolation|user-count|resume-count|parse-stats|recent|raw <SQL>|size]
   bash scripts/uah.sh <env> debug users [list|show <email>|toggle-active <email> <true|false>|toggle-developer <email> <true|false>|reset-password <email> <password>]
   bash scripts/uah.sh <env> debug invites [menu|ui|interactive|list [all|used|unused|active|inactive]|show <code>|create <count> [max_uses] [expires_in_or_iso] [name]|revoke <code>|stats|audit [tail]]
   bash scripts/uah.sh <env> debug network [show-topology|show-routes|show-docker-user|show-vpn-iptables|apply-route|rollback-route|check-route]
   bash scripts/uah.sh <env> debug scripts [audit|fix]
+  bash scripts/uah.sh <env> debug extension [repack|status]
   bash scripts/uah.sh beta debug network [apply-bridge|remove-bridge|full-reapply|rollback-all]
 EOF
 }
@@ -5576,6 +5987,9 @@ run_debug() {
       ;;
     scripts)
       debug_scripts "$env_name" "${1:-audit}"
+      ;;
+    extension)
+      debug_extension "$env_name" "${1:-status}"
       ;;
     route-check)
       debug_network "$env_name" check-route
@@ -5629,7 +6043,7 @@ run_selected_action() {
 
   notify_discord "**uah.sh started** by \`$(whoami)\` on \`$(hostname)\` for action \`$action\` in \`$env_name\`" 16776960
 
-  if [[ "$env_name" == "prod" && "$action" != "audit" && "$action" != "providers" && "$action" != "tools" && "$action" != "tooling" && "$action" != "ui" ]]; then
+  if [[ "$env_name" == "prod" && "$action" != "audit" && "$action" != "providers" ]]; then
     prod_scaffold "$action"
     return $?
   fi
@@ -5708,13 +6122,9 @@ run_selected_action() {
       run_providers "$env_name" "${action_args[@]}"
       ;;
     tools|tooling|ui)
-      if [[ ! -t 0 ]]; then
-        echo "tools/tooling/ui requires an interactive terminal session." >&2
-        return 1
-      fi
-      if choose_tooling_action "$env_name"; then
-        run_selected_action "$env_name" "$ACTION" "${EXTRA_ARGS[@]}"
-      fi
+      echo "The tools / tooling / ui aliases are deprecated. Run the same command with no action to open the Control Center." >&2
+      echo "Example: bash scripts/uah.sh ${env_name}" >&2
+      return 1
       ;;
     *)
       echo "Unknown action '$action'." >&2
@@ -5766,6 +6176,9 @@ while (($#)); do
       ;;
     --build-cloudflared)
       validate_and_add_build_service "cloudflared"
+      ;;
+    --build-landing)
+      validate_and_add_build_service "landing"
       ;;
     --build-service)
       shift
@@ -5838,7 +6251,7 @@ if [[ -z "$ACTION" ]]; then
   if [[ -t 0 ]]; then
     INTERACTIVE_CONTROL_CENTER=true
   else
-    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync|audit|providers|tools" >&2
+    echo "Action argument required in non-interactive mode: start|stop|restart|debug|sync|cert-sync|audit|providers" >&2
     exit 1
   fi
 fi

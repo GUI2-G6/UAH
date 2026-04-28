@@ -62,6 +62,7 @@
                         >
                             {{ saveButtonLabel }}
                         </button>
+                        <button type="button" class="secondary" @click="markApplied">Mark applied</button>
                         <button type="button" class="secondary" @click="openDetails">Details</button>
                         <button type="button" class="primary" @click="apply">Apply Now</button>
                     </div>
@@ -160,7 +161,7 @@ export default {
             default: false,
         },
     },
-    emits: ["toggle-save"],
+    emits: ["toggle-save", "mark-applied"],
     data() {
         return {
             detailsOpen: false
@@ -369,6 +370,9 @@ export default {
         toggleSave() {
             if (this.savePending) return
             this.$emit("toggle-save", this.job)
+        },
+        markApplied() {
+            this.$emit("mark-applied", this.job)
         }
     }
 }
@@ -676,5 +680,82 @@ export default {
         width: 100%;
         max-height: 88vh;
     }
+}
+
+html[data-theme="dark"] .job-title {
+    color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .job-company,
+html[data-theme="dark"] .job-teaser {
+    color: var(--color-text-secondary);
+}
+
+html[data-theme="dark"] .meta-pill,
+html[data-theme="dark"] .job-modal-meta span {
+    border-color: var(--border-color);
+    background: var(--color-surface-muted);
+    color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .meta-pill.posted {
+    color: var(--color-text-secondary);
+}
+
+html[data-theme="dark"] .meta-pill.subtle {
+    color: #c5f5e3;
+    background: rgba(16, 185, 129, 0.14);
+    border-color: rgba(16, 185, 129, 0.3);
+}
+
+html[data-theme="dark"] .meta-pill.accent,
+html[data-theme="dark"] .job-modal-meta span.accent {
+    background: rgba(59, 130, 246, 0.22);
+    border-color: rgba(96, 165, 250, 0.58);
+    color: #dbeafe;
+}
+
+html[data-theme="dark"] .meta-pill.compatible,
+html[data-theme="dark"] .job-modal-meta span.compatible {
+    background: rgba(14, 116, 144, 0.2);
+    border-color: rgba(56, 189, 248, 0.52);
+    color: #bae6fd;
+}
+
+html[data-theme="dark"] .job-actions button,
+html[data-theme="dark"] .job-modal-header button,
+html[data-theme="dark"] .job-modal-actions button {
+    border-color: var(--border-color);
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .job-actions .secondary,
+html[data-theme="dark"] .job-modal-actions .secondary {
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .job-modal-dialog {
+    background: var(--color-surface);
+    border-color: var(--border-color);
+}
+
+html[data-theme="dark"] .job-modal-header {
+    border-bottom-color: var(--border-color);
+}
+
+html[data-theme="dark"] .job-modal-header h2,
+html[data-theme="dark"] .job-modal-company {
+    color: var(--color-text-primary);
+}
+
+html[data-theme="dark"] .job-modal-body {
+    background: var(--color-surface-muted);
+    border-color: var(--border-color);
+}
+
+html[data-theme="dark"] .job-modal-body p {
+    color: var(--color-text-secondary);
 }
 </style>

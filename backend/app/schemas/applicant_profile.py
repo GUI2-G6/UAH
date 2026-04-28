@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from app.core.validation import normalize_phone, require_valid_email
@@ -11,7 +13,11 @@ class ProfileBase(BaseModel):
         examples=["Default"],
     )
     first_name: str | None = Field(default=None, max_length=100, description="Applicant first name.", examples=["Jane"])
+    middle_name: str | None = Field(default=None, max_length=100, description="Applicant middle name.", examples=["Alex"])
     last_name: str | None = Field(default=None, max_length=100, description="Applicant last name.", examples=["Doe"])
+    full_legal_name: str | None = Field(default=None, max_length=255, description="Full legal name for strict legal-name application fields.", examples=["Jane Alex Doe"])
+    preferred_name: str | None = Field(default=None, max_length=100, description="Preferred name to use where legal name is not required.", examples=["Janie"])
+    suffix: str | None = Field(default=None, max_length=30, description="Name suffix such as Jr, Sr, II, or III.", examples=["Jr"])
     email: str | None = Field(default=None, max_length=255, description="Primary contact email for applications.", examples=["jane.doe@example.com"])
     phone: str | None = Field(default=None, max_length=40, description="Primary contact phone number including area/country code.", examples=["+1-555-010-1001"])
     linkedin: str | None = Field(default=None, max_length=500, description="Public LinkedIn profile URL.", examples=["https://www.linkedin.com/in/jane-doe/"])
@@ -43,17 +49,31 @@ class ProfileBase(BaseModel):
     disability_status: str | None = Field(default=None, max_length=160, description="Optional disability self-identification response.", examples=["I do not wish to answer"])
     california_resident: str | None = Field(default=None, max_length=60, description="Optional California residency declaration used by some employers.", examples=["No"])
 
-    @field_validator("email")
+    @field_validator("email", mode="before")
     @classmethod
-    def validate_email(cls, value: str | None) -> str | None:
+    def validate_email(cls, value: Any) -> str | None:
         if value is None:
             return None
-        return require_valid_email(value)
+        stripped = str(value).strip()
+        if not stripped:
+            return None
+        try:
+            return require_valid_email(stripped)
+        except ValueError:
+            return stripped[:255]
 
-    @field_validator("phone")
+    @field_validator("phone", mode="before")
     @classmethod
-    def validate_phone(cls, value: str | None) -> str | None:
-        return normalize_phone(value)
+    def validate_phone(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        stripped = str(value).strip()
+        if not stripped:
+            return None
+        try:
+            return normalize_phone(stripped)
+        except ValueError:
+            return stripped[:40]
 
 
 class ProfileCreate(ProfileBase):
@@ -85,6 +105,7 @@ class ProfileListItem(BaseModel):
     name: str = Field(..., description="Profile display name in list and dropdown views.", examples=["Default"])
     is_active: bool = Field(..., description="Whether this profile is currently active for autofill operations.", examples=[False])
     first_name: str | None = Field(default=None, description="Applicant first name snapshot for quick list display.", examples=["Jane"])
+    middle_name: str | None = Field(default=None, description="Applicant middle name snapshot for quick list display.", examples=["Alex"])
     last_name: str | None = Field(default=None, description="Applicant last name snapshot for quick list display.", examples=["Doe"])
     city: str | None = Field(default=None, description="City snapshot used to distinguish applicant profiles quickly.", examples=["Huntsville"])
     state: str | None = Field(default=None, description="State snapshot used to distinguish applicant profiles quickly.", examples=["AL"])

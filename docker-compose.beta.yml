@@ -5,13 +5,14 @@ services:
   db:
     container_name: uah-beta-db
     volumes:
-      - ./volumes/postgres:/var/lib/postgresql/data
+      - ./volumes/postgres_beta:/var/lib/postgresql/data
     networks:
       uah-beta-infra: {}
       uah-infra: null
 
   backend:
     container_name: uah-beta-backend
+    user: "65534:65534"
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-beta}
       ENV: ${ENV:-beta}
@@ -45,14 +46,15 @@ services:
       PARSE_QUEUE_NAME_CLOUD: ${BETA_PARSE_QUEUE_NAME_CLOUD:-uah:beta:parse_jobs:cloud}
       PARSE_QUEUE_NAME_LOCAL: ${BETA_PARSE_QUEUE_NAME_LOCAL:-uah:beta:parse_jobs:local}
       PARSE_QUEUE_NAME_RULES: ${BETA_PARSE_QUEUE_NAME_RULES:-uah:beta:parse_jobs:rules}
-    volumes:
-      - ./backend:/app
+      BETA_ACCESS_NOTIFY_EMAIL: ${BETA_ACCESS_NOTIFY_EMAIL:-beta@uahapp.com}
+      LANDING_FEEDBACK_NOTIFY_EMAIL: ${LANDING_FEEDBACK_NOTIFY_EMAIL:-feedback@uahapp.com}
     networks:
       uah-beta-infra: {}
       uah-infra: null
 
   celery_worker:
     container_name: uah-beta-celery-worker
+    user: "65534:65534"
     environment:
       REDIS_URL: ${BETA_REDIS_URL:-redis://uah-beta-redis:6379/0}
       JOB_PROVIDER_CONTROLS_JSON: '${JOB_PROVIDER_CONTROLS_JSON:-{}}'
@@ -73,6 +75,8 @@ services:
 
   celery_beat:
     container_name: uah-beta-celery-beat
+    user: "65534:65534"
+    command: ["celery", "-A", "app.worker", "beat", "--loglevel=info", "--scheduler", "celery.beat.PersistentScheduler", "--schedule", "/tmp/celerybeat-schedule"]
     environment:
       REDIS_URL: ${BETA_REDIS_URL:-redis://uah-beta-redis:6379/0}
       JOB_PROVIDER_CONTROLS_JSON: '${JOB_PROVIDER_CONTROLS_JSON:-{}}'
@@ -106,9 +110,27 @@ services:
     volumes:
       - ./volumes/certs/beta:/etc/nginx/certs:ro
     network_mode: "service:cloudflared"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pidof nginx >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  landing:
+    container_name: uah-landing
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: landing/Dockerfile
+    networks:
+      uah-beta-infra: {}
 
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    image: ${CLOUDFLARED_IMAGE:-cloudflare/cloudflared:2026.3.0}
     container_name: uah-beta-cloudflared
     restart: unless-stopped
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_BETA_TUNNEL_TOKEN}

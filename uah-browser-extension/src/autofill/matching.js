@@ -1,8 +1,15 @@
 import { normalizeText } from './shared.js'
+import { resolveFieldPolicy } from './resolver.js'
 
 const DIRECT_NAME_MAP = {
   first_name: 'personal_info.first_name',
+  middle_name: 'personal_info.middle_name',
+  middle_initial: 'personal_info.middle_initial',
   last_name: 'personal_info.last_name',
+  legal_name: 'personal_info.full_legal_name',
+  full_legal_name: 'personal_info.full_legal_name',
+  preferred_name: 'personal_info.preferred_name',
+  suffix: 'personal_info.suffix',
   email: 'personal_info.email',
   phone: 'personal_info.phone',
   address: 'personal_info.address',
@@ -89,7 +96,12 @@ const INDEXED_RE = /^(\w+)\[(\d+)\]\.(\w+)$/
 
 const SYNONYMS = [
   { path: 'personal_info.first_name', terms: ['first name', 'given name', 'fname', 'legal first name', 'legal name first'] },
+  { path: 'personal_info.middle_name', terms: ['middle name', 'm name', 'middle'] },
+  { path: 'personal_info.middle_initial', terms: ['middle initial', 'mi', 'm i', 'middle initial optional'] },
   { path: 'personal_info.last_name', terms: ['last name', 'surname', 'family name', 'lname', 'legal last name', 'legal name last'] },
+  { path: 'personal_info.full_legal_name', terms: ['full legal name', 'legal name', 'name as shown on id', 'full name legal'] },
+  { path: 'personal_info.preferred_name', terms: ['preferred name', 'nickname', 'chosen name'] },
+  { path: 'personal_info.suffix', terms: ['suffix', 'name suffix', 'jr', 'sr', 'ii', 'iii', 'iv'] },
   { path: 'personal_info.email', terms: ['email', 'email address', 'e mail', 'e mail address'] },
   { path: 'personal_info.phone', terms: ['phone', 'phone number', 'mobile', 'cell', 'telephone', 'contact number'] },
   { path: 'personal_info.address', terms: ['address', 'street address', 'address line 1', 'address line', 'mailing address'] },
@@ -198,11 +210,13 @@ export function buildPlan(fields, tokenMap) {
   return (Array.isArray(fields) ? fields : []).map((field) => {
     let matchPath = null
     let matchScore = 0
+    let matchReason = 'no_match'
 
     const namePath = resolveNameToPath(field.name)
     if (namePath && tokenMap[namePath] !== undefined) {
       matchPath = namePath
       matchScore = 1
+      matchReason = 'name'
     }
 
     if (!matchPath) {
@@ -210,6 +224,7 @@ export function buildPlan(fields, tokenMap) {
       if (idPath && tokenMap[idPath] !== undefined) {
         matchPath = idPath
         matchScore = 0.95
+        matchReason = 'id'
       }
     }
 
@@ -218,13 +233,25 @@ export function buildPlan(fields, tokenMap) {
       if (synonymResult.score > matchScore) {
         matchPath = synonymResult.path
         matchScore = synonymResult.score
+        matchReason = 'label'
       }
     }
+
+    const policy = resolveFieldPolicy(field, {
+      matchPath,
+      matchScore,
+      reason: matchReason,
+    })
 
     return {
       ...field,
       matchPath,
       matchScore,
+      matchReason,
+      confidenceClass: policy.confidenceClass,
+      sensitive: policy.sensitive,
+      requiresApproval: policy.requiresApproval,
+      resolverReason: policy.reason,
     }
   })
 }

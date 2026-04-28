@@ -217,6 +217,20 @@
             Run provider probe
           </button>
         </article>
+
+        <article class="panel-card">
+          <div class="panel-header">
+            <h3>Gmail scan simulation</h3>
+            <span class="panel-note">Developer-only fake ATS messages classifier check</span>
+          </div>
+          <textarea v-model="gmailDebugProbeJson" class="json-input" spellcheck="false"></textarea>
+          <button type="button" class="secondary-btn" @click="backfillApplySessionsFromSaved" :disabled="probeBusy">
+            Backfill apply sessions from saved jobs
+          </button>
+          <button type="button" class="primary-btn" @click="probeGmailSimulateScan" :disabled="probeBusy">
+            Run Gmail simulation
+          </button>
+        </article>
       </div>
 
       <article class="panel-card">
@@ -415,6 +429,22 @@ export default {
         {
           page: 1,
           category: ['Sales'],
+        },
+        null,
+        2,
+      ),
+      gmailDebugProbeJson: JSON.stringify(
+        {
+          require_ats: true,
+          include_unsubmitted: false,
+          messages: [
+            {
+              from: 'Acme Recruiting <noreply@acme.greenhouse.io>',
+              subject: 'Interview next steps at Acme Robotics',
+              snippet: 'We would like to schedule your interview for Software Engineer.',
+              date: 'Mon, 28 Apr 2026 10:00:00 -0400',
+            },
+          ],
         },
         null,
         2,
@@ -630,6 +660,13 @@ export default {
         provider: this.providerProbeProvider,
         params,
       })
+    },
+    async probeGmailSimulateScan() {
+      const payload = this.parseJsonInput(this.gmailDebugProbeJson, 'Gmail simulation payload')
+      await this.runPostProbe('Gmail simulation', '/api/integrations/gmail/debug/simulate-scan', payload)
+    },
+    async backfillApplySessionsFromSaved() {
+      await this.runPostProbe('Apply-session backfill', '/api/apply-sessions/backfill-from-saved', {})
     },
   },
 }
