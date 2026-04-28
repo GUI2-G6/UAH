@@ -2,59 +2,59 @@
     <div class="page">
         <div class="greeting">
             <h1>Application</h1>
-            <p>Good afternoon, {{displayName}}! You have 1 new reminder for today. Welcome!</p> <!-- Add links to actual variables here! -->
+            <p>Good afternoon, {{displayName}}! Review ATS updates matched to your submitted applications.</p>
         </div>
         <div class="dashboard">
             <Card class="home-card home-stat-card">
                 <template #header>
                     <h2>Applications</h2>
                 </template>
-                <template #tab>
-                    <h3>Updated: 7/4/2026</h3>
-                </template>
-                <p id="applied">{{ stats.applied }}</p>
+                <p id="applied">{{ summary.applied }}</p>
             </Card>
             <Card class="home-card home-stat-card">
                 <template #header>
                     <h2>Interviews</h2>
                 </template>
-                <template #tab>
-                    <h3>Updated: 4/11/2026</h3>
-                </template>
-                <p id="interviews">{{ stats.interviews }}</p>
+                <p id="interviews">{{ summary.interview }}</p>
             </Card>
             <Card class="home-card home-stat-card">
                 <template #header>
                     <h2>Offers</h2>
-                </template>  
-                <template #tab>
-                    <h3>Updated: 8/2/1992</h3>
                 </template>
-                <p id="offers">{{ stats.offers }}</p>
+                <p id="offers">{{ summary.offer }}</p>
             </Card>
             <Card class="home-card home-stat-card">
                 <template #header>
                     <h2>Rejected</h2>
                 </template>
-                <template #tab>
-                    <h3>Updated: 4/11/2026</h3>
-                </template>
-                <p id="rejected">{{ stats.rejected }}</p>
+                <p id="rejected">{{ summary.rejection }}</p>
             </Card>
             <Card class="home-card home-card--wide">
                 <template #header>
                     <h2 id="tracked-applications">Tracked Applications</h2>
-                    <p>Filter</p>
-                    <select id="app-filter">
-                        <option>Newest</option>
-                        <option>Oldest</option>
-                        <option>Accepted</option>
+                    <p v-if="lastRefreshed" class="scan-meta">Last scan: {{ formatTimestamp(lastRefreshed) }}</p>
+                    <button class="submit-btn" type="button" :disabled="loading || !gmailConnected" @click="scanNow">
+                        {{ loading ? 'Scanning…' : 'Run Gmail scan' }}
+                    </button>
+                    <select id="app-filter" v-model="selectedStatusFilter">
+                        <option value="all">All statuses</option>
+                        <option value="interview">Interview</option>
+                        <option value="offer">Offer</option>
+                        <option value="rejection">Rejection</option>
+                        <option value="applied">Applied</option>
+                        <option value="unknown">Unknown</option>
                     </select>
                 </template>
+
+                <p v-if="!gmailConnected" class="empty-state-copy">Connect Gmail in Settings to view matched ATS updates here.</p>
+                <p v-else-if="loading" class="empty-state-copy">Running Gmail scan...</p>
+                <p v-else-if="error" class="empty-state-copy">{{ error }}</p>
+                <p v-else-if="!feedItems.length" class="empty-state-copy">No matched ATS updates yet for this filter.</p>
+
                 <Card 
-                    v-for="(app, index) in applications"
-                    :key="index"
-                    varient="minimal"
+                    v-for="(app, index) in feedItems"
+                    :key="`${app.subject}-${index}`"
+                    variant="minimal"
                     class="home-application-card"
                 >
                     <Application :application="app" />
@@ -68,66 +68,20 @@
     import Card from "../components/Card.vue"
     import Application from "../components/Application.vue"
     import { getCurrentUser } from "../lib/auth.js";
-    import { ref } from "vue"
+    import { readGmailScanCache, runGmailScan, subscribeGmailUpdates, summarizeGmailResults } from "../lib/gmailUpdates.js"
 
     export default{
         data() {
             return {
                 user: getCurrentUser(),
-                stats: {
-                    applied: 1,
-                    interviews: 2,
-                    offers: 3,
-                    rejected: 4,
-                    recent_applications: []
-                },
-                applications: [
-                    {
-                        company: "Google",
-                        role: "Software Engineer",
-                        dateSent: "4/11/2026",
-                        statusStep: 4,
-                        maxStep: 4,
-                        statusText: "Accepted!",
-                        noResponse: false
-                    },
-                    {
-                        company: "IBM",
-                        role: "Data Analyst",
-                        dateSent: "4/11/2026",
-                        statusStep: 3,
-                        maxStep: 4,
-                        statusText: "Offer",
-                        noResponse: false
-                    },
-                    {
-                        company: "Apple",
-                        role: "Server Manager",
-                        dateSent: "4/14/2026",
-                        statusStep: 2,
-                        maxStep: 4,
-                        statusText: "Interview",
-                        noResponse: false
-                    },
-                    {
-                        company: "Microsoft",
-                        role: "Quality Assurance",
-                        dateSent: "4/15/2026",
-                        statusStep: 1,
-                        maxStep: 4,
-                        statusText: "Applied",
-                        noResponse: false
-                    },
-                    {
-                        company: "Nvidia",
-                        role: "CEO",
-                        dateSent: "4/1/2026",
-                        statusStep: 1,
-                        maxStep: 4,
-                        statusText: "Applied",
-                        noResponse: true
-                    }
-                ]
+                summary: summarizeGmailResults([]),
+                loading: false,
+                error: '',
+                lastRefreshed: '',
+                gmailConnected: Boolean(getCurrentUser()?.gmail_refresh_token),
+                unsubscribeUpdates: null,
+                selectedStatusFilter: 'all',
+                applications: [],
             }
         },
         components: {
@@ -142,9 +96,61 @@
             const full = `${first} ${last}`.trim()
 
             return full || this.user?.email || "User"
+        },
+        feedItems() {
+            const mapped = (this.applications || []).map((item) => ({
+                company: item.company_hint || 'Unknown company',
+                role: item.subject || 'Untitled update',
+                from: item.from || '',
+                date: item.date || '',
+                snippet: item.snippet || '',
+                status: item.status_bucket || item.detected_status || 'unknown',
+                detected_status: item.detected_status || 'unknown',
+                subject: item.subject || '',
+            }))
+            if (this.selectedStatusFilter === 'all') return mapped
+            return mapped.filter((item) => String(item.status).toLowerCase() === this.selectedStatusFilter)
         }
     },
-        name: "Home"
+    mounted() {
+        const cached = readGmailScanCache()
+        if (cached) this.applyScanRecord(cached)
+        this.unsubscribeUpdates = subscribeGmailUpdates((record) => {
+            this.applyScanRecord(record)
+        })
+    },
+    beforeUnmount() {
+        if (typeof this.unsubscribeUpdates === 'function') {
+            this.unsubscribeUpdates()
+        }
+    },
+    methods: {
+        applyScanRecord(record = {}) {
+            const results = Array.isArray(record.results) ? record.results : []
+            this.summary = summarizeGmailResults(results)
+            this.lastRefreshed = record.fetched_at || this.lastRefreshed
+            this.applications = results
+        },
+        formatTimestamp(value) {
+            if (!value) return 'Unknown'
+            const date = new Date(value)
+            return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString()
+        },
+        async scanNow() {
+            this.loading = true
+            this.error = ''
+            try {
+                const record = await runGmailScan()
+                this.applyScanRecord(record)
+                this.gmailConnected = true
+            } catch (error) {
+                this.error = error?.message || 'Could not scan Gmail updates.'
+            } finally {
+                this.loading = false
+            }
+        },
+    },
+        name: "ApplicationView"
     }
 </script>
 

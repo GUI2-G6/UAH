@@ -2,6 +2,7 @@ import secrets
 import base64
 import hashlib
 import httpx
+from pydantic import BaseModel, Field
 from cryptography.fernet import Fernet
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -9,8 +10,11 @@ from sqlalchemy.orm import Session
 from urllib.parse import urlencode
 from app.db.session import get_db
 from app.models.user import User
-from app.api.deps import get_current_user
+from app.models.apply_session import ApplySession
+from app.api.deps import get_current_user, require_admin_or_developer
+from app.core.rate_limit import enforce_subject_rate_limit
 from app.core.config import settings
+from app.services.gmail_scan import ScanMessage, evaluate_message
 
 router = APIRouter(prefix="/api/integrations/gmail", tags=["gmail"])
 
@@ -24,6 +28,24 @@ SCAN_KEYWORDS = [
     "position", "we regret", "next steps", "congratulations",
     "candidacy", "hiring", "recruitment", "selected",
 ]
+SCAN_RATE_LIMIT = 8
+SCAN_RATE_WINDOW_SECONDS = 300
+
+
+class GmailDebugMessage(BaseModel):
+    subject: str = Field(default="")
+    from_header: str = Field(default="", alias="from")
+    date: str = Field(default="")
+    snippet: str = Field(default="")
+
+    class Config:
+        populate_by_name = True
+
+
+class GmailDebugScanRequest(BaseModel):
+    messages: list[GmailDebugMessage] = Field(default_factory=list)
+    require_ats: bool = True
+    include_unsubmitted: bool = False
 
 
 def _get_fernet():
@@ -206,21 +228,47 @@ async def _get_gmail_access_token(encrypted_refresh: str) -> str:
     return token
 
 
-def _extract_company_hint(from_header: str, subject: str) -> str | None:
-    if "@" in from_header:
-        domain_part = from_header.split("@")[-1].split(">")[0]
-        parts = domain_part.split(".")
-        if len(parts) >= 2 and parts[-2].lower() not in ("gmail", "yahoo", "outlook", "hotmail"):
-            return parts[-2].capitalize()
-    return None
+def _allowed_apply_session_statuses(include_unsubmitted: bool) -> set[str]:
+    if include_unsubmitted:
+        return {"submitted", "in_progress", "started"}
+    return {"submitted"}
+
+
+def _load_apply_session_scope(db: Session, user_id: int, *, include_unsubmitted: bool) -> list[dict]:
+    allowed_statuses = _allowed_apply_session_statuses(include_unsubmitted)
+    query = db.query(ApplySession).filter(ApplySession.user_id == user_id)
+    if not include_unsubmitted:
+        query = query.filter(ApplySession.status == "submitted")
+    sessions = query.order_by(ApplySession.started_at.desc()).limit(200).all()
+    return [
+        {
+            "id": row.id,
+            "company": row.company,
+            "job_title": row.job_title,
+            "status": row.status,
+        }
+        for row in sessions
+        if (row.status or "").strip().lower() in allowed_statuses
+    ]
 
 
 @router.post("/scan")
-async def gmail_scan(current_user: User = Depends(get_current_user)):
+async def gmail_scan(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     if not current_user.gmail_refresh_token:
         raise HTTPException(status_code=400, detail="Gmail not connected")
+    enforce_subject_rate_limit(
+        "gmail:scan",
+        current_user.id,
+        limit=SCAN_RATE_LIMIT,
+        window_seconds=SCAN_RATE_WINDOW_SECONDS,
+    )
 
     access_token = await _get_gmail_access_token(current_user.gmail_refresh_token)
+    session_scope = _load_apply_session_scope(db, current_user.id, include_unsubmitted=False)
+    allowed_statuses = _allowed_apply_session_statuses(False)
 
     query = " OR ".join(SCAN_KEYWORDS)
     search_url = (
@@ -240,7 +288,8 @@ async def gmail_scan(current_user: User = Depends(get_current_user)):
         messages_data = resp.json()
 
         message_ids = [m["id"] for m in messages_data.get("messages", [])]
-        results = []
+        included_results = []
+        excluded_count = 0
 
         for msg_id in message_ids[:20]:
             msg_resp = await client.get(
@@ -257,31 +306,81 @@ async def gmail_scan(current_user: User = Depends(get_current_user)):
             subject = headers.get("Subject", "")
             from_header = headers.get("From", "")
 
-            status = "unknown"
-            snippet_lower = snippet.lower()
-            subject_lower = subject.lower()
-            combined = snippet_lower + " " + subject_lower
-
-            if any(w in combined for w in ["unfortunately", "regret", "not selected", "not moving forward", "will not be"]):
-                status = "rejection"
-            elif any(w in combined for w in ["interview", "schedule", "meet with", "next steps", "phone screen"]):
-                status = "interview_invite"
-            elif any(w in combined for w in ["offer", "congratulations", "pleased to extend", "welcome aboard"]):
-                status = "offer"
-            elif any(w in combined for w in ["received your application", "application received", "thank you for applying", "we have received"]):
-                status = "application_received"
-
-            results.append({
-                "subject": subject,
-                "from": from_header,
-                "date": headers.get("Date", ""),
-                "detected_status": status,
-                "company_hint": _extract_company_hint(from_header, subject),
-                "snippet": snippet,
-            })
+            evaluated = evaluate_message(
+                ScanMessage(
+                    subject=subject,
+                    from_header=from_header,
+                    date=headers.get("Date", ""),
+                    snippet=snippet,
+                    source_id=msg_id,
+                ),
+                apply_sessions=session_scope,
+                allowed_statuses=allowed_statuses,
+                require_ats=True,
+            )
+            if evaluated.get("include"):
+                included_results.append({
+                    "subject": evaluated["subject"],
+                    "from": evaluated["from"],
+                    "date": evaluated["date"],
+                    "detected_status": evaluated["detected_status"],
+                    "company_hint": evaluated["company_hint"],
+                    "snippet": evaluated["snippet"],
+                    "ats_detected": evaluated["ats_detected"],
+                    "matched_applied_job": evaluated["matched_applied_job"],
+                })
+            else:
+                excluded_count += 1
 
     return {
         "gmail_email": current_user.gmail_email,
-        "results_count": len(results),
-        "results": results,
+        "results_count": len(included_results),
+        "results": included_results,
+        "scan_scope": {
+            "require_ats_sender": True,
+            "applied_job_statuses": sorted(allowed_statuses),
+            "applied_job_candidates": len(session_scope),
+            "excluded_count": excluded_count,
+        },
+    }
+
+
+@router.post("/debug/simulate-scan")
+async def gmail_debug_simulate_scan(
+    payload: GmailDebugScanRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_developer),
+):
+    session_scope = _load_apply_session_scope(
+        db,
+        current_user.id,
+        include_unsubmitted=payload.include_unsubmitted,
+    )
+    allowed_statuses = _allowed_apply_session_statuses(payload.include_unsubmitted)
+    evaluated_messages = [
+        evaluate_message(
+            ScanMessage(
+                subject=item.subject,
+                from_header=item.from_header,
+                date=item.date,
+                snippet=item.snippet,
+                source_id=f"dev-{idx}",
+            ),
+            apply_sessions=session_scope,
+            allowed_statuses=allowed_statuses,
+            require_ats=bool(payload.require_ats),
+        )
+        for idx, item in enumerate(payload.messages, start=1)
+    ]
+    included = [item for item in evaluated_messages if item.get("include")]
+    return {
+        "status": "ok",
+        "require_ats": bool(payload.require_ats),
+        "applied_job_statuses": sorted(allowed_statuses),
+        "applied_job_candidates": len(session_scope),
+        "submitted_messages": len(payload.messages),
+        "included_count": len(included),
+        "excluded_count": len(evaluated_messages) - len(included),
+        "included_results": included,
+        "all_evaluated": evaluated_messages,
     }

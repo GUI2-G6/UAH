@@ -12,31 +12,71 @@
 .dashboard {
   background: transparent;
   flex: 1;
-  padding: 20px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  grid-auto-rows: minmax(120px, auto);
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: auto auto;
   gap: 16px;
   padding: 16px;
   align-content: start;
 }
 
 .notifications-card {
-  --ui-card-bg: var(--color-surface-muted);
+  --ui-card-bg: var(--color-surface);
   --ui-card-border: 1px solid var(--border-color);
   --ui-card-shadow: var(--shadow-card);
-  --ui-card-padding: 24px;
+  --ui-card-padding: 18px;
   width: 100%;
   min-width: 0;
 }
 
-.notifications-card :deep(.ui-card__body h2) {
+.notifications-card :deep(.ui-card__body) {
+  display: grid;
+  gap: 8px;
+}
+
+.notifications-card :deep(h2),
+.notifications-card :deep(h3),
+.notifications-card :deep(p) {
   margin: 0;
 }
 
 .notifications-card--wide {
   grid-column: 1 / -1;
-  min-height: 220px;
+  min-height: 180px;
+}
+
+.scan-meta {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.actions {
+  margin-top: 4px;
+}
+
+.gmail-update-row {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 5px;
+}
+
+.status-line {
+  display: inline-flex;
+  width: fit-content;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--color-surface-muted);
+  text-transform: capitalize;
+  font-size: 0.78rem;
+}
+
+.meta-line,
+.empty-feed {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
 }
 
 @media (max-width: 768px) {

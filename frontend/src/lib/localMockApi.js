@@ -2,6 +2,9 @@ import { getAccessToken, getCurrentUser, setAuth } from './auth.js'
 import { assertValidEmail, normalizePhone } from './validation.js'
 
 const MOCK_STATE_KEY = 'uah_mock_state_v1'
+const MOCK_APPLIED_STATUSES = ['submitted']
+const MOCK_ATS_DOMAIN_HINTS = ['greenhouse', 'workday', 'myworkdayjobs', 'lever', 'icims', 'ashby']
+const MOCK_GMAIL_ERROR_SEQUENCE = [null, null, null, '429', null, null, '502', null]
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 
@@ -444,6 +447,72 @@ function asJson(value) {
 
 function nowIso() {
   return new Date().toISOString()
+}
+
+function hashString(value) {
+  const input = String(value || '')
+  let hash = 2166136261
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return Math.abs(hash >>> 0)
+}
+
+function dayBucketIso() {
+  const now = new Date()
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`
+}
+
+function seededIndex(seed, modulo) {
+  const safeModulo = Math.max(1, Number(modulo || 1))
+  return Math.abs(Number(seed || 0)) % safeModulo
+}
+
+function createDefaultMockApplySessions(user) {
+  return [
+    {
+      id: 1,
+      user_id: user.id,
+      company: 'Acme Robotics',
+      job_title: 'Software Engineer',
+      status: 'submitted',
+      started_at: nowIso(),
+    },
+    {
+      id: 2,
+      user_id: user.id,
+      company: 'Nimbus Systems',
+      job_title: 'Frontend Engineer',
+      status: 'submitted',
+      started_at: nowIso(),
+    },
+    {
+      id: 3,
+      user_id: user.id,
+      company: 'Atlas Systems',
+      job_title: 'QA Engineer',
+      status: 'in_progress',
+      started_at: nowIso(),
+    },
+  ]
+}
+
+function resolveMockScenario(state) {
+  const userSeed = state?.user?.id || state?.user?.email || 'anon'
+  const daySeed = dayBucketIso()
+  const baseSeed = hashString(`${userSeed}:${daySeed}`)
+  const profiles = ['mixed', 'large', 'empty', 'malformed']
+  const profile = profiles[seededIndex(baseSeed, profiles.length)]
+  return {
+    key: `${userSeed}:${daySeed}:${profile}`,
+    baseSeed,
+    profile,
+    disconnectedByScenario: seededIndex(baseSeed, 11) === 0,
+    malformedRate: profile === 'malformed' ? 0.35 : 0.08,
+    totalCandidates: profile === 'large' ? 140 : profile === 'empty' ? 8 : 32,
+    responseDelayMs: 30 + seededIndex(baseSeed, 140),
+  }
 }
 
 function normalizeMode(rawMode) {
@@ -988,6 +1057,13 @@ function createDefaultState() {
     ],
     profiles: [createProfile(user)],
     savedJobs: [],
+    mockApplySessions: createDefaultMockApplySessions(user),
+    mockTesting: {
+      scanCount: 0,
+      lastScenarioKey: '',
+      lastScanStatus: 'idle',
+      lastScanAt: null,
+    },
     parseJobs: {},
     nextIds: {
       resume: 3,
@@ -1016,6 +1092,21 @@ function ensureStateShape(state) {
     url: normalizeWhitespace(job?.url),
     created_at: normalizeIsoDate(job?.created_at) || nowIso(),
   })).filter((job) => job.id > 0 && job.title && job.company && job.url)
+  safe.mockApplySessions = ensureArray(safe.mockApplySessions, [])
+    .map((session, index) => ({
+      id: Number(session?.id || index + 1),
+      user_id: Number(session?.user_id || safe.user.id),
+      company: normalizeWhitespace(session?.company),
+      job_title: normalizeWhitespace(session?.job_title),
+      status: normalizeTextLower(session?.status) || 'submitted',
+      started_at: normalizeIsoDate(session?.started_at) || nowIso(),
+    }))
+    .filter((session) => session.id > 0 && session.company && session.job_title)
+  safe.mockTesting = safe.mockTesting && typeof safe.mockTesting === 'object' ? safe.mockTesting : {}
+  safe.mockTesting.scanCount = Number(safe.mockTesting.scanCount || 0)
+  safe.mockTesting.lastScenarioKey = normalizeWhitespace(safe.mockTesting.lastScenarioKey)
+  safe.mockTesting.lastScanStatus = normalizeTextLower(safe.mockTesting.lastScanStatus) || 'idle'
+  safe.mockTesting.lastScanAt = normalizeIsoDate(safe.mockTesting.lastScanAt) || null
   safe.parseJobs = safe.parseJobs && typeof safe.parseJobs === 'object' ? safe.parseJobs : {}
   safe.nextIds = safe.nextIds && typeof safe.nextIds === 'object' ? safe.nextIds : { resume: 1, profile: 1, parseJob: 1, savedJob: 1 }
   safe.nextIds.resume = Number(safe.nextIds.resume || safe.resumes.length + 1)
@@ -1031,6 +1122,9 @@ function ensureStateShape(state) {
   if (!safe.resumes.length) {
     safe.resumes = [createResume(1, safe.user)]
     safe.nextIds.resume = Math.max(safe.nextIds.resume, 2)
+  }
+  if (!safe.mockApplySessions.length) {
+    safe.mockApplySessions = createDefaultMockApplySessions(safe.user)
   }
 
   return safe
@@ -1935,6 +2029,8 @@ function buildMockServiceDetail(state, serviceKey) {
   const gmailConfigured = mockGmailConfigured()
 
   if (normalized === 'gmail') {
+    const lastScanStatus = normalizeTextLower(state?.mockTesting?.lastScanStatus)
+    const lastScanAt = normalizeIsoDate(state?.mockTesting?.lastScanAt)
     const connected = gmailConnected
     const status = connected ? 'connected' : (gmailConfigured ? 'available' : 'needs_attention')
     const accountLabel = connected
@@ -1961,7 +2057,9 @@ function buildMockServiceDetail(state, serviceKey) {
       readiness: connected
         ? {
           title: 'Ready for mailbox-powered updates',
-          description: 'UAH can use this mailbox connection for future job-update scanning, status inference, and timeline enrichment without asking you to reconnect.',
+          description: lastScanAt
+            ? `Last mock scan: ${lastScanAt}. UAH can use this mailbox connection for status inference and timeline enrichment.`
+            : 'UAH can use this mailbox connection for future job-update scanning, status inference, and timeline enrichment without asking you to reconnect.',
           tone: 'positive',
         }
         : (gmailConfigured
@@ -1980,8 +2078,15 @@ function buildMockServiceDetail(state, serviceKey) {
         'Timeline enrichment from recruiter communications',
         'Optional service-level scan controls and summaries in a later phase',
       ],
+      diagnostics: {
+        last_scan_status: lastScanStatus || 'idle',
+        last_scan_at: lastScanAt,
+      },
       actions: connected
-        ? [buildMockServiceAction({ key: 'disconnect', label: 'Disconnect', style: 'secondary', method: 'DELETE', href: '/api/integrations/gmail/disconnect' })]
+        ? [
+          buildMockServiceAction({ key: 'scan', label: 'Run scan', style: 'secondary', method: 'POST', href: '/api/integrations/gmail/scan' }),
+          buildMockServiceAction({ key: 'disconnect', label: 'Disconnect', style: 'secondary', method: 'DELETE', href: '/api/integrations/gmail/disconnect' }),
+        ]
         : [gmailConfigured
           ? buildMockServiceAction({ key: 'connect', label: 'Connect', style: 'primary', method: 'POST', href: '/api/integrations/gmail/connect/start' })
           : buildMockServiceAction({ key: 'unavailable', label: 'Unavailable', enabled: false, style: 'muted' })],
@@ -2332,6 +2437,132 @@ function applyJobSearchFilters(baseJobs, params, selectedLocations) {
   }
 }
 
+function isAtsSender(fromValue) {
+  const normalized = normalizeTextLower(fromValue)
+  return MOCK_ATS_DOMAIN_HINTS.some((hint) => normalized.includes(hint))
+}
+
+function classifyMockStatus(subject, snippet) {
+  const combined = `${normalizeTextLower(subject)} ${normalizeTextLower(snippet)}`
+  if (combined.includes('unfortunately') || combined.includes('regret')) return 'rejection'
+  if (combined.includes('interview') || combined.includes('schedule')) return 'interview_invite'
+  if (combined.includes('offer') || combined.includes('congratulations')) return 'offer'
+  if (combined.includes('application received') || combined.includes('thank you for applying')) return 'application_received'
+  return 'unknown'
+}
+
+function buildMockGmailCandidates(state, scenario) {
+  const companies = ['Acme Robotics', 'Nimbus Systems', 'Atlas Systems', 'Blue Pine Labs', 'Vertex Dynamics']
+  const subjects = ['Interview next steps', 'Application received', 'Offer discussion', 'Update on your application', 'Final decision']
+  const snippets = [
+    'We would like to schedule your interview.',
+    'Thank you for applying to our role.',
+    'Congratulations, we would like to extend an offer.',
+    'Unfortunately we will not move forward.',
+    'Please confirm your availability for next steps.',
+  ]
+  const now = Date.now()
+  const rows = []
+  for (let i = 0; i < scenario.totalCandidates; i += 1) {
+    const company = companies[(scenario.baseSeed + i) % companies.length]
+    const usesAtsSender = ((scenario.baseSeed + i) % 5) !== 0
+    const senderDomain = usesAtsSender ? `${company.toLowerCase().replaceAll(' ', '')}.greenhouse.io` : 'gmail.com'
+    const from = usesAtsSender ? `${company} Recruiting <noreply@${senderDomain}>` : `Friend <friend${i}@${senderDomain}>`
+    const subjectBase = subjects[(scenario.baseSeed + i * 3) % subjects.length]
+    const snippetBase = snippets[(scenario.baseSeed + i * 7) % snippets.length]
+    const malformed = ((scenario.baseSeed + i) % 100) < Math.round(scenario.malformedRate * 100)
+    const subject = malformed && i % 4 === 0 ? null : `${subjectBase} at ${company}`
+    const snippet = malformed && i % 6 === 0 ? 42 : snippetBase
+    const date = malformed && i % 9 === 0 ? 'not-a-date' : new Date(now - i * 4_200_000).toUTCString()
+    rows.push({
+      source_id: `mock-mail-${i + 1}`,
+      subject,
+      from,
+      date,
+      snippet,
+      company_hint: company,
+    })
+  }
+  return rows
+}
+
+function buildMockGmailScanPayload(state) {
+  const scenario = resolveMockScenario(state)
+  state.mockTesting.scanCount = Number(state.mockTesting.scanCount || 0) + 1
+  state.mockTesting.lastScenarioKey = scenario.key
+  state.mockTesting.lastScanAt = nowIso()
+
+  const errorKey = MOCK_GMAIL_ERROR_SEQUENCE[(state.mockTesting.scanCount - 1) % MOCK_GMAIL_ERROR_SEQUENCE.length]
+  if (errorKey === '429') {
+    state.mockTesting.lastScanStatus = 'rate_limited'
+    return {
+      error: {
+        status: 429,
+        payload: { detail: 'Too many requests for this action. Try again in 30s.' },
+        headers: { 'Retry-After': '30' },
+      },
+    }
+  }
+  if (errorKey === '502') {
+    state.mockTesting.lastScanStatus = 'provider_error'
+    return {
+      error: {
+        status: 502,
+        payload: { detail: 'Gmail API request failed' },
+        headers: {},
+      },
+    }
+  }
+
+  const submittedSessions = ensureArray(state.mockApplySessions, []).filter(
+    (session) => normalizeTextLower(session.status) === 'submitted'
+  )
+  const submittedCompanies = new Set(submittedSessions.map((session) => normalizeTextLower(session.company)))
+  const candidates = buildMockGmailCandidates(state, scenario)
+  const evaluated = candidates.map((candidate) => {
+    const from = String(candidate.from || '')
+    const subject = String(candidate.subject || '')
+    const snippet = String(candidate.snippet || '')
+    const companyHint = normalizeWhitespace(candidate.company_hint || '')
+    const ats_detected = isAtsSender(from)
+    const matched_applied_job = submittedCompanies.has(normalizeTextLower(companyHint))
+    const detected_status = classifyMockStatus(subject, snippet)
+    const include = ats_detected && matched_applied_job
+    return {
+      source_id: candidate.source_id,
+      subject,
+      from,
+      date: String(candidate.date || ''),
+      detected_status,
+      company_hint: companyHint || null,
+      snippet,
+      ats_detected,
+      matched_applied_job,
+      include,
+      exclude_reason: include ? null : (!ats_detected ? 'non_ats_sender' : 'no_applied_job_match'),
+    }
+  })
+  const included = evaluated.filter((row) => row.include)
+  const results = scenario.profile === 'empty'
+    ? []
+    : (scenario.profile === 'large' ? included.slice(0, 120) : included.slice(0, 20))
+  state.mockTesting.lastScanStatus = 'ok'
+  return {
+    payload: {
+      gmail_email: state.user.gmail_email || state.user.email,
+      results_count: results.length,
+      results,
+      scan_scope: {
+        require_ats_sender: true,
+        applied_job_statuses: [...MOCK_APPLIED_STATUSES],
+        applied_job_candidates: submittedSessions.length,
+        excluded_count: Math.max(evaluated.length - results.length, 0),
+        scenario_profile: scenario.profile,
+      },
+    },
+  }
+}
+
 async function parseJsonBody(request) {
   try {
     return await request.clone().json()
@@ -2427,6 +2658,9 @@ async function handleMockApiRequest(request, requestUrl, state) {
         '/api/jobs/debug/probe/provider': {},
         '/api/jobs/debug/probe/local-search': {},
         '/api/jobs/debug/probe/live-search': {},
+        '/api/integrations/gmail/debug/simulate-scan': {},
+        '/api/integrations/gmail/scan': {},
+        '/api/apply-sessions': {},
         '/api/providers/attribution': {},
       },
     })
@@ -2462,12 +2696,14 @@ async function handleMockApiRequest(request, requestUrl, state) {
   if (pathname === '/api/jobs/debug/probe/provider' && method === 'POST') {
     const body = await parseJsonBody(request)
     const provider = normalizeTextLower(body.provider) || 'the_muse'
+    const scenario = resolveMockScenario(state)
+    const shouldFail = seededIndex(scenario.baseSeed + Number(state.mockTesting.scanCount || 0), 6) === 0
     return toJsonResponse({
-      status: 'ok',
+      status: shouldFail ? 'error' : 'ok',
       provider,
-      latency_ms: 82,
+      latency_ms: 40 + seededIndex(scenario.baseSeed, 140),
       request_params: body.params || {},
-      item_count: 2,
+      item_count: shouldFail ? 0 : 2,
       sample: JOB_FIXTURES
         .filter((job) => job.provider === provider)
         .slice(0, 2)
@@ -2490,16 +2726,20 @@ async function handleMockApiRequest(request, requestUrl, state) {
           description: job.contents || '',
           published_at: job.publication_date,
         })),
-      sample_truncated: 0,
+      sample_truncated: shouldFail ? 0 : 0,
+      error_type: shouldFail ? 'ProviderTimeout' : null,
+      error_message: shouldFail ? 'Upstream provider timed out in mock scenario' : null,
     })
   }
 
   if (pathname === '/api/jobs/debug/probe/local-search' && method === 'POST') {
     const body = await parseJsonBody(request)
     const payload = buildMockJobsSearchPayload(toSearchParamsFromObject(body.params || {}))
+    const scenario = resolveMockScenario(state)
+    const shouldFail = seededIndex(scenario.baseSeed + 3, 9) === 0
     return toJsonResponse({
-      status: 'ok',
-      latency_ms: 4,
+      status: shouldFail ? 'error' : 'ok',
+      latency_ms: 4 + seededIndex(scenario.baseSeed, 22),
       request_params: body.params || {},
       payload_hash: 'mocklocal1234',
       response_preview: {
@@ -2507,15 +2747,19 @@ async function handleMockApiRequest(request, requestUrl, state) {
         jobs: (payload.jobs || []).slice(0, 5),
         jobs_truncated: Math.max((payload.jobs || []).length - 5, 0),
       },
+      error_type: shouldFail ? 'FilterMismatch' : null,
+      error_message: shouldFail ? 'Mock local-search scenario produced a simulated mismatch.' : null,
     })
   }
 
   if (pathname === '/api/jobs/debug/probe/live-search' && method === 'POST') {
     const body = await parseJsonBody(request)
     const payload = buildMockJobsSearchPayload(toSearchParamsFromObject(body.params || {}))
+    const scenario = resolveMockScenario(state)
+    const shouldFail = seededIndex(scenario.baseSeed + 7, 8) === 0
     return toJsonResponse({
-      status: 'ok',
-      latency_ms: 48,
+      status: shouldFail ? 'error' : 'ok',
+      latency_ms: 30 + seededIndex(scenario.baseSeed, 90),
       request_params: body.params || {},
       payload_hash: 'mocklive12345',
       response_preview: {
@@ -2523,6 +2767,8 @@ async function handleMockApiRequest(request, requestUrl, state) {
         jobs: (payload.jobs || []).slice(0, 5),
         jobs_truncated: Math.max((payload.jobs || []).length - 5, 0),
       },
+      error_type: shouldFail ? 'RateLimited' : null,
+      error_message: shouldFail ? 'Simulated live-search rate-limit response.' : null,
     })
   }
 
@@ -2706,6 +2952,69 @@ async function handleMockApiRequest(request, requestUrl, state) {
     }
     saveState(state)
     return toJsonResponse({ message: 'Gmail disconnected' })
+  }
+
+  if (pathname === '/api/integrations/gmail/scan' && method === 'POST') {
+    if (!state.user.gmail_refresh_token) {
+      return toJsonResponse({ detail: 'Gmail not connected' }, 400)
+    }
+    const scan = buildMockGmailScanPayload(state)
+    if (scan.error) {
+      return toJsonResponse(scan.error.payload, scan.error.status, scan.error.headers)
+    }
+    return toJsonResponse(scan.payload)
+  }
+
+  if (pathname === '/api/integrations/gmail/debug/simulate-scan' && method === 'POST') {
+    const body = await parseJsonBody(request)
+    const submittedCompanies = new Set(
+      ensureArray(state.mockApplySessions, [])
+        .filter((session) => normalizeTextLower(session.status) === 'submitted')
+        .map((session) => normalizeTextLower(session.company))
+    )
+    const requireAts = body?.require_ats !== false
+    const rows = ensureArray(body?.messages, []).map((item, index) => {
+      const from = String(item?.from || item?.from_header || '')
+      const subject = String(item?.subject || '')
+      const snippet = String(item?.snippet || '')
+      const companyHint = normalizeWhitespace(item?.company_hint || '')
+      const atsDetected = isAtsSender(from)
+      const matched = submittedCompanies.has(normalizeTextLower(companyHint))
+      const include = (!requireAts || atsDetected) && matched
+      return {
+        source_id: `debug-${index + 1}`,
+        subject,
+        from,
+        date: String(item?.date || nowIso()),
+        detected_status: classifyMockStatus(subject, snippet),
+        company_hint: companyHint || null,
+        snippet,
+        ats_detected: atsDetected,
+        matched_applied_job: matched,
+        include,
+        exclude_reason: include ? null : (!atsDetected ? 'non_ats_sender' : 'no_applied_job_match'),
+      }
+    })
+    const included = rows.filter((row) => row.include)
+    return toJsonResponse({
+      status: 'ok',
+      require_ats: requireAts,
+      applied_job_statuses: [...MOCK_APPLIED_STATUSES],
+      applied_job_candidates: submittedCompanies.size,
+      submitted_messages: rows.length,
+      included_count: included.length,
+      excluded_count: rows.length - included.length,
+      included_results: included,
+      all_evaluated: rows,
+      latency_ms: 20 + seededIndex(hashString(JSON.stringify(body || {})), 80),
+    })
+  }
+
+  if (pathname === '/api/apply-sessions' && method === 'GET') {
+    const statusFilter = normalizeTextLower(requestUrl.searchParams.get('status'))
+    const all = ensureArray(state.mockApplySessions, [])
+    const sessions = statusFilter ? all.filter((session) => normalizeTextLower(session.status) === statusFilter) : all
+    return toJsonResponse(sessions)
   }
 
   if (pathname === '/api/account/change-name' && method === 'PUT') {

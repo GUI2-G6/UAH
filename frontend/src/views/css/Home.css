@@ -12,12 +12,12 @@
 .dashboard {
   background: transparent;
   flex: 1;
-  padding: 20px;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto;
   gap: 16px;
   padding: 16px;
+  align-content: start;
 }
 
 .home-card {
@@ -30,18 +30,13 @@
 }
 
 .home-stat-card {
-  min-height: 220px;
+  min-height: 180px;
 }
 
 .home-stat-card :deep(.ui-card__body) {
   display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
-}
-
-.home-stat-card :deep(.ui-card__tab h3) {
-  margin: 0;
-  font-size: 0.82rem;
+  align-items: center;
+  justify-content: center;
 }
 
 .home-card--wide {
@@ -50,13 +45,15 @@
 }
 
 .home-card--wide :deep(.ui-card__body) {
-  padding-top: 18px;
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
 }
 
 .home-application-card {
   --ui-card-bg: var(--color-surface);
   --ui-card-padding: 12px;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 #applied, 
@@ -64,12 +61,11 @@
 #offers, 
 #rejected {
   margin: 0;
-  font-size:75px;
-  text-align:right;
-  font-weight:bold;
+  font-size: 2.6rem;
+  text-align: center;
+  font-weight: 700;
   border-radius:8px;
-  padding-left:30px;
-  padding-right:30px;
+  padding: 12px 16px;
 }
 
 #applied, #interviews {
@@ -88,7 +84,30 @@
 }
 
 #tracked-applications {
-  font-size:50px;
+  font-size: 1.2rem;
+  margin: 0;
+}
+
+.scan-meta {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+#app-filter {
+  width: 220px;
+  max-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.empty-state-copy {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
 }
 @media (max-width: 768px) {
   .greeting {
@@ -99,6 +118,13 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
     padding: 12px;
+  }
+
+  #applied,
+  #interviews,
+  #offers,
+  #rejected {
+    font-size: 2.1rem;
   }
 }
 

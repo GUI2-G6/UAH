@@ -46,6 +46,17 @@ def _gmail_disconnect_action() -> ServiceAction:
     )
 
 
+def _gmail_scan_action() -> ServiceAction:
+    return ServiceAction(
+        key="scan",
+        label="Run scan",
+        enabled=True,
+        style="secondary",
+        method="POST",
+        href="/api/integrations/gmail/scan",
+    )
+
+
 def _gmail_unavailable_action() -> ServiceAction:
     return ServiceAction(
         key="unavailable",
@@ -70,7 +81,7 @@ def _gmail_summary(user: User) -> ServiceSummary:
             availability="available",
             summary="Mailbox ready for future job-update scanning and timeline enrichment.",
             account_label=account_label or "Connected to Gmail",
-            primary_action=_gmail_disconnect_action(),
+            primary_action=_gmail_scan_action(),
             can_view_details=True,
         )
 
@@ -127,7 +138,7 @@ def _gmail_detail(user: User) -> ServiceDetail:
         )
 
     actions = (
-        [_gmail_disconnect_action()]
+        [_gmail_scan_action(), _gmail_disconnect_action()]
         if connected
         else ([_gmail_connect_action()] if configured else [_gmail_unavailable_action()])
     )

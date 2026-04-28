@@ -47,7 +47,8 @@ class ServiceConnectionsTests(unittest.TestCase):
         self.assertTrue(detail.connected)
         self.assertEqual(detail.status, "connected")
         self.assertEqual(detail.account_label, "mailbox@example.com")
-        self.assertEqual(detail.actions[0].key, "disconnect")
+        self.assertEqual(detail.actions[0].key, "scan")
+        self.assertEqual(detail.actions[1].key, "disconnect")
 
     def test_gmail_summary_reports_needs_attention_when_config_is_missing(self):
         user = self._make_user()
