@@ -52,7 +52,7 @@ class GmailScanFilterTests(unittest.TestCase):
         self.assertTrue(evaluated["ats_detected"])
         self.assertTrue(evaluated["matched_applied_job"])
 
-    def test_excludes_non_ats_message_even_if_keyword_match(self):
+    def test_includes_non_ats_job_update_when_status_is_confident(self):
         message = ScanMessage(
             subject="Interview next steps",
             from_header="Friend <friend@gmail.com>",
@@ -66,10 +66,11 @@ class GmailScanFilterTests(unittest.TestCase):
             allowed_statuses={"submitted"},
             require_ats=True,
         )
-        self.assertFalse(evaluated["include"])
-        self.assertEqual(evaluated["exclude_reason"], "non_ats_sender")
+        self.assertTrue(evaluated["include"])
+        self.assertTrue(evaluated["job_update_detected"])
+        self.assertIsNone(evaluated["exclude_reason"])
 
-    def test_excludes_ats_message_when_no_applied_job_match(self):
+    def test_includes_ats_message_when_no_applied_job_match(self):
         message = ScanMessage(
             subject="Application received at DifferentCorp",
             from_header="ATS <noreply@differentcorp.workday.com>",
@@ -83,10 +84,10 @@ class GmailScanFilterTests(unittest.TestCase):
             allowed_statuses={"submitted"},
             require_ats=True,
         )
-        self.assertFalse(evaluated["include"])
+        self.assertTrue(evaluated["include"])
         self.assertTrue(evaluated["ats_detected"])
         self.assertFalse(evaluated["matched_applied_job"])
-        self.assertEqual(evaluated["exclude_reason"], "no_applied_job_match")
+        self.assertIsNone(evaluated["exclude_reason"])
 
     def test_extracts_company_from_position_update_subject(self):
         message = ScanMessage(
@@ -137,6 +138,26 @@ class GmailScanFilterTests(unittest.TestCase):
             ),
         )
         sessions = [{"id": 1, "company": "GE Appliances", "job_title": "Software Engineering Co-op", "status": "submitted"}]
+        evaluated = evaluate_message(
+            message,
+            apply_sessions=sessions,
+            allowed_statuses={"submitted"},
+            require_ats=True,
+        )
+        self.assertEqual(evaluated["detected_status"], "rejection")
+
+    def test_body_status_wins_over_subject_and_snippet_signals(self):
+        message = ScanMessage(
+            subject="Interview invitation for Software Engineer",
+            from_header="ATS <noreply@differentcorp.workday.com>",
+            date="Mon, 28 Apr 2026 10:00:00 -0400",
+            snippet="Interview next steps available.",
+            body=(
+                "Thank you for your interest. We regret to inform you that we are "
+                "unable to move forward with your application."
+            ),
+        )
+        sessions = [{"id": 1, "company": "DifferentCorp", "job_title": "Software Engineer", "status": "submitted"}]
         evaluated = evaluate_message(
             message,
             apply_sessions=sessions,

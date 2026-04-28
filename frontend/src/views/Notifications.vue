@@ -13,10 +13,10 @@
                     <button class="submit-btn" type="button" @click="$router.push('/settings')">Open Settings</button>
                 </p>
                 <p v-else-if="error">{{ error }}</p>
-                <p v-else-if="summary.total === 0">No ATS updates matched your submitted applications yet.</p>
-                <p v-else>Latest ATS update feed ({{ summary.matched_total }} matched, {{ summary.provisional_total }} provisional)</p>
+                <p v-else-if="summary.total === 0">No job updates found yet.</p>
+                <p v-else>Latest job update feed ({{ summary.total }} total)</p>
                 <p v-if="lastRefreshed" class="scan-meta">Last scan: {{ formatTimestamp(lastRefreshed) }}</p>
-                <p v-if="submittedSessionCount !== null" class="scan-meta">Submitted sessions available for matching: {{ submittedSessionCount }}</p>
+                <p v-if="submittedSessionCount !== null" class="scan-meta">Saved sessions available for analytics: {{ submittedSessionCount }}</p>
             </Card>
             <Card class="notifications-card">
                 <h2>Total Pending: {{ summary.total }}</h2>
@@ -31,7 +31,7 @@
                 <template v-if="visibleResults.length">
                     <article v-for="(item, index) in visibleResults.slice(0, 8)" :key="`${item.source_id || item.subject}-${index}`" class="gmail-update-row">
                         <h3>{{ item.company_hint || 'Unknown company' }}</h3>
-                        <p class="status-line">{{ item.detected_status }} · {{ item.tracking_source }} · {{ item.confidence }}</p>
+                        <p class="status-line">{{ item.detected_status }}</p>
                         <p>{{ item.subject || 'No subject' }}</p>
                         <p class="meta-line">{{ item.from }}</p>
                         <p class="meta-line">{{ formatTimestamp(item.date) }}</p>

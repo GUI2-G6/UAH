@@ -59,6 +59,17 @@ STATUS_PATTERNS = {
         re.compile(r"\bapplication (?:has been )?received\b", flags=re.IGNORECASE),
     ],
 }
+JOB_UPDATE_KEYWORDS = (
+    "application",
+    "position",
+    "interview",
+    "offer",
+    "hiring",
+    "recruit",
+    "candidate",
+    "next steps",
+    "status update",
+)
 
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]{3,}", re.IGNORECASE)
 _CONTROL_PATTERN = re.compile(r"[\x00-\x1F\x7F]+")
@@ -170,21 +181,38 @@ def extract_company_hint(from_header: str, subject: str, snippet: str = "", body
     return _format_company_name(candidate)
 
 
+def _score_status_for_text(text: str) -> dict[str, int]:
+    normalized = str(text or "").lower()
+    scores: dict[str, int] = {}
+    for status in ("rejection", "interview_invite", "offer", "application_received"):
+        score = 0
+        score += sum(1 for keyword in STATUS_KEYWORDS[status] if keyword in normalized)
+        score += 2 * sum(1 for pattern in STATUS_PATTERNS[status] if pattern.search(normalized))
+        scores[status] = score
+    return scores
+
+
 def classify_message_status(subject: str, snippet: str, body: str = "") -> str:
-    combined = f"{(subject or '').lower()} {(snippet or '').lower()} {(body or '').lower()}"
     min_score = {
         "rejection": 2,
         "interview_invite": 2,
         "offer": 2,
         "application_received": 1,
     }
-    for status in ("rejection", "interview_invite", "offer", "application_received"):
-        score = 0
-        score += sum(1 for keyword in STATUS_KEYWORDS[status] if keyword in combined)
-        score += 2 * sum(1 for pattern in STATUS_PATTERNS[status] if pattern.search(combined))
-        if score >= min_score[status]:
-            return status
+    for content in (body, subject, snippet):
+        scores = _score_status_for_text(content)
+        for status in ("rejection", "interview_invite", "offer", "application_received"):
+            if scores.get(status, 0) >= min_score[status]:
+                return status
     return "unknown"
+
+
+def is_job_update_message(subject: str, snippet: str, body: str = "") -> bool:
+    status = classify_message_status(subject, snippet, body)
+    if status != "unknown":
+        return True
+    combined = f"{(subject or '').lower()} {(snippet or '').lower()} {(body or '').lower()}"
+    return any(keyword in combined for keyword in JOB_UPDATE_KEYWORDS)
 
 
 def is_ats_message(from_header: str, subject: str, snippet: str) -> bool:
@@ -270,6 +298,7 @@ def evaluate_message(
     status = classify_message_status(subject, snippet, body)
     company_hint = extract_company_hint(from_header, subject, snippet, body)
     ats_detected = is_ats_message(from_header, subject, f"{snippet} {body}")
+    job_update_detected = is_job_update_message(subject, snippet, body)
 
     matched_applied_job = message_matches_applied_job(
         ScanMessage(subject=subject, from_header=from_header, date=date, snippet=snippet, body=body, source_id=message.source_id),
@@ -279,12 +308,9 @@ def evaluate_message(
 
     include = True
     reason = "included"
-    if require_ats and not ats_detected:
+    if require_ats and not (ats_detected or job_update_detected):
         include = False
-        reason = "non_ats_sender"
-    elif not matched_applied_job:
-        include = False
-        reason = "no_applied_job_match"
+        reason = "non_ats_or_job_update"
 
     return {
         "source_id": message.source_id,
@@ -295,6 +321,7 @@ def evaluate_message(
         "company_hint": company_hint,
         "snippet": snippet,
         "ats_detected": ats_detected,
+        "job_update_detected": job_update_detected,
         "matched_applied_job": matched_applied_job,
         "include": include,
         "exclude_reason": None if include else reason,

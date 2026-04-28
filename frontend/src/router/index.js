@@ -42,12 +42,19 @@ const viewRoutes = Object.keys(modules).map((path) => {
   }
 })
 
+const landingRoute = viewRoutes.find((route) => route.path === '/landing')
+
 const routes = [
   {
     path: '/',
-    redirect: () => (isAuthenticated() ? '/home' : '/landing')
+    name: 'public-home',
+    component: landingRoute?.component || modules['../views/Landing.vue'],
   },
-  ...viewRoutes,
+  ...viewRoutes.filter((route) => route.path !== '/landing'),
+  {
+    path: '/landing',
+    redirect: '/',
+  },
 ]
 
 

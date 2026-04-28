@@ -5,9 +5,6 @@
       <p class="application-status-chip" :class="`is-${statusTone}`">{{ readableStatus }}</p>
     </header>
     <p class="application-role">{{ application.role || 'Untitled role' }}</p>
-    <p class="application-meta">
-      Source: {{ readableSource }} · Confidence: {{ application.confidence || 'high' }}
-    </p>
     <p class="application-meta">{{ application.from || 'Unknown sender' }}</p>
     <p class="application-meta">{{ formattedDate }}</p>
     <p v-if="application.snippet" class="application-snippet">{{ application.snippet }}</p>
@@ -35,12 +32,6 @@ export default {
       if (normalized.includes('rejection')) return 'rejection'
       if (normalized.includes('applied')) return 'applied'
       return 'unknown'
-    },
-    readableSource() {
-      const raw = String(this.application.tracking_source || 'matched').toLowerCase()
-      if (raw === 'gmail_provisional') return 'Likely Gmail match'
-      if (raw === 'matched') return 'Matched to tracked application'
-      return raw.replaceAll('_', ' ')
     },
     formattedDate() {
       const value = this.application.date

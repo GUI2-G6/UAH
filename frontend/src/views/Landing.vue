@@ -7,6 +7,14 @@
         Use the path that matches where you are right now: sign in if you already have an account, create
         one if you were invited, or request beta access first if you still need approval.
       </p>
+      <p class="subtitle">
+        UAH is a job-search workspace that helps you discover jobs, track applications, and keep updates in one place.
+      </p>
+      <p class="landing-compliance-links">
+        <a class="inline-link" href="/our-commitment">Privacy Policy</a>
+        <span aria-hidden="true">·</span>
+        <a class="inline-link" href="/terms">Terms of Service</a>
+      </p>
 
       <div class="path-grid">
         <article class="path-card path-card-primary">
@@ -207,6 +215,20 @@ h1 {
   line-height: 1.6;
 }
 
+.landing-compliance-links {
+  margin: 0.75rem 0 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: #334155;
+}
+
+.inline-link {
+  color: #0f6f8f;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .path-grid {
   margin-top: 1.8rem;
   display: grid;
@@ -388,6 +410,11 @@ html[data-theme="dark"] h2 {
 html[data-theme="dark"] .subtitle,
 html[data-theme="dark"] .path-copy,
 html[data-theme="dark"] .meta {
+  color: var(--color-text-secondary);
+}
+
+html[data-theme="dark"] .landing-compliance-links,
+html[data-theme="dark"] .inline-link {
   color: var(--color-text-secondary);
 }
 

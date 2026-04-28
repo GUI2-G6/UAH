@@ -32,15 +32,18 @@
         <template #header>
           <h2 id="tracked-applications">Scan for updates</h2>
           <p class="scan-meta">Last scan: {{ lastRefreshed ? formatTimestamp(lastRefreshed) : 'Not scanned yet' }}</p>
-          <p v-if="submittedSessionCount !== null" class="scan-meta">Submitted sessions available for matching: {{ submittedSessionCount }}</p>
+          <p v-if="submittedSessionCount !== null" class="scan-meta">Saved sessions available for analytics: {{ submittedSessionCount }}</p>
         </template>
 
-        <div class="scan-primary-actions">
-          <button class="submit-btn is-primary" type="button" :disabled="loading || !gmailConnected" @click="scanNow">
-            {{ loading ? 'Scanning…' : 'Scan Gmail for updates' }}
+        <div class="scan-primary-actions section-block">
+          <button class="submit-btn is-primary" type="button" :disabled="loading || !gmailConnected" @click="scanNow('new')">
+            {{ loading && scanMode === 'new' ? 'Scanning…' : 'Scan new updates' }}
           </button>
-          <button class="submit-btn" type="button" :disabled="trackingBusy || !selectedCount" @click="saveSelectedTracked">
-            {{ trackingBusy ? 'Saving…' : `Save selected for tracking (${selectedCount})` }}
+          <button class="submit-btn is-primary" type="button" :disabled="loading || !gmailConnected" @click="scanNow('saved')">
+            {{ loading && scanMode === 'saved' ? 'Scanning…' : 'Scan saved tracked applications' }}
+          </button>
+          <button class="submit-btn" type="button" :disabled="trackingBusy || !selectedVisibleCount" @click="saveSelectedTracked">
+            {{ trackingBusy ? 'Saving…' : `Save selected for tracking (${selectedVisibleCount})` }}
           </button>
           <button class="submit-btn is-ghost" type="button" @click="showAdvancedOptions = !showAdvancedOptions">
             {{ showAdvancedOptions ? 'Hide advanced scan options' : 'Show advanced scan options' }}
@@ -85,10 +88,6 @@
               <option :value="100">100 results</option>
             </select>
           </div>
-          <label class="scan-toggle">
-            <input v-model="scanIncludeProvisional" type="checkbox" :disabled="!gmailConnected">
-            Include likely matches that still need confirmation
-          </label>
         </section>
       </Card>
 
@@ -98,9 +97,8 @@
           <p class="scan-meta">{{ feedItems.length }} update{{ feedItems.length === 1 ? '' : 's' }} in this view</p>
         </template>
 
-        <div class="results-toolbar">
+        <div class="results-toolbar section-block">
           <select id="app-filter" v-model="selectedStatusFilter">
-            <option value="all">All statuses</option>
             <option value="interview">Interview</option>
             <option value="offer">Offer</option>
             <option value="rejection">Not moving forward</option>
@@ -194,13 +192,12 @@
                 lastRefreshed: '',
                 gmailConnected: Boolean(getCurrentUser()?.gmail_refresh_token),
                 unsubscribeUpdates: null,
-                selectedStatusFilter: 'all',
+                selectedStatusFilter: 'unknown',
                 applications: [],
                 submittedSessionCount: null,
                 scanQuery: '',
                 scanNewerThanDays: 45,
                 scanMaxResults: 20,
-                scanIncludeProvisional: true,
                 scanCustomDays: null,
                 suppressions: [],
                 suppressionsOpen: false,
@@ -208,6 +205,7 @@
                 trackingBusy: false,
                 trackedApplications: [],
                 showAdvancedOptions: false,
+                scanMode: 'new',
                 onUserUpdated: null,
             }
         },
@@ -246,8 +244,10 @@
                 tracking_source: item.tracking_source || 'matched',
                 confidence: item.confidence || 'high',
             }))
-            if (this.selectedStatusFilter === 'all') return mapped
             return mapped.filter((item) => String(item.status).toLowerCase() === this.selectedStatusFilter)
+        },
+        selectedVisibleCount() {
+            return this.feedItems.filter((row) => this.isSelected(row.selection_key)).length
         },
         selectedCount() {
             return Object.values(this.selectedKeys).filter(Boolean).length
@@ -297,20 +297,21 @@
             const date = new Date(value)
             return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString()
         },
-        async scanNow() {
+        async scanNow(mode = 'new') {
             if (!this.gmailConnected) {
                 this.error = 'Gmail is not connected. Open Settings > Service Connections > Gmail Updates.'
                 return
             }
+            this.scanMode = mode === 'saved' ? 'saved' : 'new'
             this.loading = true
             this.error = ''
             await this.emitAnalyticsEvent('dashboard.scan.started')
             try {
                 const record = await runGmailScan({
+                    scan_mode: this.scanMode,
                     query: this.scanQuery,
                     newer_than_days: Number(this.scanCustomDays || this.scanNewerThanDays || 45),
                     max_results: this.scanMaxResults,
-                    include_provisional: this.scanIncludeProvisional,
                 })
                 this.applyScanRecord(record)
                 this.gmailConnected = true

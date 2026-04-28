@@ -70,6 +70,13 @@
   padding-top: 12px;
 }
 
+.section-block {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--color-surface);
+}
+
 .application-scan-card :deep(.ui-card__header) {
   display: grid;
   gap: 6px;
@@ -366,6 +373,22 @@
 .tracked-panel :deep(.ui-card__body),
 .application-results-card :deep(.ui-card__body) {
   gap: 12px;
+}
+
+.application-scan-card,
+.application-results-card,
+.tracked-panel {
+  margin-top: 4px;
+}
+
+.application-results-card {
+  border-top: 2px solid var(--border-color-light);
+  padding-top: 8px;
+}
+
+.tracked-panel {
+  border-top: 2px solid var(--border-color-light);
+  padding-top: 8px;
 }
 
 .submit-btn.is-primary {

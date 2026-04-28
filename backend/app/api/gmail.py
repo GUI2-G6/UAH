@@ -63,10 +63,10 @@ class GmailDebugScanRequest(BaseModel):
 
 
 class GmailScanRequest(BaseModel):
+    scan_mode: str = Field(default="new", max_length=24)
     query: str | None = Field(default=None, max_length=280)
     newer_than_days: int = Field(default=45, ge=1, le=36500)
     max_results: int = Field(default=20, ge=1, le=100)
-    include_provisional: bool = Field(default=True)
 
 
 class GmailSuppressionCreateRequest(BaseModel):
@@ -582,6 +582,10 @@ async def gmail_scan(
         window_seconds=SCAN_RATE_WINDOW_SECONDS,
     )
 
+    scan_mode = (payload.scan_mode or "new").strip().lower()
+    if scan_mode not in {"new", "saved"}:
+        raise HTTPException(status_code=400, detail="scan_mode must be 'new' or 'saved'")
+
     access_token = await _get_gmail_access_token(current_user.gmail_refresh_token)
     session_scope = _load_apply_session_scope(db, current_user.id, include_unsubmitted=False)
     allowed_statuses = _allowed_apply_session_statuses(False)
@@ -621,7 +625,6 @@ async def gmail_scan(
 
         message_ids = [m["id"] for m in messages_data.get("messages", [])]
         included_results = []
-        provisional_results = []
         excluded_count = 0
         suppressed_message_hits = 0
         suppressed_chain_hits = 0
@@ -700,6 +703,9 @@ async def gmail_scan(
                 "gmail_open_url_fallback": fallback_url,
             }
             tracked_match = tracked_by_source_ref.get(str(evaluated["source_id"] or "")) or tracked_by_thread_key.get(thread_key)
+            if scan_mode == "saved" and not tracked_match:
+                excluded_count += 1
+                continue
             if tracked_match:
                 tracked_match.latest_status = str(evaluated.get("detected_status") or tracked_match.latest_status or "")
                 tracked_match.last_update_at = now
@@ -725,26 +731,8 @@ async def gmail_scan(
                     continue
                 included_results.append({
                     **base_result,
-                    "tracking_source": "matched",
+                    "tracking_source": "gmail",
                     "confidence": "high",
-                })
-            elif evaluated.get("ats_detected") and bool(payload.include_provisional):
-                if matched_suppression:
-                    if (matched_suppression.scope or "").lower() == "message":
-                        suppressed_message_hits += 1
-                        if not evaluated.get("source_id"):
-                            suppression_miss_reasons["missing_source_id"] += 1
-                    else:
-                        suppressed_chain_hits += 1
-                        if not sender_domain or not subject_key:
-                            suppression_miss_reasons["missing_thread_signature"] += 1
-                    excluded_count += 1
-                    continue
-                provisional_results.append({
-                    **base_result,
-                    "tracking_source": "gmail_provisional",
-                    "confidence": "medium",
-                    "exclude_reason": evaluated.get("exclude_reason"),
                 })
             else:
                 excluded_count += 1
@@ -756,19 +744,17 @@ async def gmail_scan(
         "gmail_email": current_user.gmail_email,
         "results_count": len(included_results),
         "matched_results_count": len(included_results),
-        "provisional_results_count": len(provisional_results),
         "results": included_results,
         "matched_results": included_results,
-        "provisional_results": provisional_results,
         "scan_scope": {
-            "require_ats_sender": True,
+            "require_ats_or_job_update": True,
             "applied_job_statuses": sorted(allowed_statuses),
             "applied_job_candidates": len(session_scope),
             "excluded_count": excluded_count,
             "query": query,
+            "scan_mode": scan_mode,
             "newer_than_days": int(payload.newer_than_days),
             "max_results": int(payload.max_results),
-            "include_provisional": bool(payload.include_provisional),
             "suppression_count": len(suppressions),
             "suppressed_message_hits": suppressed_message_hits,
             "suppressed_chain_hits": suppressed_chain_hits,

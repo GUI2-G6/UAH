@@ -2587,7 +2587,6 @@ function buildMockGmailScanPayload(state, options = {}) {
     (session) => normalizeTextLower(session.status) === 'submitted'
   )
   const submittedCompanies = new Set(submittedSessions.map((session) => normalizeTextLower(session.company)))
-  const includeProvisional = options?.include_provisional !== false
   const maxResults = Math.min(100, Math.max(1, Number(options?.max_results || 20)))
   const newerThanDays = Math.min(36500, Math.max(1, Number(options?.newer_than_days || 45)))
   const candidates = buildMockGmailCandidates(state, scenario)
@@ -2605,7 +2604,7 @@ function buildMockGmailScanPayload(state, options = {}) {
     const ats_detected = isAtsSender(from)
     const matched_applied_job = submittedCompanies.has(normalizeTextLower(companyHint))
     const detected_status = classifyMockStatus(subject, snippet)
-    const include = ats_detected && matched_applied_job
+    const include = ats_detected || detected_status !== 'unknown'
     const senderDomain = senderDomainFromFromHeader(from)
     const subjectKey = normalizeSubjectKey(subject)
     const companyKey = normalizeCompanyKey(companyHint)
@@ -2637,16 +2636,15 @@ function buildMockGmailScanPayload(state, options = {}) {
       thread_key: threadKey,
       gmail_open_url_direct: directOpenUrl,
       gmail_open_url_fallback: fallbackOpenUrl,
-      exclude_reason: include ? null : (!ats_detected ? 'non_ats_sender' : 'no_applied_job_match'),
+      exclude_reason: include ? null : 'non_ats_or_job_update',
     }
   })
   const included = evaluated.filter((row) => row.include && !row.suppressed)
-  const provisional = evaluated.filter((row) => !row.include && row.ats_detected && !row.suppressed)
   const trackedRows = ensureArray(state.trackedApplications, []).filter((row) => normalizeTextLower(row.selection_state) === 'active')
   const trackedBySource = new Map(trackedRows.map((row) => [normalizeWhitespace(row.source_ref), row]))
   const trackedByThread = new Map(trackedRows.map((row) => [normalizeWhitespace(row.thread_key), row]))
   let trackedUpdatesApplied = 0
-  for (const row of [...included, ...provisional]) {
+  for (const row of included) {
     const tracked = trackedBySource.get(normalizeWhitespace(row.source_id)) || trackedByThread.get(normalizeWhitespace(row.thread_key))
     if (!tracked) continue
     tracked.latest_status = normalizeTextLower(row.detected_status) || tracked.latest_status
@@ -2660,27 +2658,21 @@ function buildMockGmailScanPayload(state, options = {}) {
   const results = scenario.profile === 'empty'
     ? []
     : (scenario.profile === 'large' ? included.slice(0, maxResults) : included.slice(0, maxResults))
-  const provisionalResults = !includeProvisional ? [] : (scenario.profile === 'empty'
-    ? []
-    : (scenario.profile === 'large' ? provisional.slice(0, maxResults) : provisional.slice(0, maxResults)))
   state.mockTesting.lastScanStatus = 'ok'
   return {
     payload: {
       gmail_email: state.user.gmail_email || state.user.email,
       results_count: results.length,
       matched_results_count: results.length,
-      provisional_results_count: provisionalResults.length,
-      results: results.map((item) => ({ ...item, tracking_source: 'matched', confidence: 'high' })),
-      matched_results: results.map((item) => ({ ...item, tracking_source: 'matched', confidence: 'high' })),
-      provisional_results: provisionalResults.map((item) => ({ ...item, tracking_source: 'gmail_provisional', confidence: 'medium' })),
+      results: results.map((item) => ({ ...item, tracking_source: 'gmail', confidence: 'high' })),
+      matched_results: results.map((item) => ({ ...item, tracking_source: 'gmail', confidence: 'high' })),
       scan_scope: {
-        require_ats_sender: true,
+        require_ats_or_job_update: true,
         applied_job_statuses: [...MOCK_APPLIED_STATUSES],
         applied_job_candidates: submittedSessions.length,
         excluded_count: Math.max(evaluated.length - results.length, 0),
         newer_than_days: newerThanDays,
         max_results: maxResults,
-        include_provisional: includeProvisional,
         suppression_count: suppressions.length,
         suppressed_message_hits: 0,
         suppressed_chain_hits: 0,
