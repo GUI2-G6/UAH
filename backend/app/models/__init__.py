@@ -13,7 +13,7 @@ Example:
 
 Keep model imports in sync as new tables are added.
 """
-from app.models.user import User, SavedJob, GmailSuppression  # noqa: F401
+from app.models.user import User, SavedJob, GmailSuppression, GmailNotificationState  # noqa: F401
 from app.models.resume import Resume  # noqa: F401
 from app.models.parse_job import ParseJob  # noqa: F401
 from app.models.applicant_profile import ApplicantProfile  # noqa: F401

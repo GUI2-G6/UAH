@@ -4,7 +4,7 @@ import hashlib
 import html
 import httpx
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel, Field
 from cryptography.fernet import Fernet
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from urllib.parse import urlencode
 from app.db.session import get_db
 from app.models.user import User
-from app.models.user import GmailSuppression
+from app.models.user import GmailSuppression, GmailNotificationState
 from app.models.apply_session import ApplySession, TrackedApplication
 from app.api.deps import get_current_user, require_admin_or_developer
 from app.core.rate_limit import enforce_subject_rate_limit
@@ -76,6 +76,11 @@ class GmailSuppressionCreateRequest(BaseModel):
     subject: str | None = Field(default=None, max_length=255)
     company_hint: str | None = Field(default=None, max_length=120)
     note: str | None = Field(default=None, max_length=255)
+
+
+class GmailNotificationStateCreateRequest(BaseModel):
+    source_id: str = Field(default="", max_length=255)
+    action: str = Field(default="snooze", max_length=40)
 
 
 def _get_fernet():
@@ -364,6 +369,111 @@ def _serialize_suppression(row: GmailSuppression) -> dict:
         "note": row.note,
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }
+
+
+def _serialize_notification_state(row: GmailNotificationState) -> dict:
+    return {
+        "id": row.id,
+        "source_id": row.source_id,
+        "state": row.state,
+        "snoozed_until": row.snoozed_until.isoformat() if row.snoozed_until else None,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+@router.get("/notification-states")
+async def gmail_list_notification_states(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    now = datetime.now(timezone.utc)
+    rows = (
+        db.query(GmailNotificationState)
+        .filter(
+            GmailNotificationState.user_id == current_user.id,
+            (
+                (GmailNotificationState.state == "dismissed")
+                | (
+                    (GmailNotificationState.state == "snoozed")
+                    & (GmailNotificationState.snoozed_until > now)
+                )
+            ),
+        )
+        .order_by(GmailNotificationState.updated_at.desc(), GmailNotificationState.id.desc())
+        .limit(400)
+        .all()
+    )
+    return {"notification_states": [_serialize_notification_state(row) for row in rows]}
+
+
+@router.post("/notification-states")
+async def gmail_upsert_notification_state(
+    payload: GmailNotificationStateCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    source_id = (payload.source_id or "").strip()
+    if not source_id:
+        raise HTTPException(status_code=400, detail="source_id is required")
+
+    action = (payload.action or "").strip().lower()
+    if action not in {"dismiss", "snooze"}:
+        raise HTTPException(status_code=400, detail="action must be 'dismiss' or 'snooze'")
+
+    row = (
+        db.query(GmailNotificationState)
+        .filter(
+            GmailNotificationState.user_id == current_user.id,
+            GmailNotificationState.source_id == source_id,
+        )
+        .first()
+    )
+
+    now = datetime.now(timezone.utc)
+    if not row:
+        row = GmailNotificationState(
+            user_id=current_user.id,
+            source_id=source_id,
+        )
+        db.add(row)
+
+    if action == "dismiss":
+        row.state = "dismissed"
+        row.snoozed_until = None
+    else:
+        row.state = "snoozed"
+        row.snoozed_until = now + timedelta(days=3)
+    row.updated_at = now
+
+    db.commit()
+    db.refresh(row)
+    return {"status": "ok", "notification_state": _serialize_notification_state(row)}
+
+
+@router.delete("/notification-states/{source_id}")
+async def gmail_delete_notification_state(
+    source_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    clean_source_id = (source_id or "").strip()
+    if not clean_source_id:
+        raise HTTPException(status_code=400, detail="source_id is required")
+
+    row = (
+        db.query(GmailNotificationState)
+        .filter(
+            GmailNotificationState.user_id == current_user.id,
+            GmailNotificationState.source_id == clean_source_id,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Notification state not found")
+    db.delete(row)
+    db.commit()
+    return {"status": "ok", "message": "Notification state removed"}
 
 
 @router.get("/suppressions")

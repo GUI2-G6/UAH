@@ -40,6 +40,19 @@ function normalizeDate(value) {
   return parsed.toISOString()
 }
 
+function normalizeNotificationState(item = {}) {
+  const state = sanitizeText(item.state, 40).toLowerCase()
+  const sourceId = sanitizeText(item.source_id, 255)
+  const snoozedUntilRaw = sanitizeText(item.snoozed_until, 120)
+  const snoozedUntil = normalizeDate(snoozedUntilRaw)
+  return {
+    id: Number.isFinite(Number(item.id)) ? Number(item.id) : null,
+    source_id: sourceId,
+    state: state === 'dismissed' ? 'dismissed' : (state === 'snoozed' ? 'snoozed' : ''),
+    snoozed_until: snoozedUntil || '',
+  }
+}
+
 function normalizeResult(item = {}) {
   const status = normalizeStatus(item.detected_status)
   const trackingSource = sanitizeText(item.tracking_source, 40) || (item.matched_applied_job ? 'matched' : 'gmail_provisional')
@@ -94,6 +107,27 @@ export function summarizeGmailResults(results = []) {
   summary.action_required = summary.interview + summary.offer
   summary.upcoming = summary.interview
   return summary
+}
+
+export function filterResultsByNotificationStates(results = [], notificationStates = []) {
+  const now = Date.now()
+  const stateBySourceId = new Map()
+  for (const rawState of notificationStates) {
+    const state = normalizeNotificationState(rawState)
+    if (!state.source_id || !state.state) continue
+    stateBySourceId.set(state.source_id, state)
+  }
+  return (Array.isArray(results) ? results : []).filter((rawItem) => {
+    const item = normalizeResult(rawItem)
+    const state = stateBySourceId.get(item.source_id)
+    if (!state) return true
+    if (state.state === 'dismissed') return false
+    if (state.state === 'snoozed') {
+      const untilMs = Date.parse(state.snoozed_until || '')
+      return Number.isNaN(untilMs) || untilMs <= now
+    }
+    return true
+  })
 }
 
 export function readGmailScanCache() {
@@ -206,6 +240,34 @@ export async function createGmailSuppression(data = {}) {
 
 export async function removeGmailSuppression(id) {
   const response = await authedFetch(`/api/integrations/gmail/suppressions/${encodeURIComponent(String(id || ''))}`, {
+    method: 'DELETE',
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`)
+  return payload
+}
+
+export async function listGmailNotificationStates() {
+  const response = await authedFetch('/api/integrations/gmail/notification-states')
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`)
+  const rows = Array.isArray(payload?.notification_states) ? payload.notification_states : []
+  return rows.map(normalizeNotificationState).filter((row) => row.source_id && row.state)
+}
+
+export async function upsertGmailNotificationState(data = {}) {
+  const response = await authedFetch('/api/integrations/gmail/notification-states', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data || {}),
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`)
+  return normalizeNotificationState(payload?.notification_state || {})
+}
+
+export async function removeGmailNotificationState(sourceId) {
+  const response = await authedFetch(`/api/integrations/gmail/notification-states/${encodeURIComponent(String(sourceId || ''))}`, {
     method: 'DELETE',
   })
   const payload = await response.json().catch(() => null)

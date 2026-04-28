@@ -1059,6 +1059,7 @@ function createDefaultState() {
     savedJobs: [],
     mockApplySessions: createDefaultMockApplySessions(user),
     gmailSuppressions: [],
+    gmailNotificationStates: [],
     trackedApplications: [],
     analyticsEvents: [],
     mockTesting: {
@@ -1119,6 +1120,16 @@ function ensureStateShape(state) {
       created_at: normalizeIsoDate(row?.created_at) || nowIso(),
     }))
     .filter((row) => row.id > 0)
+  safe.gmailNotificationStates = ensureArray(safe.gmailNotificationStates, [])
+    .map((row, index) => ({
+      id: Number(row?.id || index + 1),
+      source_id: normalizeWhitespace(row?.source_id),
+      state: normalizeTextLower(row?.state) === 'dismissed' ? 'dismissed' : 'snoozed',
+      snoozed_until: normalizeIsoDate(row?.snoozed_until) || null,
+      created_at: normalizeIsoDate(row?.created_at) || nowIso(),
+      updated_at: normalizeIsoDate(row?.updated_at) || nowIso(),
+    }))
+    .filter((row) => row.id > 0 && row.source_id)
   safe.trackedApplications = ensureArray(safe.trackedApplications, [])
     .map((row, index) => ({
       id: Number(row?.id || index + 1),
@@ -2779,6 +2790,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
         '/api/jobs/debug/probe/live-search': {},
         '/api/integrations/gmail/debug/simulate-scan': {},
         '/api/integrations/gmail/scan': {},
+        '/api/integrations/gmail/notification-states': {},
         '/api/applications/tracked': {},
         '/api/apply-sessions': {},
         '/api/providers/attribution': {},
@@ -3091,6 +3103,67 @@ async function handleMockApiRequest(request, requestUrl, state) {
       .slice()
       .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
     return toJsonResponse({ suppressions: rows })
+  }
+
+  if (pathname === '/api/integrations/gmail/notification-states' && method === 'GET') {
+    const nowMs = Date.now()
+    const rows = ensureArray(state.gmailNotificationStates, [])
+      .filter((row) => (
+        row.state === 'dismissed'
+        || (row.state === 'snoozed' && Number.isFinite(Date.parse(row.snoozed_until || '')) && Date.parse(row.snoozed_until) > nowMs)
+      ))
+      .slice()
+      .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')))
+    return toJsonResponse({ notification_states: rows })
+  }
+
+  if (pathname === '/api/integrations/gmail/notification-states' && method === 'POST') {
+    const body = await parseJsonBody(request)
+    const sourceId = normalizeWhitespace(body?.source_id)
+    const action = normalizeTextLower(body?.action)
+    if (!sourceId) {
+      return toJsonResponse({ detail: 'source_id is required' }, 400)
+    }
+    if (!['dismiss', 'snooze'].includes(action)) {
+      return toJsonResponse({ detail: "action must be 'dismiss' or 'snooze'" }, 400)
+    }
+    const rows = ensureArray(state.gmailNotificationStates, [])
+    const existing = rows.find((row) => row.source_id === sourceId)
+    const now = nowIso()
+    const snoozedUntil = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+    if (existing) {
+      existing.state = action === 'dismiss' ? 'dismissed' : 'snoozed'
+      existing.snoozed_until = action === 'dismiss' ? null : snoozedUntil
+      existing.updated_at = now
+      saveState(state)
+      return toJsonResponse({ status: 'ok', notification_state: existing })
+    }
+    const nextId = Math.max(0, ...rows.map((row) => Number(row.id || 0))) + 1
+    const row = {
+      id: nextId,
+      source_id: sourceId,
+      state: action === 'dismiss' ? 'dismissed' : 'snoozed',
+      snoozed_until: action === 'dismiss' ? null : snoozedUntil,
+      created_at: now,
+      updated_at: now,
+    }
+    state.gmailNotificationStates = [row, ...rows]
+    saveState(state)
+    return toJsonResponse({ status: 'ok', notification_state: row })
+  }
+
+  if (pathname.startsWith('/api/integrations/gmail/notification-states/') && method === 'DELETE') {
+    const sourceId = decodeURIComponent(pathname.split('/').pop() || '').trim()
+    if (!sourceId) {
+      return toJsonResponse({ detail: 'source_id is required' }, 400)
+    }
+    const before = ensureArray(state.gmailNotificationStates, []).length
+    state.gmailNotificationStates = ensureArray(state.gmailNotificationStates, []).filter((row) => row.source_id !== sourceId)
+    if (state.gmailNotificationStates.length === before) {
+      return toJsonResponse({ detail: 'Notification state not found' }, 404)
+    }
+    saveState(state)
+    return toJsonResponse({ status: 'ok', message: 'Notification state removed' })
   }
 
   if (pathname === '/api/integrations/gmail/suppressions' && method === 'POST') {

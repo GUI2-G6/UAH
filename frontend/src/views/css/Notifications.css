@@ -62,6 +62,34 @@
   gap: 5px;
 }
 
+.notification-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.submit-btn {
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: 7px 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.submit-btn.is-danger {
+  border-color: var(--color-danger-500);
+  color: var(--color-danger-600);
+}
+
 .status-line {
   display: inline-flex;
   width: fit-content;

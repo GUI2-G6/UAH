@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.db.base import Base
@@ -67,3 +67,19 @@ class GmailSuppression(Base):
     company_key = Column(String(255), nullable=True, index=True)
     note = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+
+class GmailNotificationState(Base):
+    __tablename__ = "gmail_notification_states"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_id = Column(String(255), nullable=False, index=True)
+    state = Column(String(40), nullable=False, index=True)
+    snoozed_until = Column(DateTime(timezone=True), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "source_id", name="uq_gmail_notification_states_user_source"),
+    )
