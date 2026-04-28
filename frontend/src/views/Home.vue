@@ -81,7 +81,7 @@
 <script>
 import Card from "../components/Card.vue"
 import { authedFetch, getCurrentUser } from "../lib/auth.js"
-import { readGmailScanCache, runGmailScan, subscribeGmailUpdates, summarizeGmailResults } from "../lib/gmailUpdates.js"
+import { readGmailScanCache, resolveGmailConnectionStatus, runGmailScan, subscribeGmailUpdates, summarizeGmailResults } from "../lib/gmailUpdates.js"
 
 export default{
   data() {
@@ -97,6 +97,7 @@ export default{
       quickActionBusy: false,
       timelineExpanded: false,
       unsubscribeUpdates: null,
+      onUserUpdated: null,
     }
   },
   components: {
@@ -202,12 +203,19 @@ export default{
       },
     },
   async mounted() {
+    this.onUserUpdated = async () => {
+      this.user = getCurrentUser()
+      await this.refreshGmailConnected()
+      this.homeRefreshedAt = new Date().toISOString()
+    }
+    window.addEventListener("uah-user-updated", this.onUserUpdated)
     const cached = readGmailScanCache()
     if (cached) {
       this.gmailConnected = this.gmailConnected || Boolean(cached.gmail_email)
       this.gmailResults = Array.isArray(cached.results) ? cached.results : []
       this.gmailSummary = summarizeGmailResults(this.gmailResults)
     }
+    await this.refreshGmailConnected()
     await Promise.all([
       this.loadTrackedApplications(),
       this.loadAnalyticsSummary(),
@@ -223,8 +231,12 @@ export default{
   },
   beforeUnmount() {
     if (typeof this.unsubscribeUpdates === "function") this.unsubscribeUpdates()
+    if (this.onUserUpdated) window.removeEventListener("uah-user-updated", this.onUserUpdated)
   },
   methods: {
+    async refreshGmailConnected(force = false) {
+      this.gmailConnected = await resolveGmailConnectionStatus(this.gmailConnected, { force })
+    },
     async loadTrackedApplications() {
       try {
         const res = await authedFetch("/api/applications/tracked")

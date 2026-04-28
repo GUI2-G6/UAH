@@ -181,7 +181,7 @@
     import Card from "../components/Card.vue"
     import Application from "../components/Application.vue"
     import { authedFetch, getCurrentUser } from "../lib/auth.js";
-    import { readGmailScanCache, runGmailScan, subscribeGmailUpdates, summarizeGmailResults, listGmailSuppressions, createGmailSuppression, removeGmailSuppression } from "../lib/gmailUpdates.js"
+    import { readGmailScanCache, resolveGmailConnectionStatus, runGmailScan, subscribeGmailUpdates, summarizeGmailResults, listGmailSuppressions, createGmailSuppression, removeGmailSuppression } from "../lib/gmailUpdates.js"
     import { showToast } from "../services/toastService";
 
     export default{
@@ -208,6 +208,7 @@
                 trackingBusy: false,
                 trackedApplications: [],
                 showAdvancedOptions: false,
+                onUserUpdated: null,
             }
         },
         components: {
@@ -253,11 +254,17 @@
         },
     },
     mounted() {
+        this.onUserUpdated = async () => {
+            this.user = getCurrentUser()
+            await this.refreshGmailConnected()
+        }
+        window.addEventListener('uah-user-updated', this.onUserUpdated)
         const cached = readGmailScanCache()
         if (cached) {
             this.applyScanRecord(cached)
             this.gmailConnected = this.gmailConnected || Boolean(cached.gmail_email)
         }
+        this.refreshGmailConnected()
         this.loadSuppressions()
         this.loadTrackedApplications()
         this.unsubscribeUpdates = subscribeGmailUpdates((record) => {
@@ -268,8 +275,14 @@
         if (typeof this.unsubscribeUpdates === 'function') {
             this.unsubscribeUpdates()
         }
+        if (this.onUserUpdated) {
+            window.removeEventListener('uah-user-updated', this.onUserUpdated)
+        }
     },
     methods: {
+        async refreshGmailConnected(force = false) {
+            this.gmailConnected = await resolveGmailConnectionStatus(this.gmailConnected, { force })
+        },
         applyScanRecord(record = {}) {
             const results = Array.isArray(record.results) ? record.results : []
             this.summary = summarizeGmailResults(results)

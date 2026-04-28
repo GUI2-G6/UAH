@@ -52,6 +52,7 @@
     import { getCurrentUser } from '@/lib/auth.js'
     import {
         readGmailScanCache,
+        resolveGmailConnectionStatus,
         subscribeGmailUpdates,
         summarizeGmailResults,
         filterResultsByNotificationStates,
@@ -76,10 +77,16 @@
                 submittedSessionCount: null,
                 notificationStates: [],
                 busyBySourceId: {},
+                onUserUpdated: null,
             }
         },
         async mounted() {
+            this.onUserUpdated = async () => {
+                await this.refreshGmailConnected()
+            }
+            window.addEventListener('uah-user-updated', this.onUserUpdated)
             this.gmailConnected = Boolean(getCurrentUser()?.gmail_refresh_token)
+            await this.refreshGmailConnected()
             const cached = readGmailScanCache()
             if (cached) this.applyScanRecord(cached)
             this.unsubscribeUpdates = subscribeGmailUpdates((record) => {
@@ -91,6 +98,9 @@
             if (typeof this.unsubscribeUpdates === 'function') {
                 this.unsubscribeUpdates()
             }
+            if (this.onUserUpdated) {
+                window.removeEventListener('uah-user-updated', this.onUserUpdated)
+            }
         },
         computed: {
             visibleResults() {
@@ -98,6 +108,9 @@
             },
         },
         methods: {
+            async refreshGmailConnected(force = false) {
+                this.gmailConnected = await resolveGmailConnectionStatus(this.gmailConnected, { force })
+            },
             async loadNotificationStates() {
                 try {
                     this.notificationStates = await listGmailNotificationStates()

@@ -2,6 +2,10 @@ import { authedFetch, getCurrentUser } from './auth.js'
 
 const STORAGE_PREFIX = 'uah_gmail_scan_cache:'
 const UPDATE_EVENT = 'uah-gmail-updates'
+const GMAIL_STATUS_TTL_MS = 15_000
+
+let cachedGmailConnected = null
+let cachedGmailConnectedAt = 0
 
 function storageKeyForCurrentUser() {
   const user = getCurrentUser()
@@ -194,6 +198,33 @@ export function subscribeGmailUpdates(onUpdate) {
   }
   window.addEventListener(UPDATE_EVENT, handler)
   return () => window.removeEventListener(UPDATE_EVENT, handler)
+}
+
+export async function resolveGmailConnectionStatus(fallbackConnected = false, options = {}) {
+  const force = options?.force === true
+  const now = Date.now()
+  if (!force && cachedGmailConnected !== null && (now - cachedGmailConnectedAt) < GMAIL_STATUS_TTL_MS) {
+    return cachedGmailConnected
+  }
+
+  try {
+    const response = await authedFetch('/api/integrations/services/gmail')
+    const payload = await response.json().catch(() => null)
+    if (response.ok) {
+      const connected = payload?.connected === true || String(payload?.status || '').toLowerCase() === 'connected'
+      cachedGmailConnected = connected
+      cachedGmailConnectedAt = Date.now()
+      return connected
+    }
+  } catch {
+    // Fall back to local user metadata when service status cannot be fetched.
+  }
+
+  const fallbackUserConnected = Boolean(getCurrentUser()?.gmail_refresh_token)
+  const connected = fallbackUserConnected || Boolean(fallbackConnected)
+  cachedGmailConnected = connected
+  cachedGmailConnectedAt = Date.now()
+  return connected
 }
 
 export async function runGmailScan(options = {}) {
