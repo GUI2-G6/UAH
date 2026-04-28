@@ -293,6 +293,7 @@ export default{
       this.$router.push(entry.route || "/application")
     },
     async emitAnalyticsEvent(eventType, payload = {}, sessionId = null) {
+      if (!sessionId && !this.hasSessionAnalyticsContext()) return
       try {
         await authedFetch("/api/apply-sessions/analytics/events", {
           method: "POST",
@@ -306,6 +307,14 @@ export default{
       } catch {
         // Non-blocking analytics path
       }
+    },
+    hasSessionAnalyticsContext() {
+      const counts = this.analyticsSummary?.status_counts || {}
+      const total = Number(counts.started || 0)
+        + Number(counts.in_progress || 0)
+        + Number(counts.submitted || 0)
+        + Number(counts.abandoned || 0)
+      return total > 0
     },
     relativeTime(value) {
       if (!value) return "just now"

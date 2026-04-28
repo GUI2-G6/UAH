@@ -331,6 +331,7 @@
             }
         },
         async emitAnalyticsEvent(eventType, payload = {}) {
+            if (!this.hasSessionAnalyticsContext()) return
             try {
                 await authedFetch('/api/apply-sessions/analytics/events', {
                     method: 'POST',
@@ -343,6 +344,10 @@
             } catch {
                 // Analytics should never block user workflows
             }
+        },
+        hasSessionAnalyticsContext() {
+            if (Number(this.submittedSessionCount || 0) > 0) return true
+            return (this.trackedApplications || []).some((row) => Number(row?.apply_session_id || 0) > 0)
         },
         async loadSuppressions() {
             try {

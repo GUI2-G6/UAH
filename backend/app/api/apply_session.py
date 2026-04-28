@@ -100,6 +100,7 @@ def add_analytics_event(
     if not event_type:
         raise HTTPException(status_code=400, detail="event_type is required")
 
+    payload_data = payload.payload if isinstance(payload.payload, dict) else {}
     session_id = payload.session_id
     if session_id is not None:
         session = db.query(ApplySession).filter(
@@ -107,7 +108,7 @@ def add_analytics_event(
             ApplySession.user_id == current_user.id
         ).first()
         if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
+            return {"ok": True, "accepted": False, "dropped_reason": "session_not_found"}
     else:
         session = db.query(ApplySession).filter(
             ApplySession.user_id == current_user.id
@@ -116,16 +117,16 @@ def add_analytics_event(
             ApplySession.id.desc()
         ).first()
         if not session:
-            raise HTTPException(status_code=400, detail="No apply session available to attach analytics event")
+            return {"ok": True, "accepted": False, "dropped_reason": "no_attachable_session"}
 
     event = ApplySessionEvent(
         session_id=session.id,
         event_type=event_type,
-        payload=payload.payload if isinstance(payload.payload, dict) else {},
+        payload=payload_data,
     )
     db.add(event)
     db.commit()
-    return {"ok": True, "session_id": session.id, "event_type": event_type}
+    return {"ok": True, "accepted": True, "session_id": session.id, "event_type": event_type}
 
 
 @router.get("/analytics/summary")

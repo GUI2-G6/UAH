@@ -5,6 +5,7 @@ import { buildPlan, resolveNameToPath } from '../src/autofill/matching.js'
 import { fillField, fillPlan, isFieldRequired } from '../src/autofill/dom.js'
 import { buildProfileAutofillSource, sanitizeTokenMap } from '../src/autofill/source.js'
 import { flattenResume } from '../src/autofill/shared.js'
+import { resolveFieldPolicy } from '../src/autofill/resolver.js'
 import {
   buildDefaultFloatingPosition,
   clampPanelSize,
@@ -75,7 +76,14 @@ test('sanitizeTokenMap keeps only structured-clone-safe flat primitives', () => 
 
 test('flattenResume keeps legacy date splitting behavior for present and expected dates', () => {
   const tokens = flattenResume({
-    personal_info: { first_name: 'Taylor', last_name: 'Example' },
+    personal_info: {
+      first_name: 'Taylor',
+      middle_name: 'Alex',
+      last_name: 'Example',
+      suffix: 'Jr',
+      preferred_name: 'Tay',
+      full_legal_name: 'Taylor Alex Example Jr',
+    },
     education: [
       {
         institution: 'UAH',
@@ -104,10 +112,16 @@ test('flattenResume keeps legacy date splitting behavior for present and expecte
   assert.equal(tokens['work_experience[0].start_year'], '2024')
   assert.equal(tokens['work_experience[0].is_current'], true)
   assert.equal(tokens['work_experience[0].bullets'], 'Built tools\nShipped features')
+  assert.equal(tokens['personal_info.middle_initial'], 'A')
+  assert.equal(tokens['personal_info.first_middle_last'], 'Taylor Alex Example')
+  assert.equal(tokens['personal_info.preferred_name'], 'Tay')
 })
 
 test('resolveNameToPath supports direct, indexed, and checkbox aliases', () => {
   assert.equal(resolveNameToPath('first_name'), 'personal_info.first_name')
+  assert.equal(resolveNameToPath('middle_name'), 'personal_info.middle_name')
+  assert.equal(resolveNameToPath('middle_initial'), 'personal_info.middle_initial')
+  assert.equal(resolveNameToPath('legal_name'), 'personal_info.full_legal_name')
   assert.equal(resolveNameToPath('education[0].school'), 'education[0].institution')
   assert.equal(resolveNameToPath('currently_work_here_2'), 'work_experience[2].is_current')
   assert.equal(resolveNameToPath('work-authorization'), 'work_auth')
@@ -222,6 +236,38 @@ test('fillPlan fills current checkboxes first and skips end date tokens when cur
   assert.equal(filled, 1)
   assert.deepEqual(order, ['current'])
   assert.equal(endDateField.element.value, '')
+})
+
+test('fillPlan respects approval-gated fields', () => {
+  const first = createDispatchingElement()
+  const auth = createDispatchingElement({ id: 'work-auth' })
+  const plan = [
+    { el: first.element, matchPath: 'personal_info.first_name', matchScore: 1, requiresApproval: false },
+    { el: auth.element, matchPath: 'work_auth', matchScore: 0.95, requiresApproval: true },
+  ]
+  const tokenMap = {
+    'personal_info.first_name': 'Taylor',
+    work_auth: 'Yes',
+  }
+
+  const filledWithoutApproval = fillPlan(plan, tokenMap)
+  assert.equal(filledWithoutApproval, 1)
+  assert.equal(first.element.value, 'Taylor')
+  assert.equal(auth.element.value, '')
+
+  const filledWithApproval = fillPlan(plan, tokenMap, { approvedPaths: ['work_auth'] })
+  assert.equal(filledWithApproval, 2)
+  assert.equal(auth.element.value, 'Yes')
+})
+
+test('resolver marks sensitive fields as requiring approval', () => {
+  const policy = resolveFieldPolicy(
+    { label: 'Are you authorized to work in the US?' },
+    { matchPath: 'work_auth', matchScore: 0.98, reason: 'label' },
+  )
+  assert.equal(policy.sensitive, true)
+  assert.equal(policy.requiresApproval, true)
+  assert.equal(policy.confidenceClass, 'high')
 })
 
 test('mergePinnedUiState normalizes persisted pin state and positions', () => {

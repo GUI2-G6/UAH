@@ -13,7 +13,11 @@ class ApplicantProfile(Base):
 
     # Personal
     first_name = Column(String(100), nullable=True)
+    middle_name = Column(String(100), nullable=True)
     last_name = Column(String(100), nullable=True)
+    full_legal_name = Column(String(255), nullable=True)
+    preferred_name = Column(String(100), nullable=True)
+    suffix = Column(String(30), nullable=True)
     email = Column(String(255), nullable=True)
     phone = Column(String(50), nullable=True)
     linkedin = Column(String(255), nullable=True)

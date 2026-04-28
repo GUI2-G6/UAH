@@ -105,6 +105,10 @@ export function fillField(element, value) {
       if (!match) match = options.find((option) => normalizeText(option.value) === normalizedValue)
       if (!match) match = options.find((option) => normalizeText(option.textContent).includes(normalizedValue))
       if (!match) {
+        const compactValue = normalizedValue.replace(/\s+/g, '')
+        match = options.find((option) => normalizeText(option.textContent).replace(/\s+/g, '') === compactValue)
+      }
+      if (!match) {
         match = options.find((option) => {
           const optionText = normalizeText(option.textContent)
           return optionText.length > 1 && normalizedValue.includes(optionText)
@@ -112,6 +116,21 @@ export function fillField(element, value) {
       }
       if (!match) return false
       element.value = match.value
+    } else if (element.getAttribute?.('role') === 'combobox' || element.getAttribute?.('aria-autocomplete')) {
+      element.focus?.()
+      element.value = String(value)
+      const inputEvent = new EventCtor('input', { bubbles: true })
+      element.dispatchEvent?.(inputEvent)
+      const expanded = element.getAttribute?.('aria-expanded') === 'true'
+      if (expanded) {
+        const listboxId = element.getAttribute?.('aria-controls')
+        const listbox = listboxId ? document.getElementById(listboxId) : null
+        const options = Array.from((listbox || document).querySelectorAll?.('[role="option"]') || [])
+        const normalizedValue = normalizeText(String(value))
+        const match = options.find((option) => normalizeText(option.textContent || '') === normalizedValue)
+          || options.find((option) => normalizeText(option.textContent || '').includes(normalizedValue))
+        match?.click?.()
+      }
     } else if (element.type === 'checkbox') {
       const shouldCheck = value === true || value === 'true' || value === '1'
       if (element.checked !== shouldCheck) element.click?.()
@@ -135,8 +154,9 @@ export function fillField(element, value) {
   }
 }
 
-export function fillPlan(plan, tokenMap) {
+export function fillPlan(plan, tokenMap, options = {}) {
   let filled = 0
+  const approvedPaths = new Set(Array.isArray(options?.approvedPaths) ? options.approvedPaths.map((item) => String(item)) : [])
   const sortedPlan = [...(Array.isArray(plan) ? plan : [])].sort((left, right) => {
     const leftPriority = left.matchPath?.endsWith('.is_current') ? 0 : 1
     const rightPriority = right.matchPath?.endsWith('.is_current') ? 0 : 1
@@ -145,6 +165,7 @@ export function fillPlan(plan, tokenMap) {
 
   for (const item of sortedPlan) {
     if (!item.matchPath || item.matchScore < REVIEW_MATCH_THRESHOLD) continue
+    if (item.requiresApproval && !approvedPaths.has(String(item.matchPath))) continue
 
     const value = tokenMap?.[item.matchPath]
     if (value === null || value === undefined || value === '') continue

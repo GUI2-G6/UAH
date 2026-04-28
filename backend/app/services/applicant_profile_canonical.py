@@ -149,7 +149,11 @@ def normalize_canonical_data(data: Any) -> dict[str, Any]:
         key: value
         for key, value in {
             "first_name": _clean_string(personal_info.get("first_name")),
+            "middle_name": _clean_string(personal_info.get("middle_name")),
             "last_name": _clean_string(personal_info.get("last_name")),
+            "full_legal_name": _clean_string(personal_info.get("full_legal_name")),
+            "preferred_name": _clean_string(personal_info.get("preferred_name")),
+            "suffix": _clean_string(personal_info.get("suffix")),
             "email": _clean_string(personal_info.get("email")),
             "phone": _clean_string(personal_info.get("phone")),
             "address": _clean_string(personal_info.get("address")),
@@ -317,7 +321,11 @@ def _parse_certifications(text: str | None) -> list[dict[str, Any]]:
 def derive_canonical_from_profile_fields(values: dict[str, Any]) -> dict[str, Any]:
     personal_info = {
         "first_name": _clean_string(values.get("first_name")),
+        "middle_name": _clean_string(values.get("middle_name")),
         "last_name": _clean_string(values.get("last_name")),
+        "full_legal_name": _clean_string(values.get("full_legal_name")),
+        "preferred_name": _clean_string(values.get("preferred_name")),
+        "suffix": _clean_string(values.get("suffix")),
         "email": _clean_string(values.get("email")),
         "phone": _clean_string(values.get("phone")),
         "address": _clean_string(values.get("street_address")),
@@ -378,7 +386,11 @@ def apply_profile_updates_to_canonical(
 
     personal_map = {
         "first_name": "first_name",
+        "middle_name": "middle_name",
         "last_name": "last_name",
+        "full_legal_name": "full_legal_name",
+        "preferred_name": "preferred_name",
+        "suffix": "suffix",
         "email": "email",
         "phone": "phone",
         "street_address": "address",
@@ -482,6 +494,44 @@ def _unique_in_order(values: list[str]) -> list[str]:
     return ordered
 
 
+def _derive_name_tokens(personal_info: dict[str, Any]) -> dict[str, str]:
+    first = _clean_string(personal_info.get("first_name")) or ""
+    middle = _clean_string(personal_info.get("middle_name")) or ""
+    last = _clean_string(personal_info.get("last_name")) or ""
+    suffix = _clean_string(personal_info.get("suffix")) or ""
+    legal = _clean_string(personal_info.get("full_legal_name")) or ""
+    preferred = _clean_string(personal_info.get("preferred_name")) or ""
+
+    tokens: dict[str, str] = {}
+    if middle:
+        tokens["personal_info.middle_initial"] = middle[0].upper()
+
+    if first or middle or last:
+        full_parts = [part for part in [first, middle, last] if part]
+        if full_parts:
+            tokens["personal_info.first_middle_last"] = " ".join(full_parts)
+            if suffix:
+                tokens["personal_info.first_middle_last_with_suffix"] = f"{' '.join(full_parts)} {suffix}"
+
+        if first and middle:
+            tokens["personal_info.first_middle"] = f"{first} {middle}"
+        if middle and last:
+            tokens["personal_info.middle_last"] = f"{middle} {last}"
+        if first and last:
+            tokens["personal_info.first_last"] = f"{first} {last}"
+            tokens["personal_info.last_first"] = f"{last}, {first}"
+        if first and middle and last:
+            tokens["personal_info.last_first_middle"] = f"{last}, {first} {middle}"
+
+    if legal:
+        tokens["personal_info.full_legal_name"] = legal
+    if preferred:
+        tokens["personal_info.preferred_name"] = preferred
+    if suffix:
+        tokens["personal_info.suffix"] = suffix
+    return tokens
+
+
 def _format_education_entry(entry: dict[str, Any]) -> str:
     parts = [
         entry.get("institution") or "",
@@ -526,7 +576,11 @@ def derive_profile_fields_from_canonical(canonical_data: dict[str, Any], existin
 
     return {
         "first_name": personal_info.get("first_name"),
+        "middle_name": personal_info.get("middle_name"),
         "last_name": personal_info.get("last_name"),
+        "full_legal_name": personal_info.get("full_legal_name"),
+        "preferred_name": personal_info.get("preferred_name"),
+        "suffix": personal_info.get("suffix"),
         "email": personal_info.get("email"),
         "phone": personal_info.get("phone"),
         "linkedin": personal_info.get("linkedin"),
@@ -571,6 +625,7 @@ def flatten_canonical_data(canonical_data: dict[str, Any], include_derived: bool
     for key, value in personal_info.items():
         if value not in (None, "", [], {}):
             tokens[f"personal_info.{key}"] = value
+    tokens.update(_derive_name_tokens(personal_info))
 
     if canonical.get("summary"):
         tokens["summary"] = canonical["summary"]
@@ -722,7 +777,11 @@ def profile_to_values(profile: Any) -> dict[str, Any]:
     return {
         "name": getattr(profile, "name", None),
         "first_name": getattr(profile, "first_name", None),
+        "middle_name": getattr(profile, "middle_name", None),
         "last_name": getattr(profile, "last_name", None),
+        "full_legal_name": getattr(profile, "full_legal_name", None),
+        "preferred_name": getattr(profile, "preferred_name", None),
+        "suffix": getattr(profile, "suffix", None),
         "email": getattr(profile, "email", None),
         "phone": getattr(profile, "phone", None),
         "linkedin": getattr(profile, "linkedin", None),

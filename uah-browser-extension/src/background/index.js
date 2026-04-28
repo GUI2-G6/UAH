@@ -613,18 +613,38 @@ async function runAutofillAction(action, payload = {}) {
   await ensureAutofillRuntime(tab.id)
 
   let argument = undefined
-  if (action === 'scan' || action === 'fill') {
+  if (action === 'scan' || action === 'fill' || action === 'autoRun' || action === 'fillApproved') {
     const tokenMap = sanitizeTokenMap(payload.tokenMap)
-    if (!Object.keys(tokenMap).length) {
+    if (!Object.keys(tokenMap).length && action !== 'fillApproved') {
       throw buildError('A prepared autofill token map is required.', 'AUTOFILL_SOURCE_REQUIRED', 400)
     }
-    argument = tokenMap
+    argument = action === 'fillApproved'
+      ? { tokenMap, approvedPaths: Array.isArray(payload?.approvedPaths) ? payload.approvedPaths : [] }
+      : tokenMap
   }
 
   const uiState = await readPinnedUiState()
   const data = await invokeAutofillRuntime(tab.id, action, argument, {
     debugPosition: uiState.debugPosition,
   })
+  if (action === 'autoRun' && isObject(data)) {
+    const pendingApprovals = Array.isArray(data.pending_approvals) ? data.pending_approvals : []
+    const sensitivePending = pendingApprovals.filter((item) => item?.sensitive === true).length
+    await fetchJson('/api/apply-sessions/analytics/events', {
+      method: 'POST',
+      body: {
+        event_type: 'autofill_auto_run',
+        payload: {
+          filled: Number(data.filled || 0),
+          total: Number(data.total || 0),
+          approved_count: Number(data.approved_count || 0),
+          pending_count: pendingApprovals.length,
+          sensitive_pending_count: sensitivePending,
+          tab_url: String(tab.url || ''),
+        },
+      },
+    }).catch(() => null)
+  }
   return {
     ...(isObject(data) ? data : { value: data }),
     source: isObject(payload.source) ? payload.source : null,
@@ -794,6 +814,10 @@ addRuntimeMessageListener(async (message, sender) => {
         return { ok: true, data: await runAutofillAction('scan', message.payload || {}) }
       case 'autofillFill':
         return { ok: true, data: await runAutofillAction('fill', message.payload || {}) }
+      case 'autofillAutoRun':
+        return { ok: true, data: await runAutofillAction('autoRun', message.payload || {}) }
+      case 'autofillFillApproved':
+        return { ok: true, data: await runAutofillAction('fillApproved', message.payload || {}) }
       case 'autofillRemove':
         return { ok: true, data: await runAutofillAction('remove', message.payload || {}) }
       case 'autofillGetStats':

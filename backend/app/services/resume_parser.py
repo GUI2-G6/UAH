@@ -96,7 +96,11 @@ JSON Schema (return ONLY valid JSON, no markdown fences, no explanation):
 {
   "personal_info": {
     "first_name": "",
+    "middle_name": "",
     "last_name": "",
+    "full_legal_name": "",
+    "preferred_name": "",
+    "suffix": "",
     "email": "",
     "phone": "",
     "address": "",
@@ -1238,6 +1242,44 @@ def validate_and_fix(structured):
     structured = _sanitize_value(structured) or {}
     fixes_applied = []
     info = structured.get("personal_info", {})
+    full_legal_name = _normalize_string(str(info.get("full_legal_name") or ""))
+    if not full_legal_name:
+        parts = [
+            _normalize_string(str(info.get("first_name") or "")),
+            _normalize_string(str(info.get("middle_name") or "")),
+            _normalize_string(str(info.get("last_name") or "")),
+            _normalize_string(str(info.get("suffix") or "")),
+        ]
+        full_legal_name = " ".join([part for part in parts if part]) or None
+    if full_legal_name:
+        info["full_legal_name"] = full_legal_name
+
+    first_name = _normalize_string(str(info.get("first_name") or ""))
+    middle_name = _normalize_string(str(info.get("middle_name") or ""))
+    last_name = _normalize_string(str(info.get("last_name") or ""))
+    suffix = _normalize_string(str(info.get("suffix") or ""))
+    if not first_name and not last_name and full_legal_name:
+        tokens = [part for part in re.split(r"\s+", full_legal_name) if part]
+        if tokens:
+            known_suffixes = {"jr", "sr", "ii", "iii", "iv", "v"}
+            if tokens[-1].lower().rstrip(".") in known_suffixes:
+                suffix = tokens.pop(-1)
+            if len(tokens) >= 2:
+                first_name = tokens[0]
+                last_name = tokens[-1]
+                middle = tokens[1:-1]
+                if middle:
+                    middle_name = " ".join(middle)
+            elif len(tokens) == 1:
+                first_name = tokens[0]
+    if first_name:
+        info["first_name"] = first_name
+    if middle_name:
+        info["middle_name"] = middle_name
+    if last_name:
+        info["last_name"] = last_name
+    if suffix:
+        info["suffix"] = suffix
 
     email = info.get("email", "")
     if email:

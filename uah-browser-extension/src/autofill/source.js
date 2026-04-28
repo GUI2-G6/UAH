@@ -60,7 +60,7 @@ export function buildProfileAutofillSource(profile = {}) {
     if (value !== null) baseTokenMap[key] = value
   })
 
-  const fallbackName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim()
+  const fallbackName = [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(' ').trim()
   const sourceName = String(profile.name || fallbackName || 'Selected profile').trim()
 
   return {
