@@ -68,6 +68,7 @@ function normalizeResult(item = {}) {
     status_bucket: status,
     company_hint: sanitizeText(item.company_hint, 120) || null,
     snippet: sanitizeText(item.snippet, 420),
+    body_preview: sanitizeText(item.body_preview, 1600),
     ats_detected: item.ats_detected === true,
     job_update_detected: item.job_update_detected === true,
     matched_applied_job: item.matched_applied_job === true,
@@ -274,6 +275,24 @@ export async function removeGmailSuppression(id) {
   const payload = await response.json().catch(() => null)
   if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`)
   return payload
+}
+
+export async function createGmailFeedback(data = {}) {
+  const response = await authedFetch('/api/integrations/gmail/feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data || {}),
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`)
+  return payload?.feedback || null
+}
+
+export async function listGmailFeedback() {
+  const response = await authedFetch('/api/integrations/gmail/feedback')
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`)
+  return Array.isArray(payload?.feedback) ? payload.feedback : []
 }
 
 export async function listGmailNotificationStates() {

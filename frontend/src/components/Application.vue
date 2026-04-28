@@ -10,7 +10,15 @@
     <p class="application-role">{{ application.role || 'Untitled role' }}</p>
     <p class="application-meta">{{ application.from || 'Unknown sender' }}</p>
     <p class="application-meta">{{ formattedDate }}</p>
-    <p v-if="application.snippet" class="application-snippet">{{ application.snippet }}</p>
+    <p v-if="previewText" class="application-snippet">{{ visiblePreviewText }}</p>
+    <button
+      v-if="hasExpandableBody"
+      type="button"
+      class="view-more-btn"
+      @click="expanded = !expanded"
+    >
+      {{ expanded ? 'View less' : 'View more' }}
+    </button>
   </article>
 </template>
 
@@ -21,6 +29,11 @@ export default {
     application: {
       type: Object,
       default: () => ({}),
+    }
+  },
+  data() {
+    return {
+      expanded: false,
     }
   },
   computed: {
@@ -49,6 +62,27 @@ export default {
       if (bucket === 'recruiter_direct') return 'Recruiter'
       if (bucket === 'job_platform') return 'Job Platform'
       return 'Career Update'
+    },
+    previewText() {
+      const raw = this.application.body_preview || this.application.snippet || ''
+      return this.decodeHtmlEntities(String(raw || ''))
+        .replace(/\s+/g, ' ')
+        .trim()
+    },
+    hasExpandableBody() {
+      return this.previewText.length > 260
+    },
+    visiblePreviewText() {
+      if (this.expanded || !this.hasExpandableBody) return this.previewText
+      return `${this.previewText.slice(0, 260).trim()}...`
+    },
+  },
+  methods: {
+    decodeHtmlEntities(value) {
+      if (!value || typeof document === 'undefined') return value
+      const area = document.createElement('textarea')
+      area.innerHTML = value
+      return area.value
     },
   },
 }
@@ -85,6 +119,17 @@ export default {
   color: var(--color-text-primary);
   font-size: 0.93rem;
   line-height: 1.4;
+}
+
+.view-more-btn {
+  margin-top: 4px;
+  align-self: flex-start;
+  background: transparent;
+  border: 0;
+  color: var(--color-primary-600);
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.85rem;
 }
 
 .source-badge {

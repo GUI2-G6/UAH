@@ -496,6 +496,7 @@ def evaluate_message(
     subject = sanitize_preview_text(message.subject, max_len=220)
     snippet = sanitize_preview_text(message.snippet, max_len=320)
     body = sanitize_preview_text(message.body, max_len=1500)
+    body_preview = sanitize_preview_text(message.body, max_len=1200)
     from_header = sanitize_preview_text(message.from_header, max_len=220)
     date = sanitize_preview_text(message.date, max_len=120)
     status = classify_message_status(subject, snippet, body)
@@ -550,6 +551,7 @@ def evaluate_message(
         "detected_status": status,
         "company_hint": company_hint,
         "snippet": snippet,
+        "body_preview": body_preview,
         "ats_detected": ats_detected,
         "job_update_detected": job_update_detected,
         "linkedin_apply_detected": linkedin_apply_detected,
