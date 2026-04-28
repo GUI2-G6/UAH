@@ -255,6 +255,102 @@ class GmailScanFilterTests(unittest.TestCase):
         )
         self.assertTrue(evaluated["matched_applied_job"])
 
+    def test_includes_direct_company_offer_in_strict_mode_with_strong_language(self):
+        message = ScanMessage(
+            subject="Andover Companies: Summer Intern 2026",
+            from_header="Tina Gioia <tgioia@andovercos.com>",
+            date="Wed, 25 Feb 2026 14:49:00 -0500",
+            snippet="We would love to have you join us as a Summer Intern in 2026.",
+            body=(
+                "Before I send the official offer letter, I wanted to make sure you are still interested. "
+                "Reply to confirm your interest and we will prepare the formal offer letter."
+            ),
+        )
+        evaluated = evaluate_message(
+            message,
+            apply_sessions=[],
+            allowed_statuses={"submitted"},
+            require_ats=True,
+            source_strictness="strict_career_domains",
+        )
+        self.assertTrue(evaluated["include"])
+        self.assertEqual(evaluated["detected_status"], "offer")
+        self.assertFalse(evaluated["ats_detected"])
+        self.assertEqual(evaluated["source_bucket"], "recruiter_direct")
+
+    def test_detects_offer_from_body_when_snippet_is_generic(self):
+        message = ScanMessage(
+            subject="Application update",
+            from_header="Recruiting Team <recruiting@company.com>",
+            date="Wed, 25 Feb 2026 14:49:00 -0500",
+            snippet="Thanks for your patience while we review your candidacy.",
+            body="We are pleased to extend a formal offer and will send your offer letter shortly.",
+        )
+        evaluated = evaluate_message(
+            message,
+            apply_sessions=[],
+            allowed_statuses={"submitted"},
+            require_ats=True,
+            source_strictness="strict_career_domains",
+        )
+        self.assertEqual(evaluated["detected_status"], "offer")
+        self.assertTrue(evaluated["include"])
+
+    def test_body_rejection_overrides_snippet_offer_signal(self):
+        message = ScanMessage(
+            subject="Status update",
+            from_header="Recruiting Team <recruiting@company.com>",
+            date="Wed, 25 Feb 2026 14:49:00 -0500",
+            snippet="We are preparing your offer letter.",
+            body="After careful review, we regret to inform you that we are not moving forward.",
+        )
+        evaluated = evaluate_message(
+            message,
+            apply_sessions=[],
+            allowed_statuses={"submitted"},
+            require_ats=True,
+            source_strictness="strict_career_domains",
+        )
+        self.assertEqual(evaluated["detected_status"], "rejection")
+        self.assertTrue(evaluated["include"])
+
+    def test_detects_pre_offer_interest_check_language(self):
+        message = ScanMessage(
+            subject="Quick check before formal offer",
+            from_header="Hiring Team <hiring@acmecorp.com>",
+            date="Wed, 25 Feb 2026 14:49:00 -0500",
+            snippet="Before extending a formal offer, we wanted to confirm you are still interested.",
+            body="Please reply by Friday so we can finalize your offer letter.",
+        )
+        evaluated = evaluate_message(
+            message,
+            apply_sessions=[],
+            allowed_statuses={"submitted"},
+            require_ats=True,
+            source_strictness="strict_career_domains",
+        )
+        self.assertEqual(evaluated["detected_status"], "offer")
+        self.assertTrue(evaluated["include"])
+
+    def test_excludes_newsletter_with_offer_language_boundary_case(self):
+        message = ScanMessage(
+            subject="Limited time offer from our newsletter",
+            from_header="Marketing <news@updates.example.com>",
+            date="Wed, 25 Feb 2026 14:49:00 -0500",
+            snippet="View in browser and unsubscribe if you no longer wish to receive promos.",
+            body="This limited time offer is for premium members only.",
+        )
+        evaluated = evaluate_message(
+            message,
+            apply_sessions=[],
+            allowed_statuses={"submitted"},
+            require_ats=True,
+            source_strictness="strict_career_domains",
+        )
+        self.assertFalse(evaluated["include"])
+        self.assertEqual(evaluated["exclude_reason"], "noncareer_source")
+        self.assertTrue(evaluated["negative_intent_detected"])
+
 
 if __name__ == "__main__":
     unittest.main()
