@@ -33,6 +33,7 @@
                 <template #header>
                     <h2 id="tracked-applications">Tracked Applications</h2>
                     <p v-if="lastRefreshed" class="scan-meta">Last scan: {{ formatTimestamp(lastRefreshed) }}</p>
+                    <p v-if="submittedSessionCount !== null" class="scan-meta">Submitted sessions available for matching: {{ submittedSessionCount }}</p>
                     <button class="submit-btn" type="button" :disabled="loading || !gmailConnected" @click="scanNow">
                         {{ loading ? 'Scanning…' : 'Run Gmail scan' }}
                     </button>
@@ -82,6 +83,7 @@
                 unsubscribeUpdates: null,
                 selectedStatusFilter: 'all',
                 applications: [],
+                submittedSessionCount: null,
             }
         },
         components: {
@@ -107,6 +109,8 @@
                 status: item.status_bucket || item.detected_status || 'unknown',
                 detected_status: item.detected_status || 'unknown',
                 subject: item.subject || '',
+                tracking_source: item.tracking_source || 'matched',
+                confidence: item.confidence || 'high',
             }))
             if (this.selectedStatusFilter === 'all') return mapped
             return mapped.filter((item) => String(item.status).toLowerCase() === this.selectedStatusFilter)
@@ -130,6 +134,9 @@
             this.summary = summarizeGmailResults(results)
             this.lastRefreshed = record.fetched_at || this.lastRefreshed
             this.applications = results
+            this.submittedSessionCount = Number.isFinite(Number(record?.scan_scope?.applied_job_candidates))
+                ? Number(record.scan_scope.applied_job_candidates)
+                : null
         },
         formatTimestamp(value) {
             if (!value) return 'Unknown'

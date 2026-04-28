@@ -224,6 +224,9 @@
             <span class="panel-note">Developer-only fake ATS messages classifier check</span>
           </div>
           <textarea v-model="gmailDebugProbeJson" class="json-input" spellcheck="false"></textarea>
+          <button type="button" class="secondary-btn" @click="backfillApplySessionsFromSaved" :disabled="probeBusy">
+            Backfill apply sessions from saved jobs
+          </button>
           <button type="button" class="primary-btn" @click="probeGmailSimulateScan" :disabled="probeBusy">
             Run Gmail simulation
           </button>
@@ -661,6 +664,9 @@ export default {
     async probeGmailSimulateScan() {
       const payload = this.parseJsonInput(this.gmailDebugProbeJson, 'Gmail simulation payload')
       await this.runPostProbe('Gmail simulation', '/api/integrations/gmail/debug/simulate-scan', payload)
+    },
+    async backfillApplySessionsFromSaved() {
+      await this.runPostProbe('Apply-session backfill', '/api/apply-sessions/backfill-from-saved', {})
     },
   },
 }

@@ -11,8 +11,9 @@
                 <p v-else-if="!gmailConnected">Connect Gmail in Settings to enable status updates.</p>
                 <p v-else-if="error">{{ error }}</p>
                 <p v-else-if="summary.total === 0">No ATS updates matched your submitted applications yet.</p>
-                <p v-else>Latest ATS update feed ({{ summary.total }})</p>
+                <p v-else>Latest ATS update feed ({{ summary.matched_total }} matched, {{ summary.provisional_total }} provisional)</p>
                 <p v-if="lastRefreshed" class="scan-meta">Last scan: {{ formatTimestamp(lastRefreshed) }}</p>
+                <p v-if="submittedSessionCount !== null" class="scan-meta">Submitted sessions available for matching: {{ submittedSessionCount }}</p>
                 <div class="actions">
                     <button class="submit-btn" type="button" :disabled="loading || !gmailConnected" @click="scanNow">
                         {{ loading ? 'Scanning…' : 'Run Gmail scan' }}
@@ -32,7 +33,7 @@
                 <template v-if="results.length">
                     <article v-for="(item, index) in results.slice(0, 8)" :key="`${item.subject}-${index}`" class="gmail-update-row">
                         <h3>{{ item.company_hint || 'Unknown company' }}</h3>
-                        <p class="status-line">{{ item.detected_status }}</p>
+                        <p class="status-line">{{ item.detected_status }} · {{ item.tracking_source }} · {{ item.confidence }}</p>
                         <p>{{ item.subject || 'No subject' }}</p>
                         <p class="meta-line">{{ item.from }}</p>
                         <p class="meta-line">{{ formatTimestamp(item.date) }}</p>
@@ -63,6 +64,7 @@
                 lastRefreshed: '',
                 gmailConnected: false,
                 unsubscribeUpdates: null,
+                submittedSessionCount: null,
             }
         },
         async mounted() {
@@ -84,6 +86,9 @@
                 this.results = items
                 this.summary = summarizeGmailResults(items)
                 this.lastRefreshed = record.fetched_at || this.lastRefreshed
+                this.submittedSessionCount = Number.isFinite(Number(record?.scan_scope?.applied_job_candidates))
+                    ? Number(record.scan_scope.applied_job_candidates)
+                    : null
                 this.error = ''
             },
             formatTimestamp(value) {

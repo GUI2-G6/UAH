@@ -59,6 +59,8 @@ class GmailScanFilterTests(unittest.TestCase):
             require_ats=True,
         )
         self.assertFalse(evaluated["include"])
+        self.assertTrue(evaluated["ats_detected"])
+        self.assertFalse(evaluated["matched_applied_job"])
         self.assertEqual(evaluated["exclude_reason"], "no_applied_job_match")
 
 

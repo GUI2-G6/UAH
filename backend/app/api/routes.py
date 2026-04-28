@@ -24,6 +24,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_admin_user
 from app.models.user import User, SavedJob
+from app.models.apply_session import ApplySession
 from app.db.session import get_db
 from app.google.service import GoogleAuthService
 from app.schemas.user import SaveJobRequest
@@ -1673,6 +1674,45 @@ def _serialize_saved_job_row(saved_job: SavedJob, db: Session) -> dict[str, Any]
     }
 
 
+def _normalize_apply_text(value: Any) -> str:
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def _has_recent_apply_session_match(
+    db: Session,
+    *,
+    user_id: int,
+    company: str,
+    job_title: str,
+    ats_url: str,
+    job_url: str,
+) -> bool:
+    normalized_company = _normalize_apply_text(company)
+    normalized_title = _normalize_apply_text(job_title)
+    normalized_ats_url = (ats_url or "").strip()
+    normalized_job_url = (job_url or "").strip()
+
+    recent_rows = (
+        db.query(ApplySession)
+        .filter(ApplySession.user_id == user_id)
+        .order_by(ApplySession.started_at.desc())
+        .limit(400)
+        .all()
+    )
+    for row in recent_rows:
+        if _normalize_apply_text(row.company) != normalized_company:
+            continue
+        if _normalize_apply_text(row.job_title) != normalized_title:
+            continue
+        if normalized_ats_url and (row.ats_url or "").strip() == normalized_ats_url:
+            return True
+        if normalized_job_url and (row.job_url or "").strip() == normalized_job_url:
+            return True
+        if not normalized_ats_url and not normalized_job_url:
+            return True
+    return False
+
+
 def _extract_client_ip(request: Request) -> Optional[str]:
     candidates: List[str] = []
 
@@ -2961,6 +3001,59 @@ async def unsave_job(
     db.delete(saved)
     db.commit()
     return {"message": "Job removed from saved list"}
+
+
+@router.post("/apply-sessions/backfill-from-saved", tags=["apply-sessions"])
+async def backfill_apply_sessions_from_saved_jobs(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    saved_rows = (
+        db.query(SavedJob)
+        .filter(SavedJob.user_id == current_user.id)
+        .order_by(SavedJob.created_at.desc().nullslast(), SavedJob.id.desc())
+        .all()
+    )
+
+    created = 0
+    skipped = 0
+    for row in saved_rows:
+        company = (row.company or "").strip()
+        job_title = (row.title or "").strip()
+        if not company or not job_title:
+            skipped += 1
+            continue
+        url = (row.url or "").strip()
+        if _has_recent_apply_session_match(
+            db,
+            user_id=current_user.id,
+            company=company,
+            job_title=job_title,
+            ats_url=url,
+            job_url=url,
+        ):
+            skipped += 1
+            continue
+
+        session = ApplySession(
+            user_id=current_user.id,
+            platform=(row.provider or "saved_jobs"),
+            company=company,
+            job_title=job_title,
+            status="submitted",
+            ats_url=url,
+            job_url=url,
+        )
+        db.add(session)
+        created += 1
+
+    db.commit()
+    return {
+        "status": "ok",
+        "saved_jobs_seen": len(saved_rows),
+        "created_sessions": created,
+        "skipped_existing": skipped,
+    }
 
 GOOGLE_OAUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"

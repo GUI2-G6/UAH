@@ -2543,15 +2543,23 @@ function buildMockGmailScanPayload(state) {
     }
   })
   const included = evaluated.filter((row) => row.include)
+  const provisional = evaluated.filter((row) => !row.include && row.ats_detected)
   const results = scenario.profile === 'empty'
     ? []
     : (scenario.profile === 'large' ? included.slice(0, 120) : included.slice(0, 20))
+  const provisionalResults = scenario.profile === 'empty'
+    ? []
+    : (scenario.profile === 'large' ? provisional.slice(0, 120) : provisional.slice(0, 20))
   state.mockTesting.lastScanStatus = 'ok'
   return {
     payload: {
       gmail_email: state.user.gmail_email || state.user.email,
       results_count: results.length,
-      results,
+      matched_results_count: results.length,
+      provisional_results_count: provisionalResults.length,
+      results: results.map((item) => ({ ...item, tracking_source: 'matched', confidence: 'high' })),
+      matched_results: results.map((item) => ({ ...item, tracking_source: 'matched', confidence: 'high' })),
+      provisional_results: provisionalResults.map((item) => ({ ...item, tracking_source: 'gmail_provisional', confidence: 'medium' })),
       scan_scope: {
         require_ats_sender: true,
         applied_job_statuses: [...MOCK_APPLIED_STATUSES],
@@ -3015,6 +3023,83 @@ async function handleMockApiRequest(request, requestUrl, state) {
     const all = ensureArray(state.mockApplySessions, [])
     const sessions = statusFilter ? all.filter((session) => normalizeTextLower(session.status) === statusFilter) : all
     return toJsonResponse(sessions)
+  }
+
+  if (pathname === '/api/apply-sessions/start' && method === 'POST') {
+    const body = await parseJsonBody(request)
+    const all = ensureArray(state.mockApplySessions, [])
+    const nextId = Math.max(0, ...all.map((row) => Number(row.id || 0))) + 1
+    const session = {
+      id: nextId,
+      user_id: state.user.id,
+      status: 'started',
+      company: normalizeWhitespace(body?.company || 'Unknown company'),
+      job_title: normalizeWhitespace(body?.job_title || body?.jobTitle || 'Unknown role'),
+      platform: normalizeWhitespace(body?.platform || 'web'),
+      ats_url: normalizeWhitespace(body?.ats_url || ''),
+      job_url: normalizeWhitespace(body?.job_url || ''),
+      started_at: nowIso(),
+      updated_at: nowIso(),
+      finalized_at: null,
+    }
+    all.unshift(session)
+    state.mockApplySessions = all
+    saveState(state)
+    return toJsonResponse({ session_id: nextId, session })
+  }
+
+  if (/^\/api\/apply-sessions\/\d+\/finalize$/.test(pathname) && method === 'POST') {
+    const body = await parseJsonBody(request)
+    const sessionId = Number(pathname.split('/')[3] || 0)
+    const all = ensureArray(state.mockApplySessions, [])
+    const target = all.find((row) => Number(row.id) === sessionId)
+    if (!target) {
+      return toJsonResponse({ detail: 'Apply session not found' }, 404)
+    }
+    target.status = normalizeTextLower(body?.status) || 'submitted'
+    target.notes = normalizeWhitespace(body?.notes || target.notes || '')
+    target.finalized_at = nowIso()
+    target.updated_at = nowIso()
+    saveState(state)
+    return toJsonResponse({ status: 'ok', session: target })
+  }
+
+  if (pathname === '/api/apply-sessions/backfill-from-saved' && method === 'POST') {
+    const savedJobs = ensureArray(state.savedJobs, [])
+    const sessions = ensureArray(state.mockApplySessions, [])
+    let created = 0
+    let skipped = 0
+    for (const row of savedJobs) {
+      const company = normalizeTextLower(row.company)
+      const title = normalizeTextLower(row.title || row.name)
+      const url = normalizeWhitespace(row.url || row.job_url || row.apply_url || '')
+      const duplicate = sessions.some((session) => (
+        normalizeTextLower(session.company) === company
+        && normalizeTextLower(session.job_title) === title
+        && normalizeWhitespace(session.ats_url || session.job_url || '') === url
+      ))
+      if (duplicate || !company || !title) {
+        skipped += 1
+        continue
+      }
+      sessions.unshift({
+        id: Math.max(0, ...sessions.map((entry) => Number(entry.id || 0))) + 1,
+        user_id: state.user.id,
+        status: 'submitted',
+        company: row.company,
+        job_title: row.title || row.name,
+        platform: row.provider || 'saved_jobs',
+        ats_url: url,
+        job_url: url,
+        started_at: nowIso(),
+        updated_at: nowIso(),
+        finalized_at: nowIso(),
+      })
+      created += 1
+    }
+    state.mockApplySessions = sessions
+    saveState(state)
+    return toJsonResponse({ status: 'ok', saved_jobs_seen: savedJobs.length, created_sessions: created, skipped_existing: skipped })
   }
 
   if (pathname === '/api/account/change-name' && method === 'PUT') {

@@ -289,6 +289,7 @@ async def gmail_scan(
 
         message_ids = [m["id"] for m in messages_data.get("messages", [])]
         included_results = []
+        provisional_results = []
         excluded_count = 0
 
         for msg_id in message_ids[:20]:
@@ -318,16 +319,28 @@ async def gmail_scan(
                 allowed_statuses=allowed_statuses,
                 require_ats=True,
             )
+            base_result = {
+                "subject": evaluated["subject"],
+                "from": evaluated["from"],
+                "date": evaluated["date"],
+                "detected_status": evaluated["detected_status"],
+                "company_hint": evaluated["company_hint"],
+                "snippet": evaluated["snippet"],
+                "ats_detected": evaluated["ats_detected"],
+                "matched_applied_job": evaluated["matched_applied_job"],
+            }
             if evaluated.get("include"):
                 included_results.append({
-                    "subject": evaluated["subject"],
-                    "from": evaluated["from"],
-                    "date": evaluated["date"],
-                    "detected_status": evaluated["detected_status"],
-                    "company_hint": evaluated["company_hint"],
-                    "snippet": evaluated["snippet"],
-                    "ats_detected": evaluated["ats_detected"],
-                    "matched_applied_job": evaluated["matched_applied_job"],
+                    **base_result,
+                    "tracking_source": "matched",
+                    "confidence": "high",
+                })
+            elif evaluated.get("ats_detected"):
+                provisional_results.append({
+                    **base_result,
+                    "tracking_source": "gmail_provisional",
+                    "confidence": "medium",
+                    "exclude_reason": evaluated.get("exclude_reason"),
                 })
             else:
                 excluded_count += 1
@@ -335,7 +348,11 @@ async def gmail_scan(
     return {
         "gmail_email": current_user.gmail_email,
         "results_count": len(included_results),
+        "matched_results_count": len(included_results),
+        "provisional_results_count": len(provisional_results),
         "results": included_results,
+        "matched_results": included_results,
+        "provisional_results": provisional_results,
         "scan_scope": {
             "require_ats_sender": True,
             "applied_job_statuses": sorted(allowed_statuses),

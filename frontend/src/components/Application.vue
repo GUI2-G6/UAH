@@ -5,6 +5,7 @@
       <p class="application-status-chip" :class="`is-${statusTone}`">{{ readableStatus }}</p>
     </header>
     <p class="application-role">{{ application.role || 'Untitled role' }}</p>
+    <p class="application-meta">Source: {{ application.tracking_source || 'matched' }} · Confidence: {{ application.confidence || 'high' }}</p>
     <p class="application-meta">{{ application.from || 'Unknown sender' }}</p>
     <p class="application-meta">{{ formattedDate }}</p>
     <p v-if="application.snippet" class="application-snippet">{{ application.snippet }}</p>

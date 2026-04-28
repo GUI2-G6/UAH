@@ -62,6 +62,7 @@
                         >
                             {{ saveButtonLabel }}
                         </button>
+                        <button type="button" class="secondary" @click="markApplied">Mark applied</button>
                         <button type="button" class="secondary" @click="openDetails">Details</button>
                         <button type="button" class="primary" @click="apply">Apply Now</button>
                     </div>
@@ -160,7 +161,7 @@ export default {
             default: false,
         },
     },
-    emits: ["toggle-save"],
+    emits: ["toggle-save", "mark-applied"],
     data() {
         return {
             detailsOpen: false
@@ -369,6 +370,9 @@ export default {
         toggleSave() {
             if (this.savePending) return
             this.$emit("toggle-save", this.job)
+        },
+        markApplied() {
+            this.$emit("mark-applied", this.job)
         }
     }
 }
