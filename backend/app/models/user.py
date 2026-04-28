@@ -53,3 +53,17 @@ class SavedJob(Base):
     company = Column(String(255), nullable=False)
     url = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+
+class GmailSuppression(Base):
+    __tablename__ = "gmail_suppressions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    scope = Column(String(40), nullable=False, index=True)
+    source_id = Column(String(255), nullable=True, index=True)
+    sender_domain = Column(String(255), nullable=True, index=True)
+    subject_key = Column(String(255), nullable=True, index=True)
+    company_key = Column(String(255), nullable=True, index=True)
+    note = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)

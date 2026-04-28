@@ -1058,6 +1058,7 @@ function createDefaultState() {
     profiles: [createProfile(user)],
     savedJobs: [],
     mockApplySessions: createDefaultMockApplySessions(user),
+    gmailSuppressions: [],
     mockTesting: {
       scanCount: 0,
       lastScenarioKey: '',
@@ -1102,6 +1103,18 @@ function ensureStateShape(state) {
       started_at: normalizeIsoDate(session?.started_at) || nowIso(),
     }))
     .filter((session) => session.id > 0 && session.company && session.job_title)
+  safe.gmailSuppressions = ensureArray(safe.gmailSuppressions, [])
+    .map((row, index) => ({
+      id: Number(row?.id || index + 1),
+      scope: normalizeTextLower(row?.scope) === 'thread' ? 'thread' : 'message',
+      source_id: normalizeWhitespace(row?.source_id),
+      sender_domain: normalizeTextLower(row?.sender_domain),
+      subject_key: normalizeWhitespace(row?.subject_key),
+      company_key: normalizeWhitespace(row?.company_key),
+      note: normalizeWhitespace(row?.note),
+      created_at: normalizeIsoDate(row?.created_at) || nowIso(),
+    }))
+    .filter((row) => row.id > 0)
   safe.mockTesting = safe.mockTesting && typeof safe.mockTesting === 'object' ? safe.mockTesting : {}
   safe.mockTesting.scanCount = Number(safe.mockTesting.scanCount || 0)
   safe.mockTesting.lastScenarioKey = normalizeWhitespace(safe.mockTesting.lastScenarioKey)
@@ -2084,7 +2097,6 @@ function buildMockServiceDetail(state, serviceKey) {
       },
       actions: connected
         ? [
-          buildMockServiceAction({ key: 'scan', label: 'Run scan', style: 'secondary', method: 'POST', href: '/api/integrations/gmail/scan' }),
           buildMockServiceAction({ key: 'disconnect', label: 'Disconnect', style: 'secondary', method: 'DELETE', href: '/api/integrations/gmail/disconnect' }),
         ]
         : [gmailConfigured
@@ -2451,6 +2463,19 @@ function classifyMockStatus(subject, snippet) {
   return 'unknown'
 }
 
+function normalizeSubjectKey(subject) {
+  return normalizeTextLower(String(subject || '').replace(/\b(re|fwd?)\s*:\s*/gi, '').replace(/[^a-z0-9]+/gi, ' ')).trim()
+}
+
+function normalizeCompanyKey(company) {
+  return normalizeTextLower(String(company || '').replace(/[^a-z0-9]+/gi, ' ')).trim()
+}
+
+function senderDomainFromFromHeader(fromValue) {
+  const match = String(fromValue || '').match(/@([^>\s]+)/)
+  return normalizeTextLower(match?.[1] || '')
+}
+
 function buildMockGmailCandidates(state, scenario) {
   const companies = ['Acme Robotics', 'Nimbus Systems', 'Atlas Systems', 'Blue Pine Labs', 'Vertex Dynamics']
   const subjects = ['Interview next steps', 'Application received', 'Offer discussion', 'Update on your application', 'Final decision']
@@ -2486,7 +2511,7 @@ function buildMockGmailCandidates(state, scenario) {
   return rows
 }
 
-function buildMockGmailScanPayload(state) {
+function buildMockGmailScanPayload(state, options = {}) {
   const scenario = resolveMockScenario(state)
   state.mockTesting.scanCount = Number(state.mockTesting.scanCount || 0) + 1
   state.mockTesting.lastScenarioKey = scenario.key
@@ -2518,7 +2543,16 @@ function buildMockGmailScanPayload(state) {
     (session) => normalizeTextLower(session.status) === 'submitted'
   )
   const submittedCompanies = new Set(submittedSessions.map((session) => normalizeTextLower(session.company)))
+  const includeProvisional = options?.include_provisional !== false
+  const maxResults = Math.min(100, Math.max(1, Number(options?.max_results || 20)))
+  const newerThanDays = Math.min(365, Math.max(1, Number(options?.newer_than_days || 45)))
   const candidates = buildMockGmailCandidates(state, scenario)
+    .filter((row) => {
+      const ts = new Date(row.date).getTime()
+      if (!Number.isFinite(ts)) return true
+      return ts >= (Date.now() - (newerThanDays * 24 * 60 * 60 * 1000))
+    })
+  const suppressions = ensureArray(state.gmailSuppressions, [])
   const evaluated = candidates.map((candidate) => {
     const from = String(candidate.from || '')
     const subject = String(candidate.subject || '')
@@ -2528,6 +2562,16 @@ function buildMockGmailScanPayload(state) {
     const matched_applied_job = submittedCompanies.has(normalizeTextLower(companyHint))
     const detected_status = classifyMockStatus(subject, snippet)
     const include = ats_detected && matched_applied_job
+    const senderDomain = senderDomainFromFromHeader(from)
+    const subjectKey = normalizeSubjectKey(subject)
+    const companyKey = normalizeCompanyKey(companyHint)
+    const suppressed = suppressions.some((entry) => (
+      (entry.scope === 'message' && entry.source_id && entry.source_id === candidate.source_id)
+      || (entry.scope === 'thread'
+        && entry.sender_domain === senderDomain
+        && entry.subject_key === subjectKey
+        && entry.company_key === companyKey)
+    ))
     return {
       source_id: candidate.source_id,
       subject,
@@ -2539,17 +2583,18 @@ function buildMockGmailScanPayload(state) {
       ats_detected,
       matched_applied_job,
       include,
+      suppressed,
       exclude_reason: include ? null : (!ats_detected ? 'non_ats_sender' : 'no_applied_job_match'),
     }
   })
-  const included = evaluated.filter((row) => row.include)
-  const provisional = evaluated.filter((row) => !row.include && row.ats_detected)
+  const included = evaluated.filter((row) => row.include && !row.suppressed)
+  const provisional = evaluated.filter((row) => !row.include && row.ats_detected && !row.suppressed)
   const results = scenario.profile === 'empty'
     ? []
-    : (scenario.profile === 'large' ? included.slice(0, 120) : included.slice(0, 20))
-  const provisionalResults = scenario.profile === 'empty'
+    : (scenario.profile === 'large' ? included.slice(0, maxResults) : included.slice(0, maxResults))
+  const provisionalResults = !includeProvisional ? [] : (scenario.profile === 'empty'
     ? []
-    : (scenario.profile === 'large' ? provisional.slice(0, 120) : provisional.slice(0, 20))
+    : (scenario.profile === 'large' ? provisional.slice(0, maxResults) : provisional.slice(0, maxResults)))
   state.mockTesting.lastScanStatus = 'ok'
   return {
     payload: {
@@ -2565,6 +2610,10 @@ function buildMockGmailScanPayload(state) {
         applied_job_statuses: [...MOCK_APPLIED_STATUSES],
         applied_job_candidates: submittedSessions.length,
         excluded_count: Math.max(evaluated.length - results.length, 0),
+        newer_than_days: newerThanDays,
+        max_results: maxResults,
+        include_provisional: includeProvisional,
+        suppression_count: suppressions.length,
         scenario_profile: scenario.profile,
       },
     },
@@ -2966,11 +3015,55 @@ async function handleMockApiRequest(request, requestUrl, state) {
     if (!state.user.gmail_refresh_token) {
       return toJsonResponse({ detail: 'Gmail not connected' }, 400)
     }
-    const scan = buildMockGmailScanPayload(state)
+    const body = await parseJsonBody(request)
+    const scan = buildMockGmailScanPayload(state, body || {})
     if (scan.error) {
       return toJsonResponse(scan.error.payload, scan.error.status, scan.error.headers)
     }
     return toJsonResponse(scan.payload)
+  }
+
+  if (pathname === '/api/integrations/gmail/suppressions' && method === 'GET') {
+    const rows = ensureArray(state.gmailSuppressions, [])
+      .slice()
+      .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+    return toJsonResponse({ suppressions: rows })
+  }
+
+  if (pathname === '/api/integrations/gmail/suppressions' && method === 'POST') {
+    const body = await parseJsonBody(request)
+    const scope = normalizeTextLower(body?.scope) === 'thread' ? 'thread' : 'message'
+    const nextId = Math.max(0, ...ensureArray(state.gmailSuppressions, []).map((row) => Number(row.id || 0))) + 1
+    const row = {
+      id: nextId,
+      scope,
+      source_id: scope === 'message' ? normalizeWhitespace(body?.source_id) : '',
+      sender_domain: scope === 'thread' ? senderDomainFromFromHeader(body?.from_header) : '',
+      subject_key: scope === 'thread' ? normalizeSubjectKey(body?.subject) : '',
+      company_key: scope === 'thread' ? normalizeCompanyKey(body?.company_hint) : '',
+      note: normalizeWhitespace(body?.note || ''),
+      created_at: nowIso(),
+    }
+    if (scope === 'message' && !row.source_id) {
+      return toJsonResponse({ detail: 'source_id is required for message scope' }, 400)
+    }
+    if (scope === 'thread' && (!row.sender_domain || !row.subject_key)) {
+      return toJsonResponse({ detail: 'from_header and subject are required for thread scope' }, 400)
+    }
+    state.gmailSuppressions = [row, ...ensureArray(state.gmailSuppressions, [])]
+    saveState(state)
+    return toJsonResponse({ status: 'ok', suppression: row })
+  }
+
+  if (/^\/api\/integrations\/gmail\/suppressions\/\d+$/.test(pathname) && method === 'DELETE') {
+    const suppressionId = Number(pathname.split('/').pop() || 0)
+    const before = ensureArray(state.gmailSuppressions, []).length
+    state.gmailSuppressions = ensureArray(state.gmailSuppressions, []).filter((row) => Number(row.id) !== suppressionId)
+    if (state.gmailSuppressions.length === before) {
+      return toJsonResponse({ detail: 'Suppression not found' }, 404)
+    }
+    saveState(state)
+    return toJsonResponse({ status: 'ok', message: 'Suppression removed' })
   }
 
   if (pathname === '/api/integrations/gmail/debug/simulate-scan' && method === 'POST') {

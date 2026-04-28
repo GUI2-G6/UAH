@@ -2,10 +2,35 @@ from __future__ import annotations
 
 import unittest
 
-from app.services.gmail_scan import ScanMessage, evaluate_message
+from app.services.gmail_scan import (
+    ScanMessage,
+    build_thread_signature,
+    evaluate_message,
+    normalize_company_key,
+    normalize_subject_key,
+)
 
 
 class GmailScanFilterTests(unittest.TestCase):
+    def test_thread_signature_is_stable_for_reply_forward_variants(self):
+        sender_a, subject_a, company_a = build_thread_signature(
+            from_header="Haier Workday <haier@myworkday.com>",
+            subject="Re: Position Update from GE Appliances",
+            company_hint="GE Appliances",
+        )
+        sender_b, subject_b, company_b = build_thread_signature(
+            from_header="Haier Workday <haier@myworkday.com>",
+            subject="Fwd: Position Update from GE Appliances",
+            company_hint="Ge   Appliances",
+        )
+        self.assertEqual(sender_a, sender_b)
+        self.assertEqual(subject_a, subject_b)
+        self.assertEqual(company_a, company_b)
+
+    def test_normalized_keys_strip_noise(self):
+        self.assertEqual(normalize_subject_key("RE:   Position Update!!!"), "position update")
+        self.assertEqual(normalize_company_key("GE Appliances, Inc."), "ge appliances inc")
+
     def test_includes_ats_message_that_matches_submitted_apply_session(self):
         message = ScanMessage(
             subject="Interview next steps at Acme Robotics",

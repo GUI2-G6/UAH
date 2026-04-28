@@ -314,7 +314,6 @@ import ServiceDetailsModal from "../components/ServiceDetailsModal.vue";
 import ThemeModeControl from "../components/ThemeModeControl.vue";
 import { authedFetch, clearAuth, getCurrentUser, setCurrentUser, syncCurrentUser } from "../lib/auth.js";
 import { setDebugToolsPreference, subscribeDebugTools } from "../lib/debugTools.js";
-import { runGmailScan } from "../lib/gmailUpdates.js";
 import { assertValidEmail } from "../lib/validation.js";
 import { showToast } from '@/services/toastService.js';
 
@@ -725,14 +724,6 @@ export default {
             }
 
             try {
-                if (serviceKey === 'gmail' && action.key === 'scan') {
-                    const scanResult = await runGmailScan()
-                    const count = Number(scanResult?.summary?.total || 0)
-                    showToast(`Gmail scan complete (${count} matched updates)`, 'success')
-                    this.setServiceHighlight(serviceKey)
-                    return
-                }
-
                 const res = await authedFetch(action.href, {
                     method: action.method || 'POST',
                 })

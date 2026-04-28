@@ -128,6 +128,17 @@ export function writeGmailScanCache(payload = {}) {
   }
 }
 
+function normalizeScanOptions(options = {}) {
+  const newerThanRaw = Number(options?.newer_than_days)
+  const maxResultsRaw = Number(options?.max_results)
+  return {
+    query: sanitizeText(options?.query, 280) || null,
+    newer_than_days: Number.isFinite(newerThanRaw) ? Math.min(365, Math.max(1, Math.round(newerThanRaw))) : 45,
+    max_results: Number.isFinite(maxResultsRaw) ? Math.min(100, Math.max(1, Math.round(maxResultsRaw))) : 20,
+    include_provisional: options?.include_provisional !== false,
+  }
+}
+
 export function subscribeGmailUpdates(onUpdate) {
   if (typeof onUpdate !== 'function') return () => {}
   const handler = (event) => {
@@ -142,10 +153,12 @@ export function subscribeGmailUpdates(onUpdate) {
   return () => window.removeEventListener(UPDATE_EVENT, handler)
 }
 
-export async function runGmailScan() {
+export async function runGmailScan(options = {}) {
+  const scanOptions = normalizeScanOptions(options)
   const response = await authedFetch('/api/integrations/gmail/scan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(scanOptions),
   })
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
@@ -158,4 +171,31 @@ export async function runGmailScan() {
     provisional_results: Array.isArray(payload?.provisional_results) ? payload.provisional_results : [],
     fetched_at: new Date().toISOString(),
   })
+}
+
+export async function listGmailSuppressions() {
+  const response = await authedFetch('/api/integrations/gmail/suppressions')
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`)
+  return Array.isArray(payload?.suppressions) ? payload.suppressions : []
+}
+
+export async function createGmailSuppression(data = {}) {
+  const response = await authedFetch('/api/integrations/gmail/suppressions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data || {}),
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`)
+  return payload?.suppression || null
+}
+
+export async function removeGmailSuppression(id) {
+  const response = await authedFetch(`/api/integrations/gmail/suppressions/${encodeURIComponent(String(id || ''))}`, {
+    method: 'DELETE',
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`)
+  return payload
 }

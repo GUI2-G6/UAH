@@ -10,11 +10,19 @@ from sqlalchemy.orm import Session
 from urllib.parse import urlencode
 from app.db.session import get_db
 from app.models.user import User
+from app.models.user import GmailSuppression
 from app.models.apply_session import ApplySession
 from app.api.deps import get_current_user, require_admin_or_developer
 from app.core.rate_limit import enforce_subject_rate_limit
 from app.core.config import settings
-from app.services.gmail_scan import ScanMessage, evaluate_message
+from app.services.gmail_scan import (
+    ScanMessage,
+    build_thread_signature,
+    evaluate_message,
+    normalize_company_key,
+    normalize_subject_key,
+    parse_sender_domain,
+)
 
 router = APIRouter(prefix="/api/integrations/gmail", tags=["gmail"])
 
@@ -46,6 +54,22 @@ class GmailDebugScanRequest(BaseModel):
     messages: list[GmailDebugMessage] = Field(default_factory=list)
     require_ats: bool = True
     include_unsubmitted: bool = False
+
+
+class GmailScanRequest(BaseModel):
+    query: str | None = Field(default=None, max_length=280)
+    newer_than_days: int = Field(default=45, ge=1, le=365)
+    max_results: int = Field(default=20, ge=1, le=100)
+    include_provisional: bool = Field(default=True)
+
+
+class GmailSuppressionCreateRequest(BaseModel):
+    scope: str = Field(default="message")
+    source_id: str | None = Field(default=None, max_length=255)
+    from_header: str | None = Field(default=None, max_length=255)
+    subject: str | None = Field(default=None, max_length=255)
+    company_hint: str | None = Field(default=None, max_length=120)
+    note: str | None = Field(default=None, max_length=255)
 
 
 def _get_fernet():
@@ -234,6 +258,118 @@ def _allowed_apply_session_statuses(include_unsubmitted: bool) -> set[str]:
     return {"submitted"}
 
 
+def _normalize_scan_query(query: str | None) -> str:
+    clean = " ".join(str(query or "").split())
+    if not clean:
+        return " OR ".join(SCAN_KEYWORDS)
+    return clean[:280]
+
+
+def _suppression_matches(evaluated: dict, suppression: GmailSuppression) -> bool:
+    scope = (suppression.scope or "").strip().lower()
+    if scope == "message":
+        source_id = str(evaluated.get("source_id") or "")
+        return bool(source_id and suppression.source_id and source_id == suppression.source_id)
+    if scope != "thread":
+        return False
+    sender_domain, subject_key, company_key = build_thread_signature(
+        from_header=str(evaluated.get("from") or ""),
+        subject=str(evaluated.get("subject") or ""),
+        company_hint=evaluated.get("company_hint"),
+    )
+    return (
+        (suppression.sender_domain or "") == sender_domain
+        and (suppression.subject_key or "") == subject_key
+        and (suppression.company_key or "") == company_key
+    )
+
+
+def _serialize_suppression(row: GmailSuppression) -> dict:
+    return {
+        "id": row.id,
+        "scope": row.scope,
+        "source_id": row.source_id,
+        "sender_domain": row.sender_domain,
+        "subject_key": row.subject_key,
+        "company_key": row.company_key,
+        "note": row.note,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+@router.get("/suppressions")
+async def gmail_list_suppressions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    rows = (
+        db.query(GmailSuppression)
+        .filter(GmailSuppression.user_id == current_user.id)
+        .order_by(GmailSuppression.created_at.desc(), GmailSuppression.id.desc())
+        .limit(300)
+        .all()
+    )
+    return {"suppressions": [_serialize_suppression(row) for row in rows]}
+
+
+@router.post("/suppressions")
+async def gmail_create_suppression(
+    payload: GmailSuppressionCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    scope = (payload.scope or "message").strip().lower()
+    if scope not in {"message", "thread"}:
+        raise HTTPException(status_code=400, detail="scope must be 'message' or 'thread'")
+
+    if scope == "message":
+        source_id = (payload.source_id or "").strip()
+        if not source_id:
+            raise HTTPException(status_code=400, detail="source_id is required for message scope")
+        row = GmailSuppression(
+            user_id=current_user.id,
+            scope="message",
+            source_id=source_id,
+            note=(payload.note or "").strip() or None,
+        )
+    else:
+        sender_domain = parse_sender_domain(payload.from_header)
+        subject_key = normalize_subject_key(payload.subject)
+        company_key = normalize_company_key(payload.company_hint)
+        if not sender_domain or not subject_key:
+            raise HTTPException(status_code=400, detail="from_header and subject are required for thread scope")
+        row = GmailSuppression(
+            user_id=current_user.id,
+            scope="thread",
+            sender_domain=sender_domain,
+            subject_key=subject_key,
+            company_key=company_key,
+            note=(payload.note or "").strip() or None,
+        )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"status": "ok", "suppression": _serialize_suppression(row)}
+
+
+@router.delete("/suppressions/{suppression_id}")
+async def gmail_delete_suppression(
+    suppression_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    row = (
+        db.query(GmailSuppression)
+        .filter(GmailSuppression.id == suppression_id, GmailSuppression.user_id == current_user.id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Suppression not found")
+    db.delete(row)
+    db.commit()
+    return {"status": "ok", "message": "Suppression removed"}
+
+
 def _load_apply_session_scope(db: Session, user_id: int, *, include_unsubmitted: bool) -> list[dict]:
     allowed_statuses = _allowed_apply_session_statuses(include_unsubmitted)
     query = db.query(ApplySession).filter(ApplySession.user_id == user_id)
@@ -254,6 +390,7 @@ def _load_apply_session_scope(db: Session, user_id: int, *, include_unsubmitted:
 
 @router.post("/scan")
 async def gmail_scan(
+    payload: GmailScanRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -270,10 +407,16 @@ async def gmail_scan(
     session_scope = _load_apply_session_scope(db, current_user.id, include_unsubmitted=False)
     allowed_statuses = _allowed_apply_session_statuses(False)
 
-    query = " OR ".join(SCAN_KEYWORDS)
+    query = _normalize_scan_query(payload.query)
     search_url = (
         "https://gmail.googleapis.com/gmail/v1/users/me/messages"
-        f"?q={query}&maxResults=20"
+        f"?q={query} newer_than:{int(payload.newer_than_days)}d&maxResults={int(payload.max_results)}"
+    )
+    suppressions = (
+        db.query(GmailSuppression)
+        .filter(GmailSuppression.user_id == current_user.id)
+        .order_by(GmailSuppression.created_at.desc(), GmailSuppression.id.desc())
+        .all()
     )
 
     async with httpx.AsyncClient() as client:
@@ -292,7 +435,7 @@ async def gmail_scan(
         provisional_results = []
         excluded_count = 0
 
-        for msg_id in message_ids[:20]:
+        for msg_id in message_ids[: int(payload.max_results)]:
             msg_resp = await client.get(
                 f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg_id}",
                 params={"format": "metadata", "metadataHeaders": ["Subject", "From", "Date"]},
@@ -330,12 +473,18 @@ async def gmail_scan(
                 "matched_applied_job": evaluated["matched_applied_job"],
             }
             if evaluated.get("include"):
+                if any(_suppression_matches(evaluated, row) for row in suppressions):
+                    excluded_count += 1
+                    continue
                 included_results.append({
                     **base_result,
                     "tracking_source": "matched",
                     "confidence": "high",
                 })
-            elif evaluated.get("ats_detected"):
+            elif evaluated.get("ats_detected") and bool(payload.include_provisional):
+                if any(_suppression_matches(evaluated, row) for row in suppressions):
+                    excluded_count += 1
+                    continue
                 provisional_results.append({
                     **base_result,
                     "tracking_source": "gmail_provisional",
@@ -358,6 +507,11 @@ async def gmail_scan(
             "applied_job_statuses": sorted(allowed_statuses),
             "applied_job_candidates": len(session_scope),
             "excluded_count": excluded_count,
+            "query": query,
+            "newer_than_days": int(payload.newer_than_days),
+            "max_results": int(payload.max_results),
+            "include_provisional": bool(payload.include_provisional),
+            "suppression_count": len(suppressions),
         },
     }
 

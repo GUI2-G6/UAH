@@ -53,6 +53,26 @@ def parse_sender_domain(from_header: str | None) -> str:
     return email_addr.split("@", 1)[-1].strip().lower()
 
 
+def normalize_subject_key(subject: str | None) -> str:
+    raw = sanitize_preview_text(subject, max_len=220).lower()
+    raw = re.sub(r"\b(re|fwd?)\s*:\s*", "", raw)
+    raw = re.sub(r"[^a-z0-9]+", " ", raw)
+    return " ".join(raw.split())[:120]
+
+
+def normalize_company_key(value: str | None) -> str:
+    raw = sanitize_preview_text(value, max_len=120).lower()
+    raw = re.sub(r"[^a-z0-9]+", " ", raw)
+    return " ".join(raw.split())[:80]
+
+
+def build_thread_signature(*, from_header: str, subject: str, company_hint: str | None) -> tuple[str, str, str]:
+    sender_domain = parse_sender_domain(from_header)
+    subject_key = normalize_subject_key(subject)
+    company_key = normalize_company_key(company_hint)
+    return sender_domain, subject_key, company_key
+
+
 def extract_company_hint(from_header: str, subject: str) -> str | None:
     domain = parse_sender_domain(from_header)
     if not domain:

@@ -2,23 +2,18 @@
     <div class="page">
         <div class="greeting">
             <h1>Notifications</h1>
-            <p>Keep track of ATS updates tied to jobs you actually applied to.</p>
+            <p>Review recent update signals across your connected tracking feeds.</p>
         </div>
         <div class="dashboard">
             <Card class="notifications-card notifications-card--wide">
                 <h2>Notifications Feed</h2>
-                <p v-if="loading">Scanning Gmail updates...</p>
+                <p v-if="loading">Loading latest updates...</p>
                 <p v-else-if="!gmailConnected">Connect Gmail in Settings to enable status updates.</p>
                 <p v-else-if="error">{{ error }}</p>
                 <p v-else-if="summary.total === 0">No ATS updates matched your submitted applications yet.</p>
                 <p v-else>Latest ATS update feed ({{ summary.matched_total }} matched, {{ summary.provisional_total }} provisional)</p>
                 <p v-if="lastRefreshed" class="scan-meta">Last scan: {{ formatTimestamp(lastRefreshed) }}</p>
                 <p v-if="submittedSessionCount !== null" class="scan-meta">Submitted sessions available for matching: {{ submittedSessionCount }}</p>
-                <div class="actions">
-                    <button class="submit-btn" type="button" :disabled="loading || !gmailConnected" @click="scanNow">
-                        {{ loading ? 'Scanning…' : 'Run Gmail scan' }}
-                    </button>
-                </div>
             </Card>
             <Card class="notifications-card">
                 <h2>Total Pending: {{ summary.total }}</h2>
@@ -48,7 +43,7 @@
 <script>
     import Card from '@/components/Card.vue';
     import { getCurrentUser } from '@/lib/auth.js'
-    import { readGmailScanCache, runGmailScan, subscribeGmailUpdates, summarizeGmailResults } from '@/lib/gmailUpdates.js'
+    import { readGmailScanCache, subscribeGmailUpdates, summarizeGmailResults } from '@/lib/gmailUpdates.js'
 
     export default{
         name: "Notifications",
@@ -95,19 +90,6 @@
                 if (!value) return 'Unknown date'
                 const date = new Date(value)
                 return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString()
-            },
-            async scanNow() {
-                this.loading = true
-                this.error = ''
-                try {
-                    const record = await runGmailScan()
-                    this.applyScanRecord(record)
-                    this.gmailConnected = true
-                } catch (error) {
-                    this.error = error?.message || 'Could not scan Gmail updates.'
-                } finally {
-                    this.loading = false
-                }
             },
         },
     }
