@@ -18,6 +18,11 @@ For repo-wide context, start with [../README.md](../README.md) and [../ARCHITECT
 | Compose backend profile | Best when you want a full localhost-only backend container | `docker-compose.local.yml --profile backend` |
 | Full dev stack | Best when you need the deployed dev shape | `docker-compose.yml` and `scripts/uah.sh` |
 
+For `scripts/uah.sh` lifecycle flows (`start`, `restart`, and post-`sync` rebuild), schema reconcile is automatic via `alembic upgrade head` inside the backend container. Failure policy is environment-aware:
+
+- `dev`: logs warnings and continues.
+- `beta`: fails fast with non-zero exit.
+
 ## Prerequisites
 
 - Docker running locally

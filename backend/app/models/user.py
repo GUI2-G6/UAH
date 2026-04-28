@@ -83,3 +83,19 @@ class GmailNotificationState(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "source_id", name="uq_gmail_notification_states_user_source"),
     )
+
+
+class GmailFeedback(Base):
+    __tablename__ = "gmail_feedback"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_id = Column(String(255), nullable=True, index=True)
+    sender_domain = Column(String(255), nullable=True, index=True)
+    subject_key = Column(String(255), nullable=True, index=True)
+    company_key = Column(String(255), nullable=True, index=True)
+    triage_label = Column(String(40), nullable=False, index=True)
+    override_status = Column(String(40), nullable=True, index=True)
+    false_positive_reason = Column(String(255), nullable=True)
+    notes = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)

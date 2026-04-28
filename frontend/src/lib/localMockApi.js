@@ -694,7 +694,6 @@ function createProfile(user, id = 1, overrides = {}) {
     id,
     name: 'Default',
     is_active: true,
-    is_default: true,
     created_at: createdAt,
     updated_at: createdAt,
     first_name: user.first_name || '',
@@ -731,6 +730,51 @@ function createProfile(user, id = 1, overrides = {}) {
   })
 }
 
+const REVIEW_DRAFT_SCHEMA = {
+  version: 'canonical_v1',
+  personal_fields: [
+    { key: 'first_name', label: 'First Name' },
+    { key: 'middle_name', label: 'Middle Name' },
+    { key: 'last_name', label: 'Last Name' },
+    { key: 'full_legal_name', label: 'Full Legal Name' },
+    { key: 'preferred_name', label: 'Preferred Name' },
+    { key: 'suffix', label: 'Suffix' },
+    { key: 'email', label: 'Email', type: 'email' },
+    { key: 'phone', label: 'Phone' },
+    { key: 'address', label: 'Street Address', full: true },
+    { key: 'city', label: 'City' },
+    { key: 'state', label: 'State' },
+    { key: 'zip', label: 'ZIP' },
+    { key: 'linkedin', label: 'LinkedIn', type: 'url' },
+    { key: 'website', label: 'Website', type: 'url' },
+  ],
+  skill_fields: [
+    { key: 'technical', label: 'Technical Skills' },
+    { key: 'languages', label: 'Languages' },
+    { key: 'tools', label: 'Tools' },
+    { key: 'soft_skills', label: 'Soft Skills' },
+  ],
+  structured_sections: [
+    { key: 'education', pathStem: 'education', title: 'Education', fields: [
+      { key: 'institution', label: 'Institution' }, { key: 'degree', label: 'Degree' }, { key: 'field_of_study', label: 'Field of Study' }, { key: 'gpa', label: 'GPA' }, { key: 'start_date', label: 'Start Date' }, { key: 'end_date', label: 'End Date' }, { key: 'honors', label: 'Honors', kind: 'inline-list', full: true }, { key: 'relevant_coursework', label: 'Relevant Coursework', kind: 'inline-list', full: true },
+    ] },
+    { key: 'work_experience', pathStem: 'work_experience', title: 'Work Experience', fields: [
+      { key: 'company', label: 'Company' }, { key: 'title', label: 'Title' }, { key: 'location', label: 'Location' }, { key: 'is_current', label: 'Current Role', kind: 'current-select' }, { key: 'start_date', label: 'Start Date' }, { key: 'end_date', label: 'End Date' }, { key: 'bullets', label: 'Bullets', kind: 'line-list', full: true },
+    ] },
+    { key: 'projects', pathStem: 'projects', title: 'Projects', fields: [
+      { key: 'name', label: 'Name' }, { key: 'date', label: 'Date' }, { key: 'description', label: 'Description', kind: 'textarea', full: true }, { key: 'technologies', label: 'Technologies', kind: 'inline-list', full: true },
+    ] },
+    { key: 'certifications', pathStem: 'certifications', title: 'Certifications', fields: [
+      { key: 'name', label: 'Name' }, { key: 'issuer', label: 'Issuer' }, { key: 'date', label: 'Date', full: true },
+    ] },
+  ],
+  extra_list_sections: [
+    { key: 'awards', label: 'Awards' },
+    { key: 'activities', label: 'Activities' },
+    { key: 'volunteer', label: 'Volunteer' },
+  ],
+}
+
 function cleanProfileString(value) {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -764,7 +808,11 @@ function normalizeCanonicalData(value = {}) {
   return {
     personal_info: {
       first_name: cleanProfileString(personal.first_name),
+      middle_name: cleanProfileString(personal.middle_name),
       last_name: cleanProfileString(personal.last_name),
+      full_legal_name: cleanProfileString(personal.full_legal_name),
+      preferred_name: cleanProfileString(personal.preferred_name),
+      suffix: cleanProfileString(personal.suffix),
       email: cleanProfileString(personal.email),
       phone: cleanProfileString(personal.phone),
       address: cleanProfileString(personal.address),
@@ -859,7 +907,11 @@ function deriveCanonicalFromProfile(profile = {}) {
   return normalizeCanonicalData({
     personal_info: {
       first_name: profile.first_name,
+      middle_name: profile.middle_name,
       last_name: profile.last_name,
+      full_legal_name: profile.full_legal_name,
+      preferred_name: profile.preferred_name,
+      suffix: profile.suffix,
       email: profile.email,
       phone: profile.phone,
       address: profile.street_address,
@@ -883,9 +935,32 @@ function deriveCanonicalFromProfile(profile = {}) {
 function flattenCanonicalData(canonical) {
   const normalized = normalizeCanonicalData(canonical)
   const tokens = {}
+  const splitDateTokens = (value) => {
+    const raw = cleanProfileString(value)
+    if (!raw) return { month: null, year: null, is_present: false }
+    if (raw.toLowerCase() === 'present') return { month: null, year: null, is_present: true }
+    const monthYear = raw.match(/^([A-Za-z]+)\s+(\d{4})$/)
+    if (monthYear) return { month: monthYear[1], year: monthYear[2], is_present: false }
+    const yearOnly = raw.match(/^(\d{4})$/)
+    if (yearOnly) return { month: null, year: yearOnly[1], is_present: false }
+    return { month: null, year: null, is_present: false }
+  }
+
   Object.entries(normalized.personal_info || {}).forEach(([key, value]) => {
     if (cleanProfileString(value)) tokens[`personal_info.${key}`] = value
   })
+  const first = cleanProfileString(normalized.personal_info?.first_name)
+  const middle = cleanProfileString(normalized.personal_info?.middle_name)
+  const last = cleanProfileString(normalized.personal_info?.last_name)
+  const suffix = cleanProfileString(normalized.personal_info?.suffix)
+  if (middle) tokens['personal_info.middle_initial'] = middle.slice(0, 1).toUpperCase()
+  if (first || middle || last) {
+    const assembled = [first, middle, last].filter(Boolean).join(' ')
+    if (assembled) {
+      tokens['personal_info.first_middle_last'] = assembled
+      if (suffix) tokens['personal_info.first_middle_last_with_suffix'] = `${assembled} ${suffix}`
+    }
+  }
   if (cleanProfileString(normalized.summary)) tokens.summary = normalized.summary
     ;['education', 'work_experience', 'projects', 'certifications'].forEach((sectionKey) => {
       ; (normalized[sectionKey] || []).forEach((entry, index) => {
@@ -896,6 +971,27 @@ function flattenCanonicalData(canonical) {
             tokens[`${sectionKey}[${index}].${key}`] = value
           }
         })
+        if (sectionKey === 'education') {
+          const start = splitDateTokens(entry?.start_date)
+          const end = splitDateTokens(entry?.end_date)
+          if (start.month) tokens[`education[${index}].start_month`] = start.month
+          if (start.year) tokens[`education[${index}].start_year`] = start.year
+          if (end.is_present) tokens[`education[${index}].is_current`] = true
+          if (!end.is_present && end.month) tokens[`education[${index}].end_month`] = end.month
+          if (!end.is_present && end.year) tokens[`education[${index}].end_year`] = end.year
+        }
+        if (sectionKey === 'work_experience') {
+          const start = splitDateTokens(entry?.start_date)
+          const end = splitDateTokens(entry?.end_date)
+          if (start.month) tokens[`work_experience[${index}].start_month`] = start.month
+          if (start.year) tokens[`work_experience[${index}].start_year`] = start.year
+          if (entry?.is_current || end.is_present) {
+            tokens[`work_experience[${index}].is_current`] = true
+          } else {
+            if (end.month) tokens[`work_experience[${index}].end_month`] = end.month
+            if (end.year) tokens[`work_experience[${index}].end_year`] = end.year
+          }
+        }
       })
     })
   Object.entries(normalized.skills || {}).forEach(([key, value]) => {
@@ -922,7 +1018,11 @@ function deriveProfileFieldsFromCanonical(canonical, existing = {}) {
 
   return {
     first_name: cleanProfileString(normalized.personal_info.first_name),
+    middle_name: cleanProfileString(normalized.personal_info.middle_name),
     last_name: cleanProfileString(normalized.personal_info.last_name),
+    full_legal_name: cleanProfileString(normalized.personal_info.full_legal_name),
+    preferred_name: cleanProfileString(normalized.personal_info.preferred_name),
+    suffix: cleanProfileString(normalized.personal_info.suffix),
     email: cleanProfileString(normalized.personal_info.email),
     phone: cleanProfileString(normalized.personal_info.phone),
     linkedin: cleanProfileString(normalized.personal_info.linkedin),
@@ -2500,6 +2600,13 @@ function isAtsSender(fromValue) {
 
 function classifyMockStatus(subject, snippet) {
   const combined = `${normalizeTextLower(subject)} ${normalizeTextLower(snippet)}`
+  if (
+    combined.includes('additional information needed')
+    || combined.includes('information appears to be missing')
+    || combined.includes('missing from your job application')
+    || combined.includes('complete your job application')
+    || combined.includes('please follow the below steps')
+  ) return 'action_required'
   if (combined.includes('unfortunately') || combined.includes('regret')) return 'rejection'
   if (combined.includes('interview') || combined.includes('schedule')) return 'interview_invite'
   if (combined.includes('offer') || combined.includes('congratulations')) return 'offer'
@@ -2587,7 +2694,13 @@ function buildMockGmailScanPayload(state, options = {}) {
     (session) => normalizeTextLower(session.status) === 'submitted'
   )
   const submittedCompanies = new Set(submittedSessions.map((session) => normalizeTextLower(session.company)))
-  const includeProvisional = options?.include_provisional !== false
+  const sourceStrictness = String(options?.source_strictness || 'hybrid_job_language').trim().toLowerCase() === 'hybrid_job_language'
+    ? 'hybrid_job_language'
+    : 'strict_career_domains'
+  const linkedinModeRaw = String(options?.linkedin_mode || 'linkedin_apply_only').trim().toLowerCase()
+  const linkedinMode = ['linkedin_apply_only', 'linkedin_all_jobish', 'linkedin_off'].includes(linkedinModeRaw)
+    ? linkedinModeRaw
+    : 'linkedin_apply_only'
   const maxResults = Math.min(100, Math.max(1, Number(options?.max_results || 20)))
   const newerThanDays = Math.min(36500, Math.max(1, Number(options?.newer_than_days || 45)))
   const candidates = buildMockGmailCandidates(state, scenario)
@@ -2597,6 +2710,10 @@ function buildMockGmailScanPayload(state, options = {}) {
       return ts >= (Date.now() - (newerThanDays * 24 * 60 * 60 * 1000))
     })
   const suppressions = ensureArray(state.gmailSuppressions, [])
+  let excludedByNoncareerSource = 0
+  let excludedByNegativeIntent = 0
+  let includedByAts = 0
+  let includedByLinkedinApply = 0
   const evaluated = candidates.map((candidate) => {
     const from = String(candidate.from || '')
     const subject = String(candidate.subject || '')
@@ -2605,8 +2722,45 @@ function buildMockGmailScanPayload(state, options = {}) {
     const ats_detected = isAtsSender(from)
     const matched_applied_job = submittedCompanies.has(normalizeTextLower(companyHint))
     const detected_status = classifyMockStatus(subject, snippet)
-    const include = ats_detected && matched_applied_job
     const senderDomain = senderDomainFromFromHeader(from)
+    const sourceCombined = `${senderDomain} ${subject.toLowerCase()} ${snippet.toLowerCase()}`
+    const sourceBucket = (
+      isAtsSender(from) ? 'ats_portal'
+        : (sourceCombined.includes('linkedin') || sourceCombined.includes('ripplematch') ? 'job_platform'
+          : (sourceCombined.includes('candidatecare') || sourceCombined.includes('career') || sourceCombined.includes('recruit') ? 'recruiter_direct' : 'non_career'))
+    )
+    const linkedinApplyDetected = sourceCombined.includes('linkedin') && (
+      sourceCombined.includes('application was sent')
+      || sourceCombined.includes('jobs-noreply')
+      || sourceCombined.includes('job application')
+      || sourceCombined.includes("what's next")
+    )
+    const negativeIntentDetected = (
+      sourceCombined.includes('deal awaits')
+      || sourceCombined.includes('limited time offer')
+      || sourceCombined.includes('premium')
+      || sourceCombined.includes('newsletter')
+      || sourceCombined.includes('share their thoughts')
+      || sourceCombined.includes('support hunger')
+    )
+    const includeByIntent = ats_detected || detected_status !== 'unknown'
+    let include = includeByIntent
+    let excludeReason = null
+    if (sourceStrictness === 'strict_career_domains' && sourceBucket === 'non_career') {
+      include = false
+      excludeReason = 'noncareer_source'
+      excludedByNoncareerSource += 1
+    } else if (sourceCombined.includes('linkedin') && linkedinMode === 'linkedin_off') {
+      include = false
+      excludeReason = 'linkedin_disabled'
+    } else if (sourceCombined.includes('linkedin') && linkedinMode === 'linkedin_apply_only' && !linkedinApplyDetected) {
+      include = false
+      excludeReason = 'linkedin_non_apply'
+    } else if (negativeIntentDetected) {
+      include = false
+      excludeReason = 'negative_intent'
+      excludedByNegativeIntent += 1
+    }
     const subjectKey = normalizeSubjectKey(subject)
     const companyKey = normalizeCompanyKey(companyHint)
     const threadKey = `${senderDomain}|${subjectKey}|${companyKey}`
@@ -2628,6 +2782,11 @@ function buildMockGmailScanPayload(state, options = {}) {
       company_hint: companyHint || null,
       snippet,
       ats_detected,
+      job_update_detected: detected_status !== 'unknown',
+      linkedin_apply_detected: linkedinApplyDetected,
+      negative_intent_detected: negativeIntentDetected,
+      source_bucket: sourceBucket,
+      intent_score: detected_status !== 'unknown' ? 3 : 1,
       matched_applied_job,
       include,
       suppressed,
@@ -2637,16 +2796,19 @@ function buildMockGmailScanPayload(state, options = {}) {
       thread_key: threadKey,
       gmail_open_url_direct: directOpenUrl,
       gmail_open_url_fallback: fallbackOpenUrl,
-      exclude_reason: include ? null : (!ats_detected ? 'non_ats_sender' : 'no_applied_job_match'),
+      exclude_reason: include ? null : (excludeReason || 'non_ats_or_job_update'),
     }
   })
   const included = evaluated.filter((row) => row.include && !row.suppressed)
-  const provisional = evaluated.filter((row) => !row.include && row.ats_detected && !row.suppressed)
+  for (const row of included) {
+    if (row.ats_detected) includedByAts += 1
+    if (row.linkedin_apply_detected) includedByLinkedinApply += 1
+  }
   const trackedRows = ensureArray(state.trackedApplications, []).filter((row) => normalizeTextLower(row.selection_state) === 'active')
   const trackedBySource = new Map(trackedRows.map((row) => [normalizeWhitespace(row.source_ref), row]))
   const trackedByThread = new Map(trackedRows.map((row) => [normalizeWhitespace(row.thread_key), row]))
   let trackedUpdatesApplied = 0
-  for (const row of [...included, ...provisional]) {
+  for (const row of included) {
     const tracked = trackedBySource.get(normalizeWhitespace(row.source_id)) || trackedByThread.get(normalizeWhitespace(row.thread_key))
     if (!tracked) continue
     tracked.latest_status = normalizeTextLower(row.detected_status) || tracked.latest_status
@@ -2660,33 +2822,33 @@ function buildMockGmailScanPayload(state, options = {}) {
   const results = scenario.profile === 'empty'
     ? []
     : (scenario.profile === 'large' ? included.slice(0, maxResults) : included.slice(0, maxResults))
-  const provisionalResults = !includeProvisional ? [] : (scenario.profile === 'empty'
-    ? []
-    : (scenario.profile === 'large' ? provisional.slice(0, maxResults) : provisional.slice(0, maxResults)))
   state.mockTesting.lastScanStatus = 'ok'
   return {
     payload: {
       gmail_email: state.user.gmail_email || state.user.email,
       results_count: results.length,
       matched_results_count: results.length,
-      provisional_results_count: provisionalResults.length,
-      results: results.map((item) => ({ ...item, tracking_source: 'matched', confidence: 'high' })),
-      matched_results: results.map((item) => ({ ...item, tracking_source: 'matched', confidence: 'high' })),
-      provisional_results: provisionalResults.map((item) => ({ ...item, tracking_source: 'gmail_provisional', confidence: 'medium' })),
+      results: results.map((item) => ({ ...item, tracking_source: 'gmail', confidence: 'high' })),
+      matched_results: results.map((item) => ({ ...item, tracking_source: 'gmail', confidence: 'high' })),
       scan_scope: {
-        require_ats_sender: true,
+        require_ats_or_job_update: true,
         applied_job_statuses: [...MOCK_APPLIED_STATUSES],
         applied_job_candidates: submittedSessions.length,
         excluded_count: Math.max(evaluated.length - results.length, 0),
+        source_strictness: sourceStrictness,
+        linkedin_mode: linkedinMode,
         newer_than_days: newerThanDays,
         max_results: maxResults,
-        include_provisional: includeProvisional,
         suppression_count: suppressions.length,
         suppressed_message_hits: 0,
         suppressed_chain_hits: 0,
         suppression_miss_reasons: { missing_source_id: 0, missing_thread_signature: 0 },
         tracked_updates_applied: trackedUpdatesApplied,
         tracked_rows_seen: trackedRows.length,
+        excluded_by_noncareer_source: excludedByNoncareerSource,
+        excluded_by_negative_intent: excludedByNegativeIntent,
+        included_by_ats: includedByAts,
+        included_by_linkedin_apply: includedByLinkedinApply,
         scenario_profile: scenario.profile,
       },
     },
@@ -3704,6 +3866,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
       review_status: resume.review_status || 'pending',
       review_updated_at: resume.review_updated_at,
       review_draft: reviewDraft,
+      review_schema: REVIEW_DRAFT_SCHEMA,
     })
   }
 
@@ -3728,6 +3891,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
       review_status: state.resumes[resumeIndex].review_status,
       review_updated_at: state.resumes[resumeIndex].review_updated_at,
       review_draft: state.resumes[resumeIndex].review_draft,
+      review_schema: REVIEW_DRAFT_SCHEMA,
     })
   }
 
@@ -3781,7 +3945,6 @@ async function handleMockApiRequest(request, requestUrl, state) {
       state.profiles = state.profiles.map((item) => ({ ...item, is_active: false }))
       profile = syncMockProfileStorage(createProfile(state.user, id, {
         name: cleanProfileString(body.profile_name) || cleanProfileString(incoming.personal_info.first_name) || `Profile ${id}`,
-        is_default: false,
         is_active: true,
         canonical_data: incoming,
         updated_at: nowIso(),
@@ -3843,8 +4006,7 @@ async function handleMockApiRequest(request, requestUrl, state) {
     const created = createProfile(state.user, id, {
       ...body,
       name: normalizeText(body.name) || `Profile ${id}`,
-      is_default: state.profiles.length === 0 || body.is_default === true,
-      is_active: body.is_default === true || state.profiles.length === 0,
+      is_active: state.profiles.length === 0,
       created_at: nowIso(),
     })
 
@@ -3914,8 +4076,8 @@ async function handleMockApiRequest(request, requestUrl, state) {
       return toJsonResponse({ detail: 'Profile not found' }, 404)
     }
 
-    if (profile.is_default) {
-      return toJsonResponse({ detail: 'Default profile cannot be deleted' }, 400)
+    if (state.profiles.length <= 1) {
+      return toJsonResponse({ detail: 'Cannot delete your only profile. Create another profile first.' }, 400)
     }
 
     state.profiles = state.profiles.filter((item) => Number(item.id) !== profileId)

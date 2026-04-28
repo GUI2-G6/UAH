@@ -272,6 +272,8 @@ def _parse_education_history(text: str | None) -> list[dict[str, Any]]:
             "start_date": _clean_string(parts[3]) if len(parts) > 3 else None,
             "end_date": _clean_string(parts[4]) if len(parts) > 4 else None,
             "gpa": _clean_string(parts[5]) if len(parts) > 5 else None,
+            "honors": _split_inline_list(parts[6]) if len(parts) > 6 else [],
+            "relevant_coursework": _split_inline_list(parts[7]) if len(parts) > 7 else [],
         }
         compact = {key: value for key, value in entry.items() if value is not None}
         if compact:
@@ -443,7 +445,9 @@ def apply_profile_updates_to_canonical(
         education = list(canonical.get("education", []))
         primary = education[:1]
         additional = _parse_education_history(updates.get("education_history_text"))
-        canonical["education"] = _dedupe_entries(primary + additional)
+        existing_additional = [entry for entry in education[1:] if isinstance(entry, dict)]
+        merged_additional = _merge_additional_education_entries(existing_additional, additional)
+        canonical["education"] = _dedupe_entries(primary + merged_additional)
 
     if "job_title" in updates:
         work_experience = list(canonical.get("work_experience", []))
@@ -542,7 +546,66 @@ def _format_education_entry(entry: dict[str, Any]) -> str:
     ]
     if entry.get("gpa"):
         parts.append(entry["gpa"])
+    if entry.get("honors"):
+        parts.append(", ".join(_clean_list(entry.get("honors"))))
+    if entry.get("relevant_coursework"):
+        parts.append(", ".join(_clean_list(entry.get("relevant_coursework"))))
     return " | ".join(parts).strip()
+
+
+def _education_identity(entry: dict[str, Any]) -> tuple[str, str, str, str]:
+    return (
+        str(entry.get("institution") or "").strip().casefold(),
+        str(entry.get("degree") or "").strip().casefold(),
+        str(entry.get("start_date") or "").strip().casefold(),
+        str(entry.get("end_date") or "").strip().casefold(),
+    )
+
+
+def _merge_additional_education_entries(
+    existing_additional: list[dict[str, Any]],
+    incoming_additional: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    existing_by_identity = {
+        _education_identity(entry): _compact_entry(entry)
+        for entry in existing_additional
+        if isinstance(entry, dict) and _compact_entry(entry)
+    }
+
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for entry in incoming_additional:
+        incoming = _compact_entry(entry)
+        if not incoming:
+            continue
+
+        combined = dict(existing_by_identity.get(_education_identity(incoming), {}))
+        for key, value in incoming.items():
+            if key == "field_of_study":
+                if value:
+                    combined[key] = value
+                continue
+            if key in {"honors", "relevant_coursework"}:
+                existing_values = combined.get(key, []) if isinstance(combined.get(key), list) else []
+                incoming_values = value if isinstance(value, list) else []
+                if existing_values or incoming_values:
+                    combined[key] = _unique_in_order(list(existing_values) + list(incoming_values))
+                continue
+            if value not in (None, "", [], {}):
+                combined[key] = value
+
+        if combined.get("degree", "").casefold() == "high school diploma" and not combined.get("field_of_study"):
+            combined["field_of_study"] = "General Studies"
+
+        compact = _compact_entry(combined)
+        if not compact:
+            continue
+        signature = repr(compact)
+        if signature in seen:
+            continue
+        seen.add(signature)
+        merged.append(compact)
+    return merged
 
 
 def _format_work_entry(entry: dict[str, Any]) -> str:

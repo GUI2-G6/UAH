@@ -9,6 +9,7 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 import httpx
 from app.core.config import settings
+from app.services.skill_classifier import normalize_and_classify_skills
 
 logger = logging.getLogger(__name__)
 
@@ -1191,6 +1192,14 @@ def _sanitize_value(value):
     return value
 
 
+def apply_skill_supplemental_rules(structured: dict | None) -> dict:
+    if not isinstance(structured, dict):
+        return {}
+    updated = dict(structured)
+    updated["skills"] = normalize_and_classify_skills(updated.get("skills"))
+    return updated
+
+
 def _is_meaningful(value) -> bool:
     if value is None:
         return False
@@ -1240,6 +1249,7 @@ def validate_and_fix(structured):
         structured = {}
 
     structured = _sanitize_value(structured) or {}
+    structured = apply_skill_supplemental_rules(structured)
     fixes_applied = []
     info = structured.get("personal_info", {})
     full_legal_name = _normalize_string(str(info.get("full_legal_name") or ""))

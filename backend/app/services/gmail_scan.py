@@ -21,6 +21,17 @@ ATS_DOMAIN_HINTS = (
 
 CONSUMER_EMAIL_DOMAINS = {"gmail", "yahoo", "outlook", "hotmail", "icloud", "protonmail"}
 STATUS_KEYWORDS = {
+    "action_required": [
+        "additional information needed",
+        "information appears to be missing",
+        "missing from your job application",
+        "complete your job application",
+        "complete our job application",
+        "please follow the below steps",
+        "check your email inbox to retrieve the temporary password",
+        "confirm your contact information",
+        "proceed until you see a thank you message",
+    ],
     "rejection": [
         "unfortunately",
         "regret",
@@ -32,10 +43,34 @@ STATUS_KEYWORDS = {
         "move forward with other candidates",
     ],
     "interview_invite": ["interview", "schedule", "meet with", "next steps", "phone screen"],
-    "offer": ["offer", "congratulations", "pleased to extend", "welcome aboard"],
+    "offer": [
+        "offer",
+        "offer letter",
+        "formal offer",
+        "written offer",
+        "official offer",
+        "compensation package",
+        "congratulations",
+        "pleased to extend",
+        "welcome aboard",
+        "join us as",
+        "join our team",
+        "summer intern",
+        "summer internship",
+        "confirm your interest",
+        "still interested",
+    ],
     "application_received": ["received your application", "application received", "thank you for applying", "we have received"],
 }
 STATUS_PATTERNS = {
+    "action_required": [
+        re.compile(r"\badditional information needed\b", flags=re.IGNORECASE),
+        re.compile(r"\binformation appears to be missing\b", flags=re.IGNORECASE),
+        re.compile(r"\bmissing from your job application\b", flags=re.IGNORECASE),
+        re.compile(r"\bcomplete (?:your|our)\s+job application\b", flags=re.IGNORECASE),
+        re.compile(r"\bplease follow (?:the|these)\s+below steps\b", flags=re.IGNORECASE),
+        re.compile(r"\bretrieve the temporary password\b", flags=re.IGNORECASE),
+    ],
     "rejection": [
         re.compile(r"\bregret to inform you\b", flags=re.IGNORECASE),
         re.compile(r"\bunable to consider you further\b", flags=re.IGNORECASE),
@@ -52,6 +87,12 @@ STATUS_PATTERNS = {
         re.compile(r"\bpleased to extend\b", flags=re.IGNORECASE),
         re.compile(r"\bjob offer\b", flags=re.IGNORECASE),
         re.compile(r"\bwelcome aboard\b", flags=re.IGNORECASE),
+        re.compile(r"\b(?:formal|official|written)\s+offer\b", flags=re.IGNORECASE),
+        re.compile(r"\boffer letter\b", flags=re.IGNORECASE),
+        re.compile(r"\bextend(?:ing)?\s+(?:you\s+)?(?:an?\s+)?offer\b", flags=re.IGNORECASE),
+        re.compile(r"\bconfirm (?:your )?interest\b.{0,50}\boffer\b", flags=re.IGNORECASE),
+        re.compile(r"\bjoin us as\b.{0,60}\bintern\b", flags=re.IGNORECASE),
+        re.compile(r"\bcompensation package\b", flags=re.IGNORECASE),
     ],
     "application_received": [
         re.compile(r"\bthank you for applying\b", flags=re.IGNORECASE),
@@ -59,6 +100,70 @@ STATUS_PATTERNS = {
         re.compile(r"\bapplication (?:has been )?received\b", flags=re.IGNORECASE),
     ],
 }
+JOB_UPDATE_KEYWORDS = (
+    "application",
+    "additional information needed",
+    "missing information",
+    "complete your application",
+    "position",
+    "interview",
+    "offer",
+    "offer letter",
+    "formal offer",
+    "written offer",
+    "summer intern",
+    "summer internship",
+    "join us",
+    "hiring",
+    "recruit",
+    "candidate",
+    "next steps",
+    "status update",
+)
+NEGATIVE_INTENT_KEYWORDS = (
+    "deal awaits",
+    "limited time offer",
+    "coupon",
+    "promo",
+    "newsletter",
+    "breaking news",
+    "view in browser",
+    "premium",
+    "learn how to",
+    "support hunger",
+    "digest",
+    "unsubscribe",
+)
+JOB_PLATFORM_HINTS = ("linkedin", "ripplematch", "handshake", "indeed", "ziprecruiter")
+RECRUITER_HINTS = ("candidatecare", "career", "careers", "talent", "recruit")
+RECRUITER_FROM_HINTS = (
+    "recruit",
+    "recruiting",
+    "recruiter",
+    "talent",
+    "talent acquisition",
+    "hiring",
+    "human resources",
+    "hr team",
+    "people operations",
+)
+LINKEDIN_APPLY_SIGNALS = (
+    "your application was sent",
+    "application was sent",
+    "application submitted",
+    "jobs-noreply",
+    "job application",
+    "thanks for your interest",
+    "what's next",
+)
+LINKEDIN_NON_APPLY_SIGNALS = (
+    "premium",
+    "next steps after adding",
+    "share their thoughts",
+    "learn how to stand out",
+    "profile",
+    "connection",
+)
 
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]{3,}", re.IGNORECASE)
 _CONTROL_PATTERN = re.compile(r"[\x00-\x1F\x7F]+")
@@ -85,6 +190,13 @@ def parse_sender_domain(from_header: str | None) -> str:
     if "@" not in email_addr:
         return ""
     return email_addr.split("@", 1)[-1].strip().lower()
+
+
+def _sender_localpart(from_header: str | None) -> str:
+    _, email_addr = parseaddr(str(from_header or ""))
+    if "@" not in email_addr:
+        return ""
+    return email_addr.split("@", 1)[0].strip().lower()
 
 
 def normalize_subject_key(subject: str | None) -> str:
@@ -131,7 +243,40 @@ def _clean_company_capture(value: str | None) -> str | None:
         maxsplit=1,
         flags=re.IGNORECASE,
     )[0]
+    trimmed = re.sub(r"^\s*the\s+", "", trimmed, flags=re.IGNORECASE)
+    lowered = trimmed.lower()
+    if "interest in" in lowered:
+        return None
+    if any(token in lowered for token in ("your ", " this ", " our ")):
+        return None
     return _format_company_name(trimmed)
+
+
+def _company_from_sender_localpart(from_header: str | None) -> str | None:
+    localpart = _sender_localpart(from_header)
+    if not localpart:
+        return None
+    common = {
+        "no-reply",
+        "noreply",
+        "donotreply",
+        "do-not-reply",
+        "notifications",
+        "notification",
+        "jobs",
+        "careers",
+        "recruiting",
+        "workday",
+    }
+    if localpart in common:
+        return None
+    cleaned = re.sub(r"[^a-z0-9]+", " ", localpart).strip()
+    if not cleaned or len(cleaned) < 2:
+        return None
+    parts = [part for part in cleaned.split() if part]
+    if len(parts) == 1 and parts[0].isalpha() and len(parts[0]) <= 5:
+        return parts[0].upper()
+    return _format_company_name(cleaned)
 
 
 def extract_company_hint(from_header: str, subject: str, snippet: str = "", body: str = "") -> str | None:
@@ -149,42 +294,149 @@ def extract_company_hint(from_header: str, subject: str, snippet: str = "", body
         subject_patterns = [
             r"\bposition update from\s+([A-Za-z0-9&.\- ]{2,60})$",
             r"\bupdate from\s+([A-Za-z0-9&.\- ]{2,60})$",
+            r"\b(?:application|position|role)\s+(?:with|at|for)\s+([A-Za-z0-9&.\- ]{2,60})$",
         ]
         for pattern in subject_patterns:
             subject_match = re.search(pattern, subject or "", flags=re.IGNORECASE)
             if subject_match:
-                return _clean_company_capture(subject_match.group(1))
+                captured = _clean_company_capture(subject_match.group(1))
+                if captured:
+                    return captured
 
         content = " ".join(part for part in [subject or "", snippet or "", body or ""] if part)
         patterns = [
             r"\bposition update from\s+([A-Za-z0-9&.\- ]{2,60})",
             r"\bupdate from\s+([A-Za-z0-9&.\- ]{2,60})",
-            r"\bapplication (?:with|at|for)\s+([A-Za-z0-9&.\- ]{2,60})",
+            r"\b(?:application|position|role)\s+(?:with|at|for)\s+([A-Za-z0-9&.\- ]{2,60})",
             r"\b(?:at|for|with)\s+([A-Za-z0-9&.\- ]{2,60})\s+(?:position|role|opportunity)\b",
         ]
         for pattern in patterns:
             match = re.search(pattern, content, flags=re.IGNORECASE)
             if match:
-                return _clean_company_capture(match.group(1))
+                captured = _clean_company_capture(match.group(1))
+                if captured:
+                    return captured
+        localpart_hint = _company_from_sender_localpart(from_header)
+        if localpart_hint:
+            return localpart_hint
         return None
     return _format_company_name(candidate)
 
 
+def _score_status_for_text(text: str) -> dict[str, int]:
+    normalized = str(text or "").lower()
+    scores: dict[str, int] = {}
+    for status in ("rejection", "action_required", "interview_invite", "offer", "application_received"):
+        score = 0
+        score += sum(1 for keyword in STATUS_KEYWORDS[status] if keyword in normalized)
+        score += 2 * sum(1 for pattern in STATUS_PATTERNS[status] if pattern.search(normalized))
+        scores[status] = score
+    return scores
+
+
 def classify_message_status(subject: str, snippet: str, body: str = "") -> str:
-    combined = f"{(subject or '').lower()} {(snippet or '').lower()} {(body or '').lower()}"
     min_score = {
         "rejection": 2,
+        "action_required": 2,
         "interview_invite": 2,
         "offer": 2,
         "application_received": 1,
     }
-    for status in ("rejection", "interview_invite", "offer", "application_received"):
-        score = 0
-        score += sum(1 for keyword in STATUS_KEYWORDS[status] if keyword in combined)
-        score += 2 * sum(1 for pattern in STATUS_PATTERNS[status] if pattern.search(combined))
-        if score >= min_score[status]:
-            return status
+    for content in (body, subject, snippet):
+        scores = _score_status_for_text(content)
+        for status in ("rejection", "action_required", "interview_invite", "offer", "application_received"):
+            if scores.get(status, 0) >= min_score[status]:
+                return status
     return "unknown"
+
+
+def is_job_update_message(subject: str, snippet: str, body: str = "") -> bool:
+    status = classify_message_status(subject, snippet, body)
+    if status != "unknown":
+        return True
+    combined = f"{(subject or '').lower()} {(snippet or '').lower()} {(body or '').lower()}"
+    return any(keyword in combined for keyword in JOB_UPDATE_KEYWORDS)
+
+
+def _intent_score(subject: str, snippet: str, body: str = "") -> int:
+    combined = f"{(subject or '').lower()} {(snippet or '').lower()} {(body or '').lower()}"
+    return sum(1 for keyword in JOB_UPDATE_KEYWORDS if keyword in combined)
+
+
+def _negative_intent_detected(subject: str, snippet: str, body: str = "") -> bool:
+    combined = f"{(subject or '').lower()} {(snippet or '').lower()} {(body or '').lower()}"
+    return any(keyword in combined for keyword in NEGATIVE_INTENT_KEYWORDS)
+
+
+def _source_bucket(from_header: str, subject: str, snippet: str, body: str = "") -> str:
+    domain = parse_sender_domain(from_header)
+    combined = f"{domain} {(from_header or '').lower()} {(subject or '').lower()} {(snippet or '').lower()} {(body or '').lower()}"
+    second_level_domain = ""
+    if "." in domain:
+        parts = [part for part in domain.split(".") if part]
+        if len(parts) >= 2:
+            second_level_domain = parts[-2]
+    if any(hint in combined for hint in ATS_DOMAIN_HINTS):
+        return "ats_portal"
+    if any(hint in combined for hint in JOB_PLATFORM_HINTS):
+        return "job_platform"
+    if any(hint in combined for hint in RECRUITER_HINTS):
+        return "recruiter_direct"
+    if any(hint in combined for hint in RECRUITER_FROM_HINTS):
+        return "recruiter_direct"
+    if second_level_domain and second_level_domain not in CONSUMER_EMAIL_DOMAINS:
+        if _intent_score(subject, snippet, body) >= 2:
+            return "recruiter_direct"
+    return "non_career"
+
+
+def _has_strong_job_signal(
+    *,
+    status: str,
+    intent_score: int,
+    job_update_detected: bool,
+    matched_applied_job: bool,
+    from_header: str,
+    subject: str,
+    snippet: str,
+    body: str,
+) -> bool:
+    if status in {"offer", "interview_invite", "rejection", "action_required"}:
+        return True
+    if matched_applied_job and job_update_detected:
+        return True
+    if intent_score >= 3 and job_update_detected:
+        return True
+
+    domain = parse_sender_domain(from_header)
+    parts = [part for part in domain.split(".") if part]
+    second_level_domain = parts[-2] if len(parts) >= 2 else ""
+    if second_level_domain in CONSUMER_EMAIL_DOMAINS:
+        return False
+
+    combined = f"{(subject or '').lower()} {(snippet or '').lower()} {(body or '').lower()}"
+    high_signal_phrases = (
+        "offer letter",
+        "formal offer",
+        "written offer",
+        "official offer",
+        "confirm your interest",
+        "still interested",
+        "join us as",
+        "summer intern",
+        "summer internship",
+    )
+    return any(phrase in combined for phrase in high_signal_phrases)
+
+
+def _linkedin_apply_detected(from_header: str, subject: str, snippet: str, body: str = "") -> bool:
+    domain = parse_sender_domain(from_header)
+    if "linkedin" not in domain:
+        return False
+    combined = f"{domain} {(subject or '').lower()} {(snippet or '').lower()} {(body or '').lower()}"
+    if any(marker in combined for marker in LINKEDIN_NON_APPLY_SIGNALS):
+        return False
+    return any(marker in combined for marker in LINKEDIN_APPLY_SIGNALS)
 
 
 def is_ats_message(from_header: str, subject: str, snippet: str) -> bool:
@@ -261,30 +513,58 @@ def evaluate_message(
     apply_sessions: Iterable[dict],
     allowed_statuses: set[str],
     require_ats: bool,
+    source_strictness: str = "strict_career_domains",
+    linkedin_mode: str = "linkedin_apply_only",
 ) -> dict:
     subject = sanitize_preview_text(message.subject, max_len=220)
     snippet = sanitize_preview_text(message.snippet, max_len=320)
     body = sanitize_preview_text(message.body, max_len=1500)
+    body_preview = sanitize_preview_text(message.body, max_len=1200)
     from_header = sanitize_preview_text(message.from_header, max_len=220)
     date = sanitize_preview_text(message.date, max_len=120)
     status = classify_message_status(subject, snippet, body)
     company_hint = extract_company_hint(from_header, subject, snippet, body)
     ats_detected = is_ats_message(from_header, subject, f"{snippet} {body}")
+    job_update_detected = is_job_update_message(subject, snippet, body)
+    source_bucket = _source_bucket(from_header, subject, snippet, body)
+    intent_score = _intent_score(subject, snippet, body)
+    negative_intent_detected = _negative_intent_detected(subject, snippet, body)
+    linkedin_apply_detected = _linkedin_apply_detected(from_header, subject, snippet, body)
 
     matched_applied_job = message_matches_applied_job(
         ScanMessage(subject=subject, from_header=from_header, date=date, snippet=snippet, body=body, source_id=message.source_id),
         apply_sessions=apply_sessions,
         allowed_statuses=allowed_statuses,
     )
+    strong_job_signal = _has_strong_job_signal(
+        status=status,
+        intent_score=intent_score,
+        job_update_detected=job_update_detected,
+        matched_applied_job=matched_applied_job,
+        from_header=from_header,
+        subject=subject,
+        snippet=snippet,
+        body=body,
+    )
 
     include = True
     reason = "included"
-    if require_ats and not ats_detected:
+    if source_strictness == "strict_career_domains" and source_bucket == "non_career" and not strong_job_signal:
         include = False
-        reason = "non_ats_sender"
-    elif not matched_applied_job:
+        reason = "noncareer_source"
+    elif "linkedin" in parse_sender_domain(from_header):
+        if linkedin_mode == "linkedin_off":
+            include = False
+            reason = "linkedin_disabled"
+        elif linkedin_mode == "linkedin_apply_only" and not linkedin_apply_detected:
+            include = False
+            reason = "linkedin_non_apply"
+    elif negative_intent_detected:
         include = False
-        reason = "no_applied_job_match"
+        reason = "negative_intent"
+    elif require_ats and not (ats_detected or (job_update_detected and intent_score >= 2) or strong_job_signal):
+        include = False
+        reason = "non_ats_or_job_update"
 
     return {
         "source_id": message.source_id,
@@ -294,7 +574,13 @@ def evaluate_message(
         "detected_status": status,
         "company_hint": company_hint,
         "snippet": snippet,
+        "body_preview": body_preview,
         "ats_detected": ats_detected,
+        "job_update_detected": job_update_detected,
+        "linkedin_apply_detected": linkedin_apply_detected,
+        "negative_intent_detected": negative_intent_detected,
+        "source_bucket": source_bucket,
+        "intent_score": intent_score,
         "matched_applied_job": matched_applied_job,
         "include": include,
         "exclude_reason": None if include else reason,

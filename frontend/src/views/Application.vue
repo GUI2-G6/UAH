@@ -11,6 +11,10 @@
     </div>
 
     <div class="dashboard">
+      <Card class="home-card home-stat-card action-required-stat-card">
+        <template #header><h2>Action Required</h2></template>
+        <p id="action-required" class="kpi-value">{{ summary.action_required }}</p>
+      </Card>
       <Card class="home-card home-stat-card">
         <template #header><h2>Applied</h2></template>
         <p id="applied" class="kpi-value">{{ summary.applied }}</p>
@@ -32,15 +36,21 @@
         <template #header>
           <h2 id="tracked-applications">Scan for updates</h2>
           <p class="scan-meta">Last scan: {{ lastRefreshed ? formatTimestamp(lastRefreshed) : 'Not scanned yet' }}</p>
-          <p v-if="submittedSessionCount !== null" class="scan-meta">Submitted sessions available for matching: {{ submittedSessionCount }}</p>
+          <p v-if="submittedSessionCount !== null" class="scan-meta">Saved sessions available for analytics: {{ submittedSessionCount }}</p>
+          <p v-if="scanDiagnostics" class="scan-meta">
+            Included ATS: {{ scanDiagnostics.included_by_ats }} · LinkedIn apply: {{ scanDiagnostics.included_by_linkedin_apply }} · Excluded non-career: {{ scanDiagnostics.excluded_by_noncareer_source }} · Excluded promo/news: {{ scanDiagnostics.excluded_by_negative_intent }}
+          </p>
         </template>
 
-        <div class="scan-primary-actions">
-          <button class="submit-btn is-primary" type="button" :disabled="loading || !gmailConnected" @click="scanNow">
-            {{ loading ? 'Scanning…' : 'Scan Gmail for updates' }}
+        <div class="scan-primary-actions section-block">
+          <button class="submit-btn is-primary" type="button" :disabled="loading || !gmailConnected" @click="scanNow('new')">
+            {{ loading && scanMode === 'new' ? 'Scanning…' : 'Scan new updates' }}
           </button>
-          <button class="submit-btn" type="button" :disabled="trackingBusy || !selectedCount" @click="saveSelectedTracked">
-            {{ trackingBusy ? 'Saving…' : `Save selected for tracking (${selectedCount})` }}
+          <button class="submit-btn is-primary" type="button" :disabled="loading || !gmailConnected" @click="scanNow('saved')">
+            {{ loading && scanMode === 'saved' ? 'Scanning…' : 'Scan saved tracked applications' }}
+          </button>
+          <button class="submit-btn" type="button" :disabled="trackingBusy || !selectedVisibleCount" @click="saveSelectedTracked">
+            {{ trackingBusy ? 'Saving…' : `Save selected for tracking (${selectedVisibleCount})` }}
           </button>
           <button class="submit-btn is-ghost" type="button" @click="showAdvancedOptions = !showAdvancedOptions">
             {{ showAdvancedOptions ? 'Hide advanced scan options' : 'Show advanced scan options' }}
@@ -85,10 +95,21 @@
               <option :value="100">100 results</option>
             </select>
           </div>
-          <label class="scan-toggle">
-            <input v-model="scanIncludeProvisional" type="checkbox" :disabled="!gmailConnected">
-            Include likely matches that still need confirmation
-          </label>
+          <div class="advanced-field">
+            <label for="source-strictness">Source strictness</label>
+            <select id="source-strictness" v-model="sourceStrictness" class="scan-input" :disabled="!gmailConnected">
+              <option value="strict_career_domains">Strict career domains</option>
+              <option value="hybrid_job_language">Hybrid (allow strong job language)</option>
+            </select>
+          </div>
+          <div class="advanced-field">
+            <label for="linkedin-mode">LinkedIn handling</label>
+            <select id="linkedin-mode" v-model="linkedinMode" class="scan-input" :disabled="!gmailConnected">
+              <option value="linkedin_apply_only">LinkedIn application emails only</option>
+              <option value="linkedin_all_jobish">Most LinkedIn job-ish emails</option>
+              <option value="linkedin_off">Exclude LinkedIn</option>
+            </select>
+          </div>
         </section>
       </Card>
 
@@ -98,9 +119,44 @@
           <p class="scan-meta">{{ feedItems.length }} update{{ feedItems.length === 1 ? '' : 's' }} in this view</p>
         </template>
 
-        <div class="results-toolbar">
+        <section v-if="actionRequiredItems.length" class="action-required-section section-block">
+          <h3 class="action-required-title">High Priority: Action Required</h3>
+          <p class="scan-meta">These updates require immediate follow-up steps.</p>
+          <Card
+            v-for="(app, index) in actionRequiredItems"
+            :key="`action-required-${app.source_id || app.thread_key || index}`"
+            variant="minimal"
+            class="home-application-card action-required-card"
+          >
+            <p v-if="app.manual_override_applied" class="scan-meta">Manual override</p>
+            <label class="candidate-checkbox">
+              <input type="checkbox" :checked="isSelected(app.selection_key)" @change="toggleSelection(app.selection_key)">
+              <span>Select for tracking</span>
+            </label>
+            <Application :application="app" />
+            <div class="suppression-actions">
+              <button type="button" class="submit-btn is-primary" @click="openMostRecentEmail(app)">Open email</button>
+              <button type="button" class="submit-btn" @click="suppressMessage(app)">Hide this update</button>
+              <button type="button" class="submit-btn" @click="suppressThread(app)">Hide similar emails</button>
+              <label class="manual-status-label">
+                <span>Set status</span>
+                <select class="manual-status-select" :value="manualStatusFor(app)" @change="setManualStatus(app, $event?.target?.value)">
+                  <option value="action_required">Action Required</option>
+                  <option value="applied">Applied</option>
+                  <option value="interview">Interview</option>
+                  <option value="offer">Offer</option>
+                  <option value="rejection">Not moving forward</option>
+                  <option value="unknown">Needs review</option>
+                </select>
+              </label>
+            </div>
+          </Card>
+        </section>
+
+        <div class="results-toolbar section-block">
           <select id="app-filter" v-model="selectedStatusFilter">
             <option value="all">All statuses</option>
+            <option value="action_required">Action Required</option>
             <option value="interview">Interview</option>
             <option value="offer">Offer</option>
             <option value="rejection">Not moving forward</option>
@@ -122,6 +178,7 @@
           variant="minimal"
           class="home-application-card"
         >
+          <p v-if="app.manual_override_applied" class="scan-meta">Manual override</p>
           <label class="candidate-checkbox">
             <input type="checkbox" :checked="isSelected(app.selection_key)" @change="toggleSelection(app.selection_key)">
             <span>Select for tracking</span>
@@ -131,6 +188,17 @@
             <button type="button" class="submit-btn is-primary" @click="openMostRecentEmail(app)">Open email</button>
             <button type="button" class="submit-btn" @click="suppressMessage(app)">Hide this update</button>
             <button type="button" class="submit-btn" @click="suppressThread(app)">Hide similar emails</button>
+            <label class="manual-status-label">
+              <span>Set status</span>
+              <select class="manual-status-select" :value="manualStatusFor(app)" @change="setManualStatus(app, $event?.target?.value)">
+                <option value="action_required">Action Required</option>
+                <option value="applied">Applied</option>
+                <option value="interview">Interview</option>
+                <option value="offer">Offer</option>
+                <option value="rejection">Not moving forward</option>
+                <option value="unknown">Needs review</option>
+              </select>
+            </label>
           </div>
         </Card>
       </Card>
@@ -181,7 +249,7 @@
     import Card from "../components/Card.vue"
     import Application from "../components/Application.vue"
     import { authedFetch, getCurrentUser } from "../lib/auth.js";
-    import { readGmailScanCache, resolveGmailConnectionStatus, runGmailScan, subscribeGmailUpdates, summarizeGmailResults, listGmailSuppressions, createGmailSuppression, removeGmailSuppression } from "../lib/gmailUpdates.js"
+    import { readGmailScanCache, resolveGmailConnectionStatus, runGmailScan, subscribeGmailUpdates, summarizeGmailResults, listGmailSuppressions, createGmailSuppression, removeGmailSuppression, createGmailFeedback } from "../lib/gmailUpdates.js"
     import { showToast } from "../services/toastService";
 
     export default{
@@ -197,17 +265,20 @@
                 selectedStatusFilter: 'all',
                 applications: [],
                 submittedSessionCount: null,
+                scanDiagnostics: null,
                 scanQuery: '',
                 scanNewerThanDays: 45,
                 scanMaxResults: 20,
-                scanIncludeProvisional: true,
                 scanCustomDays: null,
+                sourceStrictness: 'hybrid_job_language',
+                linkedinMode: 'linkedin_apply_only',
                 suppressions: [],
                 suppressionsOpen: false,
                 selectedKeys: {},
                 trackingBusy: false,
                 trackedApplications: [],
                 showAdvancedOptions: false,
+                scanMode: 'new',
                 onUserUpdated: null,
             }
         },
@@ -245,9 +316,16 @@
                 gmail_open_url_fallback: item.gmail_open_url_fallback || '',
                 tracking_source: item.tracking_source || 'matched',
                 confidence: item.confidence || 'high',
+                manual_override_applied: item.manual_override_applied === true,
             }))
             if (this.selectedStatusFilter === 'all') return mapped
             return mapped.filter((item) => String(item.status).toLowerCase() === this.selectedStatusFilter)
+        },
+        actionRequiredItems() {
+            return this.feedItems.filter((item) => String(item.status).toLowerCase() === 'action_required')
+        },
+        selectedVisibleCount() {
+            return this.feedItems.filter((row) => this.isSelected(row.selection_key)).length
         },
         selectedCount() {
             return Object.values(this.selectedKeys).filter(Boolean).length
@@ -291,26 +369,37 @@
             this.submittedSessionCount = Number.isFinite(Number(record?.scan_scope?.applied_job_candidates))
                 ? Number(record.scan_scope.applied_job_candidates)
                 : null
+            this.scanDiagnostics = record?.scan_scope && typeof record.scan_scope === 'object'
+                ? {
+                    included_by_ats: Number(record.scan_scope.included_by_ats || 0),
+                    included_by_linkedin_apply: Number(record.scan_scope.included_by_linkedin_apply || 0),
+                    excluded_by_noncareer_source: Number(record.scan_scope.excluded_by_noncareer_source || 0),
+                    excluded_by_negative_intent: Number(record.scan_scope.excluded_by_negative_intent || 0),
+                }
+                : null
         },
         formatTimestamp(value) {
             if (!value) return 'Unknown'
             const date = new Date(value)
             return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString()
         },
-        async scanNow() {
+        async scanNow(mode = 'new') {
             if (!this.gmailConnected) {
                 this.error = 'Gmail is not connected. Open Settings > Service Connections > Gmail Updates.'
                 return
             }
+            this.scanMode = mode === 'saved' ? 'saved' : 'new'
             this.loading = true
             this.error = ''
             await this.emitAnalyticsEvent('dashboard.scan.started')
             try {
                 const record = await runGmailScan({
+                    scan_mode: this.scanMode,
+                    source_strictness: this.sourceStrictness,
+                    linkedin_mode: this.linkedinMode,
                     query: this.scanQuery,
                     newer_than_days: Number(this.scanCustomDays || this.scanNewerThanDays || 45),
                     max_results: this.scanMaxResults,
-                    include_provisional: this.scanIncludeProvisional,
                 })
                 this.applyScanRecord(record)
                 this.gmailConnected = true
@@ -517,6 +606,51 @@
                 || String(row.subject_key || '').trim() !== subjectKey
                 || String(row.company_key || '').trim() !== companyKey
             ))
+        },
+        manualStatusFor(item) {
+            const status = String(item?.status || item?.detected_status || 'unknown').trim().toLowerCase()
+            if (status === 'action_required') return 'action_required'
+            if (status === 'application_received' || status === 'applied') return 'applied'
+            if (status === 'interview_invite' || status === 'interview') return 'interview'
+            if (status === 'offer') return 'offer'
+            if (status === 'rejection') return 'rejection'
+            return 'unknown'
+        },
+        async setManualStatus(item, selectedStatus) {
+            const normalized = String(selectedStatus || '').trim().toLowerCase()
+            const statusMap = {
+                action_required: 'action_required',
+                applied: 'application_received',
+                interview: 'interview_invite',
+                offer: 'offer',
+                rejection: 'rejection',
+                unknown: 'unknown',
+            }
+            if (!statusMap[normalized]) return
+            try {
+                await createGmailFeedback({
+                    source_id: item.source_id || null,
+                    from_header: item.from || '',
+                    subject: item.subject || '',
+                    company_hint: item.company_hint || item.company || '',
+                    triage_label: 'relevant',
+                    override_status: statusMap[normalized],
+                    notes: 'Manual status set from Applications view',
+                })
+                this.applications = (this.applications || []).map((row) => {
+                    if (String(row.source_id || '') !== String(item.source_id || '')) return row
+                    return {
+                        ...row,
+                        detected_status: statusMap[normalized],
+                        status_bucket: normalized,
+                        manual_override_applied: true,
+                    }
+                })
+                this.summary = summarizeGmailResults(this.applications || [])
+                showToast('Status updated.', 'success')
+            } catch (error) {
+                showToast(error?.message || 'Could not save status update.', 'error')
+            }
         },
         openMostRecentEmail(item) {
             const direct = String(item.gmail_open_url_direct || '').trim()

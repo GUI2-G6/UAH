@@ -110,6 +110,15 @@ services:
     volumes:
       - ./volumes/certs/beta:/etc/nginx/certs:ro
     network_mode: "service:cloudflared"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pidof nginx >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   landing:
     container_name: uah-landing
@@ -121,7 +130,7 @@ services:
       uah-beta-infra: {}
 
   cloudflared:
-    image: ${CLOUDFLARED_IMAGE:-cloudflare/cloudflared:2024.11.0}
+    image: ${CLOUDFLARED_IMAGE:-cloudflare/cloudflared:2026.3.0}
     container_name: uah-beta-cloudflared
     restart: unless-stopped
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_BETA_TUNNEL_TOKEN}

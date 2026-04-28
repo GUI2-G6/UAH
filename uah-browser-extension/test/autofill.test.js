@@ -53,6 +53,23 @@ test('buildProfileAutofillSource prefers token_map and overlays profile-only ext
   assert.equal(source.tokenMap.requires_sponsorship, 'No')
   assert.equal(source.tokenMap.years_experience, '5')
   assert.equal(source.tokenMap.professional_links_text, 'GitHub: https://github.com/example')
+  assert.equal(source.contractSatisfied, true)
+  assert.equal(source.error, '')
+})
+
+test('buildProfileAutofillSource requires backend token_map and does not flatten canonical fallback', () => {
+  const source = buildProfileAutofillSource({
+    id: 33,
+    name: 'No token map profile',
+    canonical_data: {
+      personal_info: { first_name: 'Fallback', last_name: 'ShouldNotApply' },
+    },
+  })
+
+  assert.equal(source.contractSatisfied, false)
+  assert.equal(source.tokenCount, 0)
+  assert.equal(source.tokenMap['personal_info.first_name'], undefined)
+  assert.match(source.error, /missing token_map/i)
 })
 
 test('sanitizeTokenMap keeps only structured-clone-safe flat primitives', () => {

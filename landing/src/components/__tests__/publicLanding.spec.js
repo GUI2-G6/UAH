@@ -204,12 +204,18 @@ describe('public landing route architecture', () => {
 
     expect(paths).toContain('/')
     expect(paths).toContain('/status')
-    expect(paths).toContain('/our-commitment')
+    expect(paths).toContain('/privacy-policy')
     expect(paths).toContain('/terms')
     expect(paths).toContain('/contributors')
     expect(paths).toContain('/ecosystem')
     expect(paths).toContain('/browser-extension')
     expect(paths).toContain('/provider-requests')
+  })
+
+  it('keeps a permanent redirect from the legacy /our-commitment path to /privacy-policy', () => {
+    const legacyRoute = landingRouter.getRoutes().find((route) => route.path === '/our-commitment')
+    expect(legacyRoute).toBeDefined()
+    expect(legacyRoute.redirect).toBe('/privacy-policy')
   })
 
   it('renders route-focused navigation links in the header', () => {

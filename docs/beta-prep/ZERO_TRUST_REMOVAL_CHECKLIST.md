@@ -26,7 +26,7 @@ Keep these route buckets explicit when removing the broad wall.
 ### Internet Reachable
 
 - Frontend public routes required for onboarding and account recovery:
-  `/landing`, `/login`, `/register`, `/signup`, `/status`, `/forgot-password`, `/reset-password`, `/oauth-callback`, `/verify-email`, `/our-commitment`, `/contributors`
+  `/landing`, `/login`, `/register`, `/signup`, `/status`, `/forgot-password`, `/reset-password`, `/oauth-callback`, `/verify-email`, `/privacy-policy`, `/our-commitment` (legacy redirect to `/privacy-policy`), `/contributors`
 - Backend public and identity routes:
   `/api/status`, `/api/auth/*`, `/api/public/*`
 - Backend account-recovery routes that must stay reachable for non-authenticated users:

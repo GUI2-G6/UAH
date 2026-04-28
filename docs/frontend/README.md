@@ -64,7 +64,7 @@ npm run check:cards
 - `Forgot-Password`
 - `Reset-Password`
 - `Status`
-- `Our-Commitment`
+- `Privacy-Policy` (also reachable via the legacy `/our-commitment` redirect)
 - `Contributors`
 - `Dev` (debug-tools gated)
 

@@ -6,7 +6,7 @@
             <ThemeModeControl class="footer-theme-control" compact group-label="Color theme" />
             <button type="button" class="footer-link-button" data-test="footer-link-home" @click="openPublicPage('/', 'Landing home')">Landing</button>
             <button type="button" class="footer-link-button" data-test="footer-link-status" @click="openPublicPage('/status', 'Status')">Status</button>
-            <button type="button" class="footer-link-button" data-test="footer-link-privacy" @click="openPublicPage('/our-commitment', 'Privacy Policy')">Privacy Policy</button>
+            <button type="button" class="footer-link-button" data-test="footer-link-privacy" @click="openPublicPage('/privacy-policy', 'Privacy Policy')">Privacy Policy</button>
             <button type="button" class="footer-link-button" data-test="footer-link-terms" @click="openPublicPage('/terms', 'Terms of Service')">Terms</button>
             <button type="button" class="footer-link-button" data-test="footer-link-contributors" @click="openPublicPage('/contributors', 'Contributors')">Contributors</button>
             <button type="button" class="footer-link-button" data-test="footer-link-ecosystem" @click="openPublicPage('/ecosystem', 'Ecosystem')">Ecosystem</button>

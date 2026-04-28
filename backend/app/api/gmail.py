@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from urllib.parse import urlencode
 from app.db.session import get_db
 from app.models.user import User
-from app.models.user import GmailSuppression, GmailNotificationState
+from app.models.user import GmailSuppression, GmailNotificationState, GmailFeedback
 from app.models.apply_session import ApplySession, TrackedApplication
 from app.api.deps import get_current_user, require_admin_or_developer
 from app.core.rate_limit import enforce_subject_rate_limit
@@ -63,10 +63,12 @@ class GmailDebugScanRequest(BaseModel):
 
 
 class GmailScanRequest(BaseModel):
+    scan_mode: str = Field(default="new", max_length=24)
     query: str | None = Field(default=None, max_length=280)
     newer_than_days: int = Field(default=45, ge=1, le=36500)
     max_results: int = Field(default=20, ge=1, le=100)
-    include_provisional: bool = Field(default=True)
+    source_strictness: str = Field(default="hybrid_job_language", max_length=40)
+    linkedin_mode: str = Field(default="linkedin_apply_only", max_length=40)
 
 
 class GmailSuppressionCreateRequest(BaseModel):
@@ -81,6 +83,17 @@ class GmailSuppressionCreateRequest(BaseModel):
 class GmailNotificationStateCreateRequest(BaseModel):
     source_id: str = Field(default="", max_length=255)
     action: str = Field(default="snooze", max_length=40)
+
+
+class GmailFeedbackCreateRequest(BaseModel):
+    source_id: str | None = Field(default=None, max_length=255)
+    from_header: str | None = Field(default=None, max_length=255)
+    subject: str | None = Field(default=None, max_length=255)
+    company_hint: str | None = Field(default=None, max_length=120)
+    triage_label: str = Field(default="unsure", max_length=40)
+    override_status: str | None = Field(default=None, max_length=40)
+    false_positive_reason: str | None = Field(default=None, max_length=255)
+    notes: str | None = Field(default=None, max_length=255)
 
 
 def _get_fernet():
@@ -382,6 +395,42 @@ def _serialize_notification_state(row: GmailNotificationState) -> dict:
     }
 
 
+def _serialize_feedback(row: GmailFeedback) -> dict:
+    return {
+        "id": row.id,
+        "source_id": row.source_id,
+        "sender_domain": row.sender_domain,
+        "subject_key": row.subject_key,
+        "company_key": row.company_key,
+        "triage_label": row.triage_label,
+        "override_status": row.override_status,
+        "false_positive_reason": row.false_positive_reason,
+        "notes": row.notes,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+def _feedback_override_for_message(
+    feedback_rows: list[GmailFeedback],
+    *,
+    source_id: str,
+    sender_domain: str,
+    subject_key: str,
+    company_key: str,
+) -> str | None:
+    for row in feedback_rows:
+        row_source_id = str(row.source_id or "").strip()
+        if row_source_id and row_source_id == source_id:
+            return str(row.override_status or "").strip().lower() or None
+        if (
+            (row.sender_domain or "") == sender_domain
+            and (row.subject_key or "") == subject_key
+            and (row.company_key or "") == company_key
+        ):
+            return str(row.override_status or "").strip().lower() or None
+    return None
+
+
 @router.get("/notification-states")
 async def gmail_list_notification_states(
     db: Session = Depends(get_db),
@@ -491,6 +540,92 @@ async def gmail_list_suppressions(
     return {"suppressions": [_serialize_suppression(row) for row in rows]}
 
 
+@router.get("/feedback")
+async def gmail_list_feedback(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    rows = (
+        db.query(GmailFeedback)
+        .filter(GmailFeedback.user_id == current_user.id)
+        .order_by(GmailFeedback.created_at.desc(), GmailFeedback.id.desc())
+        .limit(300)
+        .all()
+    )
+    return {"feedback": [_serialize_feedback(row) for row in rows]}
+
+
+@router.post("/feedback")
+async def gmail_create_feedback(
+    payload: GmailFeedbackCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    triage_label = (payload.triage_label or "").strip().lower()
+    if triage_label not in {"relevant", "not_relevant", "unsure"}:
+        raise HTTPException(status_code=400, detail="triage_label must be 'relevant', 'not_relevant', or 'unsure'")
+    override_status = (payload.override_status or "").strip().lower() or None
+    if override_status and override_status not in {
+        "application_received",
+        "interview_invite",
+        "offer",
+        "rejection",
+        "action_required",
+        "unknown",
+    }:
+        raise HTTPException(status_code=400, detail="override_status is invalid")
+
+    sender_domain, subject_key, company_key = build_thread_signature(
+        from_header=(payload.from_header or ""),
+        subject=(payload.subject or ""),
+        company_hint=payload.company_hint,
+    )
+    source_id = (payload.source_id or "").strip() or None
+    row = GmailFeedback(
+        user_id=current_user.id,
+        source_id=source_id,
+        sender_domain=sender_domain or None,
+        subject_key=subject_key or None,
+        company_key=company_key or None,
+        triage_label=triage_label,
+        override_status=override_status,
+        false_positive_reason=(payload.false_positive_reason or "").strip() or None,
+        notes=(payload.notes or "").strip() or None,
+    )
+    db.add(row)
+
+    suppression = None
+    if triage_label == "not_relevant":
+        if source_id:
+            suppression = GmailSuppression(
+                user_id=current_user.id,
+                scope="message",
+                source_id=source_id,
+                note=(payload.false_positive_reason or "not_relevant feedback").strip()[:255],
+            )
+        elif sender_domain and subject_key:
+            suppression = GmailSuppression(
+                user_id=current_user.id,
+                scope="thread",
+                sender_domain=sender_domain,
+                subject_key=subject_key,
+                company_key=company_key,
+                note=(payload.false_positive_reason or "not_relevant feedback").strip()[:255],
+            )
+        if suppression:
+            db.add(suppression)
+
+    db.commit()
+    db.refresh(row)
+    if suppression:
+        db.refresh(suppression)
+    return {
+        "status": "ok",
+        "feedback": _serialize_feedback(row),
+        "suppression": _serialize_suppression(suppression) if suppression else None,
+    }
+
+
 @router.post("/suppressions")
 async def gmail_create_suppression(
     payload: GmailSuppressionCreateRequest,
@@ -582,6 +717,16 @@ async def gmail_scan(
         window_seconds=SCAN_RATE_WINDOW_SECONDS,
     )
 
+    scan_mode = (payload.scan_mode or "new").strip().lower()
+    if scan_mode not in {"new", "saved"}:
+        raise HTTPException(status_code=400, detail="scan_mode must be 'new' or 'saved'")
+    source_strictness = (payload.source_strictness or "strict_career_domains").strip().lower()
+    if source_strictness not in {"strict_career_domains", "hybrid_job_language"}:
+        raise HTTPException(status_code=400, detail="source_strictness must be 'strict_career_domains' or 'hybrid_job_language'")
+    linkedin_mode = (payload.linkedin_mode or "linkedin_apply_only").strip().lower()
+    if linkedin_mode not in {"linkedin_apply_only", "linkedin_all_jobish", "linkedin_off"}:
+        raise HTTPException(status_code=400, detail="linkedin_mode must be 'linkedin_apply_only', 'linkedin_all_jobish', or 'linkedin_off'")
+
     access_token = await _get_gmail_access_token(current_user.gmail_refresh_token)
     session_scope = _load_apply_session_scope(db, current_user.id, include_unsubmitted=False)
     allowed_statuses = _allowed_apply_session_statuses(False)
@@ -595,6 +740,18 @@ async def gmail_scan(
         db.query(GmailSuppression)
         .filter(GmailSuppression.user_id == current_user.id)
         .order_by(GmailSuppression.created_at.desc(), GmailSuppression.id.desc())
+        .all()
+    )
+    feedback_rows = (
+        db.query(GmailFeedback)
+        .filter(
+            GmailFeedback.user_id == current_user.id,
+            (
+                (GmailFeedback.triage_label == "not_relevant")
+                | (GmailFeedback.override_status.isnot(None))
+            ),
+        )
+        .order_by(GmailFeedback.created_at.desc(), GmailFeedback.id.desc())
         .all()
     )
     tracked_rows = (
@@ -621,12 +778,16 @@ async def gmail_scan(
 
         message_ids = [m["id"] for m in messages_data.get("messages", [])]
         included_results = []
-        provisional_results = []
         excluded_count = 0
         suppressed_message_hits = 0
         suppressed_chain_hits = 0
         suppression_miss_reasons: dict[str, int] = {"missing_source_id": 0, "missing_thread_signature": 0}
         tracked_updates_applied = 0
+        excluded_by_noncareer_source = 0
+        excluded_by_negative_intent = 0
+        included_by_ats = 0
+        included_by_linkedin_apply = 0
+        feedback_applied_count = 0
         now = datetime.now(timezone.utc)
 
         for msg_id in message_ids[: int(payload.max_results)]:
@@ -666,6 +827,8 @@ async def gmail_scan(
                 apply_sessions=session_scope,
                 allowed_statuses=allowed_statuses,
                 require_ats=True,
+                source_strictness=source_strictness,
+                linkedin_mode=linkedin_mode,
             )
             base_result = {
                 "source_id": evaluated["source_id"],
@@ -673,9 +836,14 @@ async def gmail_scan(
                 "from": evaluated["from"],
                 "date": evaluated["date"],
                 "detected_status": evaluated["detected_status"],
+                "manual_override_applied": False,
                 "company_hint": evaluated["company_hint"],
                 "snippet": evaluated["snippet"],
+                "body_preview": evaluated.get("body_preview") or "",
                 "ats_detected": evaluated["ats_detected"],
+                "job_update_detected": evaluated.get("job_update_detected"),
+                "source_bucket": evaluated.get("source_bucket"),
+                "intent_score": evaluated.get("intent_score"),
                 "matched_applied_job": evaluated["matched_applied_job"],
             }
             sender_domain, subject_key, company_key = build_thread_signature(
@@ -699,9 +867,41 @@ async def gmail_scan(
                 "gmail_open_url_direct": direct_url,
                 "gmail_open_url_fallback": fallback_url,
             }
-            tracked_match = tracked_by_source_ref.get(str(evaluated["source_id"] or "")) or tracked_by_thread_key.get(thread_key)
+            source_id = str(evaluated.get("source_id") or "")
+            tracked_match = tracked_by_source_ref.get(source_id) or tracked_by_thread_key.get(thread_key)
+            if scan_mode == "saved" and not tracked_match:
+                excluded_count += 1
+                continue
+            matched_suppression = next((row for row in suppressions if _suppression_matches(evaluated, row)), None)
+            matched_feedback = next(
+                (
+                    row for row in feedback_rows
+                    if (
+                        (row.source_id and source_id == str(row.source_id))
+                        or (
+                            (row.sender_domain or "") == sender_domain
+                            and (row.subject_key or "") == subject_key
+                            and (row.company_key or "") == company_key
+                        )
+                    )
+                ),
+                None,
+            )
+            if matched_feedback:
+                feedback_applied_count += 1
+            suppress_from_feedback = bool(matched_feedback and (matched_feedback.triage_label or "").strip().lower() == "not_relevant")
+            manual_override_status = _feedback_override_for_message(
+                feedback_rows,
+                source_id=source_id,
+                sender_domain=sender_domain,
+                subject_key=subject_key,
+                company_key=company_key,
+            )
+            effective_status = manual_override_status or str(evaluated.get("detected_status") or "unknown")
+            base_result["detected_status"] = effective_status
+            base_result["manual_override_applied"] = bool(manual_override_status)
             if tracked_match:
-                tracked_match.latest_status = str(evaluated.get("detected_status") or tracked_match.latest_status or "")
+                tracked_match.latest_status = effective_status
                 tracked_match.last_update_at = now
                 tracked_match.has_new_update = True
                 tracked_updates_applied += 1
@@ -710,10 +910,12 @@ async def gmail_scan(
             else:
                 base_result["tracked_id"] = None
                 base_result["has_new_update"] = False
-            matched_suppression = next((row for row in suppressions if _suppression_matches(evaluated, row)), None)
             if evaluated.get("include"):
-                if matched_suppression:
-                    if (matched_suppression.scope or "").lower() == "message":
+                if matched_suppression or suppress_from_feedback:
+                    suppression_scope = (matched_suppression.scope or "").lower() if matched_suppression else (
+                        "message" if (matched_feedback and matched_feedback.source_id) else "thread"
+                    )
+                    if suppression_scope == "message":
                         suppressed_message_hits += 1
                         if not evaluated.get("source_id"):
                             suppression_miss_reasons["missing_source_id"] += 1
@@ -725,28 +927,18 @@ async def gmail_scan(
                     continue
                 included_results.append({
                     **base_result,
-                    "tracking_source": "matched",
+                    "tracking_source": "gmail",
                     "confidence": "high",
                 })
-            elif evaluated.get("ats_detected") and bool(payload.include_provisional):
-                if matched_suppression:
-                    if (matched_suppression.scope or "").lower() == "message":
-                        suppressed_message_hits += 1
-                        if not evaluated.get("source_id"):
-                            suppression_miss_reasons["missing_source_id"] += 1
-                    else:
-                        suppressed_chain_hits += 1
-                        if not sender_domain or not subject_key:
-                            suppression_miss_reasons["missing_thread_signature"] += 1
-                    excluded_count += 1
-                    continue
-                provisional_results.append({
-                    **base_result,
-                    "tracking_source": "gmail_provisional",
-                    "confidence": "medium",
-                    "exclude_reason": evaluated.get("exclude_reason"),
-                })
+                if evaluated.get("ats_detected"):
+                    included_by_ats += 1
+                if evaluated.get("linkedin_apply_detected"):
+                    included_by_linkedin_apply += 1
             else:
+                if evaluated.get("exclude_reason") == "noncareer_source":
+                    excluded_by_noncareer_source += 1
+                if evaluated.get("exclude_reason") == "negative_intent":
+                    excluded_by_negative_intent += 1
                 excluded_count += 1
 
     if tracked_updates_applied > 0:
@@ -756,25 +948,30 @@ async def gmail_scan(
         "gmail_email": current_user.gmail_email,
         "results_count": len(included_results),
         "matched_results_count": len(included_results),
-        "provisional_results_count": len(provisional_results),
         "results": included_results,
         "matched_results": included_results,
-        "provisional_results": provisional_results,
         "scan_scope": {
-            "require_ats_sender": True,
+            "require_ats_or_job_update": True,
             "applied_job_statuses": sorted(allowed_statuses),
             "applied_job_candidates": len(session_scope),
             "excluded_count": excluded_count,
             "query": query,
+            "scan_mode": scan_mode,
+            "source_strictness": source_strictness,
+            "linkedin_mode": linkedin_mode,
             "newer_than_days": int(payload.newer_than_days),
             "max_results": int(payload.max_results),
-            "include_provisional": bool(payload.include_provisional),
             "suppression_count": len(suppressions),
             "suppressed_message_hits": suppressed_message_hits,
             "suppressed_chain_hits": suppressed_chain_hits,
             "suppression_miss_reasons": suppression_miss_reasons,
             "tracked_updates_applied": tracked_updates_applied,
             "tracked_rows_seen": len(tracked_rows),
+            "excluded_by_noncareer_source": excluded_by_noncareer_source,
+            "excluded_by_negative_intent": excluded_by_negative_intent,
+            "included_by_ats": included_by_ats,
+            "included_by_linkedin_apply": included_by_linkedin_apply,
+            "feedback_applied_count": feedback_applied_count,
         },
     }
 

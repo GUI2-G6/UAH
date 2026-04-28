@@ -70,6 +70,13 @@
   padding-top: 12px;
 }
 
+.section-block {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--color-surface);
+}
+
 .application-scan-card :deep(.ui-card__header) {
   display: grid;
   gap: 6px;
@@ -107,9 +114,18 @@
   background-color: rgba(34, 197, 94, 0.14);
 }
 
+#action-required {
+  color: var(--color-danger-600);
+  background-color: rgba(245, 158, 11, 0.22);
+}
+
 #rejected {
   color: var(--color-danger-600);
   background-color: rgba(239, 68, 68, 0.14);
+}
+
+.action-required-stat-card {
+  border: 2px solid rgba(245, 158, 11, 0.45);
 }
 
 #tracked-applications {
@@ -368,6 +384,36 @@
   gap: 12px;
 }
 
+.application-scan-card,
+.application-results-card,
+.tracked-panel {
+  margin-top: 4px;
+}
+
+.application-results-card {
+  border-top: 2px solid var(--border-color-light);
+  padding-top: 8px;
+}
+
+.action-required-section {
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.action-required-title {
+  margin: 0;
+  color: var(--color-danger-600);
+}
+
+.action-required-card {
+  border: 1px solid rgba(245, 158, 11, 0.5);
+}
+
+.tracked-panel {
+  border-top: 2px solid var(--border-color-light);
+  padding-top: 8px;
+}
+
 .submit-btn.is-primary {
   background: var(--color-primary-600);
   border-color: var(--color-primary-600);
@@ -449,6 +495,11 @@ html[data-theme="dark"] #interviews {
 html[data-theme="dark"] #offers {
   color: #bbf7d0;
   background-color: rgba(22, 163, 74, 0.24);
+}
+
+html[data-theme="dark"] #action-required {
+  color: #fcd34d;
+  background-color: rgba(245, 158, 11, 0.28);
 }
 
 html[data-theme="dark"] #rejected {

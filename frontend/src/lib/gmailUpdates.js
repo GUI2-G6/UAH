@@ -24,6 +24,7 @@ function safeParse(value) {
 
 function normalizeStatus(status) {
   const normalized = String(status || '').trim().toLowerCase()
+  if (normalized === 'action_required') return 'action_required'
   if (normalized === 'application_received') return 'applied'
   if (normalized === 'interview_invite') return 'interview'
   if (normalized === 'offer') return 'offer'
@@ -59,8 +60,6 @@ function normalizeNotificationState(item = {}) {
 
 function normalizeResult(item = {}) {
   const status = normalizeStatus(item.detected_status)
-  const trackingSource = sanitizeText(item.tracking_source, 40) || (item.matched_applied_job ? 'matched' : 'gmail_provisional')
-  const confidence = sanitizeText(item.confidence, 24) || (trackingSource === 'matched' ? 'high' : 'medium')
   return {
     source_id: sanitizeText(item.source_id, 255),
     subject: sanitizeText(item.subject, 260),
@@ -70,10 +69,12 @@ function normalizeResult(item = {}) {
     status_bucket: status,
     company_hint: sanitizeText(item.company_hint, 120) || null,
     snippet: sanitizeText(item.snippet, 420),
+    body_preview: sanitizeText(item.body_preview, 1600),
     ats_detected: item.ats_detected === true,
+    job_update_detected: item.job_update_detected === true,
     matched_applied_job: item.matched_applied_job === true,
-    tracking_source: trackingSource,
-    confidence,
+    tracking_source: sanitizeText(item.tracking_source, 40) || 'gmail',
+    confidence: sanitizeText(item.confidence, 24) || 'high',
     sender_domain: sanitizeText(item.sender_domain, 255),
     subject_key: sanitizeText(item.subject_key, 160),
     company_key: sanitizeText(item.company_key, 120),
@@ -88,8 +89,6 @@ function normalizeResult(item = {}) {
 export function summarizeGmailResults(results = []) {
   const summary = {
     total: 0,
-    matched_total: 0,
-    provisional_total: 0,
     applied: 0,
     interview: 0,
     offer: 0,
@@ -101,14 +100,9 @@ export function summarizeGmailResults(results = []) {
   for (const raw of results) {
     const item = normalizeResult(raw)
     summary.total += 1
-    if (item.tracking_source === 'gmail_provisional') {
-      summary.provisional_total += 1
-    } else {
-      summary.matched_total += 1
-    }
     summary[item.status_bucket] = Number(summary[item.status_bucket] || 0) + 1
   }
-  summary.action_required = summary.interview + summary.offer
+  summary.action_required = Number(summary.action_required || 0)
   summary.upcoming = summary.interview
   return summary
 }
@@ -137,34 +131,30 @@ export function filterResultsByNotificationStates(results = [], notificationStat
 export function readGmailScanCache() {
   const cached = safeParse(localStorage.getItem(storageKeyForCurrentUser()))
   if (!cached) return null
-  const matched = Array.isArray(cached.matched_results) ? cached.matched_results : (Array.isArray(cached.results) ? cached.results : [])
-  const provisional = Array.isArray(cached.provisional_results) ? cached.provisional_results : []
-  const normalizedMatched = matched.slice(0, 250).map(normalizeResult)
-  const normalizedProvisional = provisional.slice(0, 250).map(normalizeResult)
-  const normalizedResults = [...normalizedMatched, ...normalizedProvisional]
+  const results = Array.isArray(cached.results)
+    ? cached.results
+    : [
+      ...(Array.isArray(cached.matched_results) ? cached.matched_results : []),
+      ...(Array.isArray(cached.provisional_results) ? cached.provisional_results : []),
+    ]
+  const normalizedResults = results.slice(0, 250).map(normalizeResult)
   return {
     ...cached,
-    matched_results: normalizedMatched,
-    provisional_results: normalizedProvisional,
     results: normalizedResults,
     summary: summarizeGmailResults(normalizedResults),
   }
 }
 
 export function writeGmailScanCache(payload = {}) {
-  const normalizedMatched = Array.isArray(payload.matched_results)
-    ? payload.matched_results.slice(0, 250).map(normalizeResult)
-    : (Array.isArray(payload.results) ? payload.results.slice(0, 250).map(normalizeResult) : [])
-  const normalizedProvisional = Array.isArray(payload.provisional_results)
-    ? payload.provisional_results.slice(0, 250).map(normalizeResult)
-    : []
-  const normalizedResults = [...normalizedMatched, ...normalizedProvisional]
+  const normalizedResults = Array.isArray(payload.results)
+    ? payload.results.slice(0, 250).map(normalizeResult)
+    : (Array.isArray(payload.matched_results)
+      ? payload.matched_results.slice(0, 250).map(normalizeResult)
+      : [])
   const record = {
     fetched_at: payload.fetched_at || new Date().toISOString(),
     gmail_email: sanitizeText(payload.gmail_email, 255) || null,
     scan_scope: payload.scan_scope || null,
-    matched_results: normalizedMatched,
-    provisional_results: normalizedProvisional,
     results: normalizedResults,
   }
   localStorage.setItem(storageKeyForCurrentUser(), JSON.stringify(record))
@@ -178,11 +168,22 @@ export function writeGmailScanCache(payload = {}) {
 function normalizeScanOptions(options = {}) {
   const newerThanRaw = Number(options?.newer_than_days)
   const maxResultsRaw = Number(options?.max_results)
+  const rawMode = String(options?.scan_mode || 'new').trim().toLowerCase()
+  const scanMode = rawMode === 'saved' ? 'saved' : 'new'
+  const sourceStrictness = String(options?.source_strictness || 'hybrid_job_language').trim().toLowerCase() === 'hybrid_job_language'
+    ? 'hybrid_job_language'
+    : 'strict_career_domains'
+  const linkedinModeRaw = String(options?.linkedin_mode || 'linkedin_apply_only').trim().toLowerCase()
+  const linkedinMode = ['linkedin_apply_only', 'linkedin_all_jobish', 'linkedin_off'].includes(linkedinModeRaw)
+    ? linkedinModeRaw
+    : 'linkedin_apply_only'
   return {
+    scan_mode: scanMode,
+    source_strictness: sourceStrictness,
+    linkedin_mode: linkedinMode,
     query: sanitizeText(options?.query, 280) || null,
     newer_than_days: Number.isFinite(newerThanRaw) ? Math.min(36500, Math.max(1, Math.round(newerThanRaw))) : 45,
     max_results: Number.isFinite(maxResultsRaw) ? Math.min(100, Math.max(1, Math.round(maxResultsRaw))) : 20,
-    include_provisional: options?.include_provisional !== false,
   }
 }
 
@@ -245,8 +246,7 @@ export async function runGmailScan(options = {}) {
   return writeGmailScanCache({
     gmail_email: payload?.gmail_email || null,
     scan_scope: payload?.scan_scope || null,
-    matched_results: Array.isArray(payload?.matched_results) ? payload.matched_results : (Array.isArray(payload?.results) ? payload.results : []),
-    provisional_results: Array.isArray(payload?.provisional_results) ? payload.provisional_results : [],
+    results: Array.isArray(payload?.results) ? payload.results : (Array.isArray(payload?.matched_results) ? payload.matched_results : []),
     fetched_at: new Date().toISOString(),
   })
 }
@@ -276,6 +276,24 @@ export async function removeGmailSuppression(id) {
   const payload = await response.json().catch(() => null)
   if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`)
   return payload
+}
+
+export async function createGmailFeedback(data = {}) {
+  const response = await authedFetch('/api/integrations/gmail/feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data || {}),
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`)
+  return payload?.feedback || null
+}
+
+export async function listGmailFeedback() {
+  const response = await authedFetch('/api/integrations/gmail/feedback')
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`)
+  return Array.isArray(payload?.feedback) ? payload.feedback : []
 }
 
 export async function listGmailNotificationStates() {

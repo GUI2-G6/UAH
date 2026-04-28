@@ -484,7 +484,7 @@ export default {
         },
         publicPrivacyPolicyUrl() {
             const base = String(this.publicLandingBaseUrl || DEFAULT_PUBLIC_LANDING_URL).replace(/\/+$/, '')
-            return `${base}/our-commitment`
+            return `${base}/privacy-policy`
         },
         serviceClassKey(key) {
             return String(key || 'service').trim().toLowerCase().replaceAll('_', '-')

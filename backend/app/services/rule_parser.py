@@ -21,6 +21,7 @@ Usage:
 import re
 import json
 from html.parser import HTMLParser
+from app.services.skill_classifier import normalize_and_classify_skills
 
 # ============================================================
 # Section header patterns — order matters (first match wins)
@@ -89,6 +90,10 @@ PHONE_RE = re.compile(r'(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}')
 LINKEDIN_RE = re.compile(r'(?:https?://)?(?:www\.)?linkedin\.com/in/[\w-]+/?', re.IGNORECASE)
 URL_RE = re.compile(r'https?://[\w./\-?=&#%]+')
 GITHUB_RE = re.compile(r'(?:https?://)?(?:www\.)?github\.com/[\w-]+/?', re.IGNORECASE)
+BARE_DOMAIN_RE = re.compile(
+    r'(?<!@)\b(?:www\.)?[a-z0-9][a-z0-9.-]*\.(?:com|org|net|io|dev|me|app|co|us|edu|ai|xyz)(?:/[^\s,;)]*)?\b',
+    re.IGNORECASE,
+)
 
 # Date patterns
 # End-date tokens the range regex should accept
@@ -577,6 +582,17 @@ def extract_personal_info(header_text, full_text):
             if 'linkedin.com' not in url.lower():
                 info["website"] = url
                 break
+    if not info["website"]:
+        for raw in BARE_DOMAIN_RE.findall(full_text):
+            lowered = raw.lower()
+            if "linkedin.com" in lowered:
+                continue
+            if "@" in lowered:
+                continue
+            if lowered in {"gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com"}:
+                continue
+            info["website"] = f"https://{raw.lstrip('/')}"
+            break
 
     # City, State
     city_state = CITY_STATE_RE.search(header_text)
@@ -856,6 +872,8 @@ def _finalize_education(lines):
             val = fos.group(1).strip().rstrip(',.:;')
             if len(val) > 2 and not _has_institution(val):
                 edu["field_of_study"] = val
+    if not edu["field_of_study"] and (edu.get("degree") or "").lower() == "high school diploma":
+        edu["field_of_study"] = "General Studies"
 
     # GPA
     gpa_match = GPA_RE.search(all_text)
@@ -946,8 +964,13 @@ def _finalize_education(lines):
         for kw in honor_keywords:
             if kw in lower:
                 honor_text = re.sub(r'\*\*?|#{1,4}\s*', '', line).strip()
-                if honor_text and honor_text not in edu["honors"]:
-                    edu["honors"].append(honor_text)
+                honor_text = re.sub(r'^(?:honors?|awards?)\s*:?\s*', '', honor_text, flags=re.IGNORECASE).strip()
+                if not honor_text:
+                    continue
+                pieces = [item.strip() for item in re.split(r'[,;]', honor_text) if item.strip()]
+                for item in pieces or [honor_text]:
+                    if item not in edu["honors"]:
+                        edu["honors"].append(item)
 
     # Activities (often embedded in education section)
     edu["activities"] = []
@@ -1276,7 +1299,7 @@ def extract_skills(section_text):
                 deduped.append(item)
         skills[cat] = deduped
 
-    return skills
+    return normalize_and_classify_skills(skills)
 
 
 def extract_simple_list(section_text):

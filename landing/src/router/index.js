@@ -4,7 +4,7 @@ import BrowserExtensionPage from '../pages/BrowserExtensionPage.vue'
 import ContributorsPage from '../pages/ContributorsPage.vue'
 import EcosystemPage from '../pages/EcosystemPage.vue'
 import HomePage from '../pages/HomePage.vue'
-import OurCommitmentPage from '../pages/OurCommitmentPage.vue'
+import PrivacyPolicyPage from '../pages/PrivacyPolicyPage.vue'
 import ProviderRequestsPage from '../pages/ProviderRequestsPage.vue'
 import PublicStatusPage from '../pages/PublicStatusPage.vue'
 import TermsPage from '../pages/TermsPage.vue'
@@ -23,9 +23,13 @@ const router = createRouter({
       component: PublicStatusPage,
     },
     {
+      path: '/privacy-policy',
+      name: 'privacy-policy',
+      component: PrivacyPolicyPage,
+    },
+    {
       path: '/our-commitment',
-      name: 'our-commitment',
-      component: OurCommitmentPage,
+      redirect: '/privacy-policy',
     },
     {
       path: '/contributors',

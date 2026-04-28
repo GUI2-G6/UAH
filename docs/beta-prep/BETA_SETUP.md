@@ -65,6 +65,9 @@ docker compose -f docker-compose.yml -f docker-compose.beta.yml up -d --build
 
 This launches the normal app stack plus beta overrides, including `cloudflared` and the public `landing` service.
 
+Important: do not run beta ingress from `docker-compose.local.yml` alone.  
+The local compose path does not provide the beta Cloudflared origin shape.
+
 ## 4. Verify The Expected Containers
 
 The beta stack should include environment-scoped names such as:
@@ -87,6 +90,7 @@ These are current behavior notes, not future aspirations:
 - saved jobs routes are authenticated
 - the beta override currently still bind-mounts `./backend:/app`
 - the frontend joins the `cloudflared` service network namespace instead of publishing a public host port directly
+- Cloudflared ingress (token-managed) expects origin `http://localhost:80` inside the cloudflared namespace; this maps to the beta frontend nginx listener because frontend uses `network_mode: "service:cloudflared"`
 
 That backend bind mount is important to understand before any broader external rollout. It is current behavior and should be reviewed explicitly during beta hardening.
 
@@ -104,6 +108,18 @@ Before inviting testers:
 ```bash
 bash scripts/uah.sh beta audit --mode full --json
 ```
+
+Then verify the ingress path directly with compose:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.beta.yml ps
+docker compose -f docker-compose.yml -f docker-compose.beta.yml logs --tail=60 cloudflared
+docker exec uah-beta-frontend wget -q -O - --timeout=8 http://127.0.0.1/api/status
+```
+
+Expected outcomes:
+- `cloudflared` registers tunnel connections without sustained `dial tcp [::1]:80: connect: connection refused`
+- `uah-beta-frontend` returns a successful `/api/status` payload through nginx -> backend proxy
 
 Then manually confirm:
 

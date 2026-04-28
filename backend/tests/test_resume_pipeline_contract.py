@@ -8,6 +8,7 @@ from fastapi import UploadFile
 
 from app.api import resume as resume_api
 from app.services import resume_parser
+from app.services.rule_parser import parse_resume_markdown
 
 
 class _FakeUploadQuery:
@@ -107,6 +108,120 @@ class _FakeResumeByIdDb:
 
 
 class ResumePipelineContractTests(unittest.IsolatedAsyncioTestCase):
+    def test_rules_parser_defaults_high_school_field_of_study(self):
+        markdown = """
+## Education
+## Lynn English High School
+High School Diploma
+GPA: 3.63/4.00
+September 2019 - May 2023
+Honors: Class Executive Officer, Guidance Aide
+Relevant Coursework: Python, Info Systems
+"""
+        parsed = parse_resume_markdown(markdown)
+        education = parsed.get("education", [])
+
+        self.assertTrue(education)
+        first = education[0]
+        self.assertEqual(first.get("institution"), "Lynn English High School")
+        self.assertEqual(first.get("degree"), "High School Diploma")
+        self.assertEqual(first.get("field_of_study"), "General Studies")
+
+    def test_rules_parser_splits_honors_line_items(self):
+        markdown = """
+## Education
+## Lynn English High School
+High School Diploma
+Honors: Class Executive Officer, Guidance Aide
+"""
+        parsed = parse_resume_markdown(markdown)
+        education = parsed.get("education", [])
+        self.assertTrue(education)
+        honors = education[0].get("honors", [])
+        self.assertEqual(honors, ["Class Executive Officer", "Guidance Aide"])
+
+    def test_rules_parser_extracts_website_from_raw_bare_domain(self):
+        markdown = """
+Trent Brown
+tgbrown450@gmail.com
+Portfolio: trentbrown.dev
+LinkedIn: linkedin.com/in/trent-brown
+"""
+        parsed = parse_resume_markdown(markdown)
+        personal = parsed.get("personal_info", {})
+
+        self.assertEqual(personal.get("linkedin"), "https://linkedin.com/in/trent-brown")
+        self.assertEqual(personal.get("website"), "https://trentbrown.dev")
+
+    def test_skill_supplement_reclassifies_with_priority_chain(self):
+        structured = {
+            "skills": {
+                "technical": ["English", "Docker", "Leadership", "Python"],
+                "languages": [],
+                "tools": [],
+                "soft_skills": [],
+            }
+        }
+
+        updated = resume_parser.apply_skill_supplemental_rules(structured)
+
+        self.assertEqual(updated["skills"]["languages"], ["English"])
+        self.assertEqual(updated["skills"]["tools"], ["Docker"])
+        self.assertEqual(updated["skills"]["technical"], ["Python"])
+        self.assertEqual(updated["skills"]["soft_skills"], ["Leadership"])
+
+    def test_skill_supplement_is_idempotent_for_skills(self):
+        structured = {
+            "skills": {
+                "technical": ["Python", "Docker", "English", "Leadership"],
+                "languages": [],
+                "tools": [],
+                "soft_skills": [],
+            }
+        }
+
+        first_pass = resume_parser.apply_skill_supplemental_rules(structured)
+        second_pass = resume_parser.apply_skill_supplemental_rules(first_pass)
+
+        self.assertEqual(first_pass["skills"], second_pass["skills"])
+
+    def test_skill_supplement_normalizes_split_and_duplicate_entries(self):
+        structured = {
+            "skills": {
+                "technical": ["Python, Docker", "python", "English; Spanish", "Communication"],
+                "languages": [],
+                "tools": [],
+                "soft_skills": [],
+            }
+        }
+
+        updated = resume_parser.apply_skill_supplemental_rules(structured)
+
+        self.assertEqual(updated["skills"]["technical"], ["Python"])
+        self.assertEqual(updated["skills"]["tools"], ["Docker"])
+        self.assertEqual(updated["skills"]["languages"], ["English", "Spanish"])
+        self.assertEqual(updated["skills"]["soft_skills"], ["Communication"])
+
+    def test_validate_and_fix_runs_skill_supplemental_pass(self):
+        structured = {
+            "personal_info": {},
+            "education": [],
+            "work_experience": [],
+            "skills": {
+                "technical": ["English", "Docker", "Leadership", "Python"],
+                "languages": [],
+                "tools": [],
+                "soft_skills": [],
+            },
+        }
+
+        validated = resume_parser.validate_and_fix(structured)
+
+        self.assertEqual(validated["skills"]["languages"], ["English"])
+        self.assertEqual(validated["skills"]["tools"], ["Docker"])
+        self.assertEqual(validated["skills"]["technical"], ["Python"])
+        self.assertEqual(validated["skills"]["soft_skills"], ["Leadership"])
+
     async def test_upload_stores_pdf_without_running_ocr(self):
         fake_db = _FakeUploadDb()
         current_user = SimpleNamespace(id=7)

@@ -190,18 +190,25 @@
                 </button>
                 <button
                   class="btn-primary"
-                  :disabled="!autofillSource || Boolean(autofillBusy)"
+                  :disabled="!autofillSource || !autofillSource.contractSatisfied || Boolean(autofillBusy)"
                   @click="runProfileAutofill('autofillScan')"
                 >
                   {{ autofillBusy === 'autofillScan' ? 'Scanning…' : 'Scan page' }}
                 </button>
                 <button
                   class="btn-secondary"
-                  :disabled="!autofillSource || Boolean(autofillBusy)"
+                  :disabled="!autofillSource || !autofillSource.contractSatisfied || Boolean(autofillBusy)"
                   @click="runProfileAutofill('autofillFill')"
                 >
                   {{ autofillBusy === 'autofillFill' ? 'Filling…' : 'Fill page' }}
                 </button>
+              </div>
+
+              <div
+                v-if="autofillSource?.error"
+                class="inline-banner inline-banner--error"
+              >
+                {{ autofillSource.error }}
               </div>
 
               <div
@@ -809,6 +816,9 @@ async function runProfileAutofill(action) {
   setAutofillStatus()
 
   try {
+    if ((action === 'autofillScan' || action === 'autofillFill') && !autofillSource.value?.contractSatisfied) {
+      throw new Error(autofillSource.value?.error || 'Selected profile is missing token_map from the backend.')
+    }
     const payload = action === 'autofillScan' || action === 'autofillFill'
       ? {
           source: autofillSource.value?.source || null,

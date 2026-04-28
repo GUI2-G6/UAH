@@ -23,6 +23,8 @@ SYNC_CAN_FAST_FORWARD=true
 DETECTED_ENV_SOURCE="unknown"
 ENV_CONFIRMATION_APPROVED=false
 ENV_CONFIRMATION_ENV=""
+SCHEMA_RECONCILE_LAST_STATUS="not-run"
+SCHEMA_RECONCILE_LAST_MESSAGE="Schema reconcile has not run yet."
 
 ENV_POLICY_ERROR_COUNT=0
 ENV_POLICY_WARN_COUNT=0
@@ -962,6 +964,19 @@ run_alembic_upgrade_for_env() {
   docker exec "$backend_container" sh -lc 'cd /app && alembic upgrade head'
 }
 
+record_schema_reconcile_status() {
+  local status="${1:-unknown}"
+  local message="${2:-}"
+  SCHEMA_RECONCILE_LAST_STATUS="$status"
+  SCHEMA_RECONCILE_LAST_MESSAGE="$message"
+}
+
+print_schema_reconcile_summary() {
+  local env_name="$1"
+  local context="${2:-lifecycle}"
+  echo "Schema reconcile summary [$env_name/$context]: ${SCHEMA_RECONCILE_LAST_STATUS} - ${SCHEMA_RECONCILE_LAST_MESSAGE}"
+}
+
 refresh_job_runtime_services() {
   local env_name="$1"
   local backend_container
@@ -980,32 +995,59 @@ run_live_schema_reconcile() {
   local backend_container
 
   backend_container="$(backend_container_name_for_env "$env_name")" || return 1
+  record_schema_reconcile_status "running" "Starting Alembic reconcile for $env_name."
 
   if ! is_container_running "$backend_container"; then
     if [[ "$require_running" == "true" ]]; then
+      record_schema_reconcile_status "failed" "Backend container '$backend_container' is not running."
       echo "Backend container '$backend_container' is not running; cannot apply Alembic migrations." >&2
       return 1
     fi
 
+    record_schema_reconcile_status "skipped" "Backend container '$backend_container' is not running."
     echo "Backend container '$backend_container' is not running. Skipping post-sync Alembic reconcile."
     return 0
   fi
 
   if ! wait_for_backend_exec_ready "$env_name" "$backend_container" 10; then
+    record_schema_reconcile_status "failed" "Backend container '$backend_container' was not ready for docker exec."
     return 1
   fi
 
   if ! run_alembic_upgrade_for_env "$env_name" "$backend_container"; then
+    record_schema_reconcile_status "failed" "Alembic upgrade failed in '$backend_container'."
     echo "Alembic upgrade failed for $env_name." >&2
     return 1
   fi
 
   if ! refresh_job_runtime_services "$env_name"; then
+    record_schema_reconcile_status "failed" "Runtime service refresh failed for $env_name."
     echo "Runtime service refresh failed for $env_name after Alembic upgrade." >&2
     return 1
   fi
 
+  record_schema_reconcile_status "success" "Alembic upgrade and runtime refresh completed."
   echo "Schema reconcile completed for $env_name."
+}
+
+run_live_schema_reconcile_with_policy() {
+  local env_name="$1"
+  local require_running="${2:-true}"
+  local context="${3:-start}"
+
+  if run_live_schema_reconcile "$env_name" "$require_running"; then
+    return 0
+  fi
+
+  if [[ "$env_name" == "dev" ]]; then
+    echo "WARNING: Schema reconcile failed during '$context' in dev. Continuing startup flow."
+    echo "WARNING DETAIL: ${SCHEMA_RECONCILE_LAST_MESSAGE}"
+    return 0
+  fi
+
+  echo "Schema reconcile failed during '$context' in $env_name."
+  echo "ERROR DETAIL: ${SCHEMA_RECONCILE_LAST_MESSAGE}" >&2
+  return 1
 }
 
 run_sync_rebuild_if_requested() {
@@ -1017,7 +1059,8 @@ run_sync_rebuild_if_requested() {
   if [[ "$BUILD_MODE" == "none" ]]; then
     if is_container_running "$backend_container"; then
       echo "Backend container '$backend_container' is running. Applying live schema reconcile after sync..."
-      run_live_schema_reconcile "$env_name" true
+      run_live_schema_reconcile_with_policy "$env_name" true "sync"
+      print_schema_reconcile_summary "$env_name" "sync"
       return $?
     fi
 
@@ -1034,7 +1077,8 @@ run_sync_rebuild_if_requested() {
   echo "Running post-sync compose update ($(build_mode_label))..."
   preflight_startup "$env_name"
   run_compose_up_with_build_mode "$env_name"
-  run_live_schema_reconcile "$env_name" true
+  run_live_schema_reconcile_with_policy "$env_name" true "sync-rebuild"
+  print_schema_reconcile_summary "$env_name" "sync-rebuild"
 }
 
 prepare_sync_branch() {
@@ -4455,11 +4499,7 @@ dev_start() {
   run_compose_up_with_build_mode dev
 
   echo "[3/7] Applying Alembic migrations and refreshing runtime services..."
-  if ! run_live_schema_reconcile dev true; then
-    echo "Dev start failed during Alembic upgrade or runtime refresh." >&2
-    run_compose dev ps || true
-    return 1
-  fi
+  run_live_schema_reconcile_with_policy dev true "start"
 
   echo "[4/7] Applying WireGuard host route..."
   VPN_CONTAINER=uah-dev-vpn \
@@ -4495,6 +4535,7 @@ dev_start() {
   echo ""
   run_compose dev ps
   echo ""
+  print_schema_reconcile_summary dev "start"
   echo "=== Dev stack started ==="
   echo "Access: https://dev.uahapp.com (VPN required)"
 }
@@ -4564,7 +4605,7 @@ beta_start() {
   run_compose beta up -d "${required_beta_services[@]}"
 
   echo "[3/7] Applying Alembic migrations and refreshing runtime services..."
-  if ! run_live_schema_reconcile beta true; then
+  if ! run_live_schema_reconcile_with_policy beta true "start"; then
     notify_discord "**Beta start FAILED** during Alembic upgrade or runtime refresh" 15158332
     run_compose beta ps || true
     return 1
@@ -4629,6 +4670,7 @@ except Exception:
   echo ""
   run_compose beta ps
   echo ""
+  print_schema_reconcile_summary beta "start"
   echo "=== Beta stack started ==="
 
   if [[ "$beta_backend_running" == "true" && "$beta_backend_port_ok" == "true" && "$beta_ollama_ok" == "true" ]]; then

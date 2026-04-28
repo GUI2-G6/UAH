@@ -54,6 +54,7 @@ MAX_RESUMES_PER_USER = 10
 MAX_PROFILES_PER_USER = 10
 MAX_FILE_SIZE = 5 * 1024 * 1024
 UPLOAD_COOLDOWN_SECONDS = 30
+REVIEW_SCHEMA_VERSION = "canonical_v1"
 ALLOWED_PDF_CONTENT_TYPES = {
     "application/pdf",
     "application/x-pdf",
@@ -63,6 +64,89 @@ ALLOWED_PDF_CONTENT_TYPES = {
     "text/x-pdf",
     "application/octet-stream",
     "binary/octet-stream",
+}
+
+REVIEW_DRAFT_SCHEMA = {
+    "version": REVIEW_SCHEMA_VERSION,
+    "personal_fields": [
+        {"key": "first_name", "label": "First Name"},
+        {"key": "middle_name", "label": "Middle Name"},
+        {"key": "last_name", "label": "Last Name"},
+        {"key": "full_legal_name", "label": "Full Legal Name"},
+        {"key": "preferred_name", "label": "Preferred Name"},
+        {"key": "suffix", "label": "Suffix"},
+        {"key": "email", "label": "Email", "type": "email"},
+        {"key": "phone", "label": "Phone"},
+        {"key": "address", "label": "Street Address", "full": True},
+        {"key": "city", "label": "City"},
+        {"key": "state", "label": "State"},
+        {"key": "zip", "label": "ZIP"},
+        {"key": "linkedin", "label": "LinkedIn", "type": "url"},
+        {"key": "website", "label": "Website", "type": "url"},
+    ],
+    "skill_fields": [
+        {"key": "technical", "label": "Technical Skills"},
+        {"key": "languages", "label": "Languages"},
+        {"key": "tools", "label": "Tools"},
+        {"key": "soft_skills", "label": "Soft Skills"},
+    ],
+    "structured_sections": [
+        {
+            "key": "education",
+            "pathStem": "education",
+            "title": "Education",
+            "fields": [
+                {"key": "institution", "label": "Institution"},
+                {"key": "degree", "label": "Degree"},
+                {"key": "field_of_study", "label": "Field of Study"},
+                {"key": "gpa", "label": "GPA"},
+                {"key": "start_date", "label": "Start Date"},
+                {"key": "end_date", "label": "End Date"},
+                {"key": "honors", "label": "Honors", "kind": "inline-list", "full": True},
+                {"key": "relevant_coursework", "label": "Relevant Coursework", "kind": "inline-list", "full": True},
+            ],
+        },
+        {
+            "key": "work_experience",
+            "pathStem": "work_experience",
+            "title": "Work Experience",
+            "fields": [
+                {"key": "company", "label": "Company"},
+                {"key": "title", "label": "Title"},
+                {"key": "location", "label": "Location"},
+                {"key": "is_current", "label": "Current Role", "kind": "current-select"},
+                {"key": "start_date", "label": "Start Date"},
+                {"key": "end_date", "label": "End Date"},
+                {"key": "bullets", "label": "Bullets", "kind": "line-list", "full": True},
+            ],
+        },
+        {
+            "key": "projects",
+            "pathStem": "projects",
+            "title": "Projects",
+            "fields": [
+                {"key": "name", "label": "Name"},
+                {"key": "date", "label": "Date"},
+                {"key": "description", "label": "Description", "kind": "textarea", "full": True},
+                {"key": "technologies", "label": "Technologies", "kind": "inline-list", "full": True},
+            ],
+        },
+        {
+            "key": "certifications",
+            "pathStem": "certifications",
+            "title": "Certifications",
+            "fields": [
+                {"key": "name", "label": "Name"},
+                {"key": "issuer", "label": "Issuer"},
+                {"key": "date", "label": "Date", "full": True},
+            ],
+        },
+    ],
+    "extra_list_sections": [
+        {"key": "awards", "label": "Awards"},
+        {"key": "activities", "label": "Activities"},
+        {"key": "volunteer", "label": "Volunteer"},
+    ],
 }
 
 
@@ -538,6 +622,7 @@ def get_review_draft(
         review_status=resume.review_status,
         review_updated_at=resume.review_updated_at,
         review_draft=review_draft,
+        review_schema=REVIEW_DRAFT_SCHEMA,
     )
 
 
@@ -566,6 +651,7 @@ def update_review_draft(
         review_status=resume.review_status,
         review_updated_at=resume.review_updated_at,
         review_draft=_current_review_draft(resume) or {},
+        review_schema=REVIEW_DRAFT_SCHEMA,
     )
 
 
