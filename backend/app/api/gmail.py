@@ -67,7 +67,7 @@ class GmailScanRequest(BaseModel):
     query: str | None = Field(default=None, max_length=280)
     newer_than_days: int = Field(default=45, ge=1, le=36500)
     max_results: int = Field(default=20, ge=1, le=100)
-    source_strictness: str = Field(default="strict_career_domains", max_length=40)
+    source_strictness: str = Field(default="hybrid_job_language", max_length=40)
     linkedin_mode: str = Field(default="linkedin_apply_only", max_length=40)
 
 
@@ -410,6 +410,27 @@ def _serialize_feedback(row: GmailFeedback) -> dict:
     }
 
 
+def _feedback_override_for_message(
+    feedback_rows: list[GmailFeedback],
+    *,
+    source_id: str,
+    sender_domain: str,
+    subject_key: str,
+    company_key: str,
+) -> str | None:
+    for row in feedback_rows:
+        row_source_id = str(row.source_id or "").strip()
+        if row_source_id and row_source_id == source_id:
+            return str(row.override_status or "").strip().lower() or None
+        if (
+            (row.sender_domain or "") == sender_domain
+            and (row.subject_key or "") == subject_key
+            and (row.company_key or "") == company_key
+        ):
+            return str(row.override_status or "").strip().lower() or None
+    return None
+
+
 @router.get("/notification-states")
 async def gmail_list_notification_states(
     db: Session = Depends(get_db),
@@ -718,7 +739,10 @@ async def gmail_scan(
         db.query(GmailFeedback)
         .filter(
             GmailFeedback.user_id == current_user.id,
-            GmailFeedback.triage_label == "not_relevant",
+            (
+                (GmailFeedback.triage_label == "not_relevant")
+                | (GmailFeedback.override_status.isnot(None))
+            ),
         )
         .order_by(GmailFeedback.created_at.desc(), GmailFeedback.id.desc())
         .all()
@@ -805,6 +829,7 @@ async def gmail_scan(
                 "from": evaluated["from"],
                 "date": evaluated["date"],
                 "detected_status": evaluated["detected_status"],
+                "manual_override_applied": False,
                 "company_hint": evaluated["company_hint"],
                 "snippet": evaluated["snippet"],
                 "body_preview": evaluated.get("body_preview") or "",
@@ -835,26 +860,17 @@ async def gmail_scan(
                 "gmail_open_url_direct": direct_url,
                 "gmail_open_url_fallback": fallback_url,
             }
-            tracked_match = tracked_by_source_ref.get(str(evaluated["source_id"] or "")) or tracked_by_thread_key.get(thread_key)
+            source_id = str(evaluated.get("source_id") or "")
+            tracked_match = tracked_by_source_ref.get(source_id) or tracked_by_thread_key.get(thread_key)
             if scan_mode == "saved" and not tracked_match:
                 excluded_count += 1
                 continue
-            if tracked_match:
-                tracked_match.latest_status = str(evaluated.get("detected_status") or tracked_match.latest_status or "")
-                tracked_match.last_update_at = now
-                tracked_match.has_new_update = True
-                tracked_updates_applied += 1
-                base_result["tracked_id"] = tracked_match.id
-                base_result["has_new_update"] = True
-            else:
-                base_result["tracked_id"] = None
-                base_result["has_new_update"] = False
             matched_suppression = next((row for row in suppressions if _suppression_matches(evaluated, row)), None)
             matched_feedback = next(
                 (
                     row for row in feedback_rows
                     if (
-                        (row.source_id and str(evaluated.get("source_id") or "") == str(row.source_id))
+                        (row.source_id and source_id == str(row.source_id))
                         or (
                             (row.sender_domain or "") == sender_domain
                             and (row.subject_key or "") == subject_key
@@ -866,8 +882,29 @@ async def gmail_scan(
             )
             if matched_feedback:
                 feedback_applied_count += 1
+            suppress_from_feedback = bool(matched_feedback and (matched_feedback.triage_label or "").strip().lower() == "not_relevant")
+            manual_override_status = _feedback_override_for_message(
+                feedback_rows,
+                source_id=source_id,
+                sender_domain=sender_domain,
+                subject_key=subject_key,
+                company_key=company_key,
+            )
+            effective_status = manual_override_status or str(evaluated.get("detected_status") or "unknown")
+            base_result["detected_status"] = effective_status
+            base_result["manual_override_applied"] = bool(manual_override_status)
+            if tracked_match:
+                tracked_match.latest_status = effective_status
+                tracked_match.last_update_at = now
+                tracked_match.has_new_update = True
+                tracked_updates_applied += 1
+                base_result["tracked_id"] = tracked_match.id
+                base_result["has_new_update"] = True
+            else:
+                base_result["tracked_id"] = None
+                base_result["has_new_update"] = False
             if evaluated.get("include"):
-                if matched_suppression or matched_feedback:
+                if matched_suppression or suppress_from_feedback:
                     suppression_scope = (matched_suppression.scope or "").lower() if matched_suppression else (
                         "message" if (matched_feedback and matched_feedback.source_id) else "thread"
                     )

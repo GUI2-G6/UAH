@@ -1213,6 +1213,8 @@ export default {
             applicantEditingField: '',
             applicantSavingField: '',
             lastApplicantSavedSignature: '',
+            loadedEducationHistoryText: '',
+            loadedEmploymentHistoryText: '',
             saveStatus: { type: '', message: '' },
             _saveTimer: null,
             showNewProfileInput: false,
@@ -1506,6 +1508,9 @@ export default {
         },
         serializeApplicantPayload(payload = this.buildProfilePayload()) {
             return JSON.stringify(payload)
+        },
+        normalizedTextValue(value) {
+            return String(value || '').trim()
         },
         syncApplicantSavedSignature() {
             this.lastApplicantSavedSignature = this.serializeApplicantPayload()
@@ -2287,6 +2292,8 @@ export default {
             this.professionalLinksText = p.professional_links_text || ''
             this.educationHistoryText = p.education_history_text || ''
             this.employmentHistoryText = p.employment_history_text || ''
+            this.loadedEducationHistoryText = this.educationHistoryText
+            this.loadedEmploymentHistoryText = this.employmentHistoryText
             this.demographicGender = p.demographic_gender || ''
             this.demographicEthnicity = p.demographic_ethnicity || ''
             this.veteranStatus = p.veteran_status || ''
@@ -2300,7 +2307,7 @@ export default {
 
         buildProfilePayload() {
             const activeProfile = this.profiles.find((profile) => Number(profile?.id) === Number(this.activeProfileId))
-            return {
+            const payload = {
                 name: activeProfile?.name || 'Default',
                 first_name: this.firstName, last_name: this.lastName, email: this.appEmail,
                 phone: this.phone, linkedin: this.linkedin, portfolio: this.portfolio,
@@ -2317,6 +2324,13 @@ export default {
                 veteran_status: this.veteranStatus, disability_status: this.disabilityStatus,
                 california_resident: this.californiaResident,
             }
+            if (this.normalizedTextValue(this.educationHistoryText) === this.normalizedTextValue(this.loadedEducationHistoryText)) {
+                delete payload.education_history_text
+            }
+            if (this.normalizedTextValue(this.employmentHistoryText) === this.normalizedTextValue(this.loadedEmploymentHistoryText)) {
+                delete payload.employment_history_text
+            }
+            return payload
         },
 
         loadApplicantInfoFromLocal() {

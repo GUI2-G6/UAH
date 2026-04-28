@@ -72,6 +72,10 @@ menu_connectivity() {
         echo -e "${CYAN}  → Container Status${NC}"
         $COMPOSE ps
         echo ""
+        echo -e "${CYAN}  → Active ingress expectation${NC}"
+        echo "  cloudflared origin should resolve to http://localhost:80 inside the cloudflared namespace."
+        echo "  frontend is attached via network_mode=service:cloudflared and should keep nginx listening on :80."
+        echo ""
         echo -e "${CYAN}  → Frontend nginx → backend (public ingress path)${NC}"
         if docker exec uah-beta-frontend wget -q -O /dev/null --timeout=8 http://127.0.0.1/api/status 2>/dev/null; then
           echo -e "  ${GREEN}✓ http://127.0.0.1/api/status via nginx → backend (HTTP 200)${NC}"

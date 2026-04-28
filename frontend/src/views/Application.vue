@@ -139,6 +139,7 @@
           variant="minimal"
           class="home-application-card"
         >
+          <p v-if="app.manual_override_applied" class="scan-meta">Manual override</p>
           <label class="candidate-checkbox">
             <input type="checkbox" :checked="isSelected(app.selection_key)" @change="toggleSelection(app.selection_key)">
             <span>Select for tracking</span>
@@ -148,6 +149,16 @@
             <button type="button" class="submit-btn is-primary" @click="openMostRecentEmail(app)">Open email</button>
             <button type="button" class="submit-btn" @click="suppressMessage(app)">Hide this update</button>
             <button type="button" class="submit-btn" @click="suppressThread(app)">Hide similar emails</button>
+            <label class="manual-status-label">
+              <span>Set status</span>
+              <select class="manual-status-select" :value="manualStatusFor(app)" @change="setManualStatus(app, $event?.target?.value)">
+                <option value="applied">Applied</option>
+                <option value="interview">Interview</option>
+                <option value="offer">Offer</option>
+                <option value="rejection">Not moving forward</option>
+                <option value="unknown">Needs review</option>
+              </select>
+            </label>
           </div>
         </Card>
       </Card>
@@ -198,7 +209,7 @@
     import Card from "../components/Card.vue"
     import Application from "../components/Application.vue"
     import { authedFetch, getCurrentUser } from "../lib/auth.js";
-    import { readGmailScanCache, resolveGmailConnectionStatus, runGmailScan, subscribeGmailUpdates, summarizeGmailResults, listGmailSuppressions, createGmailSuppression, removeGmailSuppression } from "../lib/gmailUpdates.js"
+    import { readGmailScanCache, resolveGmailConnectionStatus, runGmailScan, subscribeGmailUpdates, summarizeGmailResults, listGmailSuppressions, createGmailSuppression, removeGmailSuppression, createGmailFeedback } from "../lib/gmailUpdates.js"
     import { showToast } from "../services/toastService";
 
     export default{
@@ -219,7 +230,7 @@
                 scanNewerThanDays: 45,
                 scanMaxResults: 20,
                 scanCustomDays: null,
-                sourceStrictness: 'strict_career_domains',
+                sourceStrictness: 'hybrid_job_language',
                 linkedinMode: 'linkedin_apply_only',
                 suppressions: [],
                 suppressionsOpen: false,
@@ -265,6 +276,7 @@
                 gmail_open_url_fallback: item.gmail_open_url_fallback || '',
                 tracking_source: item.tracking_source || 'matched',
                 confidence: item.confidence || 'high',
+                manual_override_applied: item.manual_override_applied === true,
             }))
             if (this.selectedStatusFilter === 'all') return mapped
             return mapped.filter((item) => String(item.status).toLowerCase() === this.selectedStatusFilter)
@@ -551,6 +563,49 @@
                 || String(row.subject_key || '').trim() !== subjectKey
                 || String(row.company_key || '').trim() !== companyKey
             ))
+        },
+        manualStatusFor(item) {
+            const status = String(item?.status || item?.detected_status || 'unknown').trim().toLowerCase()
+            if (status === 'application_received' || status === 'applied') return 'applied'
+            if (status === 'interview_invite' || status === 'interview') return 'interview'
+            if (status === 'offer') return 'offer'
+            if (status === 'rejection') return 'rejection'
+            return 'unknown'
+        },
+        async setManualStatus(item, selectedStatus) {
+            const normalized = String(selectedStatus || '').trim().toLowerCase()
+            const statusMap = {
+                applied: 'application_received',
+                interview: 'interview_invite',
+                offer: 'offer',
+                rejection: 'rejection',
+                unknown: 'unknown',
+            }
+            if (!statusMap[normalized]) return
+            try {
+                await createGmailFeedback({
+                    source_id: item.source_id || null,
+                    from_header: item.from || '',
+                    subject: item.subject || '',
+                    company_hint: item.company_hint || item.company || '',
+                    triage_label: 'relevant',
+                    override_status: statusMap[normalized],
+                    notes: 'Manual status set from Applications view',
+                })
+                this.applications = (this.applications || []).map((row) => {
+                    if (String(row.source_id || '') !== String(item.source_id || '')) return row
+                    return {
+                        ...row,
+                        detected_status: statusMap[normalized],
+                        status_bucket: normalized,
+                        manual_override_applied: true,
+                    }
+                })
+                this.summary = summarizeGmailResults(this.applications || [])
+                showToast('Status updated.', 'success')
+            } catch (error) {
+                showToast(error?.message || 'Could not save status update.', 'error')
+            }
         },
         openMostRecentEmail(item) {
             const direct = String(item.gmail_open_url_direct || '').trim()

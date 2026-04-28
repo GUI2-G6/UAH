@@ -169,7 +169,7 @@ function normalizeScanOptions(options = {}) {
   const maxResultsRaw = Number(options?.max_results)
   const rawMode = String(options?.scan_mode || 'new').trim().toLowerCase()
   const scanMode = rawMode === 'saved' ? 'saved' : 'new'
-  const sourceStrictness = String(options?.source_strictness || 'strict_career_domains').trim().toLowerCase() === 'hybrid_job_language'
+  const sourceStrictness = String(options?.source_strictness || 'hybrid_job_language').trim().toLowerCase() === 'hybrid_job_language'
     ? 'hybrid_job_language'
     : 'strict_career_domains'
   const linkedinModeRaw = String(options?.linkedin_mode || 'linkedin_apply_only').trim().toLowerCase()

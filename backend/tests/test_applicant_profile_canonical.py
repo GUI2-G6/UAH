@@ -103,6 +103,46 @@ class ApplicantProfileCanonicalTests(unittest.TestCase):
         self.assertEqual(merged_override["personal_info"]["email"], "new@example.com")
         self.assertIn("skills.technical", flatten_canonical_data(merged_override))
 
+    def test_roundtrip_additional_education_preserves_honors_and_coursework(self):
+        existing = normalize_canonical_data({
+            "education": [
+                {"institution": "UAH", "degree": "B.S.", "field_of_study": "Computer Science", "end_date": "2025"},
+                {
+                    "institution": "Huntsville High School",
+                    "degree": "High School Diploma",
+                    "field_of_study": "General Studies",
+                    "start_date": "2018",
+                    "end_date": "2022",
+                    "honors": ["Class Executive Officer", "Guidance Aide"],
+                    "relevant_coursework": ["AP Calculus", "AP Physics"],
+                },
+            ],
+        })
+
+        updated = apply_profile_updates_to_canonical(existing, {
+            "education_history_text": "Huntsville High School | High School Diploma |  | 2018 | 2022 |  | National Honor Society",
+        })
+
+        self.assertEqual(updated["education"][1]["field_of_study"], "General Studies")
+        self.assertEqual(
+            updated["education"][1]["honors"],
+            ["Class Executive Officer", "Guidance Aide", "National Honor Society"],
+        )
+        self.assertEqual(updated["education"][1]["relevant_coursework"], ["AP Calculus", "AP Physics"])
+
+    def test_parse_legacy_and_extended_education_history_rows(self):
+        canonical = derive_canonical_from_profile_fields({
+            "education_history_text": (
+                "Old School | Diploma | General Studies | 2016 | 2020 | 3.8\n"
+                "UAH | B.S. | Computer Science | 2021 | 2025 | 3.9 | Magna Cum Laude | Algorithms, Databases"
+            ),
+        })
+
+        self.assertEqual(len(canonical["education"]), 2)
+        self.assertEqual(canonical["education"][0]["institution"], "Old School")
+        self.assertEqual(canonical["education"][1]["honors"], ["Magna Cum Laude"])
+        self.assertEqual(canonical["education"][1]["relevant_coursework"], ["Algorithms", "Databases"])
+
     def test_sync_profile_storage_generates_derived_name_tokens_for_extension_contract(self):
         profile = SimpleNamespace(
             first_name="Taylor",

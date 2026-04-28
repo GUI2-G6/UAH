@@ -16,6 +16,7 @@ const gmailMocks = vi.hoisted(() => ({
   listGmailSuppressions: vi.fn(),
   createGmailSuppression: vi.fn(),
   removeGmailSuppression: vi.fn(),
+  createGmailFeedback: vi.fn(),
 }))
 
 vi.mock('@/lib/auth.js', () => ({
@@ -32,6 +33,7 @@ vi.mock('@/lib/gmailUpdates.js', () => ({
   listGmailSuppressions: gmailMocks.listGmailSuppressions,
   createGmailSuppression: gmailMocks.createGmailSuppression,
   removeGmailSuppression: gmailMocks.removeGmailSuppression,
+  createGmailFeedback: gmailMocks.createGmailFeedback,
 }))
 
 const cardStub = defineComponent({
@@ -64,6 +66,7 @@ describe('Application tracking page updates', () => {
     gmailMocks.listGmailSuppressions.mockReset()
     gmailMocks.createGmailSuppression.mockReset()
     gmailMocks.removeGmailSuppression.mockReset()
+    gmailMocks.createGmailFeedback.mockReset()
 
     authMocks.getCurrentUser.mockReturnValue({
       id: 7,
@@ -80,6 +83,7 @@ describe('Application tracking page updates', () => {
       rejection: 0,
     })
     gmailMocks.listGmailSuppressions.mockResolvedValue([])
+    gmailMocks.createGmailFeedback.mockResolvedValue({ id: 1, override_status: 'offer' })
     authMocks.authedFetch.mockResolvedValue({
       ok: true,
       json: async () => ({ tracked_applications: [] }),
@@ -127,5 +131,43 @@ describe('Application tracking page updates', () => {
     const options = wrapper.findAll('#app-filter option').map((node) => node.text())
     expect(options).toContain('All statuses')
     expect(wrapper.vm.selectedStatusFilter).toBe('all')
+  })
+
+  it('saves manual status override for a found email', async () => {
+    const wrapper = mount(ApplicationView, {
+      global: {
+        stubs: {
+          Card: cardStub,
+          Application: applicationStub,
+        },
+        mocks: {
+          $router: { push: vi.fn() },
+        },
+      },
+    })
+    await flushPromises()
+    wrapper.vm.applications = [{
+      source_id: 'gmail-1',
+      subject: 'Application update',
+      from: 'Recruiting <jobs@example.com>',
+      detected_status: 'unknown',
+      status_bucket: 'unknown',
+      company_hint: 'Example Co',
+      sender_domain: 'example.com',
+      subject_key: 'application update',
+      company_key: 'example co',
+      thread_key: 'example.com|application update|example co',
+    }]
+
+    await wrapper.vm.setManualStatus(wrapper.vm.feedItems[0], 'offer')
+
+    expect(gmailMocks.createGmailFeedback).toHaveBeenCalledWith(expect.objectContaining({
+      source_id: 'gmail-1',
+      triage_label: 'relevant',
+      override_status: 'offer',
+    }))
+    expect(wrapper.vm.applications[0].detected_status).toBe('offer')
+    expect(wrapper.vm.applications[0].status_bucket).toBe('offer')
+    expect(wrapper.vm.applications[0].manual_override_applied).toBe(true)
   })
 })

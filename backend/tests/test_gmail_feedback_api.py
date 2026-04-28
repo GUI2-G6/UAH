@@ -7,6 +7,7 @@ from fastapi import HTTPException
 
 from app.api.gmail import (
     GmailFeedbackCreateRequest,
+    _feedback_override_for_message,
     gmail_create_feedback,
 )
 from app.models.user import GmailFeedback, GmailSuppression
@@ -57,6 +58,24 @@ class _FakeDb:
 
 
 class GmailFeedbackApiTests(unittest.IsolatedAsyncioTestCase):
+    async def test_feedback_override_matches_by_source_id_first(self):
+        row = SimpleNamespace(
+            source_id="abc123",
+            sender_domain="example.com",
+            subject_key="application update",
+            company_key="example co",
+            triage_label="relevant",
+            override_status="offer",
+        )
+        override = _feedback_override_for_message(
+            [row],
+            source_id="abc123",
+            sender_domain="other.com",
+            subject_key="other",
+            company_key="other",
+        )
+        self.assertEqual(override, "offer")
+
     async def test_rejects_invalid_triage_label(self):
         db = _FakeDb()
         user = SimpleNamespace(id=9)
