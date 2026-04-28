@@ -1,7 +1,9 @@
 import secrets
 import base64
 import hashlib
+import html
 import httpx
+import re
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 from cryptography.fernet import Fernet
@@ -17,6 +19,7 @@ from app.api.deps import get_current_user, require_admin_or_developer
 from app.core.rate_limit import enforce_subject_rate_limit
 from app.core.config import settings
 from app.services.gmail_scan import (
+    ATS_DOMAIN_HINTS,
     ScanMessage,
     build_thread_signature,
     evaluate_message,
@@ -47,6 +50,7 @@ class GmailDebugMessage(BaseModel):
     from_header: str = Field(default="", alias="from")
     date: str = Field(default="")
     snippet: str = Field(default="")
+    body: str = Field(default="")
 
     class Config:
         populate_by_name = True
@@ -280,6 +284,56 @@ def _build_open_urls(*, source_id: str, from_header: str, subject: str, date: st
     return direct, fallback
 
 
+def _should_fetch_full_body(*, from_header: str, subject: str, snippet: str) -> bool:
+    domain = parse_sender_domain(from_header)
+    combined = f"{domain} {(subject or '').lower()} {(snippet or '').lower()}"
+    if any(hint in combined for hint in ATS_DOMAIN_HINTS):
+        return True
+    candidate_signals = (
+        "application",
+        "position",
+        "interview",
+        "candidate",
+        "hiring",
+        "offer",
+        "recruit",
+    )
+    return any(signal in combined for signal in candidate_signals)
+
+
+def _decode_gmail_body_data(encoded_data: str | None) -> str:
+    if not encoded_data:
+        return ""
+    normalized = str(encoded_data).replace("-", "+").replace("_", "/")
+    padding = "=" * ((4 - len(normalized) % 4) % 4)
+    try:
+        decoded = base64.b64decode(normalized + padding)
+        return decoded.decode("utf-8", errors="ignore")
+    except Exception:
+        return ""
+
+
+def _extract_payload_text(payload: dict | None) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    chunks: list[str] = []
+
+    mime_type = str(payload.get("mimeType") or "").lower()
+    body_data = _decode_gmail_body_data((payload.get("body") or {}).get("data"))
+    if body_data:
+        if "html" in mime_type:
+            body_data = re.sub(r"<[^>]+>", " ", body_data)
+            body_data = html.unescape(body_data)
+        chunks.append(body_data)
+
+    for part in payload.get("parts") or []:
+        part_text = _extract_payload_text(part)
+        if part_text:
+            chunks.append(part_text)
+
+    return " ".join(chunks).strip()
+
+
 def _suppression_matches(evaluated: dict, suppression: GmailSuppression) -> bool:
     scope = (suppression.scope or "").strip().lower()
     if scope == "message":
@@ -479,6 +533,16 @@ async def gmail_scan(
             snippet = msg.get("snippet", "")
             subject = headers.get("Subject", "")
             from_header = headers.get("From", "")
+            body_text = ""
+            if _should_fetch_full_body(from_header=from_header, subject=subject, snippet=snippet):
+                full_resp = await client.get(
+                    f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg_id}",
+                    params={"format": "full"},
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                if full_resp.status_code == 200:
+                    full_msg = full_resp.json()
+                    body_text = _extract_payload_text(full_msg.get("payload"))[:3000]
 
             evaluated = evaluate_message(
                 ScanMessage(
@@ -486,6 +550,7 @@ async def gmail_scan(
                     from_header=from_header,
                     date=headers.get("Date", ""),
                     snippet=snippet,
+                    body=body_text,
                     source_id=msg_id,
                 ),
                 apply_sessions=session_scope,
@@ -624,6 +689,7 @@ async def gmail_debug_simulate_scan(
                 date=item.date,
                 snippet=item.snippet,
                 source_id=f"dev-{idx}",
+                body=item.body,
             ),
             apply_sessions=session_scope,
             allowed_statuses=allowed_statuses,

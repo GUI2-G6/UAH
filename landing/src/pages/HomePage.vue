@@ -14,7 +14,7 @@
         <p class="section-label">Public Pages</p>
         <h2 id="transparency-links-heading">Explore the full transparency hub.</h2>
         <p class="section-intro">
-          UAH now separates status, commitment, contributors, ecosystem context, and provider requests into
+          UAH now separates status, privacy, terms, contributors, ecosystem context, and provider requests into
           dedicated public pages so each topic stays clear and easy to share.
         </p>
         <div class="page-link-grid">
@@ -25,6 +25,10 @@
           <RouterLink class="page-link-card" to="/our-commitment">
             <strong>Privacy Policy</strong>
             <p>Detailed data handling, no-sell/no-share terms, and cloud-parse transparency.</p>
+          </RouterLink>
+          <RouterLink class="page-link-card" to="/terms">
+            <strong>Terms of Service</strong>
+            <p>Transparent usage rules, ethical commitments, and contact-first dispute resolution.</p>
           </RouterLink>
           <RouterLink class="page-link-card" to="/contributors">
             <strong>Contributors</strong>

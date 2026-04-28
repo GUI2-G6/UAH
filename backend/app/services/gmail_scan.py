@@ -21,10 +21,43 @@ ATS_DOMAIN_HINTS = (
 
 CONSUMER_EMAIL_DOMAINS = {"gmail", "yahoo", "outlook", "hotmail", "icloud", "protonmail"}
 STATUS_KEYWORDS = {
-    "rejection": ["unfortunately", "regret", "not selected", "not moving forward", "will not be"],
+    "rejection": [
+        "unfortunately",
+        "regret",
+        "regret to inform you",
+        "unable to consider you further",
+        "not selected",
+        "not moving forward",
+        "will not be moving forward",
+        "move forward with other candidates",
+    ],
     "interview_invite": ["interview", "schedule", "meet with", "next steps", "phone screen"],
     "offer": ["offer", "congratulations", "pleased to extend", "welcome aboard"],
     "application_received": ["received your application", "application received", "thank you for applying", "we have received"],
+}
+STATUS_PATTERNS = {
+    "rejection": [
+        re.compile(r"\bregret to inform you\b", flags=re.IGNORECASE),
+        re.compile(r"\bunable to consider you further\b", flags=re.IGNORECASE),
+        re.compile(r"\bnot selected\b", flags=re.IGNORECASE),
+        re.compile(r"\bnot (?:be )?moving forward\b", flags=re.IGNORECASE),
+        re.compile(r"\bmove forward with other candidates\b", flags=re.IGNORECASE),
+    ],
+    "interview_invite": [
+        re.compile(r"\b(?:schedule|scheduling).{0,25}\binterview\b", flags=re.IGNORECASE),
+        re.compile(r"\binterview (?:next steps|invitation)\b", flags=re.IGNORECASE),
+        re.compile(r"\bphone screen\b", flags=re.IGNORECASE),
+    ],
+    "offer": [
+        re.compile(r"\bpleased to extend\b", flags=re.IGNORECASE),
+        re.compile(r"\bjob offer\b", flags=re.IGNORECASE),
+        re.compile(r"\bwelcome aboard\b", flags=re.IGNORECASE),
+    ],
+    "application_received": [
+        re.compile(r"\bthank you for applying\b", flags=re.IGNORECASE),
+        re.compile(r"\b(?:we have )?received your application\b", flags=re.IGNORECASE),
+        re.compile(r"\bapplication (?:has been )?received\b", flags=re.IGNORECASE),
+    ],
 }
 
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]{3,}", re.IGNORECASE)
@@ -37,6 +70,7 @@ class ScanMessage:
     from_header: str
     date: str
     snippet: str
+    body: str = ""
     source_id: str | None = None
 
 
@@ -73,7 +107,34 @@ def build_thread_signature(*, from_header: str, subject: str, company_hint: str 
     return sender_domain, subject_key, company_key
 
 
-def extract_company_hint(from_header: str, subject: str) -> str | None:
+def _format_company_name(value: str | None) -> str | None:
+    compact = " ".join(str(value or "").split()).strip(" -_,.")
+    if not compact:
+        return None
+    words: list[str] = []
+    for token in compact.split():
+        clean = token.strip()
+        if len(clean) <= 3 and clean.isalpha() and clean.upper() == clean:
+            words.append(clean)
+        elif clean.isupper() and len(clean) <= 4:
+            words.append(clean)
+        else:
+            words.append(clean.capitalize())
+    return " ".join(words)[:60] or None
+
+
+def _clean_company_capture(value: str | None) -> str | None:
+    trimmed = str(value or "")
+    trimmed = re.split(
+        r"\b(?:position|role|opportunity|team|thanks|thank you|we've|we have|regret|unable)\b",
+        trimmed,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
+    return _format_company_name(trimmed)
+
+
+def extract_company_hint(from_header: str, subject: str, snippet: str = "", body: str = "") -> str | None:
     domain = parse_sender_domain(from_header)
     if not domain:
         return None
@@ -85,18 +146,43 @@ def extract_company_hint(from_header: str, subject: str) -> str | None:
     if candidate in CONSUMER_EMAIL_DOMAINS:
         return None
     if any(hint in candidate for hint in ATS_DOMAIN_HINTS):
-        match = re.search(r"\b(?:at|for)\s+([A-Za-z0-9&.\- ]{2,60})", subject or "", flags=re.IGNORECASE)
-        if match:
-            guessed = " ".join(match.group(1).split()).strip(" -_,.")
-            return guessed[:60] or None
+        subject_patterns = [
+            r"\bposition update from\s+([A-Za-z0-9&.\- ]{2,60})$",
+            r"\bupdate from\s+([A-Za-z0-9&.\- ]{2,60})$",
+        ]
+        for pattern in subject_patterns:
+            subject_match = re.search(pattern, subject or "", flags=re.IGNORECASE)
+            if subject_match:
+                return _clean_company_capture(subject_match.group(1))
+
+        content = " ".join(part for part in [subject or "", snippet or "", body or ""] if part)
+        patterns = [
+            r"\bposition update from\s+([A-Za-z0-9&.\- ]{2,60})",
+            r"\bupdate from\s+([A-Za-z0-9&.\- ]{2,60})",
+            r"\bapplication (?:with|at|for)\s+([A-Za-z0-9&.\- ]{2,60})",
+            r"\b(?:at|for|with)\s+([A-Za-z0-9&.\- ]{2,60})\s+(?:position|role|opportunity)\b",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, content, flags=re.IGNORECASE)
+            if match:
+                return _clean_company_capture(match.group(1))
         return None
-    return candidate.capitalize()
+    return _format_company_name(candidate)
 
 
-def classify_message_status(subject: str, snippet: str) -> str:
-    combined = f"{(subject or '').lower()} {(snippet or '').lower()}"
+def classify_message_status(subject: str, snippet: str, body: str = "") -> str:
+    combined = f"{(subject or '').lower()} {(snippet or '').lower()} {(body or '').lower()}"
+    min_score = {
+        "rejection": 2,
+        "interview_invite": 2,
+        "offer": 2,
+        "application_received": 1,
+    }
     for status in ("rejection", "interview_invite", "offer", "application_received"):
-        if any(keyword in combined for keyword in STATUS_KEYWORDS[status]):
+        score = 0
+        score += sum(1 for keyword in STATUS_KEYWORDS[status] if keyword in combined)
+        score += 2 * sum(1 for pattern in STATUS_PATTERNS[status] if pattern.search(combined))
+        if score >= min_score[status]:
             return status
     return "unknown"
 
@@ -119,14 +205,22 @@ def _normalize_company(company: str | None) -> str:
     return " ".join(str(company or "").lower().split())
 
 
+def _company_acronym(company: str | None) -> str:
+    words = [w for w in re.split(r"[^a-z0-9]+", str(company or "").lower()) if w and len(w) > 1]
+    if len(words) < 2:
+        return ""
+    acronym = "".join(word[0] for word in words)
+    return acronym if len(acronym) >= 2 else ""
+
+
 def message_matches_applied_job(
     message: ScanMessage,
     *,
     apply_sessions: Iterable[dict],
     allowed_statuses: set[str],
 ) -> bool:
-    message_tokens = _tokenize(message.subject, message.snippet, message.from_header)
-    message_company = _normalize_company(extract_company_hint(message.from_header, message.subject))
+    message_tokens = _tokenize(message.subject, message.snippet, message.body, message.from_header)
+    message_company = _normalize_company(extract_company_hint(message.from_header, message.subject, message.snippet, message.body))
 
     for session in apply_sessions:
         status = str(session.get("status") or "").strip().lower()
@@ -141,6 +235,19 @@ def message_matches_applied_job(
 
         if company and message_company and (company == message_company or company in message_company or message_company in company):
             return True
+
+        company_tokens = _tokenize(company)
+        if company_tokens and message_tokens and len(company_tokens.intersection(message_tokens)) >= 1:
+            title_tokens = _tokenize(title)
+            title_overlap = len(message_tokens.intersection(title_tokens))
+            if title_overlap >= 1:
+                return True
+
+        acronym = _company_acronym(company)
+        if acronym and acronym in message_tokens:
+            title_tokens = _tokenize(title)
+            if len(message_tokens.intersection(title_tokens)) >= 1:
+                return True
 
         overlap = len(message_tokens.intersection(session_tokens))
         if overlap >= 2:
@@ -157,14 +264,15 @@ def evaluate_message(
 ) -> dict:
     subject = sanitize_preview_text(message.subject, max_len=220)
     snippet = sanitize_preview_text(message.snippet, max_len=320)
+    body = sanitize_preview_text(message.body, max_len=1500)
     from_header = sanitize_preview_text(message.from_header, max_len=220)
     date = sanitize_preview_text(message.date, max_len=120)
-    status = classify_message_status(subject, snippet)
-    company_hint = extract_company_hint(from_header, subject)
-    ats_detected = is_ats_message(from_header, subject, snippet)
+    status = classify_message_status(subject, snippet, body)
+    company_hint = extract_company_hint(from_header, subject, snippet, body)
+    ats_detected = is_ats_message(from_header, subject, f"{snippet} {body}")
 
     matched_applied_job = message_matches_applied_job(
-        ScanMessage(subject=subject, from_header=from_header, date=date, snippet=snippet, source_id=message.source_id),
+        ScanMessage(subject=subject, from_header=from_header, date=date, snippet=snippet, body=body, source_id=message.source_id),
         apply_sessions=apply_sessions,
         allowed_statuses=allowed_statuses,
     )

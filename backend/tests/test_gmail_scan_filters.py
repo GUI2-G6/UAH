@@ -88,6 +88,79 @@ class GmailScanFilterTests(unittest.TestCase):
         self.assertFalse(evaluated["matched_applied_job"])
         self.assertEqual(evaluated["exclude_reason"], "no_applied_job_match")
 
+    def test_extracts_company_from_position_update_subject(self):
+        message = ScanMessage(
+            subject="Position Update from GE Appliances",
+            from_header="Haier Workday <haier@myworkday.com>",
+            date="Thu, 23 Apr 2026 03:54:24 -0400",
+            snippet="Thanks for applying for our Software Engineering Co-op position.",
+        )
+        sessions = [{"id": 1, "company": "GE Appliances", "job_title": "Software Engineering Co-op", "status": "submitted"}]
+        evaluated = evaluate_message(
+            message,
+            apply_sessions=sessions,
+            allowed_statuses={"submitted"},
+            require_ats=True,
+        )
+        self.assertEqual(evaluated["company_hint"], "GE Appliances")
+        self.assertTrue(evaluated["matched_applied_job"])
+
+    def test_detects_workday_rejection_language(self):
+        message = ScanMessage(
+            subject="Position Update from GE Appliances",
+            from_header="Haier Workday <haier@myworkday.com>",
+            date="Thu, 23 Apr 2026 03:54:24 -0400",
+            snippet=(
+                "We've carefully reviewed your qualifications and regret to inform you "
+                "that we are unable to consider you further for this position."
+            ),
+        )
+        sessions = [{"id": 1, "company": "GE Appliances", "job_title": "Software Engineering Co-op", "status": "submitted"}]
+        evaluated = evaluate_message(
+            message,
+            apply_sessions=sessions,
+            allowed_statuses={"submitted"},
+            require_ats=True,
+        )
+        self.assertEqual(evaluated["detected_status"], "rejection")
+        self.assertEqual(evaluated["company_hint"], "GE Appliances")
+
+    def test_detects_rejection_from_body_when_snippet_is_generic(self):
+        message = ScanMessage(
+            subject="Position Update from GE Appliances",
+            from_header="Haier Workday <haier@myworkday.com>",
+            date="Thu, 23 Apr 2026 03:54:24 -0400",
+            snippet="Status update on your application.",
+            body=(
+                "We've carefully reviewed your qualification and regret to inform you "
+                "that we are unable to consider you further for this position."
+            ),
+        )
+        sessions = [{"id": 1, "company": "GE Appliances", "job_title": "Software Engineering Co-op", "status": "submitted"}]
+        evaluated = evaluate_message(
+            message,
+            apply_sessions=sessions,
+            allowed_statuses={"submitted"},
+            require_ats=True,
+        )
+        self.assertEqual(evaluated["detected_status"], "rejection")
+
+    def test_matches_company_acronym_with_title_overlap(self):
+        message = ScanMessage(
+            subject="Interview next steps for Software Engineering Co-op",
+            from_header="Haier Workday <haier@myworkday.com>",
+            date="Thu, 23 Apr 2026 03:54:24 -0400",
+            snippet="The GE team would like to schedule your interview.",
+        )
+        sessions = [{"id": 1, "company": "General Electric", "job_title": "Software Engineering Co-op", "status": "submitted"}]
+        evaluated = evaluate_message(
+            message,
+            apply_sessions=sessions,
+            allowed_statuses={"submitted"},
+            require_ats=True,
+        )
+        self.assertTrue(evaluated["matched_applied_job"])
+
 
 if __name__ == "__main__":
     unittest.main()

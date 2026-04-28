@@ -85,6 +85,7 @@ const navLinks = [
   { to: '/', label: 'Home' },
   { to: '/status', label: 'Status' },
   { to: '/our-commitment', label: 'Privacy Policy' },
+  { to: '/terms', label: 'Terms' },
   { to: '/contributors', label: 'Contributors' },
   { to: '/ecosystem', label: 'Ecosystem' },
   { to: '/browser-extension', label: 'Extension (alpha)' },

@@ -205,6 +205,7 @@ describe('public landing route architecture', () => {
     expect(paths).toContain('/')
     expect(paths).toContain('/status')
     expect(paths).toContain('/our-commitment')
+    expect(paths).toContain('/terms')
     expect(paths).toContain('/contributors')
     expect(paths).toContain('/ecosystem')
     expect(paths).toContain('/browser-extension')
@@ -225,6 +226,7 @@ describe('public landing route architecture', () => {
       'Home',
       'Status',
       'Privacy Policy',
+      'Terms',
       'Contributors',
       'Ecosystem',
       'Extension (alpha)',

@@ -62,61 +62,6 @@ def start_session(
     return {"session_id": session.id, "status": session.status, "started_at": session.started_at}
 
 
-@router.post("/{session_id}/events")
-def add_event(
-    session_id: int,
-    payload: SessionEventRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    session = db.query(ApplySession).filter(
-        ApplySession.id == session_id,
-        ApplySession.user_id == current_user.id
-    ).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    event = ApplySessionEvent(
-        session_id=session.id,
-        event_type=payload.event_type,
-        payload=payload.payload,
-    )
-    db.add(event)
-    session.status = "in_progress"
-    db.commit()
-    return {"ok": True}
-
-
-@router.post("/{session_id}/finalize")
-def finalize_session(
-    session_id: int,
-    payload: FinalizeSessionRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    if payload.status not in ("submitted", "abandoned"):
-        raise HTTPException(status_code=400, detail="Status must be 'submitted' or 'abandoned'")
-
-    session = db.query(ApplySession).filter(
-        ApplySession.id == session_id,
-        ApplySession.user_id == current_user.id
-    ).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    session.status = payload.status
-    session.finalized_at = datetime.now(timezone.utc)
-    if payload.fields_matched is not None:
-        session.fields_matched = payload.fields_matched
-    if payload.fields_filled is not None:
-        session.fields_filled = payload.fields_filled
-    if payload.notes:
-        session.notes = payload.notes
-    db.commit()
-    db.refresh(session)
-    return {"session_id": session.id, "status": session.status}
-
-
 @router.get("/")
 def list_sessions(
     status: Optional[str] = None,
@@ -249,7 +194,62 @@ def get_analytics_summary(
     }
 
 
-@router.get("/{session_id}")
+@router.post("/{session_id:int}/events")
+def add_event(
+    session_id: int,
+    payload: SessionEventRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    session = db.query(ApplySession).filter(
+        ApplySession.id == session_id,
+        ApplySession.user_id == current_user.id
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    event = ApplySessionEvent(
+        session_id=session.id,
+        event_type=payload.event_type,
+        payload=payload.payload,
+    )
+    db.add(event)
+    session.status = "in_progress"
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/{session_id:int}/finalize")
+def finalize_session(
+    session_id: int,
+    payload: FinalizeSessionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if payload.status not in ("submitted", "abandoned"):
+        raise HTTPException(status_code=400, detail="Status must be 'submitted' or 'abandoned'")
+
+    session = db.query(ApplySession).filter(
+        ApplySession.id == session_id,
+        ApplySession.user_id == current_user.id
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session.status = payload.status
+    session.finalized_at = datetime.now(timezone.utc)
+    if payload.fields_matched is not None:
+        session.fields_matched = payload.fields_matched
+    if payload.fields_filled is not None:
+        session.fields_filled = payload.fields_filled
+    if payload.notes:
+        session.notes = payload.notes
+    db.commit()
+    db.refresh(session)
+    return {"session_id": session.id, "status": session.status}
+
+
+@router.get("/{session_id:int}")
 def get_session(
     session_id: int,
     db: Session = Depends(get_db),

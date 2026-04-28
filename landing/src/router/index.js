@@ -7,6 +7,7 @@ import HomePage from '../pages/HomePage.vue'
 import OurCommitmentPage from '../pages/OurCommitmentPage.vue'
 import ProviderRequestsPage from '../pages/ProviderRequestsPage.vue'
 import PublicStatusPage from '../pages/PublicStatusPage.vue'
+import TermsPage from '../pages/TermsPage.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -40,6 +41,11 @@ const router = createRouter({
       path: '/provider-requests',
       name: 'provider-requests',
       component: ProviderRequestsPage,
+    },
+    {
+      path: '/terms',
+      name: 'terms',
+      component: TermsPage,
     },
     {
       path: '/browser-extension',
