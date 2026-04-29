@@ -1,3 +1,5 @@
+@import "./Application-flow.css";
+
 /* ── Page shell ──────────────────────────────────────────── */
 .page {
   display: flex;
@@ -144,6 +146,13 @@
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.resumes-page .panel-header,
+.resumes-page .library-header-actions,
+.resumes-page .jobinfo-save-row,
+.resumes-page .inline-actions {
+  row-gap: 10px;
 }
 
 .resumes-page .library-header-actions {
@@ -304,6 +313,12 @@
   background: rgba(255, 255, 255, 0.96);
   padding: 10px 12px;
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.resumes-page .field-group select,
+.resumes-page .profile-select,
+.resumes-page .new-profile-input {
+  min-height: 38px;
 }
 
 .resumes-page .field-group input:focus,

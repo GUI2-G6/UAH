@@ -91,7 +91,7 @@ export default {
 <style scoped>
 .application-item {
   display: grid;
-  gap: 7px;
+  gap: 10px;
 }
 
 .application-item-header {
@@ -103,50 +103,58 @@ export default {
 
 .application-item-header h3 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 1.02rem;
   color: var(--color-text-primary);
+  line-height: 1.3;
 }
 
 .application-role,
 .application-meta {
   margin: 0;
   color: var(--color-text-muted);
-  font-size: 0.92rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
 }
 
 .application-snippet {
-  margin: 2px 0 0;
+  margin: 0;
   color: var(--color-text-primary);
-  font-size: 0.93rem;
-  line-height: 1.4;
+  font-size: 0.92rem;
+  line-height: 1.55;
 }
 
 .view-more-btn {
-  margin-top: 4px;
+  margin-top: 2px;
   align-self: flex-start;
-  background: transparent;
-  border: 0;
-  color: var(--color-primary-600);
+  background: var(--color-surface);
+  border: 1px solid var(--border-color);
+  color: var(--color-text-primary);
   cursor: pointer;
-  padding: 0;
-  font-size: 0.85rem;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
 }
 
 .source-badge {
   display: inline-flex;
-  padding: 4px 8px;
+  align-items: center;
+  padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid var(--border-color);
-  font-size: 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
   color: var(--color-text-muted);
   background: var(--color-surface-muted);
+  text-transform: uppercase;
 }
 
 .application-status-chip {
   margin: 0;
   font-size: 0.72rem;
   line-height: 1;
-  padding: 7px 10px;
+  padding: 6px 10px;
   border-radius: 999px;
   text-transform: capitalize;
   border: 1px solid var(--border-color);

@@ -1,0 +1,88 @@
+.app-flow-page {
+  --app-section-gap: var(--space-3);
+  --app-card-gap: 12px;
+}
+
+.app-flow-page .greeting {
+  padding: 22px var(--space-4) 18px;
+}
+
+.app-flow-page .dashboard {
+  gap: var(--app-section-gap);
+  padding: var(--space-3);
+}
+
+.app-flow-page .section-block,
+.app-flow-page .results-toolbar,
+.app-flow-page .app-control-shell {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--color-surface);
+  padding: 12px;
+}
+
+.app-flow-page .submit-btn {
+  border-radius: 10px;
+  min-height: 38px;
+  padding: 8px 12px;
+}
+
+.app-flow-page .scan-input,
+.app-flow-page .manual-status-select,
+.app-flow-page .results-toolbar select,
+.app-flow-page .app-control-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.app-flow-page .manual-status-label {
+  display: grid;
+  gap: 6px;
+  min-width: 180px;
+  color: var(--color-text-secondary);
+  font-size: 0.86rem;
+}
+
+.app-flow-page .quick-actions,
+.app-flow-page .scan-primary-actions,
+.app-flow-page .toolbar-actions,
+.app-flow-page .suppression-actions,
+.app-flow-page .tracked-actions,
+.app-flow-page .app-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.app-flow-page .timeline-row,
+.app-flow-page .tracked-row,
+.app-flow-page .suppression-row,
+.app-flow-page .app-list-row {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--color-surface);
+  padding: 10px 12px;
+}
+
+.app-flow-page .empty-state-copy,
+.app-flow-page .app-empty-state {
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+
+@media (max-width: 768px) {
+  .app-flow-page .greeting {
+    padding: 16px;
+  }
+
+  .app-flow-page .dashboard {
+    padding: 12px;
+  }
+}

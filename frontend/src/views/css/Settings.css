@@ -1,3 +1,5 @@
+@import "./Application-flow.css";
+
 .page {
   display: flex;
   flex-direction: column;
@@ -568,6 +570,57 @@
 .service-action-button:disabled {
   opacity: 0.65;
   cursor: default;
+}
+
+.applicant-info-page .greeting h2 {
+  margin: 8px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.98rem;
+  font-weight: 500;
+}
+
+.applicant-info-page .dashboard {
+  gap: 16px;
+}
+
+.applicant-info-page .applicant-card {
+  --ui-card-padding: 18px;
+}
+
+.applicant-info-page .appInfo-group {
+  display: grid;
+  gap: 8px;
+}
+
+.applicant-info-page .appInfo-group h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.applicant-info-page .appInfo-group p,
+.applicant-info-page .appInfo-group span {
+  margin: 4px 0 0;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.applicant-info-page .appInfo-group input,
+.applicant-info-page .appInfo-group select,
+.applicant-info-page .appInfo-group textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 38px;
+  padding: 9px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.applicant-info-page .appInfo-group textarea {
+  min-height: 120px;
+  line-height: 1.45;
 }
 
 @media (min-width: 1080px) {

@@ -30,6 +30,7 @@ vi.mock('@/lib/validation.js', () => ({
 }))
 
 import ResumesView from '@/views/Resumes.vue'
+import ResumeReviewModal from '@/components/ResumeReviewModal.vue'
 
 describe('resume re-parse flow', () => {
   beforeEach(() => {
@@ -93,5 +94,104 @@ describe('resume re-parse flow', () => {
     expect(ctx.parseMethod).toBe('cloud')
     expect(queueParseForResume).toHaveBeenCalledWith(13, 'cloud')
     expect(ctx.reparseBusyId).toBe(null)
+  })
+})
+
+describe('applicant profile field bindings', () => {
+  it('loads and saves middle/legal/preferred name fields', () => {
+    const ctx = {
+      profiles: [{ id: 3, name: 'Default' }],
+      activeProfileId: 3,
+      applicantEditingField: 'firstName',
+      applicantSavingField: 'firstName',
+      firstName: '',
+      middleName: '',
+      lastName: '',
+      fullLegalName: '',
+      preferredName: '',
+      suffix: '',
+      appEmail: '',
+      phone: '',
+      linkedin: '',
+      portfolio: '',
+      streetAddress: '',
+      city: '',
+      appState: '',
+      zip: '',
+      summary: '',
+      workAuth: '',
+      requiresSponsorship: '',
+      degree: '',
+      major: '',
+      university: '',
+      gradYear: '',
+      gpa: '',
+      yearsExperience: '',
+      jobTitle: '',
+      skillsText: '',
+      certificationsText: '',
+      professionalLinksText: '',
+      educationHistoryText: '',
+      employmentHistoryText: '',
+      loadedEducationHistoryText: '',
+      loadedEmploymentHistoryText: '',
+      demographicGender: '',
+      demographicEthnicity: '',
+      veteranStatus: '',
+      disabilityStatus: '',
+      californiaResident: '',
+      activeTab: 'resumes',
+      syncApplicantSavedSignature: vi.fn(),
+      startJobInfoSession: vi.fn(),
+      normalizedTextValue: ResumesView.methods.normalizedTextValue,
+    }
+
+    ResumesView.methods.populateFormFromProfile.call(ctx, {
+      id: 3,
+      first_name: 'Trent',
+      middle_name: 'G',
+      last_name: 'Brown',
+      full_legal_name: 'Trent G Brown',
+      preferred_name: 'TB',
+      suffix: 'Jr',
+      email: 'trent@example.com',
+      phone: '(339) 440-0642',
+    })
+
+    expect(ctx.middleName).toBe('G')
+    expect(ctx.fullLegalName).toBe('Trent G Brown')
+    expect(ctx.preferredName).toBe('TB')
+    expect(ctx.suffix).toBe('Jr')
+
+    const payload = ResumesView.methods.buildProfilePayload.call(ctx)
+    expect(payload).toEqual(expect.objectContaining({
+      first_name: 'Trent',
+      middle_name: 'G',
+      last_name: 'Brown',
+      full_legal_name: 'Trent G Brown',
+      preferred_name: 'TB',
+      suffix: 'Jr',
+    }))
+  })
+})
+
+describe('resume review modal schema defaults', () => {
+  it('keeps middle_name in normalized personal info when schema is absent', () => {
+    const ctx = {
+      personalFields: [],
+      skillFields: [],
+      ...ResumeReviewModal.methods,
+    }
+
+    const normalized = ResumeReviewModal.methods.normalizeDraft.call(ctx, {
+      personal_info: {
+        first_name: 'Trent',
+        middle_name: 'G',
+        last_name: 'Brown',
+      },
+    })
+
+    expect(Object.keys(normalized.personal_info)).toContain('middle_name')
+    expect(normalized.personal_info.middle_name).toBe('G')
   })
 })

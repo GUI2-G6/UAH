@@ -1,5 +1,5 @@
 <template>
-  <div class="page home-page">
+  <div class="page app-flow-page home-page">
     <div class="greeting">
       <h1>Home</h1>
       <p>{{ greetingLine }}</p>
@@ -82,6 +82,7 @@
 import Card from "../components/Card.vue"
 import { authedFetch, getCurrentUser } from "../lib/auth.js"
 import { readGmailScanCache, resolveGmailConnectionStatus, runGmailScan, subscribeGmailUpdates, summarizeGmailResults } from "../lib/gmailUpdates.js"
+import { filterGmailTrackedRows } from "../lib/trackedApplications.js"
 
 export default{
   data() {
@@ -239,7 +240,7 @@ export default{
         const res = await authedFetch("/api/applications/tracked")
         const data = await res.json().catch(() => null)
         if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
-        this.trackedApplications = Array.isArray(data?.tracked_applications) ? data.tracked_applications : []
+        this.trackedApplications = filterGmailTrackedRows(data?.tracked_applications)
       } catch {
         this.trackedApplications = []
       }

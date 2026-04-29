@@ -1,11 +1,11 @@
 <template>
-    <div class="page">
+    <div class="page app-flow-page applicant-info-page">
         <div class="greeting">
             <h1>Applicant Information</h1>
             <h2>Store your information for quick autofill in job applications</h2>
         </div>
         <div class="dashboard">
-            <Card class="applicant-card">                
+            <Card class="applicant-card app-control-shell">                
                 <template #header>
                     <h3>Personal Information</h3>
                 </template>
@@ -25,7 +25,7 @@
                 </div>
             </Card>
 
-            <Card class="applicant-card">
+            <Card class="applicant-card app-control-shell">
                 <template #header>
                     <h3>Address</h3>
                 </template>
@@ -41,7 +41,7 @@
                 </div>
             </Card>
 
-            <Card class="applicant-card">
+            <Card class="applicant-card app-control-shell">
                 <div class="appInfo-group">
                     <h3>Professional Summary</h3>
                     <span>Summary</span>
@@ -50,7 +50,7 @@
                 </div>
             </Card>
 
-            <Card class="applicant-card">
+            <Card class="applicant-card app-control-shell">
                 <div class="appInfo-group">
                     <h3>Work Authorization</h3>
                     <p>Work Authorization Status</p>
@@ -72,7 +72,7 @@
             </Card>
 
 
-            <Card class="applicant-card">
+            <Card class="applicant-card app-control-shell">
                 <div class="appInfo-group">
                 <h3>Education</h3>
                     <p>Degree</p>
@@ -88,33 +88,39 @@
                 </div>
             </Card>
 
-            <Card class="applicant-card">
-                <h3>Skills and Languages</h3>
+            <Card class="applicant-card app-control-shell">
+                <div class="appInfo-group">
+                    <h3>Skills and Languages</h3>
+                </div>
             </Card>
 
-            <Card class="applicant-card">
-                <h3>Current Experience</h3>
-                <p>Years of Experience</p>
-                <input id="applicant-years-experience" type="text" name="years_experience" inputmode="numeric" autocomplete="off" v-model="currentUser.yearsExperience" placeholder="Years of Experience">
-                <p>Current Job Title</p>
-                <input id="applicant-current-job-title" type="text" name="current_job_title" autocomplete="off" v-model="currentUser.currentJobTitle" placeholder="Current Job Title">
-                <p>Current Company</p>
-                <input id="applicant-current-company" type="text" name="current_company" autocomplete="off" v-model="currentUser.currentCompany" placeholder="Current Company">
+            <Card class="applicant-card app-control-shell">
+                <div class="appInfo-group">
+                    <h3>Current Experience</h3>
+                    <p>Years of Experience</p>
+                    <input id="applicant-years-experience" type="text" name="years_experience" inputmode="numeric" autocomplete="off" v-model="currentUser.yearsExperience" placeholder="Years of Experience">
+                    <p>Current Job Title</p>
+                    <input id="applicant-current-job-title" type="text" name="current_job_title" autocomplete="off" v-model="currentUser.currentJobTitle" placeholder="Current Job Title">
+                    <p>Current Company</p>
+                    <input id="applicant-current-company" type="text" name="current_company" autocomplete="off" v-model="currentUser.currentCompany" placeholder="Current Company">
+                </div>
             </Card>
 
-            <Card class="applicant-card">
-                <h3>Job Preferences</h3>
-                <p>Desired Salary Range</p>
-                <input id="applicant-desired-salary-range" type="text" name="desired_salary_range" autocomplete="off" v-model="currentUser.salaryRange" placeholder="Desired Salary Range">
-                <p>Preferred Job Locations</p>
-                <input id="applicant-preferred-locations" type="text" name="preferred_locations" autocomplete="off" v-model="currentUser.preferredLocations" placeholder="Preferred Job Locations">
-                <p>Remote Work Preference</p>
-                <select name="remote_work_preference" id="remote-work-preference" autocomplete="off">
-                    <option>Remote Only</option>
-                    <option>On-site</option>
-                    <option>Hybrid</option>
-                    <option>No Preference</option>
-                </select>
+            <Card class="applicant-card app-control-shell">
+                <div class="appInfo-group">
+                    <h3>Job Preferences</h3>
+                    <p>Desired Salary Range</p>
+                    <input id="applicant-desired-salary-range" type="text" name="desired_salary_range" autocomplete="off" v-model="currentUser.salaryRange" placeholder="Desired Salary Range">
+                    <p>Preferred Job Locations</p>
+                    <input id="applicant-preferred-locations" type="text" name="preferred_locations" autocomplete="off" v-model="currentUser.preferredLocations" placeholder="Preferred Job Locations">
+                    <p>Remote Work Preference</p>
+                    <select name="remote_work_preference" id="remote-work-preference" autocomplete="off">
+                        <option>Remote Only</option>
+                        <option>On-site</option>
+                        <option>Hybrid</option>
+                        <option>No Preference</option>
+                    </select>
+                </div>
             </Card>
 
         </div>

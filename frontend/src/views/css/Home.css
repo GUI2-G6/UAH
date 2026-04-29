@@ -1,3 +1,5 @@
+@import "./Application-flow.css";
+
 .page {
   display: flex;
   flex-direction: column;
@@ -6,7 +8,7 @@
 
 .greeting {
   border-bottom: solid 2px var(--border-color-light);
-  padding: 20px;
+  padding: 22px var(--space-4) 18px;
 }
 
 .application-hero {
@@ -70,15 +72,8 @@
 
 .home-card--wide :deep(.ui-card__body) {
   display: grid;
-  gap: 10px;
-  padding-top: 12px;
-}
-
-.section-block {
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 12px;
-  background: var(--color-surface);
+  gap: 12px;
+  padding-top: 10px;
 }
 
 .application-scan-card :deep(.ui-card__header) {
@@ -86,16 +81,9 @@
   gap: 6px;
 }
 
-.scan-primary-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
 .home-application-card {
   --ui-card-bg: var(--color-surface);
-  --ui-card-padding: 12px;
+  --ui-card-padding: 14px;
   margin-top: 2px;
 }
 
@@ -157,12 +145,6 @@
   gap: 10px;
 }
 
-.quick-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
 .brief-list {
   margin: 0;
   padding-left: 18px;
@@ -193,9 +175,6 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 10px 12px;
 }
 
 .timeline-title {
@@ -230,11 +209,6 @@
 .scan-input {
   width: 220px;
   max-width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: var(--color-surface);
-  color: var(--color-text-primary);
 }
 
 .advanced-options-panel {
@@ -271,11 +245,6 @@
 #tracked-archived-filter {
   width: 220px;
   max-width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: var(--color-surface);
-  color: var(--color-text-primary);
 }
 
 .empty-state-copy {
@@ -284,36 +253,18 @@
   font-size: 0.95rem;
 }
 
-.suppression-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
 .results-toolbar {
   display: flex;
   justify-content: space-between;
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 10px;
-  background: var(--color-surface);
-}
-
-.toolbar-actions {
-  display: inline-flex;
-  gap: 8px;
-  flex-wrap: wrap;
 }
 
 .submit-btn {
-  border-radius: 8px;
   border: 1px solid var(--border-color);
   background: var(--color-surface);
   color: var(--color-text-primary);
-  padding: 8px 12px;
   font-weight: 600;
   line-height: 1.2;
   cursor: pointer;
@@ -340,9 +291,6 @@
   justify-content: space-between;
   gap: 10px;
   align-items: center;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 8px 10px;
 }
 
 .suppression-row p {
@@ -364,9 +312,6 @@
   justify-content: space-between;
   align-items: center;
   gap: 10px;
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 10px 12px;
   box-shadow: inset 0 0 0 1px transparent;
   transition: box-shadow 120ms ease, border-color 120ms ease;
 }

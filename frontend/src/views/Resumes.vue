@@ -1,5 +1,5 @@
 <template>
-    <div class="page resumes-page">
+    <div class="page app-flow-page resumes-page">
 
         <div class="greeting resume-hero">
             <div class="resume-hero-copy">
@@ -461,9 +461,25 @@
                         <label>First Name</label>
                         <input id="resume-first-name" type="text" name="first_name" autocomplete="off" v-model="firstName" :readonly="isApplicantFieldLocked('firstName')" @blur="handleApplicantFieldBlur('firstName')" placeholder="John">
                     </div>
+                    <div :class="['field-group', applicantFieldGroupClass('middleName')]" @dblclick="unlockApplicantField('middleName', 'resume-middle-name')" title="Double-click to edit">
+                        <label>Middle Name</label>
+                        <input id="resume-middle-name" type="text" name="middle_name" autocomplete="off" v-model="middleName" :readonly="isApplicantFieldLocked('middleName')" @blur="handleApplicantFieldBlur('middleName')" placeholder="A.">
+                    </div>
                     <div :class="['field-group', applicantFieldGroupClass('lastName')]" @dblclick="unlockApplicantField('lastName', 'resume-last-name')" title="Double-click to edit">
                         <label>Last Name</label>
                         <input id="resume-last-name" type="text" name="last_name" autocomplete="off" v-model="lastName" :readonly="isApplicantFieldLocked('lastName')" @blur="handleApplicantFieldBlur('lastName')" placeholder="Doe">
+                    </div>
+                    <div :class="['field-group', applicantFieldGroupClass('fullLegalName')]" @dblclick="unlockApplicantField('fullLegalName', 'resume-full-legal-name')" title="Double-click to edit">
+                        <label>Full Legal Name</label>
+                        <input id="resume-full-legal-name" type="text" name="full_legal_name" autocomplete="off" v-model="fullLegalName" :readonly="isApplicantFieldLocked('fullLegalName')" @blur="handleApplicantFieldBlur('fullLegalName')" placeholder="John Adam Doe">
+                    </div>
+                    <div :class="['field-group', applicantFieldGroupClass('preferredName')]" @dblclick="unlockApplicantField('preferredName', 'resume-preferred-name')" title="Double-click to edit">
+                        <label>Preferred Name</label>
+                        <input id="resume-preferred-name" type="text" name="preferred_name" autocomplete="off" v-model="preferredName" :readonly="isApplicantFieldLocked('preferredName')" @blur="handleApplicantFieldBlur('preferredName')" placeholder="Johnny">
+                    </div>
+                    <div :class="['field-group', applicantFieldGroupClass('suffix')]" @dblclick="unlockApplicantField('suffix', 'resume-suffix')" title="Double-click to edit">
+                        <label>Suffix</label>
+                        <input id="resume-suffix" type="text" name="suffix" autocomplete="off" v-model="suffix" :readonly="isApplicantFieldLocked('suffix')" @blur="handleApplicantFieldBlur('suffix')" placeholder="Jr">
                     </div>
                     <div :class="['field-group', applicantFieldGroupClass('appEmail')]" @dblclick="unlockApplicantField('appEmail', 'resume-email')" title="Double-click to edit">
                         <label>Email</label>
@@ -1183,7 +1199,11 @@ export default {
             activeProfileId: null,
             profilesLoading: false,
             firstName: '',
+            middleName: '',
             lastName: '',
+            fullLegalName: '',
+            preferredName: '',
+            suffix: '',
             appEmail: '',
             phone: '',
             linkedin: '',
@@ -2203,6 +2223,10 @@ export default {
                 if (saved) {
                     const d = JSON.parse(saved)
                     Object.assign(payload, {
+                        middle_name: d.middleName || '',
+                        full_legal_name: d.fullLegalName || '',
+                        preferred_name: d.preferredName || '',
+                        suffix: d.suffix || '',
                         phone: d.phone || '', linkedin: d.linkedin || '', portfolio: d.portfolio || '',
                         street_address: d.streetAddress || '', city: d.city || '', state: d.appState || '', zip: d.zip || '',
                         summary: d.summary || '', work_auth: d.workAuth || '', requires_sponsorship: d.requiresSponsorship || '',
@@ -2229,7 +2253,11 @@ export default {
             // Fill from current user
             if (this.currentUser) {
                 payload.first_name = payload.first_name || this.currentUser.first_name || this.currentUser.firstName || ''
+                payload.middle_name = payload.middle_name || this.currentUser.middle_name || this.currentUser.middleName || ''
                 payload.last_name = payload.last_name || this.currentUser.last_name || this.currentUser.lastName || ''
+                payload.full_legal_name = payload.full_legal_name || this.currentUser.full_legal_name || this.currentUser.fullLegalName || ''
+                payload.preferred_name = payload.preferred_name || this.currentUser.preferred_name || this.currentUser.preferredName || ''
+                payload.suffix = payload.suffix || this.currentUser.suffix || ''
                 payload.email = payload.email || this.currentUser.email || ''
             }
 
@@ -2268,7 +2296,11 @@ export default {
             this.applicantEditingField = ''
             this.applicantSavingField = ''
             this.firstName = p.first_name || ''
+            this.middleName = p.middle_name || ''
             this.lastName = p.last_name || ''
+            this.fullLegalName = p.full_legal_name || ''
+            this.preferredName = p.preferred_name || ''
+            this.suffix = p.suffix || ''
             this.appEmail = p.email || ''
             this.phone = p.phone || ''
             this.linkedin = p.linkedin || ''
@@ -2309,7 +2341,9 @@ export default {
             const activeProfile = this.profiles.find((profile) => Number(profile?.id) === Number(this.activeProfileId))
             const payload = {
                 name: activeProfile?.name || 'Default',
-                first_name: this.firstName, last_name: this.lastName, email: this.appEmail,
+                first_name: this.firstName, middle_name: this.middleName, last_name: this.lastName,
+                full_legal_name: this.fullLegalName, preferred_name: this.preferredName, suffix: this.suffix,
+                email: this.appEmail,
                 phone: this.phone, linkedin: this.linkedin, portfolio: this.portfolio,
                 street_address: this.streetAddress, city: this.city, state: this.appState, zip: this.zip,
                 summary: this.summary, work_auth: this.workAuth, requires_sponsorship: this.requiresSponsorship,
@@ -2339,13 +2373,21 @@ export default {
             this.applicantSavingField = ''
             if (this.currentUser) {
                 this.firstName = this.currentUser.first_name || this.currentUser.firstName || ''
+                this.middleName = this.currentUser.middle_name || this.currentUser.middleName || ''
                 this.lastName = this.currentUser.last_name || this.currentUser.lastName || ''
+                this.fullLegalName = this.currentUser.full_legal_name || this.currentUser.fullLegalName || ''
+                this.preferredName = this.currentUser.preferred_name || this.currentUser.preferredName || ''
+                this.suffix = this.currentUser.suffix || ''
                 this.appEmail = this.currentUser.email || ''
             }
             try {
                 const saved = localStorage.getItem(APPINFO_KEY)
                 if (saved) {
                     const d = JSON.parse(saved)
+                    this.middleName = d.middleName || this.middleName || ''
+                    this.fullLegalName = d.fullLegalName || this.fullLegalName || ''
+                    this.preferredName = d.preferredName || this.preferredName || ''
+                    this.suffix = d.suffix || this.suffix || ''
                     this.phone = d.phone || ''; this.linkedin = d.linkedin || ''; this.portfolio = d.portfolio || ''
                     this.streetAddress = d.streetAddress || ''; this.city = d.city || ''; this.appState = d.appState || ''; this.zip = d.zip || ''
                     this.summary = d.summary || ''; this.workAuth = d.workAuth || ''; this.requiresSponsorship = d.requiresSponsorship || ''

@@ -1,5 +1,5 @@
 <template>
-  <div class="page">
+  <div class="page app-flow-page">
     <div class="greeting application-hero">
       <div>
         <h1>Applications</h1>
@@ -28,7 +28,7 @@
         <p id="offers" class="kpi-value">{{ summary.offer }}</p>
       </Card>
       <Card class="home-card home-stat-card">
-        <template #header><h2>Not moving forward</h2></template>
+        <template #header><h2>Rejection</h2></template>
         <p id="rejected" class="kpi-value">{{ summary.rejection }}</p>
       </Card>
 
@@ -299,6 +299,7 @@
     import Application from "../components/Application.vue"
     import { authedFetch, getCurrentUser } from "../lib/auth.js";
     import { readGmailScanCache, resolveGmailConnectionStatus, runGmailScan, subscribeGmailUpdates, summarizeGmailResults, listGmailSuppressions, removeGmailSuppression, createGmailFeedback } from "../lib/gmailUpdates.js"
+    import { filterGmailTrackedRows } from "../lib/trackedApplications.js"
     import { showToast } from "../services/toastService";
 
     export default{
@@ -661,8 +662,8 @@
                 const res = await authedFetch('/api/applications/tracked?include_archived=1')
                 const data = await res.json().catch(() => null)
                 if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
-                this.trackedApplications = Array.isArray(data?.tracked_applications) ? data.tracked_applications : []
-                this.archivedTrackedApplications = Array.isArray(data?.archived_applications) ? data.archived_applications : []
+                this.trackedApplications = filterGmailTrackedRows(data?.tracked_applications)
+                this.archivedTrackedApplications = filterGmailTrackedRows(data?.archived_applications)
             } catch (error) {
                 console.error('Failed to load tracked applications', error)
                 this.trackedApplications = []

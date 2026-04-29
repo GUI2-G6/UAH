@@ -227,7 +227,11 @@ import { showToast } from '../services/toastService.js'
 
 const PERSONAL_FIELDS = [
   { key: 'first_name', label: 'First Name' },
+  { key: 'middle_name', label: 'Middle Name' },
   { key: 'last_name', label: 'Last Name' },
+  { key: 'full_legal_name', label: 'Full Legal Name' },
+  { key: 'preferred_name', label: 'Preferred Name' },
+  { key: 'suffix', label: 'Suffix' },
   { key: 'email', label: 'Email', type: 'email' },
   { key: 'phone', label: 'Phone' },
   { key: 'address', label: 'Street Address', full: true },
