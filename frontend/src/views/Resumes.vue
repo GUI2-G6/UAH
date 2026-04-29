@@ -2463,10 +2463,7 @@ export default {
         async deleteProfile(profileId) {
             if (this.profiles.length <= 1) {
                 this.saveStatus = { type: 'error', message: 'Cannot delete your only profile.' }
-                return
-            }
-            if (Number(profileId) === Number(this.activeProfileId)) {
-                alert("Active profile cannot be deleted. Switch profiles first.")
+                showToast('Cannot delete your only profile.', 'error')
                 return
             }
             try {

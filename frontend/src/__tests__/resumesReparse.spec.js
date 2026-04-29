@@ -98,6 +98,10 @@ describe('resume re-parse flow', () => {
 })
 
 describe('applicant profile field bindings', () => {
+  beforeEach(() => {
+    authMocks.authedFetch.mockReset()
+  })
+
   it('loads and saves middle/legal/preferred name fields', () => {
     const ctx = {
       profiles: [{ id: 3, name: 'Default' }],
@@ -172,6 +176,52 @@ describe('applicant profile field bindings', () => {
       preferred_name: 'TB',
       suffix: 'Jr',
     }))
+  })
+
+  it('blocks deleting the only remaining profile', async () => {
+    const ctx = {
+      profiles: [{ id: 3, name: 'Default', is_active: true }],
+      activeProfileId: 3,
+      saveStatus: { type: '', message: '' },
+      refreshProfileList: vi.fn(),
+      loadProfileData: vi.fn(),
+      publishDebugState: vi.fn(),
+    }
+
+    await ResumesView.methods.deleteProfile.call(ctx, 3)
+
+    expect(authMocks.authedFetch).not.toHaveBeenCalled()
+    expect(ctx.saveStatus).toEqual({
+      type: 'error',
+      message: 'Cannot delete your only profile.',
+    })
+  })
+
+  it('allows deleting active profile when another profile exists', async () => {
+    authMocks.authedFetch.mockResolvedValueOnce({ ok: true })
+    const ctx = {
+      profiles: [
+        { id: 3, name: 'Default', is_active: true },
+        { id: 4, name: 'Internships', is_active: false },
+      ],
+      activeProfileId: 3,
+      saveStatus: { type: '', message: '' },
+      refreshProfileList: vi.fn(async function refresh() {
+        this.profiles = [{ id: 4, name: 'Internships', is_active: true }]
+      }),
+      loadProfileData: vi.fn(),
+      publishDebugState: vi.fn(),
+    }
+
+    await ResumesView.methods.deleteProfile.call(ctx, 3)
+
+    expect(authMocks.authedFetch).toHaveBeenCalledWith('/api/applicant-profile/3', { method: 'DELETE' })
+    expect(ctx.refreshProfileList).toHaveBeenCalled()
+    expect(ctx.loadProfileData).toHaveBeenCalledWith(4)
+    expect(ctx.saveStatus).toEqual({
+      type: 'success',
+      message: 'Profile deleted.',
+    })
   })
 })
 
