@@ -912,6 +912,11 @@ verify_frontend_asset_integrity() {
   local frontend_url="${2:-}"
   local index_url
   local index_html
+  local index_status=""
+  local index_response
+  local max_attempts=6
+  local attempt=1
+  local retry_delay=5
   local max_missing=0
 
   if [[ -z "$frontend_url" ]]; then
@@ -932,8 +937,35 @@ verify_frontend_asset_integrity() {
   index_url="${frontend_url%/}/index.html"
   echo "  Checking frontend index/chunk integrity: $index_url"
 
-  if ! index_html="$(curl -fsSL --max-time 15 "$index_url")"; then
-    echo "  Failed to fetch $index_url" >&2
+  while ((attempt <= max_attempts)); do
+    index_response="$(curl -sS -L --max-time 15 -w $'\n__HTTP_STATUS__:%{http_code}' "$index_url" || true)"
+    index_status="${index_response##*$'\n'__HTTP_STATUS__:}"
+    if [[ "$index_response" == *$'\n__HTTP_STATUS__:'* ]]; then
+      index_html="${index_response%$'\n'__HTTP_STATUS__:*}"
+    else
+      index_html=""
+      index_status="000"
+    fi
+
+    if [[ "$index_status" == "200" && -n "$index_html" ]]; then
+      break
+    fi
+
+    # beta is intentionally access-gated; public curl can return 403 even when stack is healthy.
+    if [[ "$env_name" == "beta" && "$index_status" == "403" ]]; then
+      echo "  Received HTTP 403 for $index_url (Cloudflare Access gate). Treating as reachable in beta."
+      return 0
+    fi
+
+    if ((attempt < max_attempts)); then
+      echo "  Attempt ${attempt}/${max_attempts} failed (HTTP ${index_status:-000}). Retrying in ${retry_delay}s..."
+      sleep "$retry_delay"
+    fi
+    attempt=$((attempt + 1))
+  done
+
+  if [[ "$index_status" != "200" || -z "$index_html" ]]; then
+    echo "  Failed to fetch $index_url after ${max_attempts} attempts (HTTP ${index_status:-000})." >&2
     return 1
   fi
 
