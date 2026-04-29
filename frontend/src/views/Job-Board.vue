@@ -42,6 +42,7 @@
               @move-company-selection="moveCompanySelection"
               @add-company="addCompany"
               @remove-company="removeFilterValue('companies', $event)"
+              @run-enter-submit="onEnterRunSearch"
             />
 
             <section v-if="advancedFiltersOpen && boardMode === 'search'" class="advanced-filters-panel">
@@ -173,7 +174,13 @@
                 <div class="filter-grid">
                     <div class="filter-group">
                         <label for="job-provider-filter">Source</label>
-                        <select id="job-provider-filter" name="job_provider_filter" autocomplete="off" v-model="draftFilters.provider">
+                        <select
+                          id="job-provider-filter"
+                          name="job_provider_filter"
+                          autocomplete="off"
+                          v-model="draftFilters.provider"
+                          @keydown.enter.prevent="onEnterRunSearch"
+                        >
                           <option value="">All providers</option>
                           <option v-for="provider in providerOptions" :key="provider.value" :value="provider.value">
                             {{ provider.label }}{{ provider.observedCount ? ` (${provider.observedCount})` : "" }}
@@ -942,6 +949,15 @@ export default {
     },
   },
   methods: {
+    async onEnterRunSearch() {
+      if (this.loading) return
+      if (this.isSavedMode) {
+        await this.refreshSavedStateIndex()
+        await this.loadSavedJobs()
+        return
+      }
+      await this.applyFilters()
+    },
     createDefaultFilters() {
       return {
         categories: [],

@@ -1,4 +1,12 @@
-import { buildDomPlan, clearHighlights, applyHighlights, computePlanStats, fillPlan } from './dom.js'
+import {
+  buildDomPlan,
+  clearHighlights,
+  applyHighlights,
+  computePlanStats,
+  fillPlan,
+  expandWorkdaySections,
+  isWorkdayUrl,
+} from './dom.js'
 import { requestBackground } from '../lib/messages.js'
 import { enableFloatingDrag } from '../lib/floatingDrag.js'
 import {
@@ -175,6 +183,24 @@ export function registerAutofillRuntime(win = window, doc = document) {
     notice: '',
     uiState: { ...DEFAULT_PINNED_UI_STATE },
     overlayDrag: null,
+    expansionSignature: '',
+  }
+
+  function buildExpansionSignature(tokenMap = {}) {
+    const keys = Object.keys(tokenMap || {})
+      .filter((key) => /^(work_experience|education|languages)\[\d+\]\./.test(String(key)))
+      .sort()
+    return keys.join('|')
+  }
+
+  function maybeExpandWorkdaySections(tokenMap) {
+    if (!isWorkdayUrl(win.location?.href || '')) return 0
+    const signature = buildExpansionSignature(tokenMap)
+    if (!signature || signature === state.expansionSignature) return 0
+
+    const expansion = expandWorkdaySections(tokenMap, doc)
+    state.expansionSignature = signature
+    return Number(expansion?.clicks || 0)
   }
 
   function persistDebugPosition(position) {
@@ -325,8 +351,11 @@ export function registerAutofillRuntime(win = window, doc = document) {
     scan(tokenMap) {
       ensureStyles(doc)
       state.currentTokens = cloneTokenMap(tokenMap)
+      const expanded = maybeExpandWorkdaySections(state.currentTokens)
       state.currentPlan = buildDomPlan(state.currentTokens, doc)
-      state.notice = 'Scanned visible inputs, textareas, and selects on the current page.'
+      state.notice = expanded > 0
+        ? `Expanded ${expanded} section control(s), then scanned visible fields.`
+        : 'Scanned visible inputs, textareas, and selects on the current page.'
       refreshOverlay()
       return computePlanStats(state.currentPlan)
     },
@@ -338,6 +367,7 @@ export function registerAutofillRuntime(win = window, doc = document) {
       }
       if (!state.currentPlan || !state.currentTokens) {
         state.currentTokens = state.currentTokens || nextTokens
+        maybeExpandWorkdaySections(state.currentTokens)
         state.currentPlan = buildDomPlan(state.currentTokens, doc)
       }
       const filled = await fillPlan(state.currentPlan, state.currentTokens, { doc })
@@ -349,6 +379,7 @@ export function registerAutofillRuntime(win = window, doc = document) {
       ensureStyles(doc)
       const nextTokens = cloneTokenMap(payload?.tokenMap || payload)
       state.currentTokens = nextTokens
+      const expanded = maybeExpandWorkdaySections(state.currentTokens)
       state.currentPlan = buildDomPlan(state.currentTokens, doc)
 
       const approvedPaths = []
@@ -371,6 +402,9 @@ export function registerAutofillRuntime(win = window, doc = document) {
       state.notice = pendingApprovals.length
         ? `Auto-filled ${filled}. ${pendingApprovals.length} field(s) require approval before fill.`
         : `Auto-filled ${filled} field${filled === 1 ? '' : 's'} without gated approvals.`
+      if (expanded > 0) {
+        state.notice = `${state.notice} Expanded ${expanded} section control(s) first.`
+      }
       refreshOverlay()
       return {
         filled,

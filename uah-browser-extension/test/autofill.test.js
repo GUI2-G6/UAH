@@ -2,7 +2,14 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { buildPlan, resolveNameToPath } from '../src/autofill/matching.js'
-import { discoverFields, fillField, fillPlan, isFieldRequired } from '../src/autofill/dom.js'
+import {
+  discoverFields,
+  expandWorkdaySections,
+  fillField,
+  fillPlan,
+  isFieldRequired,
+  isWorkdayUrl,
+} from '../src/autofill/dom.js'
 import { buildProfileAutofillSource, sanitizeTokenMap } from '../src/autofill/source.js'
 import { flattenResume } from '../src/autofill/shared.js'
 import { resolveFieldPolicy } from '../src/autofill/resolver.js'
@@ -201,9 +208,49 @@ test('buildPlan preserves name, id, synonym, review, and no-match behavior', () 
   assert.equal(plan[2].matchPath, 'work_auth')
   assert.ok(plan[2].matchScore >= 0.75)
   assert.equal(plan[3].matchPath, 'skills.technical')
-  assert.equal(plan[3].matchScore, 0.55)
+  assert.equal(plan[3].matchScore, 0.92)
   assert.equal(plan[4].matchPath, null)
   assert.equal(plan[4].matchScore, 0)
+})
+
+test('buildPlan maps workday labels for skills and role description', () => {
+  const tokenMap = {
+    'skills.technical': 'JavaScript, Vue',
+    'work_experience[0].bullets': 'Built internal tooling.',
+  }
+  const plan = buildPlan([
+    { name: '', id: '', labelNorm: 'type to add skills', required: false, el: {} },
+    { name: '', id: '', labelNorm: 'role description', required: false, el: {} },
+  ], tokenMap)
+
+  assert.equal(plan[0].matchPath, 'skills.technical')
+  assert.ok(plan[0].matchScore >= 0.9)
+  assert.equal(plan[1].matchPath, 'work_experience[0].bullets')
+  assert.ok(plan[1].matchScore >= 0.85)
+})
+
+test('fillPlan formats workday from fields from start month and year tokens', async () => {
+  const fromField = createDispatchingElement({
+    tagName: 'INPUT',
+    type: 'text',
+  })
+
+  const plan = [
+    {
+      el: fromField.element,
+      labelNorm: 'from',
+      matchPath: 'work_experience[0].start_month',
+      matchScore: 0.9,
+    },
+  ]
+  const tokenMap = {
+    'work_experience[0].start_month': 'June',
+    'work_experience[0].start_year': '2024',
+  }
+
+  const filled = await fillPlan(plan, tokenMap)
+  assert.equal(filled, 1)
+  assert.equal(fromField.element.value, '06/2024')
 })
 
 test('isFieldRequired checks required, aria-required, and star labels', () => {
@@ -404,6 +451,105 @@ test('fillField waits briefly for delayed combobox options', async () => {
 
   assert.equal(await fillField(combo, 'Remote'), true)
   assert.equal(options[0].clickCalled, 1)
+})
+
+test('fillField supports skills multi-token combobox entry', async () => {
+  let options = [
+    { textContent: 'JavaScript', clickCalled: 0, click() { this.clickCalled += 1 } },
+    { textContent: 'Vue', clickCalled: 0, click() { this.clickCalled += 1 } },
+  ]
+  const doc = {
+    getElementById() {
+      return {
+        querySelectorAll(selector) {
+          if (selector === '[role="option"]') return options
+          return []
+        },
+      }
+    },
+    querySelectorAll() {
+      return []
+    },
+    querySelector() {
+      return null
+    },
+  }
+  const combo = {
+    tagName: 'INPUT',
+    type: 'text',
+    value: '',
+    ownerDocument: doc,
+    focus() {},
+    click() {},
+    dispatchEvent() { return true },
+    getAttribute(attribute) {
+      if (attribute === 'role') return 'combobox'
+      if (attribute === 'aria-expanded') return 'true'
+      if (attribute === 'aria-controls') return 'skills-listbox'
+      return null
+    },
+  }
+
+  const ok = await fillField(combo, 'JavaScript, Vue', {
+    planItem: { labelNorm: 'type to add skills' },
+    doc,
+  })
+  assert.equal(ok, true)
+  assert.equal(options[0].clickCalled, 1)
+  assert.equal(options[1].clickCalled, 1)
+})
+
+test('workday helpers detect url and expand repeatable sections', () => {
+  assert.equal(isWorkdayUrl('https://contoso.wd5.myworkdayjobs.com/en-US/apply'), true)
+  assert.equal(isWorkdayUrl('https://boards.greenhouse.io/company/jobs/1'), false)
+
+  let addAnotherClicks = 0
+  let educationClicks = 0
+  let languageClicks = 0
+  const makeButton = (label, top, clickRef) => ({
+    innerText: label,
+    textContent: label,
+    offsetParent: {},
+    getBoundingClientRect() {
+      return { width: 100, height: 20, top, left: 10 }
+    },
+    click() {
+      clickRef()
+    },
+  })
+  const root = {
+    querySelectorAll(selector) {
+      if (selector === 'h1, h2, h3, h4, h5, h6, legend, [role="heading"], strong') {
+        return [
+          { innerText: 'Work Experience', textContent: 'Work Experience', getBoundingClientRect: () => ({ top: 0, left: 0 }) },
+          { innerText: 'Education', textContent: 'Education', getBoundingClientRect: () => ({ top: 100, left: 0 }) },
+          { innerText: 'Languages', textContent: 'Languages', getBoundingClientRect: () => ({ top: 200, left: 0 }) },
+        ]
+      }
+      if (selector === 'button, [role="button"], input[type="button"], input[type="submit"], a') {
+        return [
+          makeButton('Add Another', 0, () => { addAnotherClicks += 1 }),
+          makeButton('Add', 100, () => { educationClicks += 1 }),
+          makeButton('Add', 200, () => { languageClicks += 1 }),
+        ]
+      }
+      return []
+    },
+  }
+
+  const result = expandWorkdaySections({
+    'work_experience[0].title': 'A',
+    'work_experience[1].title': 'B',
+    'education[0].institution': 'UAH',
+    'education[1].institution': 'UAH',
+    'languages[0].name': 'English',
+    'languages[1].name': 'Spanish',
+  }, root)
+
+  assert.equal(result.clicks, 3)
+  assert.equal(addAnotherClicks, 1)
+  assert.equal(educationClicks, 1)
+  assert.equal(languageClicks, 1)
 })
 
 test('fillPlan fills current checkboxes first and skips end date tokens when current', async () => {

@@ -151,6 +151,7 @@ test('WorkdayAdapter matches the supported Workday URL patterns', () => {
   assert.equal(adapter.matches('https://fabrikam.wd5.myworkdayjobs.com/en-US/apply'), true)
   assert.equal(adapter.matches('https://northwind.myworkdayjobs.com/en-US/careers'), true)
   assert.equal(adapter.matches('https://boards.greenhouse.io/examplecorp'), false)
+  assert.equal(adapter.matches('https://contoso.dynamics.com/ats/candidate/apply'), false)
 })
 
 test('GreenhouseAdapter matches the supported Greenhouse URL patterns', () => {

@@ -65,6 +65,12 @@ docker compose -f docker-compose.yml -f docker-compose.beta.yml up -d --build
 
 This launches the normal app stack plus beta overrides, including `cloudflared` and the public `landing` service.
 
+Frontend release safety notes:
+
+- Treat `index.html` and `/assets/*` as a single atomic release unit.
+- Do not publish partial frontend artifacts (for example, updating entry HTML without all referenced hashed chunks).
+- Keep Cloudflare/browser caching aggressive for hashed assets, but keep `index.html` revalidated so clients do not retain stale chunk maps.
+
 Important: do not run beta ingress from `docker-compose.local.yml` alone.  
 The local compose path does not provide the beta Cloudflared origin shape.
 
@@ -109,6 +115,8 @@ Before inviting testers:
 bash scripts/uah.sh beta audit --mode full --json
 ```
 
+The beta startup flow now includes an index-to-asset integrity check. It fetches live `index.html`, extracts referenced JS/CSS URLs, and fails startup if any referenced chunk is missing.
+
 Then verify the ingress path directly with compose:
 
 ```bash
@@ -120,6 +128,7 @@ docker exec uah-beta-frontend wget -q -O - --timeout=8 http://127.0.0.1/api/stat
 Expected outcomes:
 - `cloudflared` registers tunnel connections without sustained `dial tcp [::1]:80: connect: connection refused`
 - `uah-beta-frontend` returns a successful `/api/status` payload through nginx -> backend proxy
+- live `index.html` references only assets that return HTTP 200
 
 Then manually confirm:
 
@@ -130,6 +139,16 @@ Then manually confirm:
 - job search
 - resume upload / parse
 - any enabled extension flow against the beta origin
+
+## 9. Chunk 404 Incident Runbook
+
+If users report `Failed to fetch dynamically imported module`:
+
+1. Capture the missing chunk URL from browser console (for example `.../assets/Analytics-<hash>.js`).
+2. Fetch live `https://beta.uahapp.com/index.html` and verify that every referenced JS/CSS asset exists.
+3. Compare the missing chunk against the current live asset list; a mismatch indicates stale shell vs new assets or partial publish.
+4. Purge Cloudflare cache for `index.html` (and shell entry paths) after confirming artifacts are complete.
+5. Ask affected users to hard-refresh once (`Ctrl+Shift+R`) to clear stale chunk references.
 
 ## 8. Cloudflare Access Rollout Sequence
 

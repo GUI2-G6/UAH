@@ -26,6 +26,7 @@
           :value="pageSize"
           name="job_page_size"
           autocomplete="off"
+          @keydown.enter.prevent="$emit('run-enter-submit')"
           @change="$emit('set-page-size', Number($event.target.value))"
         >
           <option v-for="option in pageSizeOptions" :key="option" :value="option">
@@ -48,6 +49,7 @@
           autocorrect="off"
           spellcheck="false"
           placeholder="Job title, company, skill, or keyword"
+          @keydown.enter.prevent="$emit('run-enter-submit')"
         />
 
         <div class="company-selector">
@@ -137,7 +139,13 @@
         </div>
 
         <div class="location-panel" v-if="draftFilters.locationMode === 'country'">
-          <select id="job-country-code-primary" name="job_country_code_primary" autocomplete="off" v-model="draftFilters.countryCode">
+          <select
+            id="job-country-code-primary"
+            name="job_country_code_primary"
+            autocomplete="off"
+            v-model="draftFilters.countryCode"
+            @keydown.enter.prevent="$emit('run-enter-submit')"
+          >
             <option v-for="country in countryOptions" :key="country.code" :value="country.code">
               {{ country.name }}
             </option>
@@ -164,6 +172,7 @@
             autocorrect="off"
             spellcheck="false"
             placeholder="City or ZIP code"
+            @keydown.enter.prevent="$emit('run-enter-submit')"
           />
           <p class="location-caption">Enter a place when you want a focused radius search.</p>
         </div>
@@ -193,7 +202,13 @@
 
         <div class="stacked-control">
           <label for="job-date-preset-primary">Posted</label>
-          <select id="job-date-preset-primary" name="job_date_preset_primary" autocomplete="off" v-model="draftFilters.datePreset">
+          <select
+            id="job-date-preset-primary"
+            name="job_date_preset_primary"
+            autocomplete="off"
+            v-model="draftFilters.datePreset"
+            @keydown.enter.prevent="$emit('run-enter-submit')"
+          >
             <option value="any">Any time</option>
             <option value="today">Today</option>
             <option value="3">Past 3 days</option>
@@ -211,6 +226,7 @@
             v-model="draftFilters.customAfterDate"
             type="date"
             autocomplete="off"
+            @keydown.enter.prevent="$emit('run-enter-submit')"
           />
         </div>
       </div>
@@ -322,6 +338,7 @@ export default {
     'move-company-selection',
     'add-company',
     'remove-company',
+    'run-enter-submit',
   ],
   computed: {
     currentCountryLabel() {

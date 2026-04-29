@@ -1,6 +1,6 @@
 import { GOOD_MATCH_THRESHOLD, REVIEW_MATCH_THRESHOLD, normalizeText } from './shared.js'
 import { buildPlan as buildPlanFromFields } from './matching.js'
-import { fillComboboxField } from './dropdown.js'
+import { fillComboboxField, fillComboboxMultiValueField } from './dropdown.js'
 import { inferDropdownCandidates, resolveDropdownInference } from './pageSourceInference.js'
 
 const EventCtor = globalThis.Event || class Event {
@@ -9,6 +9,8 @@ const EventCtor = globalThis.Event || class Event {
     this.bubbles = Boolean(init.bubbles)
   }
 }
+
+const WORKDAY_HOST_RE = /(?:^|\.)(?:[a-z0-9-]+(?:\.wd\d+)?)\.myworkdayjobs\.com$/i
 
 export function isFieldRequired({ required = false, ariaRequired = false, label = '' } = {}) {
   if (required) return true
@@ -61,6 +63,135 @@ function isVisibleField(element) {
     ? element.getBoundingClientRect()
     : { width: 0, height: 0 }
   return rect.width > 0 || rect.height > 0 || element.offsetParent !== null
+}
+
+function normalizeLabel(value) {
+  return normalizeText(String(value || ''))
+}
+
+function textOf(element) {
+  return String(element?.innerText || element?.textContent || '').trim()
+}
+
+function indexedCount(tokenMap, prefix) {
+  let max = -1
+  for (const key of Object.keys(tokenMap || {})) {
+    const match = String(key).match(new RegExp(`^${prefix}\\[(\\d+)\\]\\.`))
+    if (!match) continue
+    max = Math.max(max, Number(match[1]))
+  }
+  return max + 1
+}
+
+function findVisibleButtons(root = document) {
+  if (!root || typeof root.querySelectorAll !== 'function') return []
+  return Array.from(root.querySelectorAll('button, [role="button"], input[type="button"], input[type="submit"], a'))
+    .filter(isVisibleField)
+}
+
+function findHeading(root, labelNorm) {
+  if (!root || typeof root.querySelectorAll !== 'function') return null
+  const headings = Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6, legend, [role="heading"], strong'))
+  return headings.find((node) => normalizeLabel(textOf(node)) === labelNorm) || null
+}
+
+function findSectionButton(root, sectionLabel, buttonLabel) {
+  const sectionNorm = normalizeLabel(sectionLabel)
+  const buttonNorm = normalizeLabel(buttonLabel)
+  const heading = findHeading(root, sectionNorm)
+  const buttons = findVisibleButtons(root)
+  if (!buttons.length) return null
+  if (!heading) {
+    return buttons.find((button) => normalizeLabel(textOf(button)) === buttonNorm) || null
+  }
+
+  const headingRect = heading.getBoundingClientRect?.() || { top: 0, left: 0 }
+  return buttons
+    .filter((button) => normalizeLabel(textOf(button)) === buttonNorm)
+    .map((button) => ({
+      button,
+      distance: Math.abs((button.getBoundingClientRect?.().top ?? headingRect.top) - headingRect.top)
+        + Math.abs((button.getBoundingClientRect?.().left ?? headingRect.left) - headingRect.left),
+    }))
+    .sort((a, b) => a.distance - b.distance)[0]?.button || null
+}
+
+export function isWorkdayUrl(url = globalThis.location?.href || '') {
+  try {
+    const parsed = new URL(String(url || ''))
+    return WORKDAY_HOST_RE.test(parsed.hostname)
+  } catch {
+    return false
+  }
+}
+
+export function expandWorkdaySections(tokenMap = {}, root = document) {
+  const workExperienceCount = indexedCount(tokenMap, 'work_experience')
+  const educationCount = indexedCount(tokenMap, 'education')
+  const languageCount = indexedCount(tokenMap, 'languages')
+
+  let clicks = 0
+
+  const workExperienceExtra = Math.max(0, workExperienceCount - 1)
+  for (let index = 0; index < workExperienceExtra; index += 1) {
+    const button = findSectionButton(root, 'Work Experience', 'Add Another')
+    if (!button) break
+    button.click?.()
+    clicks += 1
+  }
+
+  const educationExtra = Math.max(0, educationCount - 1)
+  for (let index = 0; index < educationExtra; index += 1) {
+    const button = findSectionButton(root, 'Education', 'Add')
+    if (!button) break
+    button.click?.()
+    clicks += 1
+  }
+
+  const languagesExtra = Math.max(0, languageCount - 1)
+  for (let index = 0; index < languagesExtra; index += 1) {
+    const button = findSectionButton(root, 'Languages', 'Add')
+    if (!button) break
+    button.click?.()
+    clicks += 1
+  }
+
+  return { clicks }
+}
+
+function formatMonthYear(month, year) {
+  const monthMap = {
+    january: '01', february: '02', march: '03', april: '04', may: '05', june: '06',
+    july: '07', august: '08', september: '09', october: '10', november: '11', december: '12',
+  }
+  const normalizedMonth = normalizeText(month)
+  const monthPart = /^\d{1,2}$/.test(String(month || '').trim())
+    ? String(month).trim().padStart(2, '0')
+    : monthMap[normalizedMonth] || ''
+  const yearPart = String(year || '').trim()
+  if (!monthPart || !/^\d{4}$/.test(yearPart)) return null
+  return `${monthPart}/${yearPart}`
+}
+
+function resolveTokenValue(item, tokenMap) {
+  const labelNorm = String(item?.labelNorm || '')
+  const directValue = tokenMap?.[item?.matchPath]
+  if (labelNorm !== 'from' && labelNorm !== 'to') {
+    return directValue
+  }
+
+  const path = String(item?.matchPath || '')
+  const match = path.match(/^(work_experience\[\d+\])\.(start_month|start_year|end_month|end_year|start_date|end_date)$/)
+  if (!match) {
+    return directValue
+  }
+
+  const prefix = match[1]
+  const isStart = labelNorm === 'from'
+  const month = tokenMap?.[`${prefix}.${isStart ? 'start_month' : 'end_month'}`]
+  const year = tokenMap?.[`${prefix}.${isStart ? 'start_year' : 'end_year'}`]
+  const monthYear = formatMonthYear(month, year)
+  return monthYear || directValue
 }
 
 export function discoverFields(root = document) {
@@ -119,6 +250,8 @@ export async function fillField(element, value, options = {}) {
       if (!match) return false
       element.value = match.value
     } else if (element.getAttribute?.('role') === 'combobox' || element.getAttribute?.('aria-autocomplete')) {
+      const labelNorm = String(options?.planItem?.labelNorm || '')
+      const isSkillLike = labelNorm.includes('skills') || labelNorm.includes('type to add skills')
       const inferred = resolveDropdownInference({
         desiredValue: value,
         inferred: inferDropdownCandidates({
@@ -128,7 +261,8 @@ export async function fillField(element, value, options = {}) {
         }),
       })
       const candidateValues = inferred.accepted ? [inferred.value, ...inferred.candidates] : []
-      if (!await fillComboboxField(element, value, {
+      const fillCombobox = isSkillLike ? fillComboboxMultiValueField : fillComboboxField
+      if (!await fillCombobox(element, value, {
         doc: options?.doc || element.ownerDocument || document,
         candidateValues,
       })) {
@@ -170,7 +304,7 @@ export async function fillPlan(plan, tokenMap, options = {}) {
     if (!item.matchPath || item.matchScore < REVIEW_MATCH_THRESHOLD) continue
     if (item.requiresApproval && !approvedPaths.has(String(item.matchPath))) continue
 
-    const value = tokenMap?.[item.matchPath]
+    const value = resolveTokenValue(item, tokenMap)
     if (value === null || value === undefined || value === '') continue
 
     // Avoid filling stale end dates into entries that are explicitly marked as
@@ -180,7 +314,7 @@ export async function fillPlan(plan, tokenMap, options = {}) {
       if (tokenMap?.[`${prefix}.is_current`] === true) continue
     }
 
-    if (await fillField(item.el, value, options)) filled += 1
+    if (await fillField(item.el, value, { ...options, planItem: item })) filled += 1
   }
 
   return filled

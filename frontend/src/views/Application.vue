@@ -66,11 +66,11 @@
         <section v-if="showAdvancedOptions" class="advanced-options-panel">
           <div class="advanced-field">
             <label for="scan-query">Keyword search</label>
-            <input id="scan-query" v-model.trim="scanQuery" type="text" placeholder="Try: interview OR offer OR application" class="scan-input" :disabled="!gmailConnected">
+            <input id="scan-query" v-model.trim="scanQuery" type="text" placeholder="Try: interview OR offer OR application" class="scan-input" :disabled="!gmailConnected" @keydown.enter.prevent="onEnterRunScan()">
           </div>
           <div class="advanced-field">
             <label for="scan-window">Time window</label>
-            <select id="scan-window" v-model.number="scanNewerThanDays" class="scan-input" :disabled="!gmailConnected">
+            <select id="scan-window" v-model.number="scanNewerThanDays" class="scan-input" :disabled="!gmailConnected" @keydown.enter.prevent="onEnterRunScan()">
               <option :value="14">Last 14 days</option>
               <option :value="30">Last 30 days</option>
               <option :value="45">Last 45 days</option>
@@ -84,11 +84,11 @@
           </div>
           <div class="advanced-field">
             <label for="scan-custom-days">Custom days</label>
-            <input id="scan-custom-days" v-model.number="scanCustomDays" type="number" min="1" max="36500" class="scan-input" placeholder="Any number of days" :disabled="!gmailConnected">
+            <input id="scan-custom-days" v-model.number="scanCustomDays" type="number" min="1" max="36500" class="scan-input" placeholder="Any number of days" :disabled="!gmailConnected" @keydown.enter.prevent="onEnterRunScan()">
           </div>
           <div class="advanced-field">
             <label for="scan-max-results">Max results</label>
-            <select id="scan-max-results" v-model.number="scanMaxResults" class="scan-input" :disabled="!gmailConnected">
+            <select id="scan-max-results" v-model.number="scanMaxResults" class="scan-input" :disabled="!gmailConnected" @keydown.enter.prevent="onEnterRunScan()">
               <option :value="10">10 results</option>
               <option :value="20">20 results</option>
               <option :value="50">50 results</option>
@@ -97,14 +97,14 @@
           </div>
           <div class="advanced-field">
             <label for="source-strictness">Source strictness</label>
-            <select id="source-strictness" v-model="sourceStrictness" class="scan-input" :disabled="!gmailConnected">
+            <select id="source-strictness" v-model="sourceStrictness" class="scan-input" :disabled="!gmailConnected" @keydown.enter.prevent="onEnterRunScan()">
               <option value="strict_career_domains">Strict career domains</option>
               <option value="hybrid_job_language">Hybrid (allow strong job language)</option>
             </select>
           </div>
           <div class="advanced-field">
             <label for="linkedin-mode">LinkedIn handling</label>
-            <select id="linkedin-mode" v-model="linkedinMode" class="scan-input" :disabled="!gmailConnected">
+            <select id="linkedin-mode" v-model="linkedinMode" class="scan-input" :disabled="!gmailConnected" @keydown.enter.prevent="onEnterRunScan()">
               <option value="linkedin_apply_only">LinkedIn application emails only</option>
               <option value="linkedin_all_jobish">Most LinkedIn job-ish emails</option>
               <option value="linkedin_off">Exclude LinkedIn</option>
@@ -491,6 +491,14 @@
         }
     },
     methods: {
+        async onEnterRunScan(preferredMode = 'auto') {
+            if (this.loading) return
+            let mode = this.scanMode === 'saved' ? 'saved' : 'new'
+            if (preferredMode === 'saved' || preferredMode === 'new') {
+                mode = preferredMode
+            }
+            await this.scanNow(mode)
+        },
         async refreshGmailConnected(force = false) {
             this.gmailConnected = await resolveGmailConnectionStatus(this.gmailConnected, { force })
         },

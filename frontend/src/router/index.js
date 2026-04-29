@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { getCurrentUser, syncCurrentUser } from '@/lib/auth'
 import { shouldShowDebugTools } from '@/lib/debugTools'
+import { handleChunkLoadFailure } from '@/lib/chunkLoadRecovery'
 
 const modules = import.meta.glob('../views/*.vue')
 
@@ -70,6 +71,13 @@ const router = createRouter({
     if (savedPosition) return savedPosition  // If you have a saved pos. from using back/forward on browser, keep it.
     else return { top: 0 }  // Else return to top.
   }
+})
+
+router.onError((error, to) => {
+  handleChunkLoadFailure(error, {
+    source: 'router.onError',
+    routePath: to?.fullPath || to?.path || window?.location?.pathname || '/',
+  })
 })
 
 router.beforeEach(async (to) => {

@@ -85,6 +85,13 @@ function verifySelection(element, value, option) {
     || currentValue === optionText
 }
 
+function splitMultiValue(value) {
+  return String(value || '')
+    .split(/\r?\n|,/g)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
 export async function fillComboboxField(element, value, options = {}) {
   if (!element) return false
 
@@ -110,4 +117,21 @@ export async function fillComboboxField(element, value, options = {}) {
   }
   element.dispatchEvent?.(new EventCtor('blur', { bubbles: true }))
   return verifySelection(element, value, match)
+}
+
+export async function fillComboboxMultiValueField(element, value, options = {}) {
+  const tokens = splitMultiValue(value)
+  if (!tokens.length) return false
+
+  let filled = 0
+  for (const token of tokens) {
+    if ('value' in element) {
+      element.value = ''
+    }
+    const ok = await fillComboboxField(element, token, options)
+    if (!ok) return false
+    filled += 1
+  }
+
+  return filled > 0
 }

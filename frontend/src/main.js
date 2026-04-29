@@ -5,6 +5,7 @@ import { applyThemeFromStorage, initThemeListeners } from '@shared/js/themePrefe
 import { draggableModalDirective } from './lib/draggableModalDirective'
 import { installDebugFetchTracker } from './lib/debugDiagnostics'
 import { assertSafeLocalModeConfig, initializeLocalMockApi } from './lib/localMockApi'
+import { installGlobalChunkErrorHandlers } from './lib/chunkLoadRecovery'
 
 // Polyfill for environments where `crypto.randomUUID` is unavailable.
 // Some browsers only expose it in secure contexts (https/localhost).
@@ -45,6 +46,7 @@ try {
 
 initializeLocalMockApi()
 installDebugFetchTracker()
+installGlobalChunkErrorHandlers()
 
 applyThemeFromStorage()
 initThemeListeners()

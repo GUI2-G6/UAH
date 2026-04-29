@@ -907,6 +907,91 @@ run_compose_up_with_build_mode() {
   esac
 }
 
+verify_frontend_asset_integrity() {
+  local env_name="$1"
+  local frontend_url="${2:-}"
+  local index_url
+  local index_html
+  local max_missing=0
+
+  if [[ -z "$frontend_url" ]]; then
+    case "$env_name" in
+      beta)
+        frontend_url="https://beta.uahapp.com"
+        ;;
+      dev)
+        frontend_url="http://localhost:8080"
+        ;;
+      *)
+        echo "Unsupported environment '$env_name' for frontend integrity check." >&2
+        return 1
+        ;;
+    esac
+  fi
+
+  index_url="${frontend_url%/}/index.html"
+  echo "  Checking frontend index/chunk integrity: $index_url"
+
+  if ! index_html="$(curl -fsSL --max-time 15 "$index_url")"; then
+    echo "  Failed to fetch $index_url" >&2
+    return 1
+  fi
+
+  local urls
+  if ! urls="$(INDEX_HTML="$index_html" FRONTEND_URL="$frontend_url" python3 - <<'PY'
+import os
+import re
+from urllib.parse import urljoin, urlparse
+
+html = os.environ.get("INDEX_HTML", "")
+base = os.environ.get("FRONTEND_URL", "").strip()
+seen = set()
+for value in re.findall(r'(?:src|href)=["\']([^"\']+)["\']', html):
+    item = value.strip()
+    if not item:
+        continue
+    if item.startswith("data:"):
+        continue
+    if not (item.endswith(".js") or item.endswith(".css")):
+        continue
+    if item.startswith("http://") or item.startswith("https://"):
+        parsed = urlparse(item)
+        base_host = urlparse(base).netloc
+        if parsed.netloc != base_host:
+            continue
+        seen.add(item)
+        continue
+    seen.add(urljoin(base.rstrip("/") + "/", item.lstrip("/")))
+
+for url in sorted(seen):
+    print(url)
+PY
+)"; then
+    echo "  Failed to parse asset URLs from live index document." >&2
+    return 1
+  fi
+
+  if [[ -z "$urls" ]]; then
+    echo "  No JS/CSS assets discovered in live index document." >&2
+    return 1
+  fi
+
+  while IFS= read -r asset_url; do
+    [[ -z "$asset_url" ]] && continue
+    if ! curl -fsSI --max-time 15 "$asset_url" >/dev/null; then
+      echo "  Missing asset referenced by index: $asset_url" >&2
+      max_missing=1
+    fi
+  done <<< "$urls"
+
+  if [[ "$max_missing" -ne 0 ]]; then
+    echo "  Frontend integrity check failed: index references missing assets." >&2
+    return 1
+  fi
+
+  echo "  Frontend integrity check passed."
+}
+
 backend_container_name_for_env() {
   local env_name="$1"
 
@@ -4604,14 +4689,21 @@ beta_start() {
   echo "[2b/7] Ensuring required beta services are running..."
   run_compose beta up -d "${required_beta_services[@]}"
 
-  echo "[3/7] Applying Alembic migrations and refreshing runtime services..."
+  echo "[2c/7] Verifying live frontend asset integrity..."
+  if ! verify_frontend_asset_integrity beta "https://beta.uahapp.com"; then
+    notify_discord "**Beta start FAILED** frontend index/chunk integrity check failed" 15158332
+    run_compose beta ps || true
+    return 1
+  fi
+
+  echo "[3/8] Applying Alembic migrations and refreshing runtime services..."
   if ! run_live_schema_reconcile_with_policy beta true "start"; then
     notify_discord "**Beta start FAILED** during Alembic upgrade or runtime refresh" 15158332
     run_compose beta ps || true
     return 1
   fi
 
-  echo "[4/7] Applying WireGuard host route..."
+  echo "[4/8] Applying WireGuard host route..."
   VPN_CONTAINER=uah-dev-vpn \
   BACKEND_CONTAINER=uah-beta-backend \
   NETWORK_NAME=uah-infra \
@@ -4619,7 +4711,7 @@ beta_start() {
   ROUTE_OWNER=beta \
   bash "$ROOT_DIR/scripts/beta/network/apply_desktop_ollama_temp_route.sh"
 
-  echo "[5/7] Allowing cross-bridge Docker traffic..."
+  echo "[5/8] Allowing cross-bridge Docker traffic..."
   beta_bridge=$(docker network inspect uah-beta-infra --format '{{.Id}}' | cut -c1-12)
   infra_bridge=$(docker network inspect uah-infra --format '{{.Id}}' | cut -c1-12)
   beta_br="br-${beta_bridge}"
@@ -4631,10 +4723,10 @@ beta_start() {
   sudo iptables -C DOCKER-USER -i "$infra_br" -o "$beta_br" -j ACCEPT 2>/dev/null || \
     sudo iptables -I DOCKER-USER -i "$infra_br" -o "$beta_br" -j ACCEPT
 
-  echo "[6/7] Waiting for backend to settle..."
+  echo "[6/8] Waiting for backend to settle..."
   sleep 12
 
-  echo "[7/7] Connectivity check..."
+  echo "[7/8] Connectivity check..."
   if docker exec uah-beta-backend python3 -c "
 import httpx
 import sys

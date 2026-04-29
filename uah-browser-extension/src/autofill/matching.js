@@ -124,12 +124,43 @@ const SYNONYMS = [
   { path: 'work_experience[0].end_date', terms: ['work end', 'employment end', 'end date', 'to'] },
   { path: 'work_experience[0].is_current', terms: ['i currently work here', 'currently employed', 'current position', 'currently working', 'present position'] },
   { path: 'work_experience[0].bullets', terms: ['description', 'duties', 'responsibilities', 'job description'] },
+  { path: 'work_experience[0].bullets', terms: ['role description', 'describe your role', 'role summary'] },
   { path: 'summary', terms: ['summary', 'objective', 'professional summary', 'cover letter', 'about'] },
   { path: 'work_auth', terms: ['work auth', 'work authorization', 'authorized to work', 'legally authorized to work', 'authorization to work', 'eligible to work'] },
   { path: 'requires_sponsorship', terms: ['requires sponsorship', 'sponsorship required', 'need sponsorship', 'visa sponsorship', 'require sponsorship'] },
   { path: 'years_experience', terms: ['years of experience', 'total years of experience', 'experience in years', 'relevant experience years'] },
   { path: 'professional_links_text', terms: ['professional links', 'additional links', 'github', 'github profile', 'additional websites'] },
 ]
+
+function pickFirstTokenPath(tokenMap, pattern) {
+  return Object.keys(tokenMap || {}).find((key) => pattern.test(String(key)))
+}
+
+function matchWorkdaySpecialLabels(labelNorm, tokenMap) {
+  const normalizedLabel = String(labelNorm || '')
+  if (!normalizedLabel) return { path: null, score: 0 }
+
+  if (normalizedLabel.includes('skills') || normalizedLabel.includes('type to add skills')) {
+    const skillsPath = pickFirstTokenPath(tokenMap, /^skills\./)
+    if (skillsPath) return { path: skillsPath, score: 0.92 }
+  }
+
+  if (normalizedLabel === 'from') {
+    const startDatePath = pickFirstTokenPath(tokenMap, /^work_experience\[\d+\]\.start_date$/)
+    if (startDatePath) return { path: startDatePath, score: 0.9 }
+    const fallbackPath = pickFirstTokenPath(tokenMap, /^work_experience\[\d+\]\.(start_month|start_year)$/)
+    if (fallbackPath) return { path: fallbackPath, score: 0.75 }
+  }
+
+  if (normalizedLabel === 'to') {
+    const endDatePath = pickFirstTokenPath(tokenMap, /^work_experience\[\d+\]\.end_date$/)
+    if (endDatePath) return { path: endDatePath, score: 0.9 }
+    const fallbackPath = pickFirstTokenPath(tokenMap, /^work_experience\[\d+\]\.(end_month|end_year)$/)
+    if (fallbackPath) return { path: fallbackPath, score: 0.75 }
+  }
+
+  return { path: null, score: 0 }
+}
 
 function sanitizeFieldName(value) {
   return String(value || '')
@@ -183,6 +214,11 @@ export function scoreMatch(labelNorm, terms) {
 
 export function matchLabelToPath(labelNorm, tokenMap) {
   let best = { path: null, score: 0 }
+
+  const workdaySpecial = matchWorkdaySpecialLabels(labelNorm, tokenMap)
+  if (workdaySpecial.score > best.score) {
+    best = workdaySpecial
+  }
 
   for (const synonym of SYNONYMS) {
     if (tokenMap[synonym.path] === undefined) continue
