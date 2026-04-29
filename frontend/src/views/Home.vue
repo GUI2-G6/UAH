@@ -1,5 +1,5 @@
 <template>
-  <div class="page">
+  <div class="page home-page">
     <div class="greeting">
       <h1>Home</h1>
       <p>{{ greetingLine }}</p>
@@ -94,6 +94,7 @@ export default{
       analyticsSummary: null,
       backendStatus: null,
       homeRefreshedAt: new Date().toISOString(),
+      lastScanAt: null,
       quickActionBusy: false,
       timelineExpanded: false,
       unsubscribeUpdates: null,
@@ -118,28 +119,22 @@ export default{
       kpiCards() {
         return [
           {
-            key: "applied",
-            title: "Applications",
-            value: Number(this.gmailSummary.applied || 0),
-            brief: `${Number(this.analyticsSummary?.status_counts?.submitted || 0)} submitted sessions`,
+            key: "action-required",
+            title: "Action Required",
+            value: Number(this.gmailSummary.action_required || 0),
+            brief: "Updates that need a follow-up",
           },
           {
-            key: "interviews",
-            title: "Interviews",
-            value: Number(this.gmailSummary.interview || 0),
-            brief: `${Number(this.gmailSummary.upcoming || 0)} upcoming signals`,
+            key: "new-updates",
+            title: "New Updates",
+            value: Number(this.analyticsSummary?.tracked_updates_count || 0),
+            brief: "Tracked roles with unseen changes",
           },
           {
-            key: "offers",
-            title: "Offers",
-            value: Number(this.gmailSummary.offer || 0),
-            brief: `${Number(this.analyticsSummary?.tracked_active_count || 0)} actively tracked roles`,
-          },
-          {
-            key: "rejected",
-            title: "Rejections",
-            value: Number(this.gmailSummary.rejection || 0),
-            brief: `${Number(this.analyticsSummary?.stale_submissions_count || 0)} stale submissions`,
+            key: "last-scan",
+            title: "Time Since Last Scan",
+            value: this.lastScanAt ? this.relativeTime(this.lastScanAt) : "Never scanned",
+            brief: this.lastScanAt ? this.formatTimestamp(this.lastScanAt) : "Run your first Gmail scan",
           },
         ]
       },
@@ -214,6 +209,7 @@ export default{
       this.gmailConnected = this.gmailConnected || Boolean(cached.gmail_email)
       this.gmailResults = Array.isArray(cached.results) ? cached.results : []
       this.gmailSummary = summarizeGmailResults(this.gmailResults)
+      this.lastScanAt = cached.fetched_at || null
     }
     await this.refreshGmailConnected()
     await Promise.all([
@@ -225,6 +221,7 @@ export default{
       this.gmailResults = Array.isArray(record.results) ? record.results : []
       this.gmailSummary = summarizeGmailResults(this.gmailResults)
       this.gmailConnected = this.gmailConnected || Boolean(record.gmail_email)
+      this.lastScanAt = record.fetched_at || this.lastScanAt
       this.homeRefreshedAt = new Date().toISOString()
     })
     this.emitAnalyticsEvent("dashboard.home.viewed")
@@ -279,6 +276,7 @@ export default{
         this.gmailResults = Array.isArray(record.results) ? record.results : []
         this.gmailSummary = summarizeGmailResults(this.gmailResults)
         this.gmailConnected = true
+        this.lastScanAt = record.fetched_at || new Date().toISOString()
         await Promise.all([this.loadTrackedApplications(), this.loadAnalyticsSummary()])
       } finally {
         this.quickActionBusy = false
@@ -328,6 +326,11 @@ export default{
       if (hours < 24) return `${hours} hr ago`
       const days = Math.round(hours / 24)
       return `${days} day${days === 1 ? "" : "s"} ago`
+    },
+    formatTimestamp(value) {
+      if (!value) return "Unknown"
+      const parsed = new Date(value)
+      return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString()
     },
   },
   name: "Home",

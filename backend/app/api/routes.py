@@ -3165,15 +3165,13 @@ async def save_tracked_applications(
 
 @router.get("/applications/tracked", tags=["applications"])
 async def list_tracked_applications(
+    include_archived: bool = Query(default=False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    rows = (
+    query = (
         db.query(TrackedApplication)
-        .filter(
-            TrackedApplication.user_id == current_user.id,
-            TrackedApplication.selection_state == "active",
-        )
+        .filter(TrackedApplication.user_id == current_user.id)
         .order_by(
             TrackedApplication.has_new_update.desc(),
             TrackedApplication.last_update_at.desc().nullslast(),
@@ -3181,9 +3179,28 @@ async def list_tracked_applications(
             TrackedApplication.id.desc(),
         )
         .limit(500)
+    )
+    if not include_archived:
+        query = query.filter(TrackedApplication.selection_state == "active")
+        rows = query.all()
+        return {"tracked_applications": [_serialize_tracked_application(row) for row in rows]}
+
+    rows = (
+        query
         .all()
     )
-    return {"tracked_applications": [_serialize_tracked_application(row) for row in rows]}
+    active_rows: list[dict[str, Any]] = []
+    archived_rows: list[dict[str, Any]] = []
+    for row in rows:
+        serialized = _serialize_tracked_application(row)
+        if str(serialized.get("selection_state", "")).strip().lower() == "archived":
+            archived_rows.append(serialized)
+        else:
+            active_rows.append(serialized)
+    return {
+        "tracked_applications": active_rows,
+        "archived_applications": archived_rows,
+    }
 
 
 @router.patch("/applications/tracked/{tracked_id}", tags=["applications"])

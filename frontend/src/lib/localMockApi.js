@@ -3546,13 +3546,21 @@ async function handleMockApiRequest(request, requestUrl, state) {
   }
 
   if (pathname === '/api/applications/tracked' && method === 'GET') {
-    const rows = ensureArray(state.trackedApplications, [])
-      .filter((row) => normalizeTextLower(row.selection_state) === 'active')
+    const includeArchived = ['1', 'true', 'yes'].includes(normalizeTextLower(requestUrl.searchParams.get('include_archived')))
+    const allRows = ensureArray(state.trackedApplications, [])
       .sort((a, b) => {
         if (a.has_new_update !== b.has_new_update) return a.has_new_update ? -1 : 1
         return String(b.updated_at || '').localeCompare(String(a.updated_at || ''))
       })
-    return toJsonResponse({ tracked_applications: rows })
+    if (!includeArchived) {
+      return toJsonResponse({
+        tracked_applications: allRows.filter((row) => normalizeTextLower(row.selection_state) === 'active'),
+      })
+    }
+    return toJsonResponse({
+      tracked_applications: allRows.filter((row) => normalizeTextLower(row.selection_state) !== 'archived'),
+      archived_applications: allRows.filter((row) => normalizeTextLower(row.selection_state) === 'archived'),
+    })
   }
 
   if (pathname === '/api/applications/tracked/select' && method === 'POST') {

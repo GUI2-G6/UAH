@@ -175,7 +175,7 @@
           v-for="(app, index) in feedItems"
           :key="`${app.subject}-${index}`"
           variant="minimal"
-          class="home-application-card"
+          :class="['home-application-card', trackedGlowClassForStatus(app.status)]"
         >
           <p v-if="app.manual_override_applied" class="scan-meta">Manual override</p>
           <label class="candidate-checkbox">
@@ -208,8 +208,24 @@
           <button class="submit-btn is-ghost" type="button" :disabled="trackingBusy" @click="loadTrackedApplications">Refresh list</button>
         </template>
 
-        <p v-if="!trackedApplications.length" class="empty-state-copy">You have not saved any tracked applications yet.</p>
-        <article v-for="row in trackedApplications" :key="`tracked-${row.id}`" class="tracked-row">
+        <div class="results-toolbar section-block">
+          <select id="tracked-filter" v-model="trackedStatusFilter">
+            <option value="all">All statuses</option>
+            <option value="action_required">Action Required</option>
+            <option value="interview">Interview</option>
+            <option value="offer">Offer</option>
+            <option value="rejection">Not moving forward</option>
+            <option value="applied">Applied</option>
+            <option value="unknown">Needs review</option>
+          </select>
+        </div>
+
+        <p v-if="!filteredTrackedApplications.length" class="empty-state-copy">You have not saved any tracked applications yet.</p>
+        <article
+          v-for="row in filteredTrackedApplications"
+          :key="`tracked-${row.id}`"
+          :class="['tracked-row', trackedGlowClassForStatus(row.latest_status)]"
+        >
           <div>
             <p class="tracked-title">{{ row.job_title || 'Untitled role' }} · {{ row.company || 'Unknown company' }}</p>
             <p class="tracked-meta">{{ row.source_type }} · {{ row.latest_status || 'needs review' }}</p>
@@ -218,7 +234,42 @@
             <span v-if="row.has_new_update" class="update-tick">New update</span>
             <button v-if="row?.metadata?.gmail_open_url_direct || row?.metadata?.gmail_open_url_fallback" type="button" class="submit-btn is-primary" @click="openMostRecentEmail(row.metadata)">Open email</button>
             <button type="button" class="submit-btn" @click="markTrackedSeen(row.id)">Mark as reviewed</button>
-            <button type="button" class="submit-btn is-danger" @click="untrack(row.id)">Remove from tracked</button>
+            <button type="button" class="submit-btn is-danger" @click="archiveTracked(row.id)">Archive</button>
+          </div>
+        </article>
+      </Card>
+
+      <Card class="home-card home-card--wide tracked-panel archived-tracked-panel">
+        <template #header>
+          <h2>Archived tracked applications</h2>
+          <p class="scan-meta">Use this for applications you want inactive for now.</p>
+        </template>
+
+        <div class="results-toolbar section-block">
+          <select id="tracked-archived-filter" v-model="archivedStatusFilter">
+            <option value="all">All statuses</option>
+            <option value="action_required">Action Required</option>
+            <option value="interview">Interview</option>
+            <option value="offer">Offer</option>
+            <option value="rejection">Not moving forward</option>
+            <option value="applied">Applied</option>
+            <option value="unknown">Needs review</option>
+          </select>
+        </div>
+
+        <p v-if="!filteredArchivedTrackedApplications.length" class="empty-state-copy">No archived tracked applications.</p>
+        <article
+          v-for="row in filteredArchivedTrackedApplications"
+          :key="`tracked-archived-${row.id}`"
+          :class="['tracked-row', 'is-archived', trackedGlowClassForStatus(row.latest_status)]"
+        >
+          <div>
+            <p class="tracked-title">{{ row.job_title || 'Untitled role' }} · {{ row.company || 'Unknown company' }}</p>
+            <p class="tracked-meta">{{ row.source_type }} · {{ row.latest_status || 'needs review' }}</p>
+          </div>
+          <div class="tracked-actions">
+            <button v-if="row?.metadata?.gmail_open_url_direct || row?.metadata?.gmail_open_url_fallback" type="button" class="submit-btn is-primary" @click="openMostRecentEmail(row.metadata)">Open email</button>
+            <button type="button" class="submit-btn" @click="restoreTracked(row)">Restore to tracked</button>
           </div>
         </article>
       </Card>
@@ -274,7 +325,10 @@
                 suppressionsOpen: false,
                 selectedKeys: {},
                 trackingBusy: false,
+                trackedStatusFilter: 'all',
+                archivedStatusFilter: 'all',
                 trackedApplications: [],
+                archivedTrackedApplications: [],
                 showAdvancedOptions: false,
                 scanMode: 'new',
                 onUserUpdated: null,
@@ -316,8 +370,20 @@
                 confidence: item.confidence || 'high',
                 manual_override_applied: item.manual_override_applied === true,
             }))
-            if (this.selectedStatusFilter === 'all') return mapped
-            return mapped.filter((item) => String(item.status).toLowerCase() === this.selectedStatusFilter)
+            const trackedRefs = new Set()
+            for (const row of [...(this.trackedApplications || []), ...(this.archivedTrackedApplications || [])]) {
+                const sourceRef = String(row?.source_ref || '').trim()
+                const threadKey = String(row?.thread_key || '').trim()
+                if (sourceRef) trackedRefs.add(sourceRef)
+                if (threadKey) trackedRefs.add(threadKey)
+            }
+            const visible = mapped.filter((item) => {
+                const sourceId = String(item.source_id || '').trim()
+                const threadKey = String(item.thread_key || '').trim()
+                return !trackedRefs.has(sourceId) && !trackedRefs.has(threadKey)
+            })
+            if (this.selectedStatusFilter === 'all') return visible
+            return visible.filter((item) => this.normalizeStatusValue(item.status) === this.selectedStatusFilter)
         },
         actionRequiredItems() {
             return this.feedItems.filter((item) => String(item.status).toLowerCase() === 'action_required')
@@ -327,6 +393,14 @@
         },
         selectedCount() {
             return Object.values(this.selectedKeys).filter(Boolean).length
+        },
+        filteredTrackedApplications() {
+            if (this.trackedStatusFilter === 'all') return this.trackedApplications || []
+            return (this.trackedApplications || []).filter((row) => this.normalizeStatusValue(row?.latest_status) === this.trackedStatusFilter)
+        },
+        filteredArchivedTrackedApplications() {
+            if (this.archivedStatusFilter === 'all') return this.archivedTrackedApplications || []
+            return (this.archivedTrackedApplications || []).filter((row) => this.normalizeStatusValue(row?.latest_status) === this.archivedStatusFilter)
         },
     },
     mounted() {
@@ -436,6 +510,16 @@
             if (Number(this.submittedSessionCount || 0) > 0) return true
             return (this.trackedApplications || []).some((row) => Number(row?.apply_session_id || 0) > 0)
         },
+        normalizeStatusValue(value) {
+            const status = String(value || 'unknown').trim().toLowerCase()
+            if (status === 'application_received') return 'applied'
+            if (status === 'interview_invite') return 'interview'
+            return status || 'unknown'
+        },
+        trackedGlowClassForStatus(value) {
+            const status = this.normalizeStatusValue(value)
+            return `status-glow-${status}`
+        },
         async loadSuppressions() {
             try {
                 this.suppressions = await listGmailSuppressions()
@@ -539,11 +623,29 @@
                 if (!options.suppressToast) {
                     showToast(`Tracked applications saved (${Number(data?.created || 0) + Number(data?.updated || 0)}).`, 'success')
                 }
+                this.removeTrackedRowsFromActiveScan(chosenGmail)
                 await this.loadTrackedApplications()
             } catch (error) {
                 if (!options.suppressToast) showToast(error?.message || 'Could not save tracked selections.', 'error')
                 throw error
             }
+        },
+        removeTrackedRowsFromActiveScan(rows) {
+            const sourceIds = new Set()
+            const threadKeys = new Set()
+            for (const row of rows || []) {
+                const sourceId = String(row?.source_id || '').trim()
+                const threadKey = String(row?.thread_key || '').trim()
+                if (sourceId) sourceIds.add(sourceId)
+                if (threadKey) threadKeys.add(threadKey)
+            }
+            if (!sourceIds.size && !threadKeys.size) return
+            this.applications = (this.applications || []).filter((row) => {
+                const sourceId = String(row?.source_id || '').trim()
+                const threadKey = String(row?.thread_key || '').trim()
+                return !sourceIds.has(sourceId) && !threadKeys.has(threadKey)
+            })
+            this.summary = summarizeGmailResults(this.applications || [])
         },
         async saveSelectedTracked() {
             const chosenGmail = this.feedItems.filter((row) => this.isSelected(row.selection_key))
@@ -556,13 +658,15 @@
         },
         async loadTrackedApplications() {
             try {
-                const res = await authedFetch('/api/applications/tracked')
+                const res = await authedFetch('/api/applications/tracked?include_archived=1')
                 const data = await res.json().catch(() => null)
                 if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
                 this.trackedApplications = Array.isArray(data?.tracked_applications) ? data.tracked_applications : []
+                this.archivedTrackedApplications = Array.isArray(data?.archived_applications) ? data.archived_applications : []
             } catch (error) {
                 console.error('Failed to load tracked applications', error)
                 this.trackedApplications = []
+                this.archivedTrackedApplications = []
             }
         },
         async markTrackedSeen(id) {
@@ -592,6 +696,36 @@
             } catch (error) {
                 if (!options.suppressToast) showToast(error?.message || 'Could not untrack item.', 'error')
                 throw error
+            }
+        },
+        async archiveTracked(id) {
+            await this.untrack(id)
+        },
+        async restoreTracked(row) {
+            const sourceRef = String(row?.source_ref || '').trim()
+            if (!sourceRef) return
+            this.trackingBusy = true
+            try {
+                await this.saveTrackedRows([{
+                    source_id: sourceRef,
+                    thread_key: row?.thread_key || '',
+                    company: row?.company || '',
+                    role: row?.job_title || '',
+                    subject: row?.job_title || '',
+                    detected_status: row?.latest_status || 'unknown',
+                    status: row?.latest_status || 'unknown',
+                    from: row?.metadata?.from || '',
+                    gmail_open_url_direct: row?.metadata?.gmail_open_url_direct || '',
+                    gmail_open_url_fallback: row?.metadata?.gmail_open_url_fallback || '',
+                }], {
+                    clearSelectionAfterSave: false,
+                    suppressToast: true,
+                })
+                showToast('Restored to tracked applications.', 'success')
+            } catch (error) {
+                showToast(error?.message || 'Could not restore tracked item.', 'error')
+            } finally {
+                this.trackingBusy = false
             }
         },
         removeApplicationBySourceId(sourceId) {

@@ -250,7 +250,7 @@ describe('Application tracking page updates', () => {
     expect(wrapper.find('#action-required').exists()).toBe(true)
   })
 
-  it('autosaves tracking when checkbox selection toggles on and off', async () => {
+  it('autosaves tracking when checkbox selection toggles on then archives from tracked list', async () => {
     const wrapper = mount(ApplicationView, {
       global: {
         stubs: {
@@ -284,8 +284,8 @@ describe('Application tracking page updates', () => {
 
     wrapper.vm.trackedApplications = [{ id: 11, source_ref: 'gmail-track-1', thread_key: 'example.com|status update|example co' }]
     authMocks.authedFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'ok' }) })
-    authMocks.authedFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ tracked_applications: [] }) })
-    await wrapper.vm.toggleSelection(wrapper.vm.feedItems[0])
+    authMocks.authedFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ tracked_applications: [], archived_applications: [] }) })
+    await wrapper.vm.archiveTracked(11)
     expect(authMocks.authedFetch).toHaveBeenCalledWith('/api/applications/tracked/11', expect.any(Object))
   })
 
@@ -314,5 +314,127 @@ describe('Application tracking page updates', () => {
 
     const ids = wrapper.vm.applications.map((item) => item.source_id)
     expect(ids).toEqual(['a', 'c'])
+  })
+
+  it('separates active and archived tracked applications with status filters', async () => {
+    const wrapper = mount(ApplicationView, {
+      global: {
+        stubs: {
+          Card: cardStub,
+          Application: applicationStub,
+        },
+        mocks: {
+          $router: { push: vi.fn() },
+        },
+      },
+    })
+    await flushPromises()
+
+    wrapper.vm.trackedApplications = [
+      { id: 1, latest_status: 'offer', selection_state: 'active' },
+      { id: 2, latest_status: 'unknown', selection_state: 'active' },
+    ]
+    wrapper.vm.archivedTrackedApplications = [
+      { id: 3, latest_status: 'rejection', selection_state: 'archived' },
+      { id: 4, latest_status: 'offer', selection_state: 'archived' },
+    ]
+    wrapper.vm.trackedStatusFilter = 'offer'
+    wrapper.vm.archivedStatusFilter = 'rejection'
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.filteredTrackedApplications.map((row) => row.id)).toEqual([1])
+    expect(wrapper.vm.filteredArchivedTrackedApplications.map((row) => row.id)).toEqual([3])
+  })
+
+  it('moves tracked scan rows out of active scan list immediately', async () => {
+    const wrapper = mount(ApplicationView, {
+      global: {
+        stubs: {
+          Card: cardStub,
+          Application: applicationStub,
+        },
+        mocks: {
+          $router: { push: vi.fn() },
+        },
+      },
+    })
+    await flushPromises()
+
+    wrapper.vm.applications = [{
+      source_id: 'gmail-track-2',
+      subject: 'Interview update',
+      from: 'Recruiting <jobs@example.com>',
+      detected_status: 'interview',
+      status_bucket: 'interview',
+      sender_domain: 'example.com',
+      subject_key: 'interview update',
+      company_key: 'example co',
+      thread_key: 'example.com|interview update|example co',
+    }]
+
+    authMocks.authedFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ created: 1, updated: 0 }) })
+    authMocks.authedFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ tracked_applications: [{ id: 12, source_ref: 'gmail-track-2', selection_state: 'active' }] }) })
+
+    await wrapper.vm.toggleSelection(wrapper.vm.feedItems[0])
+
+    expect(wrapper.vm.applications).toHaveLength(0)
+  })
+
+  it('archives and restores tracked applications', async () => {
+    const wrapper = mount(ApplicationView, {
+      global: {
+        stubs: {
+          Card: cardStub,
+          Application: applicationStub,
+        },
+        mocks: {
+          $router: { push: vi.fn() },
+        },
+      },
+    })
+    await flushPromises()
+
+    authMocks.authedFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'ok' }) })
+    authMocks.authedFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        tracked_applications: [{ id: 7, source_ref: 'gmail-7', selection_state: 'active' }],
+        archived_applications: [{ id: 8, source_ref: 'gmail-8', selection_state: 'archived' }],
+      }),
+    })
+    await wrapper.vm.archiveTracked(7)
+    expect(authMocks.authedFetch).toHaveBeenCalledWith('/api/applications/tracked/7', expect.objectContaining({
+      method: 'PATCH',
+    }))
+
+    wrapper.vm.archivedTrackedApplications = [{ id: 8, source_ref: 'gmail-8', thread_key: 'thread-8', company: 'Archived Co', job_title: 'SWE', latest_status: 'unknown' }]
+    authMocks.authedFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ created: 0, updated: 1 }) })
+    authMocks.authedFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        tracked_applications: [{ id: 8, source_ref: 'gmail-8', selection_state: 'active' }],
+        archived_applications: [],
+      }),
+    })
+    await wrapper.vm.restoreTracked(wrapper.vm.archivedTrackedApplications[0])
+    expect(authMocks.authedFetch).toHaveBeenCalledWith('/api/applications/tracked/select', expect.any(Object))
+  })
+
+  it('applies status glow class helpers for listings', async () => {
+    const wrapper = mount(ApplicationView, {
+      global: {
+        stubs: {
+          Card: cardStub,
+          Application: applicationStub,
+        },
+        mocks: {
+          $router: { push: vi.fn() },
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.vm.trackedGlowClassForStatus('offer')).toBe('status-glow-offer')
+    expect(wrapper.vm.trackedGlowClassForStatus('application_received')).toBe('status-glow-applied')
   })
 })
