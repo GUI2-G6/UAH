@@ -2,10 +2,14 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { buildPlan, resolveNameToPath } from '../src/autofill/matching.js'
-import { fillField, fillPlan, isFieldRequired } from '../src/autofill/dom.js'
+import { discoverFields, fillField, fillPlan, isFieldRequired } from '../src/autofill/dom.js'
 import { buildProfileAutofillSource, sanitizeTokenMap } from '../src/autofill/source.js'
 import { flattenResume } from '../src/autofill/shared.js'
 import { resolveFieldPolicy } from '../src/autofill/resolver.js'
+import {
+  inferDropdownCandidates,
+  resolveDropdownInference,
+} from '../src/autofill/pageSourceInference.js'
 import {
   buildDefaultFloatingPosition,
   clampPanelSize,
@@ -29,6 +33,36 @@ function createDispatchingElement(overrides = {}) {
     ...overrides,
   }
   return { element, events }
+}
+
+function createComboboxDocument(optionLabels = []) {
+  const options = optionLabels.map((label) => ({
+    textContent: label,
+    clickCalled: 0,
+    click() {
+      this.clickCalled += 1
+    },
+  }))
+  const listbox = {
+    querySelectorAll(selector) {
+      if (selector === '[role="option"]') return options
+      return []
+    },
+  }
+
+  return {
+    __options: options,
+    getElementById(id) {
+      return id === 'work-auth-listbox' ? listbox : null
+    },
+    querySelectorAll(selector) {
+      if (selector === '[role="option"]') return options
+      return []
+    },
+    querySelector() {
+      return null
+    },
+  }
 }
 
 test('buildProfileAutofillSource prefers token_map and overlays profile-only extras', () => {
@@ -179,9 +213,9 @@ test('isFieldRequired checks required, aria-required, and star labels', () => {
   assert.equal(isFieldRequired({ label: 'Phone' }), false)
 })
 
-test('fillField handles text, select, checkbox, and radio fields', () => {
+test('fillField handles text, select, checkbox, and radio fields', async () => {
   const textField = createDispatchingElement()
-  assert.equal(fillField(textField.element, 'Taylor'), true)
+  assert.equal(await fillField(textField.element, 'Taylor'), true)
   assert.equal(textField.element.value, 'Taylor')
   assert.deepEqual(textField.events, ['input', 'change', 'blur'])
 
@@ -194,7 +228,7 @@ test('fillField handles text, select, checkbox, and radio fields', () => {
       { textContent: 'Georgia', value: 'GA' },
     ],
   })
-  assert.equal(fillField(selectField.element, 'Alabama'), true)
+  assert.equal(await fillField(selectField.element, 'Alabama'), true)
   assert.equal(selectField.element.value, 'AL')
 
   let checkboxClicked = 0
@@ -207,7 +241,7 @@ test('fillField handles text, select, checkbox, and radio fields', () => {
       this.checked = true
     },
   }
-  assert.equal(fillField(checkboxField, true), true)
+  assert.equal(await fillField(checkboxField, true), true)
   assert.equal(checkboxClicked, 1)
 
   let radioClicked = 0
@@ -219,11 +253,160 @@ test('fillField handles text, select, checkbox, and radio fields', () => {
       radioClicked += 1
     },
   }
-  assert.equal(fillField(radioField, 'no'), true)
+  assert.equal(await fillField(radioField, 'no'), true)
   assert.equal(radioClicked, 1)
 })
 
-test('fillPlan fills current checkboxes first and skips end date tokens when current', () => {
+test('discoverFields includes visible combobox controls', () => {
+  const combo = {
+    tagName: 'DIV',
+    type: '',
+    disabled: false,
+    id: 'work-auth',
+    required: false,
+    offsetParent: {},
+    parentElement: null,
+    closest() {
+      return null
+    },
+    getBoundingClientRect() {
+      return { width: 140, height: 40 }
+    },
+    getAttribute(attribute) {
+      switch (attribute) {
+        case 'role':
+          return 'combobox'
+        case 'aria-label':
+          return 'Work Authorization'
+        case 'name':
+        case 'placeholder':
+        case 'data-label':
+        case 'aria-required':
+        default:
+          return null
+      }
+    },
+  }
+
+  const fields = discoverFields({
+    querySelectorAll(selector) {
+      if (selector === 'input, textarea, select, [role="combobox"]') return [combo]
+      return []
+    },
+    querySelector() {
+      return null
+    },
+  })
+
+  assert.equal(fields.length, 1)
+  assert.equal(fields[0].label, 'Work Authorization')
+  assert.equal(fields[0].tagName, 'div')
+  assert.equal(fields[0].inputType, '')
+})
+
+test('fillField opens and selects from a collapsed combobox', async () => {
+  const doc = createComboboxDocument(['Yes', 'No'])
+  let expanded = false
+  const combo = {
+    tagName: 'INPUT',
+    type: 'text',
+    value: '',
+    ownerDocument: doc,
+    focusCalled: 0,
+    clickCalled: 0,
+    focus() {
+      this.focusCalled += 1
+    },
+    click() {
+      this.clickCalled += 1
+      expanded = true
+    },
+    dispatchEvent() {
+      return true
+    },
+    getAttribute(attribute) {
+      switch (attribute) {
+        case 'role':
+          return 'combobox'
+        case 'aria-autocomplete':
+          return 'list'
+        case 'aria-expanded':
+          return expanded ? 'true' : 'false'
+        case 'aria-controls':
+          return 'work-auth-listbox'
+        default:
+          return null
+      }
+    },
+  }
+
+  assert.equal(await fillField(combo, 'No'), true)
+  assert.equal(combo.clickCalled > 0, true)
+  assert.equal(doc.__options[1].clickCalled, 1)
+})
+
+test('fillField waits briefly for delayed combobox options', async () => {
+  let options = []
+  const doc = {
+    getElementById() {
+      return {
+        querySelectorAll(selector) {
+          if (selector === '[role="option"]') return options
+          return []
+        },
+      }
+    },
+    querySelectorAll() {
+      return []
+    },
+    querySelector() {
+      return null
+    },
+  }
+
+  let expanded = false
+  const combo = {
+    tagName: 'INPUT',
+    type: 'text',
+    value: '',
+    ownerDocument: doc,
+    focus() {},
+    click() {
+      expanded = true
+      setTimeout(() => {
+        options = [
+          {
+            textContent: 'Remote',
+            clickCalled: 0,
+            click() {
+              this.clickCalled += 1
+            },
+          },
+        ]
+      }, 20)
+    },
+    dispatchEvent() {
+      return true
+    },
+    getAttribute(attribute) {
+      switch (attribute) {
+        case 'role':
+          return 'combobox'
+        case 'aria-expanded':
+          return expanded ? 'true' : 'false'
+        case 'aria-controls':
+          return 'work-location-listbox'
+        default:
+          return null
+      }
+    },
+  }
+
+  assert.equal(await fillField(combo, 'Remote'), true)
+  assert.equal(options[0].clickCalled, 1)
+})
+
+test('fillPlan fills current checkboxes first and skips end date tokens when current', async () => {
   const order = []
   const currentField = {
     tagName: 'INPUT',
@@ -242,7 +425,7 @@ test('fillPlan fills current checkboxes first and skips end date tokens when cur
     },
   })
 
-  const filled = fillPlan([
+  const filled = await fillPlan([
     { el: endDateField.element, matchPath: 'work_experience[0].end_year', matchScore: 0.9 },
     { el: currentField, matchPath: 'work_experience[0].is_current', matchScore: 0.9 },
   ], {
@@ -255,7 +438,7 @@ test('fillPlan fills current checkboxes first and skips end date tokens when cur
   assert.equal(endDateField.element.value, '')
 })
 
-test('fillPlan respects approval-gated fields', () => {
+test('fillPlan respects approval-gated fields', async () => {
   const first = createDispatchingElement()
   const auth = createDispatchingElement({ id: 'work-auth' })
   const plan = [
@@ -267,14 +450,62 @@ test('fillPlan respects approval-gated fields', () => {
     work_auth: 'Yes',
   }
 
-  const filledWithoutApproval = fillPlan(plan, tokenMap)
+  const filledWithoutApproval = await fillPlan(plan, tokenMap)
   assert.equal(filledWithoutApproval, 1)
   assert.equal(first.element.value, 'Taylor')
   assert.equal(auth.element.value, '')
 
-  const filledWithApproval = fillPlan(plan, tokenMap, { approvedPaths: ['work_auth'] })
+  const filledWithApproval = await fillPlan(plan, tokenMap, { approvedPaths: ['work_auth'] })
   assert.equal(filledWithApproval, 2)
   assert.equal(auth.element.value, 'Yes')
+})
+
+test('inferDropdownCandidates reads inline option metadata conservatively', () => {
+  const doc = {
+    querySelectorAll(selector) {
+      if (selector !== 'script[type="application/json"], script[type="application/ld+json"], script:not([src])') return []
+      return [
+        {
+          textContent: JSON.stringify({
+            formFields: [
+              {
+                label: 'Work Authorization',
+                options: ['Yes', 'No'],
+              },
+            ],
+          }),
+        },
+      ]
+    },
+  }
+
+  const result = inferDropdownCandidates({
+    element: {
+      getAttribute(attribute) {
+        if (attribute === 'aria-label') return 'Work Authorization'
+        return null
+      },
+    },
+    desiredValue: 'Yes',
+    doc,
+  })
+
+  assert.deepEqual(result.candidates, ['Yes'])
+  assert.equal(result.confidence, 'high')
+})
+
+test('resolveDropdownInference rejects low-confidence source candidates', () => {
+  const result = resolveDropdownInference({
+    desiredValue: 'Austin',
+    inferred: {
+      candidates: ['Dallas'],
+      confidence: 'low',
+      source: 'inline-json',
+    },
+  })
+
+  assert.equal(result.accepted, false)
+  assert.equal(result.value, null)
 })
 
 test('resolver marks sensitive fields as requiring approval', () => {

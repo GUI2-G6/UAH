@@ -7,6 +7,7 @@ import GreenhouseAdapter from '../src/adapters/ats/GreenhouseAdapter.js'
 import LeverAdapter from '../src/adapters/ats/LeverAdapter.js'
 import ICIMSAdapter from '../src/adapters/ats/iCIMSAdapter.js'
 import TaleoAdapter from '../src/adapters/ats/TaleoAdapter.js'
+import DynamicsAdapter from '../src/adapters/ats/DynamicsAdapter.js'
 import ExampleCorpWorkdayAdapter from '../src/adapters/companies/workday/ExampleCorpWorkdayAdapter.js'
 import ExampleCorpGreenhouseAdapter from '../src/adapters/companies/greenhouse/ExampleCorpGreenhouseAdapter.js'
 
@@ -60,7 +61,7 @@ function createFakeDocument(elements = []) {
 
   return {
     querySelectorAll(selector) {
-      if (selector === 'input, textarea, select') {
+      if (selector === 'input, textarea, select, [role="combobox"]') {
         return elements
       }
 
@@ -182,6 +183,14 @@ test('TaleoAdapter matches Taleo career section URL patterns', () => {
   assert.equal(adapter.matches('https://boards.greenhouse.io/examplecorp/jobs/12345'), false)
 })
 
+test('DynamicsAdapter matches Microsoft-hosted candidate application URLs', () => {
+  const adapter = new DynamicsAdapter()
+
+  assert.equal(adapter.matches('https://contoso.dynamics.com/ats/candidate/apply'), true)
+  assert.equal(adapter.matches('https://jobs.contoso.com/Pages/JobSearch.aspx?clientId=123'), true)
+  assert.equal(adapter.matches('https://boards.greenhouse.io/examplecorp/jobs/12345'), false)
+})
+
 test('ExampleCorpWorkdayAdapter merges company-specific fields on top of the base adapter', () => {
   const document = createFakeDocument([
     createFakeElement({
@@ -235,7 +244,7 @@ test('registry resolves company overrides before base ATS adapters', async () =>
 test('registry returns supported ATS names and company override metadata', async () => {
   const registry = await loadRegistryModule('metadata')
 
-  assert.deepEqual(registry.getSupportedATS(), ['Workday', 'Greenhouse', 'Lever', 'iCIMS', 'Taleo'])
+  assert.deepEqual(registry.getSupportedATS(), ['Workday', 'Greenhouse', 'Lever', 'iCIMS', 'Taleo', 'Dynamics'])
   assert.deepEqual(registry.getCompanyOverrides(), [
     {
       atsName: 'Workday',
@@ -270,7 +279,7 @@ test('registry returns null for unsupported URLs and validates dynamic registrat
 
   assert.deepEqual(
     registry.getSupportedATS(),
-    ['Workday', 'Greenhouse', 'Lever', 'iCIMS', 'Taleo', 'CustomATS'],
+    ['Workday', 'Greenhouse', 'Lever', 'iCIMS', 'Taleo', 'Dynamics', 'CustomATS'],
   )
   assert.equal(
     registry.resolveAdapter('https://custom-ats.example.com/jobs/apply')?.getATSName(),

@@ -330,7 +330,7 @@ export function registerAutofillRuntime(win = window, doc = document) {
       refreshOverlay()
       return computePlanStats(state.currentPlan)
     },
-    fill(tokenMap) {
+    async fill(tokenMap) {
       ensureStyles(doc)
       const nextTokens = cloneTokenMap(tokenMap)
       if (Object.keys(nextTokens).length) {
@@ -340,12 +340,12 @@ export function registerAutofillRuntime(win = window, doc = document) {
         state.currentTokens = state.currentTokens || nextTokens
         state.currentPlan = buildDomPlan(state.currentTokens, doc)
       }
-      const filled = fillPlan(state.currentPlan, state.currentTokens)
+      const filled = await fillPlan(state.currentPlan, state.currentTokens, { doc })
       state.notice = `Filled ${filled} field${filled === 1 ? '' : 's'} from the active plan.`
       refreshOverlay()
       return { filled, total: state.currentPlan.length }
     },
-    autoRun(payload = {}) {
+    async autoRun(payload = {}) {
       ensureStyles(doc)
       const nextTokens = cloneTokenMap(payload?.tokenMap || payload)
       state.currentTokens = nextTokens
@@ -367,7 +367,7 @@ export function registerAutofillRuntime(win = window, doc = document) {
           approvedPaths.push(item.matchPath)
         }
       }
-      const filled = fillPlan(state.currentPlan, state.currentTokens, { approvedPaths })
+      const filled = await fillPlan(state.currentPlan, state.currentTokens, { approvedPaths, doc })
       state.notice = pendingApprovals.length
         ? `Auto-filled ${filled}. ${pendingApprovals.length} field(s) require approval before fill.`
         : `Auto-filled ${filled} field${filled === 1 ? '' : 's'} without gated approvals.`
@@ -379,14 +379,14 @@ export function registerAutofillRuntime(win = window, doc = document) {
         pending_approvals: pendingApprovals,
       }
     },
-    fillApproved(payload = {}) {
+    async fillApproved(payload = {}) {
       ensureStyles(doc)
       const approvedPaths = Array.isArray(payload?.approvedPaths) ? payload.approvedPaths : []
       if (!state.currentPlan || !state.currentTokens) {
         state.currentTokens = cloneTokenMap(payload?.tokenMap || {})
         state.currentPlan = buildDomPlan(state.currentTokens, doc)
       }
-      const filled = fillPlan(state.currentPlan, state.currentTokens, { approvedPaths })
+      const filled = await fillPlan(state.currentPlan, state.currentTokens, { approvedPaths, doc })
       state.notice = `Filled ${filled} approved field${filled === 1 ? '' : 's'}.`
       refreshOverlay()
       return {

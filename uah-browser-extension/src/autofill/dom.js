@@ -1,5 +1,7 @@
 import { GOOD_MATCH_THRESHOLD, REVIEW_MATCH_THRESHOLD, normalizeText } from './shared.js'
 import { buildPlan as buildPlanFromFields } from './matching.js'
+import { fillComboboxField } from './dropdown.js'
+import { inferDropdownCandidates, resolveDropdownInference } from './pageSourceInference.js'
 
 const EventCtor = globalThis.Event || class Event {
   constructor(type, init = {}) {
@@ -62,7 +64,7 @@ function isVisibleField(element) {
 }
 
 export function discoverFields(root = document) {
-  return Array.from(root.querySelectorAll('input, textarea, select'))
+  return Array.from(root.querySelectorAll('input, textarea, select, [role="combobox"]'))
     .filter((element) => !element.disabled)
     .filter((element) => element.type !== 'hidden')
     .filter((element) => !['submit', 'button', 'reset'].includes(element.type))
@@ -94,7 +96,7 @@ export function buildDomPlan(tokenMap, root = document) {
   return buildPlanFromFields(discoverFields(root), tokenMap || {})
 }
 
-export function fillField(element, value) {
+export async function fillField(element, value, options = {}) {
   try {
     if (!element) return false
 
@@ -117,19 +119,20 @@ export function fillField(element, value) {
       if (!match) return false
       element.value = match.value
     } else if (element.getAttribute?.('role') === 'combobox' || element.getAttribute?.('aria-autocomplete')) {
-      element.focus?.()
-      element.value = String(value)
-      const inputEvent = new EventCtor('input', { bubbles: true })
-      element.dispatchEvent?.(inputEvent)
-      const expanded = element.getAttribute?.('aria-expanded') === 'true'
-      if (expanded) {
-        const listboxId = element.getAttribute?.('aria-controls')
-        const listbox = listboxId ? document.getElementById(listboxId) : null
-        const options = Array.from((listbox || document).querySelectorAll?.('[role="option"]') || [])
-        const normalizedValue = normalizeText(String(value))
-        const match = options.find((option) => normalizeText(option.textContent || '') === normalizedValue)
-          || options.find((option) => normalizeText(option.textContent || '').includes(normalizedValue))
-        match?.click?.()
+      const inferred = resolveDropdownInference({
+        desiredValue: value,
+        inferred: inferDropdownCandidates({
+          element,
+          desiredValue: value,
+          doc: options?.doc || element.ownerDocument || document,
+        }),
+      })
+      const candidateValues = inferred.accepted ? [inferred.value, ...inferred.candidates] : []
+      if (!await fillComboboxField(element, value, {
+        doc: options?.doc || element.ownerDocument || document,
+        candidateValues,
+      })) {
+        return false
       }
     } else if (element.type === 'checkbox') {
       const shouldCheck = value === true || value === 'true' || value === '1'
@@ -154,7 +157,7 @@ export function fillField(element, value) {
   }
 }
 
-export function fillPlan(plan, tokenMap, options = {}) {
+export async function fillPlan(plan, tokenMap, options = {}) {
   let filled = 0
   const approvedPaths = new Set(Array.isArray(options?.approvedPaths) ? options.approvedPaths.map((item) => String(item)) : [])
   const sortedPlan = [...(Array.isArray(plan) ? plan : [])].sort((left, right) => {
@@ -177,7 +180,7 @@ export function fillPlan(plan, tokenMap, options = {}) {
       if (tokenMap?.[`${prefix}.is_current`] === true) continue
     }
 
-    if (fillField(item.el, value)) filled += 1
+    if (await fillField(item.el, value, options)) filled += 1
   }
 
   return filled
