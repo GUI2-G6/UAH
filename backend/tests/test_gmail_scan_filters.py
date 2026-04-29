@@ -4,8 +4,11 @@ import unittest
 
 from app.services.gmail_scan import (
     ScanMessage,
+    annotate_flat_scan_results_cluster_metadata,
+    build_application_chain_key,
     build_thread_signature,
     evaluate_message,
+    extract_canonical_employer_hint,
     normalize_company_key,
     normalize_subject_key,
 )
@@ -405,6 +408,87 @@ class GmailScanFilterTests(unittest.TestCase):
             require_ats=True,
         )
         self.assertEqual(evaluated["company_hint"], "CACI")
+
+    def test_canonical_employer_pulls_hiring_company_from_ripplematch_forwarder(self):
+        subject = "What's next with your application?"
+        snippet = "Thanks for your interest in Expedia Group! Great news about your application."
+        hint = extract_canonical_employer_hint(
+            "Sara <sara@ripplematch.com>",
+            subject,
+            snippet,
+            "",
+            source_bucket="job_platform",
+            company_hint="Ripplematch",
+        )
+        self.assertIsNotNone(hint)
+        self.assertIn("expedia", hint.lower())
+
+    def test_application_chain_key_unifies_expedia_vs_expedia_group_when_role_matches(self):
+        shared_sub = "Candidate update — Software Engineering intern"
+        shared_blob = (
+            "Hello, for the position: Software Development Engineering Summer 2026 Intern — next steps attached."
+        )
+        sd1, sk1, ck1 = build_thread_signature(
+            from_header="notifications <expedia@myworkday.com>",
+            subject=shared_sub,
+            company_hint="Expedia",
+        )
+        sd2, sk2, ck2 = build_thread_signature(
+            from_header="Ripple <recruiter@ripplematch.com>",
+            subject=shared_sub,
+            company_hint="Ripplematch",
+        )
+        canon2 = extract_canonical_employer_hint(
+            "Ripple <recruiter@ripplematch.com>",
+            shared_sub,
+            "Thanks for your interest in Expedia Group!",
+            shared_blob,
+            source_bucket="job_platform",
+            company_hint="Ripplematch",
+        )
+        k1, ek1, rk1 = build_application_chain_key(
+            canonical_company_hint=None,
+            company_hint="Expedia Group",
+            sender_domain=sd1,
+            subject_key=sk1,
+            company_key=ck1,
+            subject=shared_sub,
+            snippet_body=shared_blob,
+        )
+        k2, ek2, rk2 = build_application_chain_key(
+            canonical_company_hint=canon2,
+            company_hint="Ripplematch",
+            sender_domain=sd2,
+            subject_key=sk2,
+            company_key=ck2,
+            subject=shared_sub,
+            snippet_body=shared_blob,
+        )
+        self.assertEqual(ek1, ek2)
+        self.assertEqual(rk1, rk2)
+        self.assertEqual(k1, k2)
+
+    def test_cluster_annotation_assigns_ranks_and_leader(self):
+        rows = [
+            {
+                "application_chain_key": "acme|intern",
+                "thread_key": "",
+                "date": "Mon, 02 Feb 2026 10:00:00 -0500",
+                "source_id": "a-old",
+            },
+            {
+                "application_chain_key": "acme|intern",
+                "thread_key": "",
+                "date": "Mon, 09 Feb 2026 10:00:00 -0500",
+                "source_id": "b-new",
+            },
+        ]
+        out = annotate_flat_scan_results_cluster_metadata(rows)
+        sizes = {r["source_id"]: r["cluster_size"] for r in out}
+        self.assertEqual(sizes["b-new"], 2)
+        leaders = {r["source_id"]: r["cluster_leader_source_id"] for r in out}
+        self.assertEqual(leaders["b-new"], "b-new")
+        self.assertEqual(leaders["a-old"], "b-new")
 
 
 if __name__ == "__main__":

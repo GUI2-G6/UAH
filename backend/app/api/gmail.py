@@ -21,6 +21,8 @@ from app.core.config import settings
 from app.services.gmail_scan import (
     ATS_DOMAIN_HINTS,
     ScanMessage,
+    annotate_flat_scan_results_cluster_metadata,
+    build_application_chain_key,
     build_thread_signature,
     evaluate_message,
     normalize_company_key,
@@ -840,6 +842,7 @@ async def gmail_scan(
                 "detected_status": evaluated["detected_status"],
                 "manual_override_applied": False,
                 "company_hint": evaluated["company_hint"],
+                "canonical_company_hint": evaluated.get("canonical_company_hint"),
                 "snippet": evaluated["snippet"],
                 "body_preview": evaluated.get("body_preview") or "",
                 "ats_detected": evaluated["ats_detected"],
@@ -847,6 +850,7 @@ async def gmail_scan(
                 "source_bucket": evaluated.get("source_bucket"),
                 "intent_score": evaluated.get("intent_score"),
                 "matched_applied_job": evaluated["matched_applied_job"],
+                "linkedin_apply_detected": bool(evaluated.get("linkedin_apply_detected")),
             }
             sender_domain, subject_key, company_key = build_thread_signature(
                 from_header=evaluated["from"],
@@ -860,12 +864,28 @@ async def gmail_scan(
                 subject=evaluated["subject"],
                 date=evaluated["date"],
             )
+            snippet_body_combo = " ".join(
+                p for p in (evaluated.get("snippet"), evaluated.get("body_preview")) if p
+            ).strip()
+            application_chain_key, employer_key_normalized, role_anchor_normalized = build_application_chain_key(
+                canonical_company_hint=evaluated.get("canonical_company_hint"),
+                company_hint=evaluated.get("company_hint"),
+                sender_domain=sender_domain,
+                subject_key=subject_key,
+                company_key=company_key,
+                subject=str(evaluated.get("subject") or ""),
+                snippet_body=snippet_body_combo or str(evaluated.get("snippet") or ""),
+            )
+
             base_result = {
                 **base_result,
                 "sender_domain": sender_domain,
                 "subject_key": subject_key,
                 "company_key": company_key,
                 "thread_key": thread_key,
+                "application_chain_key": application_chain_key,
+                "employer_key_normalized": employer_key_normalized,
+                "role_anchor_key": role_anchor_normalized,
                 "gmail_open_url_direct": direct_url,
                 "gmail_open_url_fallback": fallback_url,
             }
@@ -945,6 +965,8 @@ async def gmail_scan(
 
     if tracked_updates_applied > 0:
         db.commit()
+
+    included_results = annotate_flat_scan_results_cluster_metadata(included_results)
 
     return {
         "gmail_email": current_user.gmail_email,

@@ -43,6 +43,32 @@ describe('gmailUpdates feedback utilities', () => {
     expect(record.summary.action_required).toBe(1)
   })
 
+  it('normalizes canonical company and Gmail cluster metadata in cached scan results', () => {
+    const record = writeGmailScanCache({
+      results: [
+        {
+          source_id: 'leader-1',
+          detected_status: 'applied',
+          canonical_company_hint: 'Expedia Group',
+          company_hint: 'Ripplematch',
+          cluster_id: 'c1deadbeef',
+          cluster_size: 2,
+          cluster_rank: 0,
+          cluster_leader_source_id: 'leader-1',
+          application_chain_key: 'expedia|intern|stub',
+        },
+      ],
+    })
+    expect(record.results[0].canonical_company_hint).toBe('Expedia Group')
+    expect(record.results[0].display_company).toBe('Expedia Group')
+    expect(record.results[0].company_hint).toBe('Ripplematch')
+    expect(record.results[0].cluster_id).toBe('c1deadbeef')
+    expect(record.results[0].cluster_size).toBe(2)
+    expect(record.results[0].cluster_rank).toBe(0)
+    expect(record.results[0].cluster_leader_source_id).toBe('leader-1')
+    expect(record.results[0].application_chain_key).toBe('expedia|intern|stub')
+  })
+
   it('posts feedback payload to backend endpoint', async () => {
     authMocks.authedFetch.mockResolvedValueOnce({
       ok: true,

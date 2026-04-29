@@ -58,8 +58,16 @@ function normalizeNotificationState(item = {}) {
   }
 }
 
+function normalizeNum(v, fallback = null) {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : fallback
+}
+
 function normalizeResult(item = {}) {
   const status = normalizeStatus(item.detected_status)
+  const canonicalCompany = sanitizeText(item.canonical_company_hint, 120)
+  const companyHint = sanitizeText(item.company_hint, 120)
+  const displayCompany = canonicalCompany || companyHint || null
   return {
     source_id: sanitizeText(item.source_id, 255),
     subject: sanitizeText(item.subject, 260),
@@ -67,18 +75,29 @@ function normalizeResult(item = {}) {
     date: normalizeDate(item.date),
     detected_status: String(item.detected_status || 'unknown'),
     status_bucket: status,
-    company_hint: sanitizeText(item.company_hint, 120) || null,
+    company_hint: companyHint || null,
+    canonical_company_hint: canonicalCompany || null,
+    display_company: displayCompany,
     snippet: sanitizeText(item.snippet, 420),
     body_preview: sanitizeText(item.body_preview, 1600),
     ats_detected: item.ats_detected === true,
     job_update_detected: item.job_update_detected === true,
     matched_applied_job: item.matched_applied_job === true,
+    source_bucket: sanitizeText(item.source_bucket, 40) || null,
+    linkedin_apply_detected: item.linkedin_apply_detected === true,
     tracking_source: sanitizeText(item.tracking_source, 40) || 'gmail',
     confidence: sanitizeText(item.confidence, 24) || 'high',
     sender_domain: sanitizeText(item.sender_domain, 255),
     subject_key: sanitizeText(item.subject_key, 160),
     company_key: sanitizeText(item.company_key, 120),
     thread_key: sanitizeText(item.thread_key, 380),
+    application_chain_key: sanitizeText(item.application_chain_key, 200),
+    employer_key_normalized: sanitizeText(item.employer_key_normalized, 120),
+    role_anchor_key: sanitizeText(item.role_anchor_key, 120),
+    cluster_id: sanitizeText(item.cluster_id, 32),
+    cluster_size: normalizeNum(item.cluster_size, 1) ?? 1,
+    cluster_rank: normalizeNum(item.cluster_rank, 0) ?? 0,
+    cluster_leader_source_id: sanitizeText(item.cluster_leader_source_id, 255),
     gmail_open_url_direct: sanitizeText(item.gmail_open_url_direct, 500),
     gmail_open_url_fallback: sanitizeText(item.gmail_open_url_fallback, 500),
     tracked_id: Number.isFinite(Number(item.tracked_id)) ? Number(item.tracked_id) : null,

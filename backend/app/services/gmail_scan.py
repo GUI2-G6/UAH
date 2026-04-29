@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
-from email.utils import parseaddr
-from typing import Iterable
+from datetime import datetime, timezone
+from email.utils import parseaddr, parsedate_to_datetime
+from typing import Any, Iterable
 
 
 ATS_DOMAIN_HINTS = (
@@ -210,6 +212,211 @@ def normalize_company_key(value: str | None) -> str:
     raw = sanitize_preview_text(value, max_len=120).lower()
     raw = re.sub(r"[^a-z0-9]+", " ", raw)
     return " ".join(raw.split())[:80]
+
+
+def normalize_employer_key_cluster(value: str | None) -> str:
+    """
+    Collapses common suffix variants ("Expedia" vs "Expedia Group") for chain bucketing only.
+    """
+    base = normalize_company_key(value)
+    if not base:
+        return ""
+    tokens = base.split()
+    if len(tokens) >= 2 and tokens[-1] in {"group", "holdings", "global", "inc", "llc"}:
+        tokens = tokens[:-1]
+    return " ".join(tokens).strip()[:80]
+
+
+def sender_domain_hints_job_platform(from_header: str | None) -> bool:
+    domain = parse_sender_domain(from_header)
+    dl = domain.lower()
+    if not dl:
+        return False
+    return any(hint in dl for hint in JOB_PLATFORM_HINTS)
+
+
+_CANONICAL_EMPLOYER_PATTERNS = (
+    # "Thanks for your interest in Expedia Group"
+    re.compile(
+        r"\bthanks\s+for\s+your\s+interest\s+in\s+([A-Za-z0-9&+'’.\- ]{2,80}?)(?:\s*[!.\?]|(?:\s+What)|(?:\s+We\b)|(?:\s+Here\b)|(?:\s+Your\b)|$)",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\binterest\s+in\s+([A-Za-z0-9&+'’.\- ]{2,80}?)(?:\s*[!.\?]|$)", re.IGNORECASE),
+    re.compile(r"\byour\s+application\s+to\s+([A-Za-z0-9&+'’.\- ]{2,80}?)(?:\s*[!.\?]|$)", re.IGNORECASE),
+    re.compile(r"\bapplication\s+to\s+([A-Za-z0-9&+'’.\- ]{2,80}?)(?:\.|,|\s+has|\s+has\s+been|$)", re.IGNORECASE),
+    re.compile(r"\bapplication\s+(?:with|for)\s+([A-Za-z0-9&+'’.\- ]{2,80}?)(?:\s*[!.\?]|$)", re.IGNORECASE),
+    re.compile(r"\bmove\s+forward\s+[^\n]{0,80}?\sfor\s+(?:the\s+)?(?:position|role)[^:]{0,20}:[ \t\r\n]*([^|<\n]{6,140})", re.IGNORECASE),
+    re.compile(
+        r"\b(?:would\s+)?like\s+to\s+move\s+forward\s+with\s+[^\n]{0,40}?\sfor\s+(?:the\s+)?(?:position)[^:]+:\s*([^\n|<]{6,140})",
+        re.IGNORECASE,
+    ),
+    # "Position Update from XYZ" handled elsewhere; ATS Workday naming
+    re.compile(r"\bposition\s+update\s+from\s+([A-Za-z0-9&+'’.\- ]{2,80}?)(?:\s*[!.\?]|$)", re.IGNORECASE),
+)
+
+
+def extract_canonical_employer_hint(
+    from_header: str,
+    subject: str,
+    snippet: str = "",
+    body: str = "",
+    *,
+    source_bucket: str = "",
+    company_hint: str | None = None,
+) -> str | None:
+    """
+    Prefer the hiring company named in subject/body for job-platform / forwarder senders
+    (Ripplematch, Handshake, …) instead of the mailbox vendor name alone.
+    """
+    combined_raw = "\n".join(part for part in (subject or "", snippet or "", body or "") if part)
+
+    wants_body_scan = sender_domain_hints_job_platform(from_header) or (source_bucket or "").strip().lower() == "job_platform"
+    wants_body_scan |= (source_bucket or "").strip().lower() == "recruiter_direct"
+    content = sanitize_preview_text(combined_raw, max_len=2600)
+
+    if wants_body_scan or any(h in (subject or "").lower() for h in ("interest in", "application to ", "thanks for applying")):
+        for pattern in _CANONICAL_EMPLOYER_PATTERNS:
+            match = pattern.search(content)
+            if not match:
+                continue
+            captured = _clean_company_capture(match.group(1))
+            if captured and _looks_like_company_name(captured):
+                return captured
+
+    return _format_company_name((company_hint or "").strip()) if company_hint else None
+
+
+def _looks_like_company_name(value: str | None) -> bool:
+    s = str(value or "").strip().lower()
+    if len(s) < 2:
+        return False
+    noise = {"you", "we", "our", "this", "the", "candidate", "position", "internship", "summer"}
+    head = re.sub(r"[^a-z\s]+", " ", s.split()[0])
+    if head in noise:
+        return False
+    return True
+
+
+def extract_role_anchor(subject: str = "", snippet: str = "", body: str = "") -> str:
+    blob = sanitize_preview_text(" ".join(p for p in (subject or "", snippet or "", body or "") if p), max_len=1500).lower()
+
+    chunk = ""
+
+    patterns = (
+        r"for\s+the\s+position[s]?[:\s\u2014\-]+\s*([^\n|<]{6,120})",
+        r"after\s+reviewing[^\n]{0,40}[^\n:]+:\s*([^\n|<]{8,140})",
+        r"internship[^\n]{0,10}[^\n:]+:\s*([^\n|<]{10,140})",
+    )
+    for pat in patterns:
+        m = re.search(pat, blob, flags=re.IGNORECASE)
+        if m:
+            chunk = sanitize_preview_text(m.group(1).strip(), max_len=240)
+            break
+
+    if not chunk:
+        # Title after em dash often names role cohort
+        m = re.search(r"[^\w](\d{4})\s+(?:summer\s+)?intern(?:ship)?[^\n]{2,140}", blob)
+        if m:
+            chunk = sanitize_preview_text(re.sub(r"[^a-z0-9\s]+", " ", m.group(0)), max_len=80)
+
+    if not chunk:
+        return ""
+
+    # Drop trailing employer noise captured accidentally
+    chunk = re.split(r"\b(?:would like|would like to|thank you|thanks|we have)\b", chunk, maxsplit=1, flags=re.IGNORECASE)[0]
+    nk = normalize_subject_key(chunk)
+    return nk[:100] if nk else ""
+
+
+def build_application_chain_key(
+    *,
+    canonical_company_hint: str | None,
+    company_hint: str | None,
+    sender_domain: str,
+    subject_key: str,
+    company_key: str,
+    subject: str,
+    snippet_body: str,
+) -> tuple[str, str, str]:
+    """
+    Stable key for collapsing multi-sender pipelines (ATS + Ripplematch) for same employer/path.
+    Returns (application_chain_key, employer_key_normalized, role_anchor_normalized).
+    """
+    hint = canonical_company_hint or company_hint or ""
+    employer_key = normalize_employer_key_cluster(hint)
+    rak = extract_role_anchor(subject=subject, snippet=snippet_body, body=snippet_body)
+
+    if employer_key:
+        if rak:
+            key = f"{employer_key}|{rak}"
+        else:
+            sk = normalize_subject_key(subject)
+            tail = sk[:96] if sk else normalize_company_key(snippet_body)[:96]
+            key = f"{employer_key}|subj::{tail}"
+        return key, employer_key, rak
+
+    key = f"legacy::{sender_domain}|{subject_key}|{company_key}"
+    return key, employer_key or "", rak
+
+
+def stable_application_cluster_id(application_chain_key: str) -> str:
+    digest = hashlib.sha256(application_chain_key.encode("utf-8")).hexdigest()
+    return digest[:16]
+
+
+def parse_scan_row_date_isoish(value: str | None) -> datetime:
+    raw = sanitize_preview_text(str(value or ""), max_len=200)
+    if not raw:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    try:
+        return parsedate_to_datetime(raw)
+    except (TypeError, ValueError):
+        pass
+    try:
+        iso = raw.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(iso)
+        return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+    except (TypeError, ValueError):
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+
+def annotate_flat_scan_results_cluster_metadata(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Populate cluster_id/cluster_rank/cluster_leader_source_id/reorder clusters latest-first.
+    """
+    from collections import defaultdict
+
+    if not rows:
+        return rows
+    keyed: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        k = str(row.get("application_chain_key") or row.get("thread_key") or "")
+        keyed[k].append(row)
+
+    cluster_blocks: list[tuple[datetime, list[dict[str, Any]]]] = []
+
+    for k, grp in keyed.items():
+        grp_sorted = sorted(grp, key=lambda r: parse_scan_row_date_isoish(str(r.get("date") or "")), reverse=True)
+        cid = stable_application_cluster_id(
+            k if k != "" else f"nohash|{grp_sorted[0].get('source_id') or grp_sorted[0].get('thread_key') or 'unknown'}"
+        )
+        leader_sid = grp_sorted[0].get("source_id")
+        sz = len(grp_sorted)
+        leader_dt = parse_scan_row_date_isoish(str(grp_sorted[0].get("date") or ""))
+
+        for rank, rr in enumerate(grp_sorted):
+            rr["cluster_id"] = cid
+            rr["cluster_size"] = sz
+            rr["cluster_rank"] = rank
+            rr["cluster_leader_source_id"] = str(leader_sid or "")
+        cluster_blocks.append((leader_dt, grp_sorted))
+
+    cluster_blocks.sort(key=lambda t: t[0], reverse=True)
+
+    out: list[dict[str, Any]] = []
+    for _dt, grp in cluster_blocks:
+        out.extend(grp)
+    return out
 
 
 def build_thread_signature(*, from_header: str, subject: str, company_hint: str | None) -> tuple[str, str, str]:
@@ -527,6 +734,14 @@ def evaluate_message(
     ats_detected = is_ats_message(from_header, subject, f"{snippet} {body}")
     job_update_detected = is_job_update_message(subject, snippet, body)
     source_bucket = _source_bucket(from_header, subject, snippet, body)
+    canonical_company_hint = extract_canonical_employer_hint(
+        from_header,
+        subject,
+        snippet,
+        body,
+        source_bucket=str(source_bucket or ""),
+        company_hint=company_hint,
+    )
     intent_score = _intent_score(subject, snippet, body)
     negative_intent_detected = _negative_intent_detected(subject, snippet, body)
     linkedin_apply_detected = _linkedin_apply_detected(from_header, subject, snippet, body)
@@ -573,6 +788,7 @@ def evaluate_message(
         "date": date,
         "detected_status": status,
         "company_hint": company_hint,
+        "canonical_company_hint": canonical_company_hint,
         "snippet": snippet,
         "body_preview": body_preview,
         "ats_detected": ats_detected,

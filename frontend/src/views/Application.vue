@@ -116,38 +116,48 @@
       <Card class="home-card home-card--wide application-results-card">
         <template #header>
           <h2>Candidate updates</h2>
-          <p class="scan-meta">{{ feedItems.length }} update{{ feedItems.length === 1 ? '' : 's' }} in this view</p>
+          <p class="scan-meta">
+            {{ feedClusters.length }} update chain{{ feedClusters.length === 1 ? '' : 's' }}
+            · {{ feedItems.length }} message{{ feedItems.length === 1 ? '' : 's' }} in this view
+          </p>
         </template>
 
-        <section v-if="actionRequiredItems.length" class="action-required-section section-block">
+        <section v-if="actionRequiredClusters.length" class="action-required-section section-block">
           <h3 class="action-required-title">High Priority: Action Required</h3>
           <p class="scan-meta">These updates require immediate follow-up steps.</p>
           <Card
-            v-for="(app, index) in actionRequiredItems"
-            :key="`action-required-${app.source_id || app.thread_key || index}`"
+            v-for="(cluster, cidx) in actionRequiredClusters"
+            :key="`action-required-${cluster.key}`"
             variant="minimal"
-            class="home-application-card action-required-card"
+            class="home-application-card action-required-card email-cluster-card"
           >
-            <p v-if="app.manual_override_applied" class="scan-meta">Manual override</p>
-            <label class="candidate-checkbox">
-              <input type="checkbox" :checked="isSelected(app.selection_key)" @change="toggleSelection(app)">
-              <span>Select for tracking</span>
-            </label>
-            <Application :application="app" />
-            <div class="suppression-actions">
-              <button type="button" class="submit-btn is-primary" @click="openMostRecentEmail(app)">Open email</button>
-              <label class="manual-status-label">
-                <span>Set status</span>
-                <select class="manual-status-select" :value="manualStatusFor(app)" @change="setManualStatus(app, $event?.target?.value)">
-                  <option value="not_relevant">Not relevant</option>
-                  <option value="action_required">Action Required</option>
-                  <option value="applied">Applied</option>
-                  <option value="interview">Interview</option>
-                  <option value="offer">Offer</option>
-                  <option value="rejection">Not moving forward</option>
-                  <option value="unknown">Needs review</option>
-                </select>
+            <p v-if="cluster.members.length > 1" class="cluster-pill">{{ cluster.members.length }} related emails</p>
+            <div
+              v-for="(app, idx) in cluster.members"
+              :key="`${cluster.key}-${app.selection_key}`"
+              :class="['email-chain-slot', { 'is-secondary-email': idx > 0 }]"
+            >
+              <p v-if="app.manual_override_applied && idx === 0" class="scan-meta">Manual override</p>
+              <label class="candidate-checkbox">
+                <input type="checkbox" :checked="isSelected(app.selection_key)" @change="toggleSelection(app)">
+                <span>Select for tracking</span>
               </label>
+              <Application :application="app" />
+              <div class="suppression-actions">
+                <button type="button" class="submit-btn is-primary" @click="openMostRecentEmail(app)">Open email</button>
+                <label class="manual-status-label">
+                  <span>Set status</span>
+                  <select class="manual-status-select" :value="manualStatusFor(app)" @change="setManualStatus(app, $event?.target?.value)">
+                    <option value="not_relevant">Not relevant</option>
+                    <option value="action_required">Action Required</option>
+                    <option value="applied">Applied</option>
+                    <option value="interview">Interview</option>
+                    <option value="offer">Offer</option>
+                    <option value="rejection">Not moving forward</option>
+                    <option value="unknown">Needs review</option>
+                  </select>
+                </label>
+              </div>
             </div>
           </Card>
         </section>
@@ -172,31 +182,38 @@
         <p v-else-if="!feedItems.length" class="empty-state-copy">No updates in this filter yet.</p>
 
         <Card
-          v-for="(app, index) in feedItems"
-          :key="`${app.subject}-${index}`"
+          v-for="(cluster, cidx) in mainFeedClusters"
+          :key="`feed-${cluster.key}`"
           variant="minimal"
-          :class="['home-application-card', trackedGlowClassForStatus(app.status)]"
+          :class="['home-application-card', 'email-cluster-card', trackedGlowClassForStatus(cluster.leader.status)]"
         >
-          <p v-if="app.manual_override_applied" class="scan-meta">Manual override</p>
-          <label class="candidate-checkbox">
-            <input type="checkbox" :checked="isSelected(app.selection_key)" @change="toggleSelection(app)">
-            <span>Select for tracking</span>
-          </label>
-          <Application :application="app" />
-          <div class="suppression-actions">
-            <button type="button" class="submit-btn is-primary" @click="openMostRecentEmail(app)">Open email</button>
-            <label class="manual-status-label">
-              <span>Set status</span>
-              <select class="manual-status-select" :value="manualStatusFor(app)" @change="setManualStatus(app, $event?.target?.value)">
-                <option value="not_relevant">Not relevant</option>
-                <option value="action_required">Action Required</option>
-                <option value="applied">Applied</option>
-                <option value="interview">Interview</option>
-                <option value="offer">Offer</option>
-                <option value="rejection">Not moving forward</option>
-                <option value="unknown">Needs review</option>
-              </select>
+          <p v-if="cluster.members.length > 1" class="cluster-pill">{{ cluster.members.length }} related emails · same pipeline</p>
+          <div
+            v-for="(app, idx) in cluster.members"
+            :key="`main-${cluster.key}-${app.selection_key}`"
+            :class="['email-chain-slot', { 'is-secondary-email': idx > 0 }]"
+          >
+            <p v-if="app.manual_override_applied && idx === 0" class="scan-meta">Manual override</p>
+            <label class="candidate-checkbox">
+              <input type="checkbox" :checked="isSelected(app.selection_key)" @change="toggleSelection(app)">
+              <span>Select for tracking</span>
             </label>
+            <Application :application="app" />
+            <div class="suppression-actions">
+              <button type="button" class="submit-btn is-primary" @click="openMostRecentEmail(app)">Open email</button>
+              <label class="manual-status-label">
+                <span>Set status</span>
+                <select class="manual-status-select" :value="manualStatusFor(app)" @change="setManualStatus(app, $event?.target?.value)">
+                  <option value="not_relevant">Not relevant</option>
+                  <option value="action_required">Action Required</option>
+                  <option value="applied">Applied</option>
+                  <option value="interview">Interview</option>
+                  <option value="offer">Offer</option>
+                  <option value="rejection">Not moving forward</option>
+                  <option value="unknown">Needs review</option>
+                </select>
+              </label>
+            </div>
           </div>
         </Card>
       </Card>
@@ -349,8 +366,10 @@
             return full || this.user?.email || "User"
         },
         feedItems() {
-            const mapped = (this.applications || []).map((item) => ({
-                company: item.company_hint || 'Unknown company',
+            const mapped = (this.applications || []).map((item) => {
+                const displayCompany = item.canonical_company_hint || item.company_hint || ''
+                return {
+                company: displayCompany || 'Unknown company',
                 role: item.subject || 'Untitled update',
                 from: item.from || '',
                 date: item.date || '',
@@ -361,16 +380,25 @@
                 source_id: item.source_id || '',
                 selection_key: item.source_id ? `gmail:${item.source_id}` : `thread:${item.thread_key || `${item.subject}|${item.from}`}`,
                 company_hint: item.company_hint || '',
+                canonical_company_hint: item.canonical_company_hint || '',
+                source_bucket: item.source_bucket || '',
+                linkedin_apply_detected: item.linkedin_apply_detected === true,
                 sender_domain: item.sender_domain || '',
                 subject_key: item.subject_key || '',
                 company_key: item.company_key || '',
                 thread_key: item.thread_key || '',
+                application_chain_key: item.application_chain_key || '',
+                cluster_id: item.cluster_id || '',
+                cluster_rank: Number.isFinite(Number(item.cluster_rank)) ? Number(item.cluster_rank) : 0,
+                cluster_size: Number.isFinite(Number(item.cluster_size)) ? Number(item.cluster_size) : 1,
+                cluster_leader_source_id: item.cluster_leader_source_id || '',
                 gmail_open_url_direct: item.gmail_open_url_direct || '',
                 gmail_open_url_fallback: item.gmail_open_url_fallback || '',
                 tracking_source: item.tracking_source || 'matched',
                 confidence: item.confidence || 'high',
                 manual_override_applied: item.manual_override_applied === true,
-            }))
+                }
+            })
             const trackedRefs = new Set()
             for (const row of [...(this.trackedApplications || []), ...(this.archivedTrackedApplications || [])]) {
                 const sourceRef = String(row?.source_ref || '').trim()
@@ -386,8 +414,39 @@
             if (this.selectedStatusFilter === 'all') return visible
             return visible.filter((item) => this.normalizeStatusValue(item.status) === this.selectedStatusFilter)
         },
-        actionRequiredItems() {
-            return this.feedItems.filter((item) => String(item.status).toLowerCase() === 'action_required')
+        feedClusters() {
+            const items = this.feedItems
+            const order = []
+            const buckets = new Map()
+            const keyFn = (row) => String(row.cluster_id || '').trim() || `solo:${row.selection_key}`
+            for (const row of items) {
+                const k = keyFn(row)
+                if (!buckets.has(k)) {
+                    order.push(k)
+                    buckets.set(k, [])
+                }
+                buckets.get(k).push(row)
+            }
+            for (const [, members] of buckets) {
+                members.sort((a, b) => Number(a.cluster_rank ?? 0) - Number(b.cluster_rank ?? 0))
+            }
+            return order.map((k) => {
+                const members = buckets.get(k)
+                return {
+                    key: k,
+                    members,
+                    leader: members[0],
+                }
+            })
+        },
+        actionRequiredClusters() {
+            return this.feedClusters.filter((c) =>
+                c.members.some((m) => String(m.status).toLowerCase() === 'action_required'),
+            )
+        },
+        mainFeedClusters() {
+            const priority = new Set(this.actionRequiredClusters.map((c) => c.key))
+            return this.feedClusters.filter((c) => !priority.has(c.key))
         },
         selectedVisibleCount() {
             return this.feedItems.filter((row) => this.isSelected(row.selection_key)).length

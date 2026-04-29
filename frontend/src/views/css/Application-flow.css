@@ -77,6 +77,48 @@
   line-height: 1.45;
 }
 
+.app-flow-page .email-cluster-card {
+  display: grid;
+  gap: 12px;
+}
+
+.app-flow-page .cluster-pill {
+  margin: 0 0 2px;
+  display: inline-block;
+  align-self: start;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  background: rgba(37, 99, 235, 0.1);
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+.app-flow-page .action-required-card .cluster-pill {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.app-flow-page .email-chain-slot {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 4px;
+  border-radius: 10px;
+}
+
+.app-flow-page .email-chain-slot:not(:last-child) {
+  margin-bottom: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--border-color-light);
+}
+
+.app-flow-page .email-chain-slot.is-secondary-email {
+  margin-left: 10px;
+  padding-left: 12px;
+  border-left: 3px solid var(--border-color);
+}
+
 @media (max-width: 768px) {
   .app-flow-page .greeting {
     padding: 16px;
