@@ -146,6 +146,35 @@
                         <a :href="publicPrivacyPolicyUrl()" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
                     </p>
                 </div>
+                <div class="settings-group">
+                    <h4>Export My Data</h4>
+                    <p class="connected-account-detail">Download all of your account data as a ZIP containing CSV files.</p>
+                    <button type="button" @click="openExportAuth" :disabled="working" :class="buttonStatusClass('exportData')">Export my data</button>
+                    <div v-if="exportAuthOpen" class="account-security-form">
+                        <p class="connected-account-detail">Re-authenticate before exporting.</p>
+                        <select v-model="exportAuthMethod" :disabled="working">
+                            <option v-if="hasLocalPassword()" value="password">Use password</option>
+                            <option v-if="hasGoogleLinked()" value="google">Use Google</option>
+                        </select>
+                        <SecretInput
+                            v-if="exportAuthMethod === 'password'"
+                            id="settings-export-password"
+                            name="export_password"
+                            v-model="exportPassword"
+                            placeholder="Current password"
+                            autocomplete="off"
+                            :blockAutofill="true"
+                            :disabled="working"
+                        />
+                        <div class="connected-account-actions">
+                            <button type="button" :disabled="working || !canUseExportMethod()" @click="submitExportReauth">Confirm and export</button>
+                            <button type="button" :disabled="working" @click="exportAuthOpen = false">Cancel</button>
+                        </div>
+                    </div>
+                    <div v-if="actionStatus.exportData.message" :class="feedbackClass('exportData')">
+                        {{ actionStatus.exportData.message }}
+                    </div>
+                </div>
             </Card>
             <Card class="settings-card settings-card--integrations">
                 <template #header>
@@ -317,6 +346,7 @@ import SecretInput from "../components/SecretInput.vue";
 import ServiceDetailsModal from "../components/ServiceDetailsModal.vue";
 import ThemeModeControl from "../components/ThemeModeControl.vue";
 import { authedFetch, clearAuth, getCurrentUser, setCurrentUser, syncCurrentUser } from "../lib/auth.js";
+import { ANALYTICS_EVENTS, trackEvent } from "../lib/analytics.js";
 import { setDebugToolsPreference, subscribeDebugTools } from "../lib/debugTools.js";
 import { assertValidEmail } from "../lib/validation.js";
 import { showToast } from '@/services/toastService.js';
@@ -359,6 +389,7 @@ export default {
                 sendVerification: { state: 'idle', message: '' },
                 verifyEmail: { state: 'idle', message: '' },
                 deleteAccount: { state: 'idle', message: '' },
+                exportData: { state: 'idle', message: '' },
             },
             _actionTimers: {},
             _serviceHighlightTimer: null,
@@ -371,6 +402,9 @@ export default {
             confirmNewPassword: '',
 
             verifyToken: '',
+            exportAuthOpen: false,
+            exportAuthMethod: 'password',
+            exportPassword: '',
 
             confirmDeleteOpen: false,
 
@@ -946,6 +980,76 @@ export default {
                 await this.loadUser()
             } catch (e) {
                 this.setActionStatus('verifyEmail', 'error', this.formatFailure('Verify email', e))
+            } finally {
+                this.working = false
+            }
+        },
+        hasLocalPassword() {
+            return Boolean(this.currentUser?.has_password || this.currentUser?.hashed_password)
+        },
+        hasGoogleLinked() {
+            if (Boolean(this.currentUser?.google_id)) return true
+            return this.connectedAccounts.some((provider) => provider?.provider === 'google' && provider?.connected === true)
+        },
+        canUseExportMethod() {
+            if (this.exportAuthMethod === 'password') {
+                return this.hasLocalPassword() && Boolean(String(this.exportPassword || '').trim())
+            }
+            if (this.exportAuthMethod === 'google') {
+                return this.hasGoogleLinked()
+            }
+            return false
+        },
+        openExportAuth() {
+            this.exportAuthMethod = this.hasLocalPassword() ? 'password' : 'google'
+            this.exportPassword = ''
+            this.exportAuthOpen = true
+            this.setActionStatus('exportData', 'idle', '')
+        },
+        async submitExportReauth() {
+            this.working = true
+            this.setActionStatus('exportData', 'working', 'Preparing export…')
+            await trackEvent(ANALYTICS_EVENTS.EXPORT_STARTED, { method: this.exportAuthMethod })
+            try {
+                const reauthRes = await authedFetch('/api/account/export/reauth', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        method: this.exportAuthMethod,
+                        password: this.exportAuthMethod === 'password' ? this.exportPassword : null,
+                    }),
+                })
+                const reauthData = await reauthRes.json().catch(() => null)
+                if (!reauthRes.ok) throw new Error(reauthData?.detail || `HTTP ${reauthRes.status}`)
+
+                const exportRes = await authedFetch('/api/account/export/data')
+                if (!exportRes.ok) {
+                    const payload = await exportRes.json().catch(() => null)
+                    throw new Error(payload?.detail || `HTTP ${exportRes.status}`)
+                }
+                const blob = await exportRes.blob()
+                const disposition = String(exportRes.headers.get('content-disposition') || '')
+                const filename = disposition.match(/filename=\"?([^\";]+)\"?/)?.[1]
+                    || `uah_data_export_${new Date().toISOString().slice(0, 10)}.zip`
+                const downloadUrl = URL.createObjectURL(blob)
+                const link = document.createElement('a')
+                link.href = downloadUrl
+                link.download = filename
+                document.body.appendChild(link)
+                link.click()
+                link.remove()
+                URL.revokeObjectURL(downloadUrl)
+                this.exportAuthOpen = false
+                this.exportPassword = ''
+                this.setActionStatus('exportData', 'success', 'Export downloaded')
+                await trackEvent(ANALYTICS_EVENTS.EXPORT_COMPLETED, { method: this.exportAuthMethod })
+            } catch (e) {
+                const msg = this.formatFailure('Export data', e)
+                this.setActionStatus('exportData', 'error', msg)
+                await trackEvent(ANALYTICS_EVENTS.EXPORT_FAILED, { method: this.exportAuthMethod, error: String(e?.message || '') })
+                if (String(e?.message || '').toLowerCase().includes('password')) {
+                    await trackEvent(ANALYTICS_EVENTS.EXPORT_AUTH_FAILED, { method: this.exportAuthMethod })
+                }
             } finally {
                 this.working = false
             }

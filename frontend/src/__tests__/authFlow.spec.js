@@ -104,5 +104,7 @@ describe('settings sign-in methods copy', () => {
 
     expect(settingsSource).toContain('After you create your account')
     expect(settingsSource).toMatch(/use Google to\s+sign in later/)
+    expect(settingsSource).toContain('Export My Data')
+    expect(settingsSource).toContain('/api/account/export/reauth')
   })
 })

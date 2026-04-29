@@ -1,14 +1,61 @@
 from datetime import datetime, timezone
+import re
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Any, Optional
 from app.db.session import get_db
 from app.models.user import User
 from app.models.apply_session import ApplySession, ApplySessionEvent, TrackedApplication
 from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/api/apply-sessions", tags=["apply-sessions"])
+
+EVENT_TYPE_PATTERN = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
+MAX_EVENT_TYPE_LENGTH = 100
+MAX_PAYLOAD_DEPTH = 4
+MAX_PAYLOAD_ITEMS = 60
+MAX_STRING_LENGTH = 500
+
+
+def _validate_event_type(value: str) -> str:
+    event_type = (value or "").strip().lower()
+    if not event_type:
+        raise HTTPException(status_code=400, detail="event_type is required")
+    if len(event_type) > MAX_EVENT_TYPE_LENGTH:
+        raise HTTPException(status_code=400, detail="event_type is too long")
+    if not EVENT_TYPE_PATTERN.fullmatch(event_type):
+        raise HTTPException(status_code=400, detail="event_type format is invalid")
+    return event_type
+
+
+def _sanitize_payload(value: Any, depth: int = 0) -> Any:
+    if depth > MAX_PAYLOAD_DEPTH:
+        return None
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if len(text) > MAX_STRING_LENGTH:
+            return text[:MAX_STRING_LENGTH]
+        return text
+    if isinstance(value, list):
+        return [_sanitize_payload(item, depth + 1) for item in value[:MAX_PAYLOAD_ITEMS]]
+    if isinstance(value, dict):
+        cleaned: dict[str, Any] = {}
+        for idx, (k, v) in enumerate(value.items()):
+            if idx >= MAX_PAYLOAD_ITEMS:
+                break
+            key = str(k).strip()
+            if not key:
+                continue
+            cleaned[key[:MAX_STRING_LENGTH]] = _sanitize_payload(v, depth + 1)
+        return cleaned
+    return str(value)[:MAX_STRING_LENGTH]
 
 
 class StartSessionRequest(BaseModel):
@@ -96,11 +143,8 @@ def add_analytics_event(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    event_type = (payload.event_type or "").strip()
-    if not event_type:
-        raise HTTPException(status_code=400, detail="event_type is required")
-
-    payload_data = payload.payload if isinstance(payload.payload, dict) else {}
+    event_type = _validate_event_type(payload.event_type)
+    payload_data = _sanitize_payload(payload.payload if isinstance(payload.payload, dict) else {})
     session_id = payload.session_id
     if session_id is not None:
         session = db.query(ApplySession).filter(
@@ -176,6 +220,23 @@ def get_analytics_summary(
         ApplySessionEvent.created_at.desc().nullslast(),
         ApplySessionEvent.id.desc()
     ).limit(8).all()
+    all_events = db.query(ApplySessionEvent).join(
+        ApplySession, ApplySession.id == ApplySessionEvent.session_id
+    ).filter(
+        ApplySession.user_id == current_user.id
+    ).all()
+    seven_days_ago_dt = datetime.fromtimestamp(seven_days_ago, tz=timezone.utc)
+    event_type_counts: dict[str, int] = {}
+    event_counts_last_7_days = 0
+    for event in all_events:
+        key = str(event.event_type or "").strip().lower()
+        if key:
+            event_type_counts[key] = event_type_counts.get(key, 0) + 1
+        created_at = event.created_at
+        if created_at is not None:
+            ts = created_at if created_at.tzinfo else created_at.replace(tzinfo=timezone.utc)
+            if ts >= seven_days_ago_dt:
+                event_counts_last_7_days += 1
 
     return {
         "status_counts": status_counts,
@@ -191,6 +252,9 @@ def get_analytics_summary(
             }
             for event in recent_events
         ],
+        "total_events": len(all_events),
+        "event_counts_last_7_days": event_counts_last_7_days,
+        "event_type_counts": dict(sorted(event_type_counts.items(), key=lambda item: item[1], reverse=True)[:12]),
         "generated_at": now,
     }
 

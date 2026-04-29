@@ -1,21 +1,24 @@
 <template>
     <div class="greeting">
         <h1>Analytics</h1>
+        <p v-if="lastUpdated">Last updated {{ lastUpdated }}</p>
     </div>
+    <p v-if="loading" class="empty-state-copy">Loading analytics data...</p>
+    <p v-else-if="error" class="empty-state-copy">{{ error }}</p>
     <div class="analytics-grid">
-        <Card class="analytics-card">
+        <Card v-if="!loading && !error" class="analytics-card">
             <Line :data="lineData" :options="lineOptions" />
         </Card>
-        <Card class="analytics-card">
+        <Card v-if="!loading && !error" class="analytics-card">
             <Bar :data="barData" :options="chartOptions" />
         </Card>
-        <Card class="analytics-card">
+        <Card v-if="!loading && !error" class="analytics-card">
             <Pie :data="pieData" :options="chartOptions" />
         </Card>
-        <Card class="analytics-card">
+        <Card v-if="!loading && !error" class="analytics-card">
             <Doughnut :data="doughnutData" :options="chartOptions" />
         </Card>
-        <Card class="analytics-card">
+        <Card v-if="!loading && !error" class="analytics-card">
             <Radar :data="radarData" :options="radarOptions" />
         </Card>
     </div>
@@ -23,6 +26,7 @@
 
 <script>
     import Card from '../components/Card.vue'
+    import { authedFetch } from '../lib/auth.js'
     import { Line, Bar, Pie, Doughnut, Radar } from 'vue-chartjs'  // Default Chartjs charts.
     import {
         Chart as ChartJS,
@@ -67,12 +71,15 @@
             const muted = css.getPropertyValue('--color-text-muted').trim() || '#94a3b8'
             const grid = 'rgba(148, 163, 184, 0.22)'
             return {
+                loading: false,
+                error: '',
+                lastUpdated: '',
                 lineData: {
-                    labels: ['Jan', 'Feb', 'Mar', 'Apr'],
+                    labels: ['Started', 'In Progress', 'Submitted', 'Abandoned'],
                     datasets: [
                         {
-                            label: 'Users',
-                            data: [10, 25, 18, 40],
+                            label: 'Apply sessions',
+                            data: [0, 0, 0, 0],
                             borderColor: '#7cb6ff'
                         }
                     ]
@@ -104,11 +111,11 @@
                     },
                 },
                 barData: {
-                    labels: ['Jan', 'Feb', 'Mar'],
+                    labels: ['Tracked Active', 'Tracked with Updates', 'Stale Submissions'],
                     datasets: [
                     {
-                        label: 'Sales',
-                        data: [30, 50, 20],
+                        label: 'Tracking health',
+                        data: [0, 0, 0],
                         backgroundColor: ['#fda4af', '#7cb6ff', '#86efac'],
 
                         borderRadius: {
@@ -121,38 +128,38 @@
                     ]
                 },
                 pieData: {
-                    labels: ['Red', 'Blue', 'Green'],
+                    labels: ['Started', 'In Progress', 'Submitted', 'Abandoned'],
                     datasets: [
                         {
-                        data: [30, 50, 20],
+                        data: [0, 0, 0, 0],
                         backgroundColor: [
                             '#fda4af',
                             '#7cb6ff',
-                            '#86efac'
+                            '#86efac',
+                            '#fbbf24'
                         ]
                         }
                     ]
                 },
                 doughnutData: {
-                    labels: ['Red', 'Blue', 'Green'],
+                    labels: ['Last 7 days', 'Older events'],
                     datasets: [
                         {
-                        data: [30, 50, 20],
+                        data: [0, 0],
                         backgroundColor: [
                             '#fda4af',
-                            '#7cb6ff',
-                            '#86efac'
+                            '#7cb6ff'
                         ],
                         borderWidth: 0
                         }
                     ]
                 },
                 radarData: {
-                    labels: ['Strength', 'Speed', 'Agility', 'Intelligence', 'Stamina'],
+                    labels: ['Events', 'Tracked Active', 'Updates', 'Stale', 'Submitted'],
                     datasets: [
                         {
-                        label: 'Player 1',
-                        data: [80, 60, 70, 90, 75],
+                        label: 'Account activity profile',
+                        data: [0, 0, 0, 0, 0],
                         backgroundColor: 'rgba(124, 182, 255, 0.25)',
                         borderColor: '#7cb6ff',
                         pointBackgroundColor: '#7cb6ff'
@@ -175,6 +182,64 @@
                     },
                 },
             }
+        },
+        async mounted() {
+            await this.loadAnalytics()
+        },
+        methods: {
+            async loadAnalytics() {
+                this.loading = true
+                this.error = ''
+                try {
+                    const res = await authedFetch('/api/apply-sessions/analytics/summary')
+                    const data = await res.json().catch(() => null)
+                    if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
+                    this.mapSummaryToCharts(data || {})
+                    this.lastUpdated = this.formatTimestamp(data?.generated_at || new Date().toISOString())
+                } catch (error) {
+                    this.error = String(error?.message || 'Unable to load analytics')
+                } finally {
+                    this.loading = false
+                }
+            },
+            mapSummaryToCharts(summary) {
+                const statusCounts = summary?.status_counts || {}
+                const started = Number(statusCounts.started || 0)
+                const inProgress = Number(statusCounts.in_progress || 0)
+                const submitted = Number(statusCounts.submitted || 0)
+                const abandoned = Number(statusCounts.abandoned || 0)
+                const trackedActive = Number(summary?.tracked_active_count || 0)
+                const trackedUpdates = Number(summary?.tracked_updates_count || 0)
+                const stale = Number(summary?.stale_submissions_count || 0)
+                const totalEvents = Number(summary?.total_events || 0)
+                const recentEvents = Number(summary?.event_counts_last_7_days || 0)
+                const olderEvents = Math.max(0, totalEvents - recentEvents)
+
+                this.lineData = {
+                    ...this.lineData,
+                    datasets: [{ ...this.lineData.datasets[0], data: [started, inProgress, submitted, abandoned] }],
+                }
+                this.barData = {
+                    ...this.barData,
+                    datasets: [{ ...this.barData.datasets[0], data: [trackedActive, trackedUpdates, stale] }],
+                }
+                this.pieData = {
+                    ...this.pieData,
+                    datasets: [{ ...this.pieData.datasets[0], data: [started, inProgress, submitted, abandoned] }],
+                }
+                this.doughnutData = {
+                    ...this.doughnutData,
+                    datasets: [{ ...this.doughnutData.datasets[0], data: [recentEvents, olderEvents] }],
+                }
+                this.radarData = {
+                    ...this.radarData,
+                    datasets: [{ ...this.radarData.datasets[0], data: [totalEvents, trackedActive, trackedUpdates, stale, submitted] }],
+                }
+            },
+            formatTimestamp(value) {
+                const parsed = new Date(value)
+                return Number.isNaN(parsed.getTime()) ? 'Recently' : parsed.toLocaleString()
+            },
         }
     }
 </script>

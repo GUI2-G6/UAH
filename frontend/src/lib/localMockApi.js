@@ -1162,6 +1162,7 @@ function createDefaultState() {
     gmailNotificationStates: [],
     trackedApplications: [],
     analyticsEvents: [],
+    exportReauthUntil: 0,
     mockTesting: {
       scanCount: 0,
       lastScenarioKey: '',
@@ -1257,6 +1258,7 @@ function ensureStateShape(state) {
       created_at: normalizeIsoDate(row?.created_at) || nowIso(),
     }))
     .filter((row) => row.id > 0 && row.event_type)
+  safe.exportReauthUntil = Number(safe.exportReauthUntil || 0)
   safe.mockTesting = safe.mockTesting && typeof safe.mockTesting === 'object' ? safe.mockTesting : {}
   safe.mockTesting.scanCount = Number(safe.mockTesting.scanCount || 0)
   safe.mockTesting.lastScenarioKey = normalizeWhitespace(safe.mockTesting.lastScenarioKey)
@@ -3481,12 +3483,27 @@ async function handleMockApiRequest(request, requestUrl, state) {
       return Number.isNaN(ts) || ts < staleThreshold
     }).length
     const recentEvents = ensureArray(state.analyticsEvents, []).slice(0, 8)
+    const allEvents = ensureArray(state.analyticsEvents, [])
+    const eventTypeCounts = {}
+    allEvents.forEach((row) => {
+      const key = normalizeTextLower(row?.event_type)
+      if (!key) return
+      eventTypeCounts[key] = Number(eventTypeCounts[key] || 0) + 1
+    })
+    const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000)
+    const recentEventCount = allEvents.filter((row) => {
+      const ts = Date.parse(row?.created_at || '')
+      return Number.isFinite(ts) && ts >= sevenDaysAgo
+    }).length
     return toJsonResponse({
       status_counts: statusCounts,
       tracked_active_count: trackedRows.length,
       tracked_updates_count: trackedRows.filter((row) => row.has_new_update === true).length,
       stale_submissions_count: staleSubmissions,
       recent_events: recentEvents,
+      total_events: allEvents.length,
+      event_counts_last_7_days: recentEventCount,
+      event_type_counts: eventTypeCounts,
       generated_at: nowIso(),
     })
   }
@@ -3654,6 +3671,46 @@ async function handleMockApiRequest(request, requestUrl, state) {
 
   if (pathname === '/api/account/change-password' && method === 'PUT') {
     return toJsonResponse({ message: 'Password changed successfully' })
+  }
+
+  if (pathname === '/api/account/export/reauth' && method === 'POST') {
+    const body = await parseJsonBody(request)
+    const methodValue = normalizeTextLower(body?.method) || 'password'
+    if (!['password', 'google'].includes(methodValue)) {
+      return toJsonResponse({ detail: "method must be 'password' or 'google'" }, 400)
+    }
+    if (methodValue === 'password' && !state.user.hashed_password) {
+      return toJsonResponse({ detail: 'This account has no local password. Use Google re-auth.' }, 400)
+    }
+    if (methodValue === 'google' && !state.user.google_id) {
+      return toJsonResponse({ detail: 'Google is not linked for this account' }, 400)
+    }
+    state.exportReauthUntil = Date.now() + (10 * 60 * 1000)
+    saveState(state)
+    return toJsonResponse({ message: 'Re-authenticated for data export' })
+  }
+
+  if (pathname === '/api/account/export/data' && method === 'GET') {
+    if (!Number.isFinite(Number(state.exportReauthUntil || 0)) || Number(state.exportReauthUntil || 0) < Date.now()) {
+      return toJsonResponse({ detail: 'Re-authentication is required before export' }, 401)
+    }
+    state.exportReauthUntil = 0
+    saveState(state)
+    const csvContent = [
+      'dataset,row_count',
+      `resumes,${ensureArray(state.resumes, []).length}`,
+      `saved_jobs,${ensureArray(state.savedJobs, []).length}`,
+      `apply_sessions,${ensureArray(state.mockApplySessions, []).length}`,
+      `tracked_applications,${ensureArray(state.trackedApplications, []).length}`,
+    ].join('\n')
+    const blob = new Blob([csvContent], { type: 'application/zip' })
+    return new Response(blob, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/zip',
+        'Content-Disposition': `attachment; filename="uah_data_export_mock_${new Date().toISOString().slice(0, 10)}.zip"`,
+      },
+    })
   }
 
   if (pathname === '/api/account/change-email' && method === 'PUT') {

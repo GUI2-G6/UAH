@@ -41,6 +41,10 @@ class User(Base):
     def avatar_url(self):
         return self.picture_url
 
+    @property
+    def has_password(self):
+        return bool(self.hashed_password)
+
 class SavedJob(Base):
     __tablename__ = "saved_jobs"
 

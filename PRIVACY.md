@@ -76,6 +76,7 @@ You can manage data through product controls:
 
 - Disconnect Gmail from Settings.
 - Delete uploaded resumes.
+- Export all account data from Settings as a ZIP of CSV files (after re-authentication).
 - Delete your account.
 
 Deleting an account removes user-owned records through app deletion flows and cascading model relationships. Some limited deletion records may be retained only to enforce account-integrity constraints (for example, preventing immediate re-registration collisions).

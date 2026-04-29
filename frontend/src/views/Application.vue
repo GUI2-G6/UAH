@@ -315,6 +315,7 @@
     import Card from "../components/Card.vue"
     import Application from "../components/Application.vue"
     import { authedFetch, getCurrentUser } from "../lib/auth.js";
+    import { ANALYTICS_EVENTS, trackEvent } from "../lib/analytics.js";
     import { readGmailScanCache, resolveGmailConnectionStatus, runGmailScan, subscribeGmailUpdates, summarizeGmailResults, listGmailSuppressions, removeGmailSuppression, createGmailFeedback } from "../lib/gmailUpdates.js"
     import { filterGmailTrackedRows } from "../lib/trackedApplications.js"
     import { showToast } from "../services/toastService";
@@ -523,7 +524,7 @@
             this.scanMode = mode === 'saved' ? 'saved' : 'new'
             this.loading = true
             this.error = ''
-            await this.emitAnalyticsEvent('dashboard.scan.started')
+            await this.emitAnalyticsEvent(ANALYTICS_EVENTS.SCAN_STARTED)
             try {
                 const record = await runGmailScan({
                     scan_mode: this.scanMode,
@@ -536,7 +537,7 @@
                 this.applyScanRecord(record)
                 this.gmailConnected = true
                 await this.loadTrackedApplications()
-                await this.emitAnalyticsEvent('dashboard.scan.succeeded', {
+                await this.emitAnalyticsEvent(ANALYTICS_EVENTS.SCAN_SUCCEEDED, {
                     result_count: Number(record?.results?.length || 0),
                 })
             } catch (error) {
@@ -544,7 +545,7 @@
                 this.error = message.includes('Gmail not connected')
                     ? 'Gmail is not connected. Open Settings > Service Connections > Gmail Updates.'
                     : (message || 'Could not scan Gmail updates.')
-                await this.emitAnalyticsEvent('dashboard.scan.failed', {
+                await this.emitAnalyticsEvent(ANALYTICS_EVENTS.SCAN_FAILED, {
                     error: this.error,
                 })
             } finally {
@@ -553,18 +554,7 @@
         },
         async emitAnalyticsEvent(eventType, payload = {}) {
             if (!this.hasSessionAnalyticsContext()) return
-            try {
-                await authedFetch('/api/apply-sessions/analytics/events', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        event_type: eventType,
-                        payload,
-                    }),
-                })
-            } catch {
-                // Analytics should never block user workflows
-            }
+            await trackEvent(eventType, payload)
         },
         hasSessionAnalyticsContext() {
             if (Number(this.submittedSessionCount || 0) > 0) return true

@@ -70,6 +70,7 @@
           <ul class="detail-list">
             <li>Disconnect Gmail in Settings at any time.</li>
             <li>Delete uploaded resumes.</li>
+            <li>Export your stored account data as a ZIP of CSV files after re-authentication.</li>
             <li>Delete your account.</li>
             <li>Contact us for privacy requests or corrections.</li>
           </ul>

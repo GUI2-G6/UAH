@@ -328,6 +328,7 @@ import {
 } from "../lib/geolocation";
 import { getWidenSearchPlan } from "../lib/jobBoardWidenSearch";
 import { authedFetch } from "../lib/auth";
+import { ANALYTICS_EVENTS, trackEvent } from "../lib/analytics.js";
 import { showToast } from "../services/toastService";
 import { publishCurrentPageDiagnostics, clearCurrentPageDiagnostics } from "../lib/debugDiagnostics";
 import { subscribeDebugTools } from "../lib/debugTools";
@@ -2433,7 +2434,7 @@ export default {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              event_type: "dashboard.quick_action.mark_applied_started",
+              event_type: ANALYTICS_EVENTS.MARK_APPLIED_STARTED,
               payload: {
                 source: "job_board",
                 provider: normalizedJob.provider || null,
@@ -2454,22 +2455,10 @@ export default {
           },
           { authenticated: true },
         )
-        await this.fetchJson(
-          "/api/apply-sessions/analytics/events",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              event_type: "dashboard.quick_action.mark_applied_completed",
-              session_id: sessionId,
-              payload: {
-                source: "job_board",
-                provider: normalizedJob.provider || null,
-              },
-            }),
-          },
-          { authenticated: true },
-        )
+        await trackEvent(ANALYTICS_EVENTS.MARK_APPLIED_COMPLETED, {
+          source: "job_board",
+          provider: normalizedJob.provider || null,
+        }, sessionId)
         showToast("Marked as applied. Tracking session created.", "success")
       } catch (error) {
         console.error("Failed to mark as applied", error)

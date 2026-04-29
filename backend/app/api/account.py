@@ -3,6 +3,8 @@ import secrets
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.db.session import get_db
@@ -26,6 +28,7 @@ from app.core.rate_limit import enforce_ip_rate_limit, enforce_subject_rate_limi
 from app.core.validation import normalize_email, require_valid_email
 from app.services.deleted_identities import record_deleted_identities_for_user
 from app.services.email import send_email, EmailNotConfiguredError
+from app.services.user_data_export import build_user_data_export_zip
 
 router = APIRouter(prefix="/api/account", tags=["account"])
 
@@ -50,6 +53,11 @@ CHANGE_PASSWORD_IP_LIMIT = 8
 CHANGE_PASSWORD_IP_WINDOW_SECONDS = 900
 CHANGE_PASSWORD_USER_LIMIT = 5
 CHANGE_PASSWORD_USER_WINDOW_SECONDS = 1800
+EXPORT_REAUTH_IP_LIMIT = 20
+EXPORT_REAUTH_IP_WINDOW_SECONDS = 900
+EXPORT_REAUTH_USER_LIMIT = 10
+EXPORT_REAUTH_USER_WINDOW_SECONDS = 900
+EXPORT_REAUTH_TTL_SECONDS = 600
 
 
 def _utcnow() -> datetime:
@@ -109,6 +117,11 @@ def _issue_email_verification_token(user: User, target_email: str) -> str:
         jti=token_id,
         email=normalized_target_email,
     )
+
+
+class ExportReauthRequest(BaseModel):
+    method: str = "password"
+    password: str | None = None
 
 
 def _build_verify_email_link(token: str) -> str | None:
@@ -547,6 +560,68 @@ def verify_email(
     _clear_email_verification_state(user)
     db.commit()
     return MessageResponse(message="Email verified successfully")
+
+
+@router.post("/export/reauth", response_model=MessageResponse)
+def export_reauth(
+    payload: ExportReauthRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    enforce_ip_rate_limit(
+        "account:export:reauth",
+        request,
+        limit=EXPORT_REAUTH_IP_LIMIT,
+        window_seconds=EXPORT_REAUTH_IP_WINDOW_SECONDS,
+    )
+    enforce_subject_rate_limit(
+        "account:export:reauth:user",
+        current_user.id,
+        limit=EXPORT_REAUTH_USER_LIMIT,
+        window_seconds=EXPORT_REAUTH_USER_WINDOW_SECONDS,
+    )
+
+    method = str(payload.method or "password").strip().lower()
+    if method not in {"password", "google"}:
+        raise HTTPException(status_code=400, detail="method must be 'password' or 'google'")
+
+    if method == "password":
+        if not current_user.hashed_password:
+            raise HTTPException(status_code=400, detail="This account has no local password. Use Google re-auth.")
+        if not payload.password or not verify_password(payload.password, current_user.hashed_password):
+            raise HTTPException(status_code=401, detail="Password is incorrect")
+    else:
+        if not current_user.google_id:
+            raise HTTPException(status_code=400, detail="Google is not linked for this account")
+
+    request.session["export_reauth_until"] = int(_utcnow().timestamp()) + EXPORT_REAUTH_TTL_SECONDS
+    request.session["export_reauth_method"] = method
+    db.add(current_user)
+    db.commit()
+    return MessageResponse(message="Re-authenticated for data export")
+
+
+@router.get("/export/data")
+def export_my_data(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    until = int(request.session.get("export_reauth_until") or 0)
+    now_ts = int(_utcnow().timestamp())
+    if until <= now_ts:
+        raise HTTPException(status_code=401, detail="Re-authentication is required before export")
+
+    archive_bytes = build_user_data_export_zip(db=db, user=current_user)
+    request.session["export_reauth_until"] = 0
+    request.session["export_reauth_method"] = ""
+    filename = f"uah_data_export_user_{current_user.id}_{_utcnow().strftime('%Y%m%d_%H%M%S')}.zip"
+    return StreamingResponse(
+        iter([archive_bytes]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.delete("/delete", response_model=MessageResponse)

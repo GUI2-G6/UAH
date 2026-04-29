@@ -123,6 +123,14 @@ class UserResponse(BaseModel):
         description="False means the account cannot authenticate until re-enabled.",
         examples=[True],
     )
+    google_id: str | None = Field(
+        default=None,
+        description="Linked Google identity id when Google sign-in is connected.",
+    )
+    has_password: bool = Field(
+        default=False,
+        description="True when the account has a local password set.",
+    )
 
     class Config:
         from_attributes = True

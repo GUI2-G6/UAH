@@ -81,6 +81,7 @@
 <script>
 import Card from "../components/Card.vue"
 import { authedFetch, getCurrentUser } from "../lib/auth.js"
+import { ANALYTICS_EVENTS, trackEvent } from "../lib/analytics.js"
 import { readGmailScanCache, resolveGmailConnectionStatus, runGmailScan, subscribeGmailUpdates, summarizeGmailResults } from "../lib/gmailUpdates.js"
 import { filterGmailTrackedRows } from "../lib/trackedApplications.js"
 
@@ -225,7 +226,7 @@ export default{
       this.lastScanAt = record.fetched_at || this.lastScanAt
       this.homeRefreshedAt = new Date().toISOString()
     })
-    this.emitAnalyticsEvent("dashboard.home.viewed")
+    this.emitAnalyticsEvent(ANALYTICS_EVENTS.HOME_VIEWED)
   },
   beforeUnmount() {
     if (typeof this.unsubscribeUpdates === "function") this.unsubscribeUpdates()
@@ -271,7 +272,7 @@ export default{
     async runQuickScan() {
       if (!this.gmailConnected) return
       this.quickActionBusy = true
-      await this.emitAnalyticsEvent("dashboard.quick_action.scan_clicked")
+      await this.emitAnalyticsEvent(ANALYTICS_EVENTS.QUICK_SCAN_CLICKED)
       try {
         const record = await runGmailScan()
         this.gmailResults = Array.isArray(record.results) ? record.results : []
@@ -293,19 +294,7 @@ export default{
     },
     async emitAnalyticsEvent(eventType, payload = {}, sessionId = null) {
       if (!sessionId && !this.hasSessionAnalyticsContext()) return
-      try {
-        await authedFetch("/api/apply-sessions/analytics/events", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            event_type: eventType,
-            payload: payload || {},
-            session_id: sessionId,
-          }),
-        })
-      } catch {
-        // Non-blocking analytics path
-      }
+      await trackEvent(eventType, payload || {}, sessionId)
     },
     hasSessionAnalyticsContext() {
       const counts = this.analyticsSummary?.status_counts || {}
