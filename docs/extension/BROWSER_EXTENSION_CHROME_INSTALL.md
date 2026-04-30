@@ -9,11 +9,11 @@ The UAH browser extension is currently in a highly alpha state and has limited f
 - Manual `Scan page` and `Fill page` actions on the active tab.
 - Pinned in-page panel for quick extension access.
 
-For architecture and runtime details, see [`../uah-browser-extension/README.md`](../uah-browser-extension/README.md).
+For architecture and runtime details, see [`../../uah-browser-extension/README.md`](../../uah-browser-extension/README.md).
 
 ## Prerequisites
 
-- Node.js: `^20.19.0 || >=22.12.0` (from [`../uah-browser-extension/package.json`](../uah-browser-extension/package.json)).
+- Node.js: `^20.19.0 || >=22.12.0` (from [`../../uah-browser-extension/package.json`](../../uah-browser-extension/package.json)).
 - npm installed with Node.js.
 - Chrome or Chromium-based browser.
 

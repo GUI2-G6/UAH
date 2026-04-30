@@ -130,7 +130,7 @@ services:
       uah-beta-infra: {}
 
   cloudflared:
-    image: ${CLOUDFLARED_IMAGE:-cloudflare/cloudflared:2026.3.0}
+    image: ${CLOUDFLARED_IMAGE:-cloudflare/cloudflared:2024.11.0}
     container_name: uah-beta-cloudflared
     restart: unless-stopped
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_BETA_TUNNEL_TOKEN}

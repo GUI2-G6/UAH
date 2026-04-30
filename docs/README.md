@@ -12,17 +12,18 @@ Use it to answer two questions quickly:
 | Need | Current doc |
 | --- | --- |
 | Repo overview, local development, and stack entrypoints | [../README.md](../README.md) |
-| System architecture and subsystem boundaries | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| Text-only architecture diagram for writeups/forms | [ARCHITECTURE_TEXT_DIAGRAM.md](ARCHITECTURE_TEXT_DIAGRAM.md) |
+| System architecture and subsystem boundaries | [architecture/ARCHITECTURE.md](architecture/ARCHITECTURE.md) |
+| Text-only architecture diagram for writeups/forms | [architecture/ARCHITECTURE_TEXT_DIAGRAM.md](architecture/ARCHITECTURE_TEXT_DIAGRAM.md) |
 | Backend local development and runtime notes | [backend/README.md](backend/README.md) |
 | Frontend local development and active UI/runtime behavior | [frontend/README.md](frontend/README.md) |
 | Theme tokens, appearance modes, and theme-pack roadmap | [../shared/theme/README.md](../shared/theme/README.md) |
+| Public landing SPA (build, deploy, tunnel notes) | [landing/README.md](landing/README.md) |
 | Browser extension architecture, build, and testing | [../uah-browser-extension/README.md](../uah-browser-extension/README.md) |
-| Browser extension build/repack/install in Chrome | [BROWSER_EXTENSION_CHROME_INSTALL.md](BROWSER_EXTENSION_CHROME_INSTALL.md) |
+| Browser extension build/repack/install in Chrome | [extension/BROWSER_EXTENSION_CHROME_INSTALL.md](extension/BROWSER_EXTENSION_CHROME_INSTALL.md) |
 | Environment templates and runtime `.env` rules | [env-examples/README.md](env-examples/README.md) |
 | Server-side env requirements and operational checklist | [SERVER_ENV_CHECKLIST.md](SERVER_ENV_CHECKLIST.md) |
 | Contribution policy | [../CONTRIBUTING.md](../CONTRIBUTING.md) |
-| Branch / PR workflow | [WORKFLOW.MD](WORKFLOW.MD) |
+| Branch / PR workflow | [WORKFLOW.md](WORKFLOW.md) |
 | Security policy | [../SECURITY.md](../SECURITY.md) |
 | Security audit script usage | [SECURITY_AUDIT_GUIDE.md](SECURITY_AUDIT_GUIDE.md) |
 | Beta deployment setup | [beta-prep/BETA_SETUP.md](beta-prep/BETA_SETUP.md) |
@@ -36,6 +37,7 @@ These docs live next to the subsystem they describe because they are only useful
 
 | Area | Doc | Notes |
 | --- | --- | --- |
+| Extension install guides and sync with `landing/public/docs` | [extension/README.md](extension/README.md) | Index for Chrome install doc; static copies require manual sync. |
 | Extension ATS adapter system | [../uah-browser-extension/src/adapters/ADAPTERS.md](../uah-browser-extension/src/adapters/ADAPTERS.md) | Base ATS adapters, company overrides, and test expectations. |
 | Extension company override rules | [../uah-browser-extension/src/adapters/companies/README.md](../uah-browser-extension/src/adapters/companies/README.md) | Narrow guide for company-specific adapter deviations. |
 | Scraper scaffold | [../backend/app/scrapers/SCRAPERS.md](../backend/app/scrapers/SCRAPERS.md) | Forward-looking scaffold, not the live provider pipeline. |

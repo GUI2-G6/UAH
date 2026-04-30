@@ -317,6 +317,6 @@ describe('public extension page', () => {
     expect(wrapper.text()).toContain('highly alpha state')
     expect(wrapper.text()).toContain('very limited functionality')
     expect(links).toContain('/downloads/uah-browser-extension-alpha.zip')
-    expect(links).toContain('https://github.com/GUI2-G6/UAH/blob/dev/docs/BROWSER_EXTENSION_CHROME_INSTALL.md')
+    expect(links).toContain('https://github.com/GUI2-G6/UAH/blob/dev/docs/extension/BROWSER_EXTENSION_CHROME_INSTALL.md')
   })
 })

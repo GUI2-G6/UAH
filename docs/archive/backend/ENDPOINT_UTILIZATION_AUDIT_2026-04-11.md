@@ -6,7 +6,7 @@ Use these active docs first:
 
 - [../../backend/README.md](../../backend/README.md)
 - [../../frontend/README.md](../../frontend/README.md)
-- [../../ARCHITECTURE.md](../../ARCHITECTURE.md)
+- [../../architecture/ARCHITECTURE.md](../../architecture/ARCHITECTURE.md)
 
 # Endpoint Utilization Audit (Active Runtime Scope)
 

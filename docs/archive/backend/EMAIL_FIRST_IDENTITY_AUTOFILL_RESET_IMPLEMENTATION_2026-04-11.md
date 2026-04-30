@@ -5,7 +5,7 @@ This document is an archival implementation note. It explains a specific migrati
 For current behavior, use:
 
 - [../../backend/README.md](../../backend/README.md)
-- [../../ARCHITECTURE.md](../../ARCHITECTURE.md)
+- [../../architecture/ARCHITECTURE.md](../../architecture/ARCHITECTURE.md)
 - [../../../uah-browser-extension/README.md](../../../uah-browser-extension/README.md)
 
 # Email-First Identity + Autofill Scope Reset (2026-04-11)

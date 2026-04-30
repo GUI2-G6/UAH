@@ -5,7 +5,7 @@ This is the current source of truth for the Vue frontend.
 For repo-wide context, use:
 
 - [../../README.md](../../README.md)
-- [../ARCHITECTURE.md](../ARCHITECTURE.md)
+- [../architecture/ARCHITECTURE.md](../architecture/ARCHITECTURE.md)
 
 ## What This App Is
 
@@ -79,6 +79,24 @@ These routes exist, but they are not full product surfaces yet:
 `Notifications` has a routed surface, but it is currently a simple static shell rather than a fully wired reminders system.
 
 Document those views as partial, not complete.
+
+## Environment variables (local Vite)
+
+Copy `frontend/.env.local.example` to `frontend/.env.local` and adjust as needed. Common keys:
+
+| Variable | Role |
+| --- | --- |
+| `VITE_LOCAL_MODE` | `mock` or `backend` — mock API vs proxied API |
+| `VITE_LOCAL_BACKEND_ORIGIN` | Backend base URL when using backend mode |
+| `VITE_ALLOW_REMOTE_API` | Must be `true` to allow non-loopback backend targets |
+| `VITE_DEV_HOST`, `VITE_DEV_PORT` | Vite dev server bind |
+| `VITE_DEV_HTTPS`, `VITE_DEV_HTTPS_CERT_FILE`, `VITE_DEV_HTTPS_KEY_FILE` | Optional local HTTPS |
+| `VITE_AUTH_NAMESPACE` | Isolates mock/local auth state |
+| `VITE_PUBLIC_LANDING_URL` | Public marketing site base for links (Landing, Footer, legal pages, etc.) |
+| `VITE_LOCAL_AUTO_LOGIN` | Mock mode: skip manual login when `true` |
+| `VITE_LOCAL_MOCK_LOCAL_AI_AVAILABLE` | Mock mode: pretend local OCR/LLM mocks exist |
+
+Docker-oriented backend env vars for a full stack still belong in the repo-root `.env` from `env-examples/local/.env.example`.
 
 ## Local Development Modes
 
@@ -166,4 +184,4 @@ Run `npm run check:cards` if a change touches the card primitive or many card co
 
 - Backend guide: [../backend/README.md](../backend/README.md)
 - Extension guide: [../../uah-browser-extension/README.md](../../uah-browser-extension/README.md)
-- Architecture: [../ARCHITECTURE.md](../ARCHITECTURE.md)
+- Architecture: [../architecture/ARCHITECTURE.md](../architecture/ARCHITECTURE.md)

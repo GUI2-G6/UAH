@@ -62,7 +62,7 @@
             </p>
             <p>
               <a
-                href="https://github.com/GUI2-G6/UAH/blob/dev/docs/BROWSER_EXTENSION_CHROME_INSTALL.md"
+                href="https://github.com/GUI2-G6/UAH/blob/dev/docs/extension/BROWSER_EXTENSION_CHROME_INSTALL.md"
                 target="_blank"
                 rel="noopener noreferrer"
               >

@@ -8,6 +8,7 @@ This directory contains historical snapshots that are intentionally preserved bu
 - One-time audits
 - Migration plans
 - Supporting inventory files that only make sense together with a dated audit
+- Superseded legal/policy drafts retained for comparison (see [legal/](legal/))
 
 ## How to use archive docs
 
@@ -20,7 +21,7 @@ This directory contains historical snapshots that are intentionally preserved bu
 Use these first before opening anything in the archive:
 
 - [../README.md](../README.md)
-- [../ARCHITECTURE.md](../ARCHITECTURE.md)
+- [../architecture/ARCHITECTURE.md](../architecture/ARCHITECTURE.md)
 - [../backend/README.md](../backend/README.md)
 - [../frontend/README.md](../frontend/README.md)
 - [../../uah-browser-extension/README.md](../../uah-browser-extension/README.md)

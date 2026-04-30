@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
 Checks that all environment variables referenced in backend config
-are documented in env-examples/dev/.env.example.
+are documented in env example templates (dev and/or beta).
 
 Parses config.py using AST to catch these patterns:
   - os.environ.get("KEY")
   - os.environ["KEY"]
   - os.getenv("KEY")
+  - _env_bool("KEY", ...)
 """
 
 import ast
@@ -19,6 +20,14 @@ CONFIG_FILE = REPO_ROOT / "backend" / "app" / "core" / "config.py"
 ENV_EXAMPLES = {
     "dev": REPO_ROOT / "env-examples" / "dev" / ".env.example",
     "beta": REPO_ROOT / "env-examples" / "beta" / ".env.example",
+}
+# Order for --all-templates (stable, human-friendly).
+_ALL_TEMPLATE_ORDER = ("dev", "beta")
+
+# These are intentionally internal or auto-set — skip them
+_SKIP = {
+    "HOME", "PATH", "USER", "PWD", "SHELL",  # system vars
+    "PYTHONPATH", "VIRTUAL_ENV",  # python runtime
 }
 
 
@@ -89,55 +98,32 @@ def extract_keys_from_env_example(filepath: Path) -> set[str]:
             continue
         key = line.split("=", 1)[0].strip()
         if key.startswith("export "):
-            key = key[len("export "):].strip()
+            key = key[len("export ") :].strip()
         if key:
             keys.add(key)
     return keys
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Check env example sync with backend config env usage.")
-    parser.add_argument(
-        "--template",
-        choices=sorted(ENV_EXAMPLES.keys()),
-        default="dev",
-        help="Template to validate (default: dev).",
-    )
-    parser.add_argument(
-        "--suggest",
-        action="store_true",
-        help="Print suggested placeholder lines for missing keys.",
-    )
-    return parser.parse_args()
-
-
-def main():
-    args = parse_args()
-    env_example = ENV_EXAMPLES[args.template]
-    env_example_display = f"env-examples/{args.template}/.env.example"
+def check_template(template: str, suggest: bool) -> int:
+    """Return 0 if template contains all config.py keys, else 1."""
+    env_example = ENV_EXAMPLES[template]
+    env_example_display = f"env-examples/{template}/.env.example"
 
     if not CONFIG_FILE.exists():
         print(f"ERROR: Config file not found: {CONFIG_FILE}")
-        sys.exit(1)
+        return 1
 
     if not env_example.exists():
         print(f"ERROR: {env_example_display} not found: {env_example}")
-        sys.exit(1)
+        return 1
 
     print(f"Scanning: {CONFIG_FILE}")
     print(f"Checking against: {env_example}")
 
-    config_vars = extract_env_vars_from_config(CONFIG_FILE)
+    config_vars = extract_env_vars_from_config(CONFIG_FILE) - _SKIP
     example_keys = extract_keys_from_env_example(env_example)
 
     print(f"Vars found in config: {sorted(config_vars)}")
-
-    # These are intentionally internal or auto-set — skip them
-    skip = {
-        "HOME", "PATH", "USER", "PWD", "SHELL",  # system vars
-        "PYTHONPATH", "VIRTUAL_ENV",               # python runtime
-    }
-    config_vars -= skip
 
     missing = config_vars - example_keys
 
@@ -147,15 +133,54 @@ def main():
             print(f"  - {key}")
         print(f"\nAdd them to {env_example_display} with a description before merging.")
         print("Run with --suggest to see placeholder lines you can copy.")
-        if args.suggest:
+        if suggest:
             print(f"\nSuggested additions for {env_example_display}:")
             for key in sorted(missing):
                 print(f"\n# TODO: Add description for {key}")
                 print(f"{key}=")
-        sys.exit(1)
+        return 1
+
+    print(f"OK: {env_example_display} is in sync ({len(config_vars)} env vars checked)")
+    return 0
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Check env example sync with backend config env usage.")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--template",
+        choices=sorted(ENV_EXAMPLES.keys()),
+        help="Single template to validate (default: dev when --all-templates is not used).",
+    )
+    group.add_argument(
+        "--all-templates",
+        action="store_true",
+        help="Validate env-examples/dev and env-examples/beta against config.py.",
+    )
+    parser.add_argument(
+        "--suggest",
+        action="store_true",
+        help="Print suggested placeholder lines for missing keys.",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    if args.all_templates:
+        templates = [name for name in _ALL_TEMPLATE_ORDER if name in ENV_EXAMPLES]
     else:
-        print(f"OK: {env_example_display} is in sync ({len(config_vars)} env vars checked)")
-        sys.exit(0)
+        templates = [args.template or "dev"]
+
+    exit_code = 0
+    for i, name in enumerate(templates):
+        if len(templates) > 1:
+            print(f"\n--- Template: {name} ({i + 1}/{len(templates)}) ---\n")
+        rc = check_template(name, args.suggest)
+        if rc != 0:
+            exit_code = 1
+
+    raise SystemExit(exit_code)
 
 
 if __name__ == "__main__":

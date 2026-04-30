@@ -72,4 +72,4 @@ The status table below is a planning aid, not a live-service guarantee.
 ## Related Docs
 
 - [../../../docs/provider-checklist-template.md](../../../docs/provider-checklist-template.md)
-- [../../../docs/ARCHITECTURE.md](../../../docs/ARCHITECTURE.md)
+- [../../../docs/architecture/ARCHITECTURE.md](../../../docs/architecture/ARCHITECTURE.md)

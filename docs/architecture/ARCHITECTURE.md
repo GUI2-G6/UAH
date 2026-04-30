@@ -6,10 +6,10 @@ For a paste-friendly ASCII version of the same architecture, use [ARCHITECTURE_T
 
 For setup instructions, use the linked source-of-truth guides instead:
 
-- Repo entrypoint: [../README.md](../README.md)
-- Backend local development: [backend/README.md](backend/README.md)
-- Frontend development: [frontend/README.md](frontend/README.md)
-- Browser extension: [../uah-browser-extension/README.md](../uah-browser-extension/README.md)
+- Repo entrypoint: [../../README.md](../../README.md)
+- Backend local development: [../backend/README.md](../backend/README.md)
+- Frontend development: [../frontend/README.md](../frontend/README.md)
+- Browser extension: [../../uah-browser-extension/README.md](../../uah-browser-extension/README.md)
 
 ## Top-Level Shape
 
@@ -98,8 +98,8 @@ The extension intentionally keeps responsibility split across three layers:
 ### Local
 
 - `docker-compose.local.yml` is for localhost-only DB/backend support.
-- Frontend local development stays outside Docker via Vite.
-- The extension localhost harness uses HTTPS on `https://localhost:5173`.
+- Frontend local development stays outside Docker via Vite (see root README for `npm run dev:local` port layout).
+- The extension local harness can target HTTPS on the dev server origin; see [../../uah-browser-extension/README.md](../../uah-browser-extension/README.md).
 
 ### Dev
 
@@ -119,8 +119,8 @@ Use this table when a change crosses multiple parts of the repo:
 
 | Change type | Docs to update |
 | --- | --- |
-| New backend env var or behavior change | [backend/README.md](backend/README.md), [SERVER_ENV_CHECKLIST.md](SERVER_ENV_CHECKLIST.md), and the relevant `env-examples/*/.env.example` file |
-| Frontend route, auth, or local-dev behavior change | [frontend/README.md](frontend/README.md) and sometimes [../README.md](../README.md) |
-| Extension build/runtime/autofill change | [../uah-browser-extension/README.md](../uah-browser-extension/README.md) and adapter docs if relevant |
-| Deployment/lifecycle change | [../README.md](../README.md), [WORKFLOW.MD](WORKFLOW.MD) if team process changed, and beta docs if deployment-specific |
-| Migration plan or one-time incident analysis | [archive/README.md](archive/README.md), not the active docs set |
+| New backend env var or behavior change | [../backend/README.md](../backend/README.md), [../SERVER_ENV_CHECKLIST.md](../SERVER_ENV_CHECKLIST.md), and the relevant `env-examples/*/.env.example` file |
+| Frontend route, auth, or local-dev behavior change | [../frontend/README.md](../frontend/README.md) and sometimes [../../README.md](../../README.md) |
+| Extension build/runtime/autofill change | [../../uah-browser-extension/README.md](../../uah-browser-extension/README.md) and adapter docs if relevant |
+| Deployment/lifecycle change | [../../README.md](../../README.md), [../WORKFLOW.md](../WORKFLOW.md) if team process changed, and beta docs if deployment-specific |
+| Migration plan or one-time incident analysis | [../archive/README.md](../archive/README.md), not the active docs set |

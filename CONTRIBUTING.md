@@ -1,6 +1,6 @@
 # Contributing To UAH
 
-This guide covers the day-to-day contribution rules for the repository. For the detailed branch and PR flow, use [docs/WORKFLOW.MD](docs/WORKFLOW.MD).
+This guide covers the day-to-day contribution rules for the repository. For the detailed branch and PR flow, use [docs/WORKFLOW.md](docs/WORKFLOW.md).
 
 ## Before You Start
 
@@ -63,9 +63,28 @@ Avoid vague messages like:
 ## Environment And Secrets
 
 - Never commit `.env` files.
-- If you add a new env var, update the relevant `env-examples/*/.env.example` files.
 - Runtime `.env` always belongs at the repository root for repo-managed workflows.
 - If you suspect a secret was committed, notify the maintainers immediately.
+
+### Keeping env templates aligned with the backend
+
+Any new or removed environment variable read in `backend/app/core/config.py` must be reflected in **`env-examples/dev/.env.example`** and **`env-examples/beta/.env.example`** in the same pull request (with comments and placeholder values).
+
+Before you push, run from the repo root:
+
+```bash
+npm run check:env
+```
+
+Or: `python .github/scripts/check_env_sync.py --all-templates` (add `--suggest` for placeholder stubs when something is missing).
+
+Pull requests to `dev`, `beta`, and `prod` run the **ENV Example Sync Check** CI job; it fails if either template drifts from `config.py`.
+
+Also update [`docs/SERVER_ENV_CHECKLIST.md`](docs/SERVER_ENV_CHECKLIST.md) when operators need to know about a new knob.
+
+### Vite-only variables (`frontend/`, `landing/`)
+
+Variables consumed as `import.meta.env.VITE_*` or `process.env.VITE_*` are not scanned by `check_env_sync.py`. When you add or rename one, update **`frontend/.env.local.example`**, **`landing/.env.local.example`**, and (for full-stack local) **`env-examples/local/.env.example`** as appropriate, and grep the codebase for usages so docs stay accurate.
 
 ## Questions
 

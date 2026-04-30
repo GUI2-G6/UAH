@@ -4,6 +4,8 @@ Last updated: 2026-04-28
 
 Unified Application Hub (UAH) is a student-built, open-source project in active beta. This privacy policy explains what data we handle, why we handle it, and what choices you have.
 
+UAH is an independent community project led by contributors; it is not an official university information system or an enterprise operated by any school — including the University of Massachusetts Lowell.
+
 ## TL;DR
 
 - We do not sell your data.
@@ -68,7 +70,7 @@ Current direction:
 - Cloud Parse remains available as explicit opt-in during transition.
 - Cloud Parse is being phased out over time.
 
-Important transparency note: when Cloud Parse is selected, your resume content is transmitted to external cloud AI endpoints for processing.
+Important transparency note: when Cloud Parse is selected, your resume content is transmitted to external cloud AI endpoints for processing. Deployed stacks may use inference vendors such as Z.ai for this path (URLs and credentials are configured per environment).
 
 ## Data Retention and Deletion
 

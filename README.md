@@ -13,14 +13,14 @@ This README is the repo entrypoint. For subsystem-specific details, use the docs
 | Need | Doc |
 | --- | --- |
 | Documentation map | [docs/README.md](docs/README.md) |
-| Architecture overview | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Architecture overview | [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) |
 | Backend local development | [docs/backend/README.md](docs/backend/README.md) |
 | Frontend local development | [docs/frontend/README.md](docs/frontend/README.md) |
 | Browser extension build/runtime | [uah-browser-extension/README.md](uah-browser-extension/README.md) |
 | Environment template rules | [docs/env-examples/README.md](docs/env-examples/README.md) |
 | Server env checklist | [docs/SERVER_ENV_CHECKLIST.md](docs/SERVER_ENV_CHECKLIST.md) |
 | Contribution policy | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| Branch and PR workflow | [docs/WORKFLOW.MD](docs/WORKFLOW.MD) |
+| Branch and PR workflow | [docs/WORKFLOW.md](docs/WORKFLOW.md) |
 | Security policy | [SECURITY.md](SECURITY.md) |
 | Historical snapshots | [docs/archive/README.md](docs/archive/README.md) |
 
@@ -167,7 +167,7 @@ Wrapper scripts under `scripts/dev/lifecycle/` and `scripts/beta/lifecycle/` rem
 backend/                 FastAPI app, models, services, migrations, tests
 frontend/                Vue SPA, local mock API, shared UI primitives
 uah-browser-extension/   MV3 extension, adapters, autofill runtime, tests
-docs/                    Active docs plus historical archive
+docs/                    Active guides (architecture, extension, landing notes) plus archive
 scripts/                 Lifecycle, sync, audit, debug, and env helpers
 shared/                  Shared theme assets
 env-examples/            Sanitized example env files for each environment

@@ -8,7 +8,7 @@ Use it when you need:
 - a localhost-only Docker backend for frontend integration
 - queue-enabled local parsing and job-sync testing
 
-For repo-wide context, start with [../README.md](../README.md) and [../ARCHITECTURE.md](../ARCHITECTURE.md).
+For repo-wide context, start with [../README.md](../README.md) and [../architecture/ARCHITECTURE.md](../architecture/ARCHITECTURE.md).
 
 ## Choose A Local Mode
 
@@ -46,6 +46,8 @@ Helpful related docs:
 - [../SERVER_ENV_CHECKLIST.md](../SERVER_ENV_CHECKLIST.md)
 - [../env-examples/README.md](../env-examples/README.md)
 - [../../env-examples/local/.env.example](../../env-examples/local/.env.example)
+
+When you add or rename an env var in `backend/app/core/config.py`, update **`env-examples/dev/.env.example`** and **`env-examples/beta/.env.example`** in the same change and run **`npm run check:env`** (or `python .github/scripts/check_env_sync.py --all-templates`) from the repo root. CI enforces template sync on pull requests.
 
 ### Identity compatibility notes
 
@@ -273,7 +275,7 @@ That is expected for non-admin sessions. `/api/status` is the public health-styl
 ## Related Docs
 
 - Repo entrypoint: [../../README.md](../../README.md)
-- Architecture: [../ARCHITECTURE.md](../ARCHITECTURE.md)
+- Architecture: [../architecture/ARCHITECTURE.md](../architecture/ARCHITECTURE.md)
 - Frontend guide: [../frontend/README.md](../frontend/README.md)
 - Extension guide: [../../uah-browser-extension/README.md](../../uah-browser-extension/README.md)
 - Historical backend implementation snapshots: [../archive/README.md](../archive/README.md)
