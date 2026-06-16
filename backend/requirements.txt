@@ -19,7 +19,7 @@ passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.4.0
 bcrypt==4.0.1
 itsdangerous==2.2.0
-python-multipart==0.0.26
+python-multipart==0.0.31
 
 # Utilities
 python-dotenv==1.0.1
